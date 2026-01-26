@@ -1,3 +1,25 @@
+//! Heap file storage for relation tuples.
+//!
+//! # TTM Compliance
+//!
+//! This module implements physical storage using a heap file structure with
+//! slotted pages. Internally, it uses TupleId (page_id + slot) for physical
+//! addressing, but TupleId is never exposed in public APIs per TTM Proscription 6:
+//! "The database must not generate or expose tuple-level identifiers."
+//!
+//! From the relational perspective, tuples are identified by their attribute
+//! values (keys), not by physical storage locations.
+//!
+//! ## Public API Design
+//!
+//! - `insert_tuple()` returns `Result<(), HeapError>` - success/failure only
+//! - `scan()` returns `Vec<Tuple>` - tuples without physical identifiers
+//! - `store_relation()` returns `Result<(), HeapError>` - no tuple IDs
+//! - `read_tuple(TupleId)` is `pub(crate)` - internal use only within storage layer
+//!
+//! This design ensures callers work with tuples as values, never as physical
+//! storage references, maintaining the relational abstraction.
+
 use crate::storage::page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
@@ -20,7 +42,7 @@ pub enum HeapError {
     #[error("Serialization error: {0}")]
     Serialization(String),
     #[error("Tuple not found at page {0}, slot {1}")]
-    TupleNotFound(PageId, u32),  // page_id, slot
+    TupleNotFound(PageId, u32), // page_id, slot
     #[error("Page full")]
     PageFull,
 }
@@ -76,7 +98,7 @@ impl HeapFile {
         loop {
             match self.try_insert_into_page(page_id, &tuple_data) {
                 Ok(_slot) => {
-                    return Ok(());  // Discard slot, return success
+                    return Ok(()); // Discard slot, return success
                 }
                 Err(HeapError::PageFull) => {
                     page_id += 1;
@@ -270,7 +292,7 @@ impl HeapFile {
                     };
                     // TupleId used internally, not exposed
                     if let Ok(tuple) = self.read_tuple(tuple_id) {
-                        results.push(tuple);  // Only push tuple
+                        results.push(tuple); // Only push tuple
                     }
                 }
             }
@@ -288,7 +310,7 @@ impl HeapFile {
 
     /// Load all tuples into a Relation
     pub fn load_relation(&mut self) -> Result<Relation, HeapError> {
-        let tuples = self.scan()?;  // Already returns Vec<Tuple>
+        let tuples = self.scan()?; // Already returns Vec<Tuple>
 
         Relation::from_tuples(self.relation_type.clone(), tuples)
             .map_err(|e| HeapError::Serialization(e.to_string()))
@@ -449,8 +471,10 @@ mod tests {
         let rel_type = create_test_relation_type();
         let mut heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
 
-        heap.insert_tuple(&tuple! { id: 1i64, name: "Alice" }).unwrap();
-        heap.insert_tuple(&tuple! { id: 2i64, name: "Bob" }).unwrap();
+        heap.insert_tuple(&tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        heap.insert_tuple(&tuple! { id: 2i64, name: "Bob" })
+            .unwrap();
 
         // Type check: Vec<Tuple> not Vec<(TupleId, Tuple)>
         let tuples: Vec<Tuple> = heap.scan().unwrap(); // This will fail until API is changed

@@ -49,14 +49,14 @@ impl BTreeIndex {
 
     /// Remove a specific tuple for a key
     pub fn remove(&mut self, key: &ScalarValue, tuple: &Tuple) -> bool {
-        if let Some(tuples) = self.index.get_mut(key) {
-            if let Some(pos) = tuples.iter().position(|t| t == tuple) {
-                tuples.swap_remove(pos);
-                if tuples.is_empty() {
-                    self.index.remove(key);
-                }
-                return true;
+        if let Some(tuples) = self.index.get_mut(key)
+            && let Some(pos) = tuples.iter().position(|t| t == tuple)
+        {
+            tuples.swap_remove(pos);
+            if tuples.is_empty() {
+                self.index.remove(key);
             }
+            return true;
         }
         false
     }
@@ -67,9 +67,7 @@ impl BTreeIndex {
     }
 
     /// Range scan: find all keys in [start, end]
-    pub fn range_scan(&self, start: &ScalarValue, end: &ScalarValue)
-        -> Vec<(ScalarValue, Tuple)>
-    {
+    pub fn range_scan(&self, start: &ScalarValue, end: &ScalarValue) -> Vec<(ScalarValue, Tuple)> {
         let mut results = Vec::new();
         for (key, tuples) in self.index.range(start.clone()..=end.clone()) {
             for tuple in tuples {
@@ -92,8 +90,8 @@ impl BTreeIndex {
     }
 
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), BTreeIndexError> {
-        let contents = bincode::serialize(self)
-            .map_err(|e| BTreeIndexError::Serialization(e.to_string()))?;
+        let contents =
+            bincode::serialize(self).map_err(|e| BTreeIndexError::Serialization(e.to_string()))?;
 
         let mut file = OpenOptions::new()
             .write(true)
@@ -116,8 +114,7 @@ impl BTreeIndex {
             return Ok(Self::new());
         }
 
-        bincode::deserialize(&contents)
-            .map_err(|e| BTreeIndexError::Serialization(e.to_string()))
+        bincode::deserialize(&contents).map_err(|e| BTreeIndexError::Serialization(e.to_string()))
     }
 }
 
@@ -281,9 +278,18 @@ mod tests {
     fn test_btree_string_keys() {
         let mut index = BTreeIndex::new();
 
-        index.insert(ScalarValue::String("Alice".to_string()), create_test_tuple(1, "Alice"));
-        index.insert(ScalarValue::String("Bob".to_string()), create_test_tuple(2, "Bob"));
-        index.insert(ScalarValue::String("Charlie".to_string()), create_test_tuple(3, "Charlie"));
+        index.insert(
+            ScalarValue::String("Alice".to_string()),
+            create_test_tuple(1, "Alice"),
+        );
+        index.insert(
+            ScalarValue::String("Bob".to_string()),
+            create_test_tuple(2, "Bob"),
+        );
+        index.insert(
+            ScalarValue::String("Charlie".to_string()),
+            create_test_tuple(3, "Charlie"),
+        );
 
         let results = index.range_scan(
             &ScalarValue::String("Alice".to_string()),
