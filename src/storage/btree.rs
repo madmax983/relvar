@@ -22,7 +22,21 @@ pub enum BTreeIndexError {
 /// This redesigned index stores full tuple values instead of TupleId references
 /// to comply with TTM Proscription 6 (no tuple-level identifiers).
 ///
-/// **Status:** Simplified implementation using BTreeMap. Production systems would
+/// **Design Tradeoffs:**
+/// - **Memory overhead:** Tuples are duplicated in both heap and indexes
+/// - **Consistency:** Indexes must be updated when heap tuples change (not yet implemented)
+/// - **Benefit:** No exposure of physical storage identifiers; pure value-based indexing
+///
+/// **Future considerations:**
+/// When indexes are actively used by Database layer, consider alternative approaches:
+/// - Store only indexed attributes + primary key values, join back to heap
+/// - Implement automatic index maintenance on heap updates
+/// - Use copy-on-write or versioning to reduce duplication overhead
+///
+/// **Current status:** Database doesn't use indexes yet, so this design is acceptable
+/// for TTM compliance demonstration. Will need refinement before production use.
+///
+/// **Implementation:** Simplified in-memory BTreeMap. Production systems would
 /// implement proper on-disk B-tree with more sophisticated storage strategies.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BTreeIndex {
