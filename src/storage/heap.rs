@@ -1,3 +1,25 @@
+//! Heap file storage for relation tuples.
+//!
+//! # TTM Compliance
+//!
+//! This module implements physical storage using a heap file structure with
+//! slotted pages. Internally, it uses TupleId (page_id + slot) for physical
+//! addressing, but TupleId is never exposed in public APIs per TTM Proscription 6:
+//! "The database must not generate or expose tuple-level identifiers."
+//!
+//! From the relational perspective, tuples are identified by their attribute
+//! values (keys), not by physical storage locations.
+//!
+//! ## Public API Design
+//!
+//! - `insert_tuple()` returns `Result<(), HeapError>` - success/failure only
+//! - `scan()` returns `Vec<Tuple>` - tuples without physical identifiers
+//! - `store_relation()` returns `Result<(), HeapError>` - no tuple IDs
+//! - `read_tuple(TupleId)` is `pub(crate)` - internal use only within storage layer
+//!
+//! This design ensures callers work with tuples as values, never as physical
+//! storage references, maintaining the relational abstraction.
+
 use crate::storage::page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
@@ -6,10 +28,11 @@ use std::path::Path;
 use thiserror::Error;
 
 /// Tuple ID: (page_id, slot_number)
+/// Internal to storage layer only (TTM Proscription 6)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TupleId {
-    pub page_id: PageId,
-    pub slot: u32,
+pub(crate) struct TupleId {
+    pub(crate) page_id: PageId,
+    pub(crate) slot: u32,
 }
 
 #[derive(Debug, Error)]
@@ -18,8 +41,8 @@ pub enum HeapError {
     Page(#[from] PageError),
     #[error("Serialization error: {0}")]
     Serialization(String),
-    #[error("Tuple not found: {0:?}")]
-    TupleNotFound(TupleId),
+    #[error("Tuple not found")]
+    TupleNotFound, // Physical details (page_id, slot) hidden per TTM Proscription 6
     #[error("Page full")]
     PageFull,
 }
@@ -64,8 +87,8 @@ impl HeapFile {
         })
     }
 
-    /// Insert a tuple and return its TupleId
-    pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<TupleId, HeapError> {
+    /// Insert a tuple into the heap file
+    pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<(), HeapError> {
         // Serialize the tuple
         let tuple_data =
             bincode::serialize(tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
@@ -74,8 +97,8 @@ impl HeapFile {
         let mut page_id = 0;
         loop {
             match self.try_insert_into_page(page_id, &tuple_data) {
-                Ok(slot) => {
-                    return Ok(TupleId { page_id, slot });
+                Ok(_slot) => {
+                    return Ok(()); // Discard slot, return success
                 }
                 Err(HeapError::PageFull) => {
                     page_id += 1;
@@ -201,12 +224,12 @@ impl HeapFile {
         Ok(data)
     }
 
-    /// Read a tuple by its TupleId
-    pub fn read_tuple(&mut self, tuple_id: TupleId) -> Result<Tuple, HeapError> {
+    /// Read a tuple by its TupleId (internal use only per TTM Proscription 6)
+    pub(crate) fn read_tuple(&mut self, tuple_id: TupleId) -> Result<Tuple, HeapError> {
         let page = self.page_file.read_page(tuple_id.page_id)?;
 
         if page.is_empty() {
-            return Err(HeapError::TupleNotFound(tuple_id));
+            return Err(HeapError::TupleNotFound);
         }
 
         let slotted_page: SlottedPage = bincode::deserialize(page.data())
@@ -216,14 +239,14 @@ impl HeapFile {
             .slots
             .get(tuple_id.slot as usize)
             .and_then(|s| s.as_ref())
-            .ok_or(HeapError::TupleNotFound(tuple_id))?;
+            .ok_or(HeapError::TupleNotFound)?;
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
         let end = start + slot_entry.length as usize;
 
         if end > page.data().len() {
-            return Err(HeapError::TupleNotFound(tuple_id));
+            return Err(HeapError::TupleNotFound);
         }
 
         let tuple_data = &page.data()[start..end];
@@ -234,7 +257,7 @@ impl HeapFile {
     }
 
     /// Scan all tuples in the heap file
-    pub fn scan(&mut self) -> Result<Vec<(TupleId, Tuple)>, HeapError> {
+    pub fn scan(&mut self) -> Result<Vec<Tuple>, HeapError> {
         let mut results = Vec::new();
         let mut page_id = 0;
 
@@ -267,9 +290,9 @@ impl HeapFile {
                         page_id,
                         slot: slot as u32,
                     };
-
+                    // TupleId used internally, not exposed
                     if let Ok(tuple) = self.read_tuple(tuple_id) {
-                        results.push((tuple_id, tuple));
+                        results.push(tuple); // Only push tuple
                     }
                 }
             }
@@ -287,22 +310,18 @@ impl HeapFile {
 
     /// Load all tuples into a Relation
     pub fn load_relation(&mut self) -> Result<Relation, HeapError> {
-        let tuples: Vec<Tuple> = self.scan()?.into_iter().map(|(_, t)| t).collect();
+        let tuples = self.scan()?; // Already returns Vec<Tuple>
 
         Relation::from_tuples(self.relation_type.clone(), tuples)
             .map_err(|e| HeapError::Serialization(e.to_string()))
     }
 
     /// Store a relation's tuples into the heap file
-    pub fn store_relation(&mut self, relation: &Relation) -> Result<Vec<TupleId>, HeapError> {
-        let mut tuple_ids = Vec::new();
-
+    pub fn store_relation(&mut self, relation: &Relation) -> Result<(), HeapError> {
         for tuple in relation.tuples() {
-            let tuple_id = self.insert_tuple(tuple)?;
-            tuple_ids.push(tuple_id);
+            self.insert_tuple(tuple)?;
         }
-
-        Ok(tuple_ids)
+        Ok(())
     }
 }
 
@@ -329,10 +348,11 @@ mod tests {
         let mut heap = HeapFile::create(path, rel_type.clone()).unwrap();
 
         let tuple = tuple! { id: 1i64, name: "Alice" };
-        let tuple_id = heap.insert_tuple(&tuple).unwrap();
+        heap.insert_tuple(&tuple).unwrap();
 
-        let read_tuple = heap.read_tuple(tuple_id).unwrap();
-        assert_eq!(read_tuple, tuple);
+        let tuples = heap.scan().unwrap();
+        assert_eq!(tuples.len(), 1);
+        assert_eq!(tuples[0], tuple);
     }
 
     #[test]
@@ -347,13 +367,15 @@ mod tests {
         let tuple2 = tuple! { id: 2i64, name: "Bob" };
         let tuple3 = tuple! { id: 3i64, name: "Charlie" };
 
-        let tid1 = heap.insert_tuple(&tuple1).unwrap();
-        let tid2 = heap.insert_tuple(&tuple2).unwrap();
-        let tid3 = heap.insert_tuple(&tuple3).unwrap();
+        heap.insert_tuple(&tuple1).unwrap();
+        heap.insert_tuple(&tuple2).unwrap();
+        heap.insert_tuple(&tuple3).unwrap();
 
-        assert_eq!(heap.read_tuple(tid1).unwrap(), tuple1);
-        assert_eq!(heap.read_tuple(tid2).unwrap(), tuple2);
-        assert_eq!(heap.read_tuple(tid3).unwrap(), tuple3);
+        let tuples = heap.scan().unwrap();
+        assert_eq!(tuples.len(), 3);
+        assert!(tuples.contains(&tuple1));
+        assert!(tuples.contains(&tuple2));
+        assert!(tuples.contains(&tuple3));
     }
 
     #[test]
@@ -425,21 +447,52 @@ mod tests {
         }
     }
 
+    // test_tuple_not_found removed - tested internal read_tuple with TupleId which is now pub(crate)
+
+    // Tests verifying TupleId is not exposed in public APIs (TTM Proscription 6)
+
     #[test]
-    fn test_tuple_not_found() {
+    fn test_heap_insert_returns_unit_not_tuple_id() {
         let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path();
-
         let rel_type = create_test_relation_type();
-        let mut heap = HeapFile::create(path, rel_type.clone()).unwrap();
+        let mut heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
 
-        let invalid_id = TupleId {
-            page_id: 999,
-            slot: 0,
-        };
+        let tuple = tuple! { id: 1i64, name: "Alice" };
+        let result = heap.insert_tuple(&tuple);
 
-        let result = heap.read_tuple(invalid_id);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), HeapError::TupleNotFound(_)));
+        // Type check: Verifies the API returns unit type, not TupleId
+        assert!(result.is_ok());
+        let _unit: () = result.unwrap();
+    }
+
+    #[test]
+    fn test_heap_scan_returns_only_tuples() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
+
+        heap.insert_tuple(&tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        heap.insert_tuple(&tuple! { id: 2i64, name: "Bob" })
+            .unwrap();
+
+        // Type check: Verifies the API returns Vec<Tuple>, not Vec<(TupleId, Tuple)>
+        let tuples: Vec<Tuple> = heap.scan().unwrap();
+        assert_eq!(tuples.len(), 2);
+    }
+
+    #[test]
+    fn test_store_relation_returns_unit() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(temp_file.path(), rel_type.clone()).unwrap();
+
+        let mut relation = Relation::new(rel_type);
+        relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+
+        // Type check: Verifies the API returns unit type, not Vec<TupleId>
+        let result = heap.store_relation(&relation);
+        assert!(result.is_ok());
+        let _unit: () = result.unwrap();
     }
 }

@@ -297,7 +297,7 @@ impl Database {
         let mut relation = Relation::new(relation_type);
 
         // Scan all tuples
-        for (_tuple_id, tuple) in heap_file.scan()? {
+        for tuple in heap_file.scan()? {
             relation.insert(tuple)?;
         }
 
@@ -354,7 +354,7 @@ impl Database {
         let mut tuples_to_keep = Vec::new();
         let mut deleted_count = 0;
 
-        for (_tuple_id, tuple) in all_tuples {
+        for tuple in all_tuples {
             if predicate(&tuple) {
                 deleted_count += 1;
             } else {
@@ -402,7 +402,7 @@ impl Database {
         let mut updated_tuples = Vec::new();
         let mut updated_count = 0;
 
-        for (_tuple_id, mut tuple) in all_tuples {
+        for mut tuple in all_tuples {
             if predicate(&tuple) {
                 updater(&mut tuple);
 
