@@ -5,5 +5,6 @@ pub mod page;
 
 pub use btree::{BTreeIndex, BTreeIndexError};
 pub use catalog::{Catalog, CatalogError};
-pub use heap::{HeapError, HeapFile, TupleId};
+pub use heap::{HeapError, HeapFile};
+// TupleId is now pub(crate) in heap.rs, not exported
 pub use page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
