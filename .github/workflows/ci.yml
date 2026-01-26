@@ -5,6 +5,11 @@ on:
     branches: [ trunk, main ]
   pull_request:
     branches: [ trunk, main ]
+  schedule:
+    # Run benchmarks weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    # Allow manual triggering of benchmarks
 
 env:
   CARGO_TERM_COLOR: always
@@ -58,3 +63,75 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --release --all-features
+
+  benchmark:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    # Only run benchmarks on schedule, manual trigger, or explicit request
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[bench]')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run storage benchmarks
+        run: cargo bench --bench storage -- --output-format bencher | tee storage-output.txt
+
+      - name: Run algebra benchmarks
+        run: cargo bench --bench algebra -- --output-format bencher | tee algebra-output.txt
+
+      - name: Run database benchmarks
+        run: cargo bench --bench database -- --output-format bencher | tee database-output.txt
+
+      - name: Store benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: |
+            *-output.txt
+            target/criterion/
+          retention-days: 30
+
+      - name: Comment benchmark results on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const storage = fs.readFileSync('storage-output.txt', 'utf8');
+            const algebra = fs.readFileSync('algebra-output.txt', 'utf8');
+            const database = fs.readFileSync('database-output.txt', 'utf8');
+
+            const body = `## Benchmark Results
+
+            <details>
+            <summary>Storage Benchmarks</summary>
+
+            \`\`\`
+            ${storage}
+            \`\`\`
+            </details>
+
+            <details>
+            <summary>Algebra Benchmarks</summary>
+
+            \`\`\`
+            ${algebra}
+            \`\`\`
+            </details>
+
+            <details>
+            <summary>Database Benchmarks</summary>
+
+            \`\`\`
+            ${database}
+            \`\`\`
+            </details>
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
