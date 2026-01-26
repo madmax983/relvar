@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use relvar::algebra::extend::ExtendOps;
-use relvar::algebra::summarize::{Aggregation, SummarizeOps};
+use relvar::algebra::summarize::{Aggregation, AggregationFn, SummarizeOps};
 use relvar::tuple;
 use relvar::types::{RelationType, ScalarType, TupleType};
 use relvar::values::{Relation, ScalarValue};
@@ -218,7 +218,20 @@ fn bench_summarize(c: &mut Criterion) {
                         &["dept_id"],
                         &[
                             Aggregation::count("count"),
-                            Aggregation::avg("avg_salary", "salary"),
+                            Aggregation {
+                                result_name: "avg_salary".to_string(),
+                                result_type: ScalarType::Float,
+                                function: AggregationFn::Custom(Box::new(|tuples| {
+                                    if tuples.is_empty() {
+                                        return ScalarValue::Float(0.0);
+                                    }
+                                    let sum: f64 = tuples
+                                        .iter()
+                                        .map(|t| t.get_typed::<f64>("salary").unwrap())
+                                        .sum();
+                                    ScalarValue::Float(sum / tuples.len() as f64)
+                                })),
+                            },
                         ],
                     )
                     .unwrap();
