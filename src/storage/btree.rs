@@ -70,8 +70,13 @@ impl BTreeIndex {
     pub fn range_scan(&self, start: &ScalarValue, end: &ScalarValue) -> Vec<(ScalarValue, Tuple)> {
         let mut results = Vec::new();
         for (key, tuples) in self.index.range(start.clone()..=end.clone()) {
-            for tuple in tuples {
-                results.push((key.clone(), tuple.clone()));
+            // Optimize: clone key once per outer loop, not for every tuple
+            if let Some((last_tuple, first_tuples)) = tuples.split_last() {
+                let key_clone = key.clone();
+                for tuple in first_tuples {
+                    results.push((key_clone.clone(), tuple.clone()));
+                }
+                results.push((key_clone, last_tuple.clone()));
             }
         }
         results
@@ -299,7 +304,7 @@ mod tests {
         assert_eq!(results.len(), 3);
     }
 
-    // RED phase test: This will pass once BTreeIndex stores tuples instead of TupleId
+    /// Test verifying BTreeIndex stores tuples, not TupleIds (TTM Proscription 6)
     #[test]
     fn test_btree_stores_tuples_not_tuple_ids() {
         let mut index = BTreeIndex::new();

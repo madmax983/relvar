@@ -41,8 +41,8 @@ pub enum HeapError {
     Page(#[from] PageError),
     #[error("Serialization error: {0}")]
     Serialization(String),
-    #[error("Tuple not found at page {0}, slot {1}")]
-    TupleNotFound(PageId, u32), // page_id, slot
+    #[error("Tuple not found")]
+    TupleNotFound, // Physical details (page_id, slot) hidden per TTM Proscription 6
     #[error("Page full")]
     PageFull,
 }
@@ -229,7 +229,7 @@ impl HeapFile {
         let page = self.page_file.read_page(tuple_id.page_id)?;
 
         if page.is_empty() {
-            return Err(HeapError::TupleNotFound(tuple_id.page_id, tuple_id.slot));
+            return Err(HeapError::TupleNotFound);
         }
 
         let slotted_page: SlottedPage = bincode::deserialize(page.data())
@@ -239,14 +239,14 @@ impl HeapFile {
             .slots
             .get(tuple_id.slot as usize)
             .and_then(|s| s.as_ref())
-            .ok_or(HeapError::TupleNotFound(tuple_id.page_id, tuple_id.slot))?;
+            .ok_or(HeapError::TupleNotFound)?;
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
         let end = start + slot_entry.length as usize;
 
         if end > page.data().len() {
-            return Err(HeapError::TupleNotFound(tuple_id.page_id, tuple_id.slot));
+            return Err(HeapError::TupleNotFound);
         }
 
         let tuple_data = &page.data()[start..end];
@@ -449,7 +449,7 @@ mod tests {
 
     // test_tuple_not_found removed - tested internal read_tuple with TupleId which is now pub(crate)
 
-    // RED phase tests: These will pass once TupleId is removed from public APIs
+    // Tests verifying TupleId is not exposed in public APIs (TTM Proscription 6)
 
     #[test]
     fn test_heap_insert_returns_unit_not_tuple_id() {
@@ -460,9 +460,9 @@ mod tests {
         let tuple = tuple! { id: 1i64, name: "Alice" };
         let result = heap.insert_tuple(&tuple);
 
-        // Type check: Result<(), HeapError> not Result<TupleId, HeapError>
+        // Type check: Verifies the API returns unit type, not TupleId
         assert!(result.is_ok());
-        let _unit: () = result.unwrap(); // This will fail until API is changed
+        let _unit: () = result.unwrap();
     }
 
     #[test]
@@ -476,8 +476,8 @@ mod tests {
         heap.insert_tuple(&tuple! { id: 2i64, name: "Bob" })
             .unwrap();
 
-        // Type check: Vec<Tuple> not Vec<(TupleId, Tuple)>
-        let tuples: Vec<Tuple> = heap.scan().unwrap(); // This will fail until API is changed
+        // Type check: Verifies the API returns Vec<Tuple>, not Vec<(TupleId, Tuple)>
+        let tuples: Vec<Tuple> = heap.scan().unwrap();
         assert_eq!(tuples.len(), 2);
     }
 
@@ -490,9 +490,9 @@ mod tests {
         let mut relation = Relation::new(rel_type);
         relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
 
-        // Type check: Result<(), HeapError> not Result<Vec<TupleId>, HeapError>
+        // Type check: Verifies the API returns unit type, not Vec<TupleId>
         let result = heap.store_relation(&relation);
         assert!(result.is_ok());
-        let _unit: () = result.unwrap(); // This will fail until API is changed
+        let _unit: () = result.unwrap();
     }
 }
