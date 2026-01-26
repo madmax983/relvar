@@ -1,10 +1,12 @@
 # Relvar
 
-A pure relational database management system (RDBMS) in Rust, built on the principles from C.J. Date's "Database in Depth: Relational Theory for Practitioners".
+A pure relational database management system (RDBMS) in Rust, built on the principles from C.J. Date and Hugh Darwen's work on relational theory, particularly "Database in Depth" and "The Third Manifesto".
 
 ## Overview
 
-Relvar is an educational RDBMS that implements the relational model as it was originally intended by E.F. Codd and refined by C.J. Date. Unlike SQL databases, Relvar adheres strictly to relational theory:
+Relvar is an educational RDBMS that implements the relational model as it was originally intended by E.F. Codd and refined by C.J. Date and Hugh Darwen. The name "relvar" (short for "relation variable") is the standard term from Date and Darwen's work for a named, updatable relation in a database.
+
+Unlike SQL databases, Relvar adheres strictly to relational theory:
 
 - **No NULL values** - All attributes must have values
 - **True set semantics** - Relations are sets of tuples (no duplicates, no ordering)
@@ -277,13 +279,19 @@ GitHub Actions automatically runs on every push:
 
 ## References
 
+- **"The Third Manifesto"** by C.J. Date and Hugh Darwen
+  - The definitive formal specification of the relational model
+  - A comprehensive proposal for the future of data and database management systems
+  - [thethirdmanifesto.com](http://www.thethirdmanifesto.com/)
+
 - **"Database in Depth: Relational Theory for Practitioners"** by C.J. Date (2005)
-  - The primary inspiration for this project
+  - Accessible introduction to relational theory
+  - A primary inspiration for this project
   - [O'Reilly Media](https://www.oreilly.com/library/view/database-in-depth/0596100124/)
 
-- **"The Third Manifesto"** by C.J. Date and Hugh Darwen
-  - Formal specification of the relational model
-  - [thethirdmanifesto.com](http://www.thethirdmanifesto.com/)
+- **"Databases, Types, and the Relational Model"** by C.J. Date and Hugh Darwen (3rd Edition)
+  - Comprehensive treatment of type theory in databases
+  - Foundation for proper relational type systems
 
 - **"A Relational Model of Data for Large Shared Data Banks"** by E.F. Codd (1970)
   - The original paper that defined the relational model
@@ -305,9 +313,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- **C.J. Date** for his tireless advocacy of the relational model
-- **E.F. Codd** for inventing the relational model
-- **Hugh Darwen** for co-authoring The Third Manifesto
+- **C.J. Date and Hugh Darwen** for their tireless advocacy of the relational model and their collaborative work on The Third Manifesto, which provides the theoretical foundation for this project
+- **E.F. Codd** for inventing the relational model and laying the groundwork for modern database theory
 - The Rust community for excellent tooling and libraries
 
 ---
