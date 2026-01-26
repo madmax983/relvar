@@ -1,10 +1,10 @@
 use criterion::{
-    black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
+    BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
+use relvar::Database;
 use relvar::constraints::{KeyConstraints, PrimaryKey};
 use relvar::tuple;
 use relvar::types::{RelationType, ScalarType, TupleType};
-use relvar::Database;
 use tempfile::TempDir;
 
 fn create_employee_type() -> RelationType {
@@ -222,8 +222,10 @@ fn bench_delete(c: &mut Criterion) {
                 },
                 |(_temp_dir, mut db)| {
                     // Measured: just the delete operation
-                    db.delete("EMP", |t| t.get_typed::<i64>("emp_id").unwrap() < count as i64)
-                        .unwrap();
+                    db.delete("EMP", |t| {
+                        t.get_typed::<i64>("emp_id").unwrap() < count as i64
+                    })
+                    .unwrap();
                     black_box(db);
                 },
                 BatchSize::SmallInput,

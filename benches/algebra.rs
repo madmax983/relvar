@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use relvar::algebra::extend::ExtendOps;
 use relvar::algebra::summarize::{Aggregation, AggregationFn, SummarizeOps};
 use relvar::tuple;
@@ -94,10 +94,8 @@ fn bench_rename(c: &mut Criterion) {
             let relation = create_employee_relation(size);
 
             b.iter(|| {
-                let result = relation.rename(&[
-                    ("emp_id", "employee_id"),
-                    ("dept_id", "department_id"),
-                ]);
+                let result =
+                    relation.rename(&[("emp_id", "employee_id"), ("dept_id", "department_id")]);
                 black_box(result);
             });
         });

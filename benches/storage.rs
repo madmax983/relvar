@@ -1,5 +1,5 @@
 use criterion::{
-    black_box, criterion_group, criterion_main, BenchmarkId, BatchSize, Criterion, Throughput,
+    BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
 use relvar::storage::{HeapFile, Page, PageFile};
 use relvar::tuple;
