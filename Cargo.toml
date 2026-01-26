@@ -1,7 +1,13 @@
 [package]
-name = "date"
+name = "relvar"
 version = "0.1.0"
 edition = "2024"
+authors = ["Mark M"]
+description = "A pure relational DBMS in Rust based on C.J. Date's principles"
+license = "MIT"
+repository = "https://github.com/yourusername/relvar"
+keywords = ["database", "relational", "dbms", "date", "relational-algebra"]
+categories = ["database-implementations"]
 
 [dependencies]
 thiserror = "2"

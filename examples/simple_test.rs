@@ -1,8 +1,8 @@
 // Simple test to isolate the issue
 
-use date::tuple;
-use date::types::{RelationType, TupleType};
-use date::{Database, ScalarType};
+use relvar::tuple;
+use relvar::types::{RelationType, TupleType};
+use relvar::{Database, ScalarType};
 use tempfile::TempDir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

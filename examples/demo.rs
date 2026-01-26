@@ -1,13 +1,13 @@
-// Demonstration of the Date RDBMS database API
+// Demonstration of the Relvar RDBMS database API
 // This is the verification example from the implementation plan
 
-use date::tuple;
-use date::types::{RelationType, TupleType};
-use date::{Database, ScalarType};
+use relvar::tuple;
+use relvar::types::{RelationType, TupleType};
+use relvar::{Database, ScalarType};
 use tempfile::TempDir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Date RDBMS Demo ===\n");
+    println!("=== Relvar RDBMS Demo ===\n");
 
     // Create database
     let temp_dir = TempDir::new()?;
