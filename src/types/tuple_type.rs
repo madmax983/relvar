@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 /// Tuple type is defined by a set of (attribute_name, type) pairs.
 /// Per Date's relational model, attributes have no ordering.
 /// We use BTreeMap for deterministic iteration.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TupleType {
     /// Attributes of this tuple type, mapping attribute names to their types
     attributes: BTreeMap<String, ScalarType>,

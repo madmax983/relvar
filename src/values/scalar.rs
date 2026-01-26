@@ -206,8 +206,8 @@ impl Ord for ScalarValue {
                             value: val_b,
                         },
                     ) => {
-                        // Order by type identity first (via type name), then by value
-                        match type_a.name().cmp(&type_b.name()) {
+                        // Order by type identity first (structural comparison), then by value
+                        match type_a.cmp(type_b) {
                             Ordering::Equal => val_a.cmp(val_b),
                             other => other,
                         }

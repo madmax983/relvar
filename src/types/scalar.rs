@@ -13,7 +13,7 @@ pub enum ScalarTypeError {
 ///
 /// TTM Prescription 1: The system must allow users to define their own scalar types.
 /// This is implemented via the UserDefined variant which supports the POSSREP pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ScalarType {
     /// 64-bit signed integer
     Int,
@@ -103,8 +103,16 @@ impl ScalarType {
                     value: Box::new(value),
                 })
             }
-            // Built-in types don't need selectors (they're already constructed)
-            _ => Ok(value),
+            // For built-in types, the value must already be of this type
+            ty => {
+                if !value.is_type(ty) {
+                    return Err(ScalarTypeError::TypeMismatch {
+                        expected: ty.name(),
+                        actual: value.scalar_type().name(),
+                    });
+                }
+                Ok(value)
+            }
         }
     }
 }
@@ -178,5 +186,23 @@ mod tests {
         assert_eq!(set.len(), 2); // Only Int and Float
         assert!(set.contains(&ScalarType::Int));
         assert!(set.contains(&ScalarType::Float));
+    }
+
+    #[test]
+    fn test_builtin_selector_validates_type() {
+        use crate::values::ScalarValue;
+
+        // Selector for built-in types should reject values of wrong type
+        let int_type = ScalarType::Int;
+        let string_value = ScalarValue::String("not an int".to_string());
+
+        let result = int_type.selector(string_value);
+        assert!(result.is_err());
+
+        // Should accept correct type
+        let int_value = ScalarValue::Int(42);
+        let result = int_type.selector(int_value.clone());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), int_value);
     }
 }

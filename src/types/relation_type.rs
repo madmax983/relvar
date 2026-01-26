@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Relation type is defined by its heading, which is a tuple type.
 /// Per Date's relational model, a relation is a set of tuples all of the same type.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RelationType {
     heading: TupleType,
 }

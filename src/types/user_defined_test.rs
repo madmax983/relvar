@@ -160,14 +160,15 @@ mod tests {
         assert_eq!(set.len(), 3);
     }
 
-    /// RED: Type names must be unique within the type system
+    /// RED: Types with the same name but different representations are distinct
     #[test]
     fn test_user_defined_type_names_must_be_unique() {
         let type1 = ScalarType::user_defined("MyType", ScalarType::Int);
         let type2 = ScalarType::user_defined("MyType", ScalarType::String);
 
-        // Same name should produce equal types (or error)
-        // This test documents the expected behavior - actual behavior TBD
+        // This test documents that types with the same name but different
+        // representations are distinct, as `PartialEq` is structural.
+        assert_ne!(type1, type2);
         assert_eq!(type1.name(), type2.name());
     }
 }
