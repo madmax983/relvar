@@ -254,6 +254,32 @@ cargo test -- --nocapture
 cargo test test_heap_insert_and_read
 ```
 
+## Benchmarks
+
+Comprehensive performance benchmarks using Criterion.rs:
+
+```bash
+# Run all benchmarks
+cargo bench
+
+# Run specific benchmark suite
+cargo bench --bench storage
+cargo bench --bench algebra
+cargo bench --bench database
+
+# Quick benchmark run (less accurate, faster)
+cargo bench -- --quick
+```
+
+Benchmark suites cover:
+- **Storage Layer**: Page I/O, heap operations, B-tree operations
+- **Relational Algebra**: All operators (restrict, project, join, etc.)
+- **Database API**: Insert, query, update, delete, transactions
+
+Results are saved to `target/criterion/` with HTML reports and statistical analysis.
+
+See [benches/README.md](benches/README.md) for detailed documentation.
+
 ## CI/CD
 
 GitHub Actions automatically runs on every push:
