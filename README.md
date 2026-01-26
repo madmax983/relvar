@@ -1,5 +1,7 @@
 # Relvar
 
+[![codecov](https://codecov.io/gh/madmax983/relvar/branch/trunk/graph/badge.svg)](https://codecov.io/gh/madmax983/relvar)
+
 A pure relational database management system (RDBMS) in Rust, built on the principles from C.J. Date and Hugh Darwen's work on relational theory, particularly "Database in Depth" and "The Third Manifesto".
 
 ## Overview
@@ -287,6 +289,7 @@ GitHub Actions automatically runs on every push:
 - **clippy**: Linting with zero warnings
 - **test**: Full test suite on Ubuntu, Windows, macOS
 - **build**: Release build verification
+- **coverage**: Code coverage reporting with Codecov integration
 
 ## Roadmap
 
