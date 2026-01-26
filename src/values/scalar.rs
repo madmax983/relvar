@@ -1,8 +1,18 @@
 use crate::types::ScalarType;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Errors related to scalar value operations
+#[derive(Debug, Error)]
+pub enum ScalarValueError {
+    #[error("Cannot extract observer from built-in type")]
+    NotUserDefined,
+}
 
 /// A scalar value with its type.
 /// Per Date's relational model, all values carry their type.
+///
+/// TTM Prescription 1: Support for user-defined types via POSSREP pattern.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ScalarValue {
     Int(i64),
@@ -11,6 +21,13 @@ pub enum ScalarValue {
     Bool(bool),
     Bytes(Vec<u8>),
     Relation(crate::values::Relation),
+    /// User-defined value wrapping its type definition and underlying representation.
+    /// TTM: Implements POSSREP - the value carries both its type identity
+    /// and its representation value.
+    UserDefined {
+        type_def: ScalarType,
+        value: Box<ScalarValue>,
+    },
 }
 
 impl ScalarValue {
@@ -25,6 +42,7 @@ impl ScalarValue {
             ScalarValue::Relation(rel) => {
                 ScalarType::Relation(Box::new(rel.relation_type().clone()))
             }
+            ScalarValue::UserDefined { type_def, .. } => type_def.clone(),
         }
     }
 
@@ -32,11 +50,40 @@ impl ScalarValue {
     pub fn is_type(&self, ty: &ScalarType) -> bool {
         &self.scalar_type() == ty
     }
+
+    /// POSSREP observer: extracts the underlying representation value.
+    ///
+    /// TTM: The observer function extracts the representation from a
+    /// user-defined type value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if called on a built-in type (only user-defined types
+    /// have observers).
+    pub fn observer(&self) -> Result<ScalarValue, ScalarValueError> {
+        match self {
+            ScalarValue::UserDefined { value, .. } => Ok((**value).clone()),
+            _ => Err(ScalarValueError::NotUserDefined),
+        }
+    }
+
+    /// Helper constructor for user-defined values (used in tests).
+    /// Prefer using `ScalarType::selector()` in production code.
+    #[cfg(test)]
+    pub fn user_defined(type_def: ScalarType, value: ScalarValue) -> Self {
+        ScalarValue::UserDefined {
+            type_def,
+            value: Box::new(value),
+        }
+    }
 }
 
 // Custom PartialEq implementation for ScalarValue
 // Note: Float comparison uses bit equality, which is appropriate for
 // database values (we want NaN == NaN for set semantics)
+//
+// TTM: User-defined values are equal only if they have the same type AND
+// the same representation value. This ensures type safety.
 impl PartialEq for ScalarValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -46,6 +93,16 @@ impl PartialEq for ScalarValue {
             (ScalarValue::Bool(a), ScalarValue::Bool(b)) => a == b,
             (ScalarValue::Bytes(a), ScalarValue::Bytes(b)) => a == b,
             (ScalarValue::Relation(a), ScalarValue::Relation(b)) => a == b,
+            (
+                ScalarValue::UserDefined {
+                    type_def: type_a,
+                    value: val_a,
+                },
+                ScalarValue::UserDefined {
+                    type_def: type_b,
+                    value: val_b,
+                },
+            ) => type_a == type_b && val_a == val_b,
             _ => false,
         }
     }
@@ -55,6 +112,7 @@ impl PartialEq for ScalarValue {
 impl Eq for ScalarValue {}
 
 // Custom Hash implementation
+// TTM: User-defined values hash based on both type and value
 impl std::hash::Hash for ScalarValue {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
@@ -82,6 +140,11 @@ impl std::hash::Hash for ScalarValue {
                 5u8.hash(state);
                 v.hash(state);
             }
+            ScalarValue::UserDefined { type_def, value } => {
+                6u8.hash(state);
+                type_def.hash(state);
+                value.hash(state);
+            }
         }
     }
 }
@@ -95,6 +158,7 @@ impl PartialOrd for ScalarValue {
 
 // Custom Ord implementation for use in BTreeMap
 // We order by type first, then by value within type
+// TTM: User-defined values are ordered by type identity first, then by representation value
 impl Ord for ScalarValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::cmp::Ordering;
@@ -108,6 +172,7 @@ impl Ord for ScalarValue {
                 ScalarValue::Bool(_) => 3,
                 ScalarValue::Bytes(_) => 4,
                 ScalarValue::Relation(_) => 5,
+                ScalarValue::UserDefined { .. } => 6,
             }
         }
 
@@ -128,6 +193,22 @@ impl Ord for ScalarValue {
                         // For relations, order by cardinality first, then degree
                         match a.cardinality().cmp(&b.cardinality()) {
                             Ordering::Equal => a.degree().cmp(&b.degree()),
+                            other => other,
+                        }
+                    }
+                    (
+                        ScalarValue::UserDefined {
+                            type_def: type_a,
+                            value: val_a,
+                        },
+                        ScalarValue::UserDefined {
+                            type_def: type_b,
+                            value: val_b,
+                        },
+                    ) => {
+                        // Order by type identity first (structural comparison), then by value
+                        match type_a.cmp(type_b) {
+                            Ordering::Equal => val_a.cmp(val_b),
                             other => other,
                         }
                     }

@@ -1,8 +1,19 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Errors related to user-defined type operations
+#[derive(Debug, Error)]
+pub enum ScalarTypeError {
+    #[error("Type mismatch: expected {expected}, got {actual}")]
+    TypeMismatch { expected: String, actual: String },
+}
 
 /// Scalar type representation per Date's relational model.
 /// Types are identified by name and support equality comparison.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// TTM Prescription 1: The system must allow users to define their own scalar types.
+/// This is implemented via the UserDefined variant which supports the POSSREP pattern.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ScalarType {
     /// 64-bit signed integer
     Int,
@@ -16,6 +27,13 @@ pub enum ScalarType {
     Bytes,
     /// Relation-valued attribute type
     Relation(Box<crate::types::RelationType>),
+    /// User-defined type with a name and base representation type.
+    /// TTM: This implements POSSREP (possible representation) pattern.
+    /// The name provides type identity, the representation provides storage.
+    UserDefined {
+        name: String,
+        representation: Box<ScalarType>,
+    },
 }
 
 impl ScalarType {
@@ -28,6 +46,73 @@ impl ScalarType {
             ScalarType::Bool => "Bool".to_string(),
             ScalarType::Bytes => "Bytes".to_string(),
             ScalarType::Relation(_) => "Relation".to_string(),
+            ScalarType::UserDefined { name, .. } => name.clone(),
+        }
+    }
+
+    /// Creates a user-defined type with the given name and representation type.
+    ///
+    /// TTM Prescription 1: Users can define their own scalar types.
+    /// TTM: This implements the POSSREP pattern - the type has a name (identity)
+    /// and a representation type (storage).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::types::ScalarType;
+    ///
+    /// let widget_id = ScalarType::user_defined("WidgetId", ScalarType::Int);
+    /// let supplier_id = ScalarType::user_defined("SupplierId", ScalarType::Int);
+    ///
+    /// // Same representation, but different types
+    /// assert_ne!(widget_id, supplier_id);
+    /// ```
+    pub fn user_defined(name: impl Into<String>, representation: ScalarType) -> Self {
+        ScalarType::UserDefined {
+            name: name.into(),
+            representation: Box::new(representation),
+        }
+    }
+
+    /// POSSREP selector: constructs a value of this type from its representation.
+    ///
+    /// TTM: The selector takes a value of the representation type and produces
+    /// a value of this user-defined type.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the provided value's type doesn't match the expected
+    /// representation type.
+    pub fn selector(
+        &self,
+        value: crate::values::ScalarValue,
+    ) -> Result<crate::values::ScalarValue, ScalarTypeError> {
+        use crate::values::ScalarValue;
+
+        match self {
+            ScalarType::UserDefined { representation, .. } => {
+                // Check that the value matches the representation type
+                if !value.is_type(representation) {
+                    return Err(ScalarTypeError::TypeMismatch {
+                        expected: representation.name(),
+                        actual: value.scalar_type().name(),
+                    });
+                }
+                Ok(ScalarValue::UserDefined {
+                    type_def: self.clone(),
+                    value: Box::new(value),
+                })
+            }
+            // For built-in types, the value must already be of this type
+            ty => {
+                if !value.is_type(ty) {
+                    return Err(ScalarTypeError::TypeMismatch {
+                        expected: ty.name(),
+                        actual: value.scalar_type().name(),
+                    });
+                }
+                Ok(value)
+            }
         }
     }
 }
@@ -101,5 +186,23 @@ mod tests {
         assert_eq!(set.len(), 2); // Only Int and Float
         assert!(set.contains(&ScalarType::Int));
         assert!(set.contains(&ScalarType::Float));
+    }
+
+    #[test]
+    fn test_builtin_selector_validates_type() {
+        use crate::values::ScalarValue;
+
+        // Selector for built-in types should reject values of wrong type
+        let int_type = ScalarType::Int;
+        let string_value = ScalarValue::String("not an int".to_string());
+
+        let result = int_type.selector(string_value);
+        assert!(result.is_err());
+
+        // Should accept correct type
+        let int_value = ScalarValue::Int(42);
+        let result = int_type.selector(int_value.clone());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), int_value);
     }
 }
