@@ -400,4 +400,22 @@ mod tests {
 
         assert_eq!(results.len(), 3);
     }
+
+    // RED phase test: This will pass once BTreeIndex stores tuples instead of TupleId
+    #[test]
+    fn test_btree_stores_tuples_not_tuple_ids() {
+        use crate::tuple;
+
+        let mut index = BTreeIndex::new();
+
+        let key = ScalarValue::Int(42);
+        let tuple = tuple! { id: 42i64, name: "Answer" };
+
+        // Type check: insert takes Tuple not TupleId
+        index.insert(key.clone(), tuple.clone()); // This will fail until API is changed
+
+        // Type check: search returns &[Tuple] not &[TupleId]
+        let results = index.search(&key).unwrap(); // This will fail until API is changed
+        assert_eq!(results[0], tuple);
+    }
 }

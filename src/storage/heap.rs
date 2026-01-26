@@ -442,4 +442,49 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), HeapError::TupleNotFound(_)));
     }
+
+    // RED phase tests: These will pass once TupleId is removed from public APIs
+
+    #[test]
+    fn test_heap_insert_returns_unit_not_tuple_id() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
+
+        let tuple = tuple! { id: 1i64, name: "Alice" };
+        let result = heap.insert_tuple(&tuple);
+
+        // Type check: Result<(), HeapError> not Result<TupleId, HeapError>
+        assert!(result.is_ok());
+        let _unit: () = result.unwrap(); // This will fail until API is changed
+    }
+
+    #[test]
+    fn test_heap_scan_returns_only_tuples() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
+
+        heap.insert_tuple(&tuple! { id: 1i64, name: "Alice" }).unwrap();
+        heap.insert_tuple(&tuple! { id: 2i64, name: "Bob" }).unwrap();
+
+        // Type check: Vec<Tuple> not Vec<(TupleId, Tuple)>
+        let tuples: Vec<Tuple> = heap.scan().unwrap(); // This will fail until API is changed
+        assert_eq!(tuples.len(), 2);
+    }
+
+    #[test]
+    fn test_store_relation_returns_unit() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(temp_file.path(), rel_type.clone()).unwrap();
+
+        let mut relation = Relation::new(rel_type);
+        relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+
+        // Type check: Result<(), HeapError> not Result<Vec<TupleId>, HeapError>
+        let result = heap.store_relation(&relation);
+        assert!(result.is_ok());
+        let _unit: () = result.unwrap(); // This will fail until API is changed
+    }
 }
