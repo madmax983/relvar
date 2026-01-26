@@ -1,6 +1,4 @@
-use crate::constraints::{
-    AttributeConstraints, ForeignKey, ForeignKeyConstraints, KeyConstraints,
-};
+use crate::constraints::{AttributeConstraints, ForeignKey, ForeignKeyConstraints, KeyConstraints};
 use crate::storage::{BTreeIndex, Catalog, CatalogError, HeapError, HeapFile};
 use crate::types::RelationType;
 use crate::values::relation::RelationError;
@@ -172,12 +170,14 @@ impl Database {
             return Err(DatabaseError::RelationNotFound(relation_name.to_string()));
         }
 
-        let constraints = self.foreign_key_constraints
-            .remove(&relation_name.to_string())
-            .unwrap_or_else(ForeignKeyConstraints::new);
+        let constraints = self
+            .foreign_key_constraints
+            .remove(relation_name)
+            .unwrap_or_default();
 
         let updated = constraints.with_foreign_key(foreign_key);
-        self.foreign_key_constraints.insert(relation_name.to_string(), updated);
+        self.foreign_key_constraints
+            .insert(relation_name.to_string(), updated);
 
         Ok(())
     }
@@ -210,23 +210,22 @@ impl Database {
             .map_err(|_| DatabaseError::RelationNotFound(relation_name.to_string()))?;
 
         // Check tuple type matches relation type
-        if !tuple.conforms_to(&metadata.relation_type.tuple_type()) {
+        if !tuple.conforms_to(metadata.relation_type.tuple_type()) {
             return Err(DatabaseError::TupleMismatch);
         }
 
         // Check type constraints
         if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
             for (attr_name, constraints) in attr_constraints {
-                if let Some(value) = tuple.get(attr_name) {
-                    if !constraints
+                if let Some(value) = tuple.get(attr_name)
+                    && !constraints
                         .is_satisfied_by(value)
                         .map_err(|e| DatabaseError::TypeConstraintViolation(e.to_string()))?
-                    {
-                        return Err(DatabaseError::TypeConstraintViolation(format!(
-                            "Attribute {} violates constraint",
-                            attr_name
-                        )));
-                    }
+                {
+                    return Err(DatabaseError::TypeConstraintViolation(format!(
+                        "Attribute {} violates constraint",
+                        attr_name
+                    )));
                 }
             }
         }
@@ -237,17 +236,20 @@ impl Database {
         // Check key constraints
         if let Some(key_constraints) = self.key_constraints.get(relation_name) {
             // Check primary key
-            if let Some(pk) = key_constraints.primary_key() {
-                if pk.would_violate(&current_relation, &tuple)
-                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))? {
-                    return Err(DatabaseError::PrimaryKeyViolation);
-                }
+            if let Some(pk) = key_constraints.primary_key()
+                && pk
+                    .would_violate(&current_relation, &tuple)
+                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
+            {
+                return Err(DatabaseError::PrimaryKeyViolation);
             }
 
             // Check candidate keys
             for ck in key_constraints.candidate_keys() {
-                if ck.would_violate(&current_relation, &tuple)
-                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))? {
+                if ck
+                    .would_violate(&current_relation, &tuple)
+                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
+                {
                     return Err(DatabaseError::CandidateKeyViolation);
                 }
             }
@@ -323,16 +325,15 @@ impl Database {
                     let referencing_relation = self.query(other_rel_name)?;
 
                     for tuple in current_relation.tuples() {
-                        if predicate(tuple) {
-                            if fk
+                        if predicate(tuple)
+                            && fk
                                 .would_violate_on_delete(tuple, &referencing_relation)
                                 .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
-                            {
-                                return Err(DatabaseError::ForeignKeyViolation(format!(
-                                    "Cannot delete: referenced by relation {}",
-                                    other_rel_name
-                                )));
-                            }
+                        {
+                            return Err(DatabaseError::ForeignKeyViolation(format!(
+                                "Cannot delete: referenced by relation {}",
+                                other_rel_name
+                            )));
                         }
                     }
                 }
@@ -363,13 +364,15 @@ impl Database {
 
         // Rebuild heap file
         self.heap_files.remove(relation_name);
-        let mut new_heap_file = HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())?;
+        let mut new_heap_file =
+            HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())?;
 
         for tuple in tuples_to_keep {
             new_heap_file.insert_tuple(&tuple)?;
         }
 
-        self.heap_files.insert(relation_name.to_string(), new_heap_file);
+        self.heap_files
+            .insert(relation_name.to_string(), new_heap_file);
 
         Ok(deleted_count)
     }
@@ -404,7 +407,7 @@ impl Database {
                 updater(&mut tuple);
 
                 // Check type conformance
-                if !tuple.conforms_to(&metadata.relation_type.tuple_type()) {
+                if !tuple.conforms_to(metadata.relation_type.tuple_type()) {
                     return Err(DatabaseError::TupleMismatch);
                 }
 
@@ -415,13 +418,15 @@ impl Database {
 
         // Rebuild heap file
         self.heap_files.remove(relation_name);
-        let mut new_heap_file = HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())?;
+        let mut new_heap_file =
+            HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())?;
 
         for tuple in updated_tuples {
             new_heap_file.insert_tuple(&tuple)?;
         }
 
-        self.heap_files.insert(relation_name.to_string(), new_heap_file);
+        self.heap_files
+            .insert(relation_name.to_string(), new_heap_file);
 
         Ok(updated_count)
     }
@@ -475,9 +480,12 @@ impl Database {
             for (relation_name, saved_relation) in savepoint {
                 // Clear heap file
                 self.heap_files.remove(&relation_name);
-                let metadata = self.catalog.get_relation(&relation_name)
+                let metadata = self
+                    .catalog
+                    .get_relation(&relation_name)
                     .map_err(|_| DatabaseError::RelationNotFound(relation_name.clone()))?;
-                let mut heap_file = HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())?;
+                let mut heap_file =
+                    HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())?;
 
                 // Reinsert tuples
                 for tuple in saved_relation.tuples() {
@@ -494,13 +502,17 @@ impl Database {
     }
 
     /// Helper to get or open a heap file
-    fn get_or_open_heap_file(&mut self, relation_name: &str) -> Result<&mut HeapFile, DatabaseError> {
+    fn get_or_open_heap_file(
+        &mut self,
+        relation_name: &str,
+    ) -> Result<&mut HeapFile, DatabaseError> {
         if !self.heap_files.contains_key(relation_name) {
             let metadata = self
                 .catalog
                 .get_relation(relation_name)
                 .map_err(|_| DatabaseError::RelationNotFound(relation_name.to_string()))?;
-            let heap_file = HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())?;
+            let heap_file =
+                HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())?;
             self.heap_files.insert(relation_name.to_string(), heap_file);
         }
 
@@ -511,7 +523,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constraints::{CandidateKey, PrimaryKey, TypeConstraint};
+    use crate::constraints::{PrimaryKey, TypeConstraint};
     use crate::tuple;
     use crate::types::{ScalarType, TupleType};
     use crate::values::ScalarValue;
@@ -686,8 +698,11 @@ mod tests {
                 "USERS",
                 |t| t.get_typed::<i64>("id").unwrap() == 1,
                 |t| {
-                    t.set("name".to_string(), ScalarValue::String("Alicia".to_string()))
-                        .unwrap();
+                    t.set(
+                        "name".to_string(),
+                        ScalarValue::String("Alicia".to_string()),
+                    )
+                    .unwrap();
                 },
             )
             .unwrap();
@@ -765,8 +780,11 @@ mod tests {
             .unwrap();
 
         // Insert employee with valid dept_id
-        db.insert("EMP", tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
-            .unwrap();
+        db.insert(
+            "EMP",
+            tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 },
+        )
+        .unwrap();
 
         // Try to insert employee with invalid dept_id
         let result = db.insert("EMP", tuple! { emp_id: 2i64, name: "Bob", dept_id: 99i64 });
@@ -852,15 +870,13 @@ mod tests {
         db.create_relvar("USERS", relation_type).unwrap();
 
         // Set age constraint (must be positive)
-        let age_constraint =
-            AttributeConstraints::new("age".to_string(), ScalarType::Int)
-                .with_constraint(TypeConstraint::PositiveInt);
+        let age_constraint = AttributeConstraints::new("age".to_string(), ScalarType::Int)
+            .with_constraint(TypeConstraint::PositiveInt);
         db.set_type_constraints("USERS", "age", age_constraint)
             .unwrap();
 
         // Insert valid tuple
-        db.insert("USERS", tuple! { id: 1i64, age: 25i64 })
-            .unwrap();
+        db.insert("USERS", tuple! { id: 1i64, age: 25i64 }).unwrap();
 
         // Try to insert invalid tuple
         let result = db.insert("USERS", tuple! { id: 2i64, age: -5i64 });

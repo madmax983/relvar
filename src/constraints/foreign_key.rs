@@ -319,11 +319,17 @@ mod tests {
 
         // Valid insert
         let valid_tuple = tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 };
-        assert!(!fk.would_violate_on_insert(&valid_tuple, &departments).unwrap());
+        assert!(
+            !fk.would_violate_on_insert(&valid_tuple, &departments)
+                .unwrap()
+        );
 
         // Invalid insert
         let invalid_tuple = tuple! { emp_id: 2i64, name: "Bob", dept_id: 99i64 };
-        assert!(fk.would_violate_on_insert(&invalid_tuple, &departments).unwrap());
+        assert!(
+            fk.would_violate_on_insert(&invalid_tuple, &departments)
+                .unwrap()
+        );
     }
 
     #[test]

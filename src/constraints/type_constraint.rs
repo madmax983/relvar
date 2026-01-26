@@ -15,10 +15,7 @@ pub enum TypeConstraintError {
 #[derive(Serialize, Deserialize)]
 pub enum TypeConstraint {
     /// Value must be within a range (inclusive)
-    Range {
-        min: ScalarValue,
-        max: ScalarValue,
-    },
+    Range { min: ScalarValue, max: ScalarValue },
     /// Value must be one of the specified values
     Enum { allowed_values: Vec<ScalarValue> },
     /// String must match a pattern (simplified - just length for now)
@@ -31,6 +28,7 @@ pub enum TypeConstraint {
     #[serde(skip)]
     Custom {
         #[serde(skip)]
+        #[allow(clippy::type_complexity)]
         validator: Option<Box<dyn Fn(&ScalarValue) -> bool + Send + Sync>>,
         description: String,
     },
@@ -269,36 +267,52 @@ mod tests {
             ],
         };
 
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("red".to_string()))
-            .unwrap());
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("green".to_string()))
-            .unwrap());
-        assert!(!constraint
-            .is_satisfied_by(&ScalarValue::String("yellow".to_string()))
-            .unwrap());
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("red".to_string()))
+                .unwrap()
+        );
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("green".to_string()))
+                .unwrap()
+        );
+        assert!(
+            !constraint
+                .is_satisfied_by(&ScalarValue::String("yellow".to_string()))
+                .unwrap()
+        );
     }
 
     #[test]
     fn test_string_length_constraint() {
         let constraint = TypeConstraint::StringLength { min: 3, max: 10 };
 
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("test".to_string()))
-            .unwrap());
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("abc".to_string()))
-            .unwrap());
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("1234567890".to_string()))
-            .unwrap());
-        assert!(!constraint
-            .is_satisfied_by(&ScalarValue::String("ab".to_string()))
-            .unwrap());
-        assert!(!constraint
-            .is_satisfied_by(&ScalarValue::String("12345678901".to_string()))
-            .unwrap());
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("test".to_string()))
+                .unwrap()
+        );
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("abc".to_string()))
+                .unwrap()
+        );
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("1234567890".to_string()))
+                .unwrap()
+        );
+        assert!(
+            !constraint
+                .is_satisfied_by(&ScalarValue::String("ab".to_string()))
+                .unwrap()
+        );
+        assert!(
+            !constraint
+                .is_satisfied_by(&ScalarValue::String("12345678901".to_string()))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -330,16 +344,31 @@ mod tests {
             })
             .with_constraint(TypeConstraint::NonNegativeInt);
 
-        assert!(age_constraints.is_satisfied_by(&ScalarValue::Int(25)).unwrap());
-        assert!(age_constraints.is_satisfied_by(&ScalarValue::Int(0)).unwrap());
-        assert!(!age_constraints.is_satisfied_by(&ScalarValue::Int(-1)).unwrap());
-        assert!(!age_constraints.is_satisfied_by(&ScalarValue::Int(200)).unwrap());
+        assert!(
+            age_constraints
+                .is_satisfied_by(&ScalarValue::Int(25))
+                .unwrap()
+        );
+        assert!(
+            age_constraints
+                .is_satisfied_by(&ScalarValue::Int(0))
+                .unwrap()
+        );
+        assert!(
+            !age_constraints
+                .is_satisfied_by(&ScalarValue::Int(-1))
+                .unwrap()
+        );
+        assert!(
+            !age_constraints
+                .is_satisfied_by(&ScalarValue::Int(200))
+                .unwrap()
+        );
     }
 
     #[test]
     fn test_attribute_constraints_type_mismatch() {
-        let age_constraints =
-            AttributeConstraints::new("age".to_string(), ScalarType::Int);
+        let age_constraints = AttributeConstraints::new("age".to_string(), ScalarType::Int);
 
         let result = age_constraints.is_satisfied_by(&ScalarValue::String("25".to_string()));
         assert!(result.is_err());
@@ -355,12 +384,16 @@ mod tests {
             AttributeConstraints::new("password".to_string(), ScalarType::String)
                 .with_constraint(TypeConstraint::StringLength { min: 8, max: 100 });
 
-        assert!(password_constraints
-            .is_satisfied_by(&ScalarValue::String("password123".to_string()))
-            .unwrap());
-        assert!(!password_constraints
-            .is_satisfied_by(&ScalarValue::String("pass".to_string()))
-            .unwrap());
+        assert!(
+            password_constraints
+                .is_satisfied_by(&ScalarValue::String("password123".to_string()))
+                .unwrap()
+        );
+        assert!(
+            !password_constraints
+                .is_satisfied_by(&ScalarValue::String("pass".to_string()))
+                .unwrap()
+        );
     }
 
     #[test]

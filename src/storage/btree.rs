@@ -47,13 +47,14 @@ impl BTreeIndex {
     /// Remove a key-value pair
     pub fn remove(&mut self, key: &ScalarValue, tuple_id: TupleId) -> bool {
         if let Some(tuple_ids) = self.index.get_mut(key)
-            && let Some(pos) = tuple_ids.iter().position(|&tid| tid == tuple_id) {
-                tuple_ids.swap_remove(pos);
-                if tuple_ids.is_empty() {
-                    self.index.remove(key);
-                }
-                return true;
+            && let Some(pos) = tuple_ids.iter().position(|&tid| tid == tuple_id)
+        {
+            tuple_ids.swap_remove(pos);
+            if tuple_ids.is_empty() {
+                self.index.remove(key);
             }
+            return true;
+        }
         false
     }
 

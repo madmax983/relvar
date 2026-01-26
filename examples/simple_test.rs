@@ -1,8 +1,8 @@
 // Simple test to isolate the issue
 
-use date::{Database, ScalarType};
-use date::types::{RelationType, TupleType};
 use date::tuple;
+use date::types::{RelationType, TupleType};
+use date::{Database, ScalarType};
 use tempfile::TempDir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,10 +11,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut db = Database::open(temp_dir.path())?;
 
     println!("Creating relation...");
-    let emp_type = RelationType::new(
-        TupleType::new()
-            .with_attribute("id".to_string(), ScalarType::Int)
-    );
+    let emp_type =
+        RelationType::new(TupleType::new().with_attribute("id".to_string(), ScalarType::Int));
     db.create_relvar("TEST", emp_type)?;
 
     println!("Querying empty relation...");

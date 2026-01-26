@@ -2,8 +2,8 @@
 // This is the verification example from the implementation plan
 
 use date::tuple;
-use date::{Database, ScalarType};
 use date::types::{RelationType, TupleType};
+use date::{Database, ScalarType};
 use tempfile::TempDir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         TupleType::new()
             .with_attribute("emp_id".to_string(), ScalarType::Int)
             .with_attribute("name".to_string(), ScalarType::String)
-            .with_attribute("dept_id".to_string(), ScalarType::Int)
+            .with_attribute("dept_id".to_string(), ScalarType::Int),
     );
 
     // Create base relvar
@@ -27,9 +27,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✓ Created EMP relation");
 
     // Insert tuples
-    db.insert("EMP", tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })?;
+    db.insert(
+        "EMP",
+        tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 },
+    )?;
     db.insert("EMP", tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })?;
-    db.insert("EMP", tuple! { emp_id: 3i64, name: "Charlie", dept_id: 10i64 })?;
+    db.insert(
+        "EMP",
+        tuple! { emp_id: 3i64, name: "Charlie", dept_id: 10i64 },
+    )?;
     println!("✓ Inserted 3 employees");
 
     // Check all employees were inserted
@@ -43,7 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Query using algebra
-    let result = db.query("EMP")?
+    let result = db
+        .query("EMP")?
         .restrict(|t| t.get_typed::<i64>("dept_id").unwrap() == 10)
         .project(&["emp_id", "name"]);
 

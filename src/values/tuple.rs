@@ -116,7 +116,8 @@ impl Tuple {
     /// Set a value for an attribute (mutable)
     pub fn set(&mut self, attr_name: String, value: ScalarValue) -> Result<(), TupleError> {
         // Check if attribute exists in tuple type
-        let expected_type = self.tuple_type
+        let expected_type = self
+            .tuple_type
             .get_attribute_type(&attr_name)
             .ok_or_else(|| TupleError::AttributeNotFound(attr_name.clone()))?;
 

@@ -166,10 +166,10 @@ impl KeyConstraints {
     /// Check if all constraints are satisfied
     pub fn are_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
         // Check primary key
-        if let Some(pk) = &self.primary_key {
-            if !pk.is_satisfied_by(relation)? {
-                return Ok(false);
-            }
+        if let Some(pk) = &self.primary_key
+            && !pk.is_satisfied_by(relation)?
+        {
+            return Ok(false);
         }
 
         // Check candidate keys
@@ -189,10 +189,10 @@ impl KeyConstraints {
         new_tuple: &Tuple,
     ) -> Result<Option<Vec<String>>, KeyConstraintError> {
         // Check primary key
-        if let Some(pk) = &self.primary_key {
-            if pk.would_violate(relation, new_tuple)? {
-                return Ok(Some(pk.attributes().to_vec()));
-            }
+        if let Some(pk) = &self.primary_key
+            && pk.would_violate(relation, new_tuple)?
+        {
+            return Ok(Some(pk.attributes().to_vec()));
         }
 
         // Check candidate keys
@@ -341,7 +341,9 @@ mod tests {
             .unwrap();
 
         let new_tuple = tuple! { emp_id: 1i64, name: "Bob", dept_id: 20i64 };
-        let violation = constraints.would_violate_on_insert(&relation, &new_tuple).unwrap();
+        let violation = constraints
+            .would_violate_on_insert(&relation, &new_tuple)
+            .unwrap();
 
         assert!(violation.is_some());
         assert_eq!(violation.unwrap(), vec!["emp_id"]);
@@ -373,7 +375,9 @@ mod tests {
 
         // Try to insert with duplicate email
         let new_tuple = tuple! { emp_id: 3i64, email: "alice@example.com", name: "Alice2" };
-        let violation = constraints.would_violate_on_insert(&relation, &new_tuple).unwrap();
+        let violation = constraints
+            .would_violate_on_insert(&relation, &new_tuple)
+            .unwrap();
         assert!(violation.is_some());
     }
 

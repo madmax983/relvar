@@ -128,7 +128,8 @@ impl HeapFile {
         let slot_entry_size = std::mem::size_of::<SlotEntry>();
         let header_size =
             std::mem::size_of::<u32>() + (slotted_page.slots.len() + 1) * slot_entry_size;
-        let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>() + tuple_data.len();
+        let total_tuple_data_size: usize =
+            existing_tuples.iter().map(|t| t.len()).sum::<usize>() + tuple_data.len();
         let required_space = header_size + total_tuple_data_size;
 
         if required_space > USABLE_PAGE_SIZE {
@@ -238,6 +239,7 @@ impl HeapFile {
         let mut page_id = 0;
 
         // Scan pages until we hit an empty one
+        #[allow(clippy::while_let_loop)]
         loop {
             let page = match self.page_file.read_page(page_id) {
                 Ok(p) => p,
