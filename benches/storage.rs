@@ -127,35 +127,9 @@ fn bench_heap_scan(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_heap_read_random(c: &mut Criterion) {
-    let mut group = c.benchmark_group("heap_read_random");
-
-    for count in [10, 50, 100, 500].iter() {
-        group.throughput(Throughput::Elements(*count as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
-            let temp_file = NamedTempFile::new().unwrap();
-            let rel_type = create_test_relation_type();
-            let mut heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
-
-            // Pre-populate and collect tuple IDs
-            let mut tuple_ids = Vec::new();
-            for i in 0..count {
-                let tuple = create_test_tuple(i as i64);
-                let tid = heap.insert_tuple(&tuple).unwrap();
-                tuple_ids.push(tid);
-            }
-
-            b.iter(|| {
-                // Read random tuples
-                for tid in &tuple_ids {
-                    let tuple = heap.read_tuple(*tid).unwrap();
-                    black_box(tuple);
-                }
-            });
-        });
-    }
-    group.finish();
-}
+// bench_heap_read_random removed - used internal read_tuple(TupleId) API
+// which is now pub(crate) per TTM Proscription 6. Random reads should
+// be done via scan() with filtering in production code.
 
 fn bench_heap_load_relation(c: &mut Criterion) {
     let mut group = c.benchmark_group("heap_load_relation");
@@ -188,7 +162,7 @@ criterion_group!(
     bench_page_read,
     bench_heap_insert,
     bench_heap_scan,
-    bench_heap_read_random,
+    // bench_heap_read_random, // REMOVED - used internal TupleId API
     bench_heap_load_relation
 );
 criterion_main!(benches);
