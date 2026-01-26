@@ -225,7 +225,8 @@ cargo bench -- --quick
 ### Inconsistent Results
 
 - Close other applications
-- Run on battery power (not AC) for laptops
+- Run on AC power (not battery) for laptops to ensure consistent performance
+- Use "High Performance" power plan if available
 - Disable CPU frequency scaling
 - Run multiple times and look at median
 

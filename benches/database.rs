@@ -1,4 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
+};
 use relvar::constraints::{KeyConstraints, PrimaryKey};
 use relvar::tuple;
 use relvar::types::{RelationType, ScalarType, TupleType};
@@ -73,20 +75,26 @@ fn bench_insert(c: &mut Criterion) {
     for count in [10, 50, 100, 500].iter() {
         group.throughput(Throughput::Elements(*count as u64));
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
-            b.iter(|| {
-                let (_temp_dir, mut db) = create_database_with_relvar();
-
-                for i in 0..count {
-                    let tuple = tuple! {
-                        emp_id: i as i64,
-                        name: format!("Employee_{}", i),
-                        dept_id: (i % 10) as i64,
-                        salary: 50000.0 + (i as f64 * 100.0)
-                    };
-                    db.insert("EMP", tuple).unwrap();
-                }
-                black_box(db);
-            });
+            b.iter_batched(
+                || {
+                    // Setup: create database and relvar
+                    create_database_with_relvar()
+                },
+                |(_temp_dir, mut db)| {
+                    // Measured: just the insert operations
+                    for i in 0..count {
+                        let tuple = tuple! {
+                            emp_id: i as i64,
+                            name: format!("Employee_{}", i),
+                            dept_id: (i % 10) as i64,
+                            salary: 50000.0 + (i as f64 * 100.0)
+                        };
+                        db.insert("EMP", tuple).unwrap();
+                    }
+                    black_box(db);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
@@ -99,25 +107,30 @@ fn bench_insert_with_key_constraint(c: &mut Criterion) {
     for count in [10, 50, 100, 500].iter() {
         group.throughput(Throughput::Elements(*count as u64));
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
-            b.iter(|| {
-                let (_temp_dir, mut db) = create_database_with_relvar();
-
-                // Add primary key constraint
-                let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
-                db.set_key_constraints("EMP", KeyConstraints::new().with_primary_key(pk))
-                    .unwrap();
-
-                for i in 0..count {
-                    let tuple = tuple! {
-                        emp_id: i as i64,
-                        name: format!("Employee_{}", i),
-                        dept_id: (i % 10) as i64,
-                        salary: 50000.0 + (i as f64 * 100.0)
-                    };
-                    db.insert("EMP", tuple).unwrap();
-                }
-                black_box(db);
-            });
+            b.iter_batched(
+                || {
+                    // Setup: create database, relvar, and add constraint
+                    let (_temp_dir, mut db) = create_database_with_relvar();
+                    let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+                    db.set_key_constraints("EMP", KeyConstraints::new().with_primary_key(pk))
+                        .unwrap();
+                    (_temp_dir, db)
+                },
+                |(_temp_dir, mut db)| {
+                    // Measured: just the inserts with constraint checking
+                    for i in 0..count {
+                        let tuple = tuple! {
+                            emp_id: i as i64,
+                            name: format!("Employee_{}", i),
+                            dept_id: (i % 10) as i64,
+                            salary: 50000.0 + (i as f64 * 100.0)
+                        };
+                        db.insert("EMP", tuple).unwrap();
+                    }
+                    black_box(db);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
@@ -192,25 +205,29 @@ fn bench_delete(c: &mut Criterion) {
     for count in [10, 50, 100].iter() {
         group.throughput(Throughput::Elements(*count as u64));
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
-            b.iter(|| {
-                let (_temp_dir, mut db) = create_database_with_relvar();
-
-                // Pre-populate
-                for i in 0..count * 2 {
-                    let tuple = tuple! {
-                        emp_id: i as i64,
-                        name: format!("Employee_{}", i),
-                        dept_id: (i % 10) as i64,
-                        salary: 50000.0 + (i as f64 * 100.0)
-                    };
-                    db.insert("EMP", tuple).unwrap();
-                }
-
-                // Delete half
-                db.delete("EMP", |t| t.get_typed::<i64>("emp_id").unwrap() < count as i64)
-                    .unwrap();
-                black_box(db);
-            });
+            b.iter_batched(
+                || {
+                    // Setup: create database and pre-populate
+                    let (_temp_dir, mut db) = create_database_with_relvar();
+                    for i in 0..count * 2 {
+                        let tuple = tuple! {
+                            emp_id: i as i64,
+                            name: format!("Employee_{}", i),
+                            dept_id: (i % 10) as i64,
+                            salary: 50000.0 + (i as f64 * 100.0)
+                        };
+                        db.insert("EMP", tuple).unwrap();
+                    }
+                    (_temp_dir, db)
+                },
+                |(_temp_dir, mut db)| {
+                    // Measured: just the delete operation
+                    db.delete("EMP", |t| t.get_typed::<i64>("emp_id").unwrap() < count as i64)
+                        .unwrap();
+                    black_box(db);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
@@ -223,36 +240,40 @@ fn bench_update(c: &mut Criterion) {
     for count in [10, 50, 100].iter() {
         group.throughput(Throughput::Elements(*count as u64));
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
-            b.iter(|| {
-                let (_temp_dir, mut db) = create_database_with_relvar();
-
-                // Pre-populate
-                for i in 0..count {
-                    let tuple = tuple! {
-                        emp_id: i as i64,
-                        name: format!("Employee_{}", i),
-                        dept_id: (i % 10) as i64,
-                        salary: 50000.0 + (i as f64 * 100.0)
-                    };
-                    db.insert("EMP", tuple).unwrap();
-                }
-
-                // Update all
-                db.update(
-                    "EMP",
-                    |_| true,
-                    |t| {
-                        let current_salary = t.get_typed::<f64>("salary").unwrap();
-                        t.set(
-                            "salary".to_string(),
-                            relvar::values::ScalarValue::Float(current_salary * 1.1),
-                        )
-                        .unwrap();
-                    },
-                )
-                .unwrap();
-                black_box(db);
-            });
+            b.iter_batched(
+                || {
+                    // Setup: create database and pre-populate
+                    let (_temp_dir, mut db) = create_database_with_relvar();
+                    for i in 0..count {
+                        let tuple = tuple! {
+                            emp_id: i as i64,
+                            name: format!("Employee_{}", i),
+                            dept_id: (i % 10) as i64,
+                            salary: 50000.0 + (i as f64 * 100.0)
+                        };
+                        db.insert("EMP", tuple).unwrap();
+                    }
+                    (_temp_dir, db)
+                },
+                |(_temp_dir, mut db)| {
+                    // Measured: just the update operation
+                    db.update(
+                        "EMP",
+                        |_| true,
+                        |t| {
+                            let current_salary = t.get_typed::<f64>("salary").unwrap();
+                            t.set(
+                                "salary".to_string(),
+                                relvar::values::ScalarValue::Float(current_salary * 1.1),
+                            )
+                            .unwrap();
+                        },
+                    )
+                    .unwrap();
+                    black_box(db);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
@@ -319,48 +340,54 @@ fn bench_realistic_workload(c: &mut Criterion) {
     let mut group = c.benchmark_group("realistic_workload");
 
     group.bench_function("mixed_operations", |b| {
-        b.iter(|| {
-            let (_temp_dir, mut db) = create_database_with_relvar();
+        b.iter_batched(
+            || {
+                // Setup: create database with relvar
+                create_database_with_relvar()
+            },
+            |(_temp_dir, mut db)| {
+                // Measured: complete realistic workload
+                // Insert 100 records
+                for i in 0..100 {
+                    let tuple = tuple! {
+                        emp_id: i as i64,
+                        name: format!("Employee_{}", i),
+                        dept_id: (i % 10) as i64,
+                        salary: 50000.0 + (i as f64 * 100.0)
+                    };
+                    db.insert("EMP", tuple).unwrap();
+                }
 
-            // Insert 100 records
-            for i in 0..100 {
-                let tuple = tuple! {
-                    emp_id: i as i64,
-                    name: format!("Employee_{}", i),
-                    dept_id: (i % 10) as i64,
-                    salary: 50000.0 + (i as f64 * 100.0)
-                };
-                db.insert("EMP", tuple).unwrap();
-            }
+                // Query 5 times
+                for _ in 0..5 {
+                    let _result = db
+                        .query("EMP")
+                        .unwrap()
+                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 55000.0);
+                }
 
-            // Query 5 times
-            for _ in 0..5 {
-                let _result = db
-                    .query("EMP")
-                    .unwrap()
-                    .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 55000.0);
-            }
-
-            // Update 10 records
-            db.update(
-                "EMP",
-                |t| t.get_typed::<i64>("dept_id").unwrap() == 5,
-                |t| {
-                    t.set(
-                        "salary".to_string(),
-                        relvar::values::ScalarValue::Float(60000.0),
-                    )
-                    .unwrap();
-                },
-            )
-            .unwrap();
-
-            // Delete 5 records
-            db.delete("EMP", |t| t.get_typed::<i64>("emp_id").unwrap() < 5)
+                // Update 10 records
+                db.update(
+                    "EMP",
+                    |t| t.get_typed::<i64>("dept_id").unwrap() == 5,
+                    |t| {
+                        t.set(
+                            "salary".to_string(),
+                            relvar::values::ScalarValue::Float(60000.0),
+                        )
+                        .unwrap();
+                    },
+                )
                 .unwrap();
 
-            black_box(db);
-        });
+                // Delete 5 records
+                db.delete("EMP", |t| t.get_typed::<i64>("emp_id").unwrap() < 5)
+                    .unwrap();
+
+                black_box(db);
+            },
+            BatchSize::SmallInput,
+        );
     });
 
     group.finish();
