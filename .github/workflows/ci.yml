@@ -28,6 +28,7 @@ jobs:
 
   clippy:
     name: Clippy
+    needs: [fmt]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +41,7 @@ jobs:
 
   test:
     name: Test Suite
+    needs: [fmt]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -56,6 +58,7 @@ jobs:
 
   build:
     name: Build
+    needs: [fmt]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +69,7 @@ jobs:
 
   coverage:
     name: Code Coverage
+    needs: [fmt]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -90,6 +94,7 @@ jobs:
 
   benchmark:
     name: Benchmarks
+    needs: [fmt]
     runs-on: ubuntu-latest
     # Only run benchmarks on schedule, manual trigger, or explicit request
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[bench]')
