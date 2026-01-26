@@ -1,6 +1,8 @@
 pub mod relation_type;
 pub mod scalar;
 pub mod tuple_type;
+#[cfg(test)]
+mod user_defined_test;
 
 pub use relation_type::RelationType;
 pub use scalar::ScalarType;
