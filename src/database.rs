@@ -967,7 +967,7 @@ impl Database {
     ///
     /// Returns a relation containing one tuple for each relvar (base or virtual)
     /// in the database.
-    fn build_sys_relvars(&self) -> Result<Relation, DatabaseError> {
+    fn build_sys_relvars(&mut self) -> Result<Relation, DatabaseError> {
         let mut relation = Relation::new(sys_relvars_type());
 
         // Add base relvars from catalog
@@ -1013,7 +1013,7 @@ impl Database {
     /// Builds the SYS_ATTRIBUTES system catalog relation.
     ///
     /// Returns a relation containing one tuple for each attribute in each relvar.
-    fn build_sys_attributes(&self) -> Result<Relation, DatabaseError> {
+    fn build_sys_attributes(&mut self) -> Result<Relation, DatabaseError> {
         let mut relation = Relation::new(sys_attributes_type());
 
         // Add attributes from base relvars
@@ -1033,18 +1033,64 @@ impl Database {
         }
 
         // Add attributes from virtual relvars
-        // We need to query each virtual relvar to get its schema
-        // However, we can't call self.query() here because we're already borrowed
-        // For now, we'll skip virtual relvar attributes or add them later
-        // A full implementation would cache the schema separately
+        // We need to evaluate each virtual relvar to get its schema
+        // System relvars are excluded because they're still being built
+        let virtual_relvar_names: Vec<_> = self
+            .virtual_relvars
+            .keys()
+            .filter(|name| !is_system_relvar(name))
+            .cloned()
+            .collect();
+
+        for vr_name in virtual_relvar_names {
+            // Temporarily remove and evaluate the virtual relvar to get its type
+            if let Some(definition) = self.virtual_relvars.remove(&vr_name) {
+                // Evaluate to get the relation and its type
+                if let Ok(vr_relation) = definition(self) {
+                    let attributes = vr_relation.relation_type().heading().attributes();
+                    for (position, (attr_name, attr_type)) in attributes.iter().enumerate() {
+                        let tuple = tuple! {
+                            relvar_name: vr_name.clone(),
+                            attr_name: attr_name.clone(),
+                            attr_type: serialize_scalar_type(attr_type),
+                            attr_position: position as i64
+                        };
+                        relation.insert(tuple)?;
+                    }
+                }
+                // Put the definition back
+                self.virtual_relvars.insert(vr_name, definition);
+            }
+        }
 
         Ok(relation)
+    }
+
+    /// Formats a type constraint as a human-readable string for the system catalog.
+    fn format_type_constraint(constraint: &crate::constraints::TypeConstraint) -> String {
+        use crate::constraints::TypeConstraint;
+        match constraint {
+            TypeConstraint::Range { min, max } => {
+                format!("BETWEEN {:?} AND {:?}", min, max)
+            }
+            TypeConstraint::Enum { allowed_values } => {
+                let values: Vec<String> =
+                    allowed_values.iter().map(|v| format!("{:?}", v)).collect();
+                format!("IN ({})", values.join(", "))
+            }
+            TypeConstraint::StringLength { min, max } => {
+                format!("LENGTH BETWEEN {} AND {}", min, max)
+            }
+            TypeConstraint::PositiveInt => "> 0".to_string(),
+            TypeConstraint::NonNegativeInt => ">= 0".to_string(),
+            TypeConstraint::Custom { description, .. } => description.clone(),
+        }
     }
 
     /// Builds the SYS_CONSTRAINTS system catalog relation.
     ///
     /// Returns a relation containing one tuple for each constraint in the database.
-    fn build_sys_constraints(&self) -> Result<Relation, DatabaseError> {
+    fn build_sys_constraints(&mut self) -> Result<Relation, DatabaseError> {
         let mut relation = Relation::new(sys_constraints_type());
 
         // Add primary key constraints
@@ -1093,8 +1139,26 @@ impl Database {
             }
         }
 
-        // Type constraints would be added here if we exposed them in the HashMap
-        // For now, we skip them as they're stored per-attribute
+        // Add type constraints
+        for (rel_name, attr_constraints_map) in &self.type_constraints {
+            for (attr_name, attr_constraints) in attr_constraints_map {
+                // Each AttributeConstraints can have multiple TypeConstraint entries
+                for (i, type_constraint) in attr_constraints.constraints().iter().enumerate() {
+                    let constraint_def = format!(
+                        "{} CHECK {}",
+                        attr_name,
+                        Self::format_type_constraint(type_constraint)
+                    );
+                    let tuple = tuple! {
+                        relvar_name: rel_name.clone(),
+                        constraint_name: format!("{}_{}_tc_{}", rel_name, attr_name, i),
+                        constraint_type: "TYPE",
+                        constraint_def: constraint_def
+                    };
+                    relation.insert(tuple)?;
+                }
+            }
+        }
 
         Ok(relation)
     }
@@ -2538,5 +2602,84 @@ mod tests {
         assert!(joined.relation_type().has_attribute("relvar_type"));
         assert!(joined.relation_type().has_attribute("attr_name"));
         assert!(joined.relation_type().has_attribute("attr_type"));
+    }
+
+    #[test]
+    fn test_sys_attributes_includes_virtual_relvar_attributes() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create a base relvar
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        db.create_relvar("EMP", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Create a virtual relvar that projects only name
+        db.create_virtual_relvar("EMP_NAMES", |db| Ok(db.query("EMP")?.project(&["name"])))
+            .unwrap();
+
+        // Query SYS_ATTRIBUTES
+        let sys_attrs = db.query(SYS_ATTRIBUTES).unwrap();
+
+        // Check for EMP_NAMES attributes
+        let emp_names_attrs: Vec<_> = sys_attrs
+            .tuples()
+            .filter(|t| t.get_typed::<String>("relvar_name").unwrap() == "EMP_NAMES")
+            .collect();
+
+        // Should have 1 attribute (name)
+        assert_eq!(emp_names_attrs.len(), 1);
+        assert_eq!(
+            emp_names_attrs[0].get_typed::<String>("attr_name").unwrap(),
+            "name"
+        );
+    }
+
+    #[test]
+    fn test_sys_constraints_includes_type_constraints() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create a relvar with type constraints
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("age".to_string(), ScalarType::Int);
+        db.create_relvar("USERS", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Add type constraint on age
+        let age_constraint = AttributeConstraints::new("age".to_string(), ScalarType::Int)
+            .with_constraint(crate::constraints::TypeConstraint::PositiveInt);
+        db.set_type_constraints("USERS", "age", age_constraint)
+            .unwrap();
+
+        // Query SYS_CONSTRAINTS
+        let sys_constraints = db.query(SYS_CONSTRAINTS).unwrap();
+
+        // Check for type constraints
+        let type_constraints: Vec<_> = sys_constraints
+            .tuples()
+            .filter(|t| {
+                t.get_typed::<String>("relvar_name").unwrap() == "USERS"
+                    && t.get_typed::<String>("constraint_type").unwrap() == "TYPE"
+            })
+            .collect();
+
+        // Should have 1 type constraint
+        assert_eq!(type_constraints.len(), 1);
+        assert!(
+            type_constraints[0]
+                .get_typed::<String>("constraint_def")
+                .unwrap()
+                .contains("age")
+        );
+        assert!(
+            type_constraints[0]
+                .get_typed::<String>("constraint_def")
+                .unwrap()
+                .contains("> 0")
+        );
     }
 }

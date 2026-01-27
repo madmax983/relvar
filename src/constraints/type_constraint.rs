@@ -295,6 +295,11 @@ impl AttributeConstraints {
         &self.scalar_type
     }
 
+    /// Get all constraints
+    pub fn constraints(&self) -> &[TypeConstraint] {
+        &self.constraints
+    }
+
     /// Check if a value satisfies all constraints
     pub fn is_satisfied_by(&self, value: &ScalarValue) -> Result<bool, TypeConstraintError> {
         // Check base type
