@@ -132,13 +132,50 @@ pub enum DatabaseError {
     /// or beginning a transaction when one is already in progress.
     #[error("Transaction error: {0}")]
     TransactionError(String),
+
+    /// A virtual relvar with the given name already exists.
+    ///
+    /// TTM: RM Prescription 10 - Virtual relvar names must be unique within the database.
+    #[error("Virtual relvar {0} already exists")]
+    VirtualRelvarAlreadyExists(String),
+
+    /// No virtual relvar with the given name was found.
+    ///
+    /// TTM: RM Prescription 10 - Virtual relvars must exist to be queried or dropped.
+    #[error("Virtual relvar {0} not found")]
+    VirtualRelvarNotFound(String),
+
+    /// Cannot modify a virtual relvar because virtual relvars are read-only.
+    ///
+    /// TTM: RM Prescription 10 - Virtual relvars cannot be directly modified.
+    /// Modifications must be made to the underlying base relvars.
+    #[error("Cannot modify virtual relvar {0}: virtual relvars are read-only")]
+    CannotModifyVirtualRelvar(String),
 }
+
+/// Type alias for virtual relvar definition functions.
+///
+/// A virtual relvar definition is a closure that takes a mutable reference to the
+/// database and returns a [`Relation`] value. The closure is re-evaluated each time
+/// the virtual relvar is queried, ensuring it always reflects the current state of
+/// the underlying base relvars.
+///
+/// TTM: RM Prescription 10 - Virtual relvars (virtual relation variables) are defined
+/// by relational expressions. They are not stored, but computed on demand.
+///
+/// # Thread Safety
+///
+/// Virtual relvar definitions must be `Send + Sync` to allow the database to be used
+/// across threads safely.
+pub type VirtualRelvarDefinition =
+    Box<dyn Fn(&mut Database) -> Result<Relation, DatabaseError> + Send + Sync>;
 
 /// A database instance managing relations, storage, and constraints.
 ///
 /// `Database` is the main entry point for all database operations. It manages:
 ///
 /// - **Relations (Relvars)**: Create, drop, and query base relations
+/// - **Virtual Relvars**: Virtual relation variables defined by expressions (TTM RM Prescription 10)
 /// - **Data Manipulation**: Insert, update, and delete tuples
 /// - **Constraints**: Primary keys, foreign keys, and type constraints
 /// - **Transactions**: Begin, commit, and rollback operations
@@ -211,6 +248,11 @@ pub struct Database {
     /// This is a simplified implementation that stores full relation snapshots.
     /// A production system would use write-ahead logging (WAL).
     savepoint: Option<HashMap<String, Relation>>,
+    /// Virtual relvars defined by expressions.
+    ///
+    /// TTM: RM Prescription 10 - Virtual relvars (virtual relation variables)
+    /// re-evaluate their defining expression on each query.
+    virtual_relvars: HashMap<String, VirtualRelvarDefinition>,
 }
 
 impl Database {
@@ -266,6 +308,7 @@ impl Database {
             type_constraints: HashMap::new(),
             in_transaction: false,
             savepoint: None,
+            virtual_relvars: HashMap::new(),
         })
     }
 
@@ -307,6 +350,11 @@ impl Database {
         // Check if relation already exists
         if self.catalog.get_relation(name).is_ok() {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
+        }
+
+        // Check if a virtual relvar with this name exists
+        if self.virtual_relvars.contains_key(name) {
+            return Err(DatabaseError::VirtualRelvarAlreadyExists(name.to_string()));
         }
 
         // Create heap file
@@ -367,6 +415,114 @@ impl Database {
         self.type_constraints.remove(name);
 
         Ok(())
+    }
+
+    /// Creates a new virtual relvar.
+    ///
+    /// TTM: RM Prescription 10 - The system must support virtual relvars (virtual
+    /// relation variables defined by expressions).
+    ///
+    /// Virtual relvars are read-only and re-evaluate their defining expression on
+    /// each query. The definition is a closure that takes a mutable reference to
+    /// the database and returns a relation value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::Database;
+    /// use relvar::types::{RelationType, ScalarType, TupleType};
+    /// use relvar::tuple;
+    ///
+    /// let temp_dir = tempfile::TempDir::new().unwrap();
+    /// let mut db = Database::open(temp_dir.path()).unwrap();
+    ///
+    /// // Create a base relvar
+    /// let emp_type = TupleType::new()
+    ///     .with_attribute("id".to_string(), ScalarType::Int)
+    ///     .with_attribute("salary".to_string(), ScalarType::Float);
+    /// db.create_relvar("EMP", RelationType::new(emp_type)).unwrap();
+    ///
+    /// // Insert some data
+    /// db.insert("EMP", tuple! { id: 1i64, salary: 150000.0 }).unwrap();
+    /// db.insert("EMP", tuple! { id: 2i64, salary: 50000.0 }).unwrap();
+    ///
+    /// // Create a virtual relvar for high earners (salary > 100000)
+    /// db.create_virtual_relvar("HIGH_EARNERS", |db| {
+    ///     Ok(db.query("EMP")?
+    ///         .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
+    /// }).unwrap();
+    ///
+    /// // Query the virtual relvar - re-evaluates each time
+    /// let high_earners = db.query("HIGH_EARNERS").unwrap();
+    /// assert_eq!(high_earners.cardinality(), 1);
+    ///
+    /// // Virtual relvars are read-only - insert fails
+    /// let result = db.insert("HIGH_EARNERS", tuple! { id: 3i64, salary: 200000.0 });
+    /// assert!(result.is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::RelationAlreadyExists`] if a base relvar with the
+    /// same name already exists.
+    ///
+    /// Returns [`DatabaseError::VirtualRelvarAlreadyExists`] if a virtual relvar
+    /// with the same name already exists.
+    pub fn create_virtual_relvar<F>(
+        &mut self,
+        name: &str,
+        definition: F,
+    ) -> Result<(), DatabaseError>
+    where
+        F: Fn(&mut Database) -> Result<Relation, DatabaseError> + Send + Sync + 'static,
+    {
+        // Check if a base relvar with this name exists
+        if self.catalog.get_relation(name).is_ok() {
+            return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
+        }
+
+        // Check if a virtual relvar with this name already exists
+        if self.virtual_relvars.contains_key(name) {
+            return Err(DatabaseError::VirtualRelvarAlreadyExists(name.to_string()));
+        }
+
+        // Store the virtual relvar definition
+        self.virtual_relvars
+            .insert(name.to_string(), Box::new(definition));
+
+        Ok(())
+    }
+
+    /// Drops a virtual relvar.
+    ///
+    /// Removes the virtual relvar definition from the database. This does not
+    /// affect any base relvars that the virtual relvar was derived from.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::VirtualRelvarNotFound`] if no virtual relvar with
+    /// the given name exists.
+    pub fn drop_virtual_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
+        if self.virtual_relvars.remove(name).is_none() {
+            return Err(DatabaseError::VirtualRelvarNotFound(name.to_string()));
+        }
+        Ok(())
+    }
+
+    /// Checks if a virtual relvar exists.
+    ///
+    /// Returns `true` if a virtual relvar with the given name exists, `false` otherwise.
+    /// This only checks for virtual relvars, not base relvars.
+    pub fn virtual_relvar_exists(&self, name: &str) -> bool {
+        self.virtual_relvars.contains_key(name)
+    }
+
+    /// Lists all virtual relvar names.
+    ///
+    /// Returns a vector of all virtual relvar names currently defined in the database.
+    /// This does not include base relvars.
+    pub fn list_virtual_relvars(&self) -> Vec<String> {
+        self.virtual_relvars.keys().cloned().collect()
     }
 
     /// Sets key constraints (primary and candidate keys) for a relation.
@@ -555,6 +711,13 @@ impl Database {
     /// # Ok::<(), relvar::DatabaseError>(())
     /// ```
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
+        // Check if trying to insert into a virtual relvar
+        if self.virtual_relvars.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyVirtualRelvar(
+                relation_name.to_string(),
+            ));
+        }
+
         // Get relation metadata
         let metadata = self
             .catalog
@@ -632,22 +795,30 @@ impl Database {
         Ok(())
     }
 
-    /// Queries a relation, returning all tuples as a [`Relation`] value.
+    /// Queries a relation or virtual relvar, returning all tuples as a [`Relation`] value.
+    ///
+    /// For base relvars, this loads the relation from storage.
+    /// For virtual relvars, this re-evaluates the definition and returns the result.
+    ///
+    /// TTM: RM Prescription 10 - Virtual relvars re-evaluate their defining expression
+    /// on each query, ensuring they always reflect the current state of the
+    /// underlying base relvars.
     ///
     /// The returned relation can be transformed using relational algebra
     /// operators such as `project`, `restrict`, `join`, `union`, etc.
     ///
     /// # Arguments
     ///
-    /// * `relation_name` - The name of the relation to query
+    /// * `relation_name` - The name of the relation or virtual relvar to query
     ///
     /// # Returns
     ///
-    /// A [`Relation`] containing all tuples from the stored relation.
+    /// A [`Relation`] containing all tuples.
     ///
     /// # Errors
     ///
-    /// Returns [`DatabaseError::RelationNotFound`] if the relation does not exist.
+    /// Returns [`DatabaseError::RelationNotFound`] if neither a base relvar nor
+    /// a virtual relvar with the given name exists.
     ///
     /// # Example
     ///
@@ -665,6 +836,17 @@ impl Database {
     /// # Ok::<(), relvar::DatabaseError>(())
     /// ```
     pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
+        // Check if this is a virtual relvar - if so, evaluate the definition
+        if self.virtual_relvars.contains_key(relation_name) {
+            return self.query_virtual_relvar(relation_name);
+        }
+
+        // Otherwise, query the base relvar
+        self.query_base_relvar(relation_name)
+    }
+
+    /// Queries a base relvar (stored relation).
+    fn query_base_relvar(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Get relation metadata (clone to avoid borrow issues)
         let relation_type = self
             .catalog
@@ -685,6 +867,26 @@ impl Database {
         }
 
         Ok(relation)
+    }
+
+    /// Queries a virtual relvar by evaluating its definition.
+    ///
+    /// This temporarily removes the virtual relvar definition to avoid borrow issues,
+    /// evaluates it, and puts it back.
+    fn query_virtual_relvar(&mut self, name: &str) -> Result<Relation, DatabaseError> {
+        // Temporarily remove the virtual relvar definition to avoid borrow issues
+        let definition = self
+            .virtual_relvars
+            .remove(name)
+            .ok_or_else(|| DatabaseError::VirtualRelvarNotFound(name.to_string()))?;
+
+        // Evaluate the virtual relvar definition
+        let result = definition(self);
+
+        // Put the virtual relvar definition back
+        self.virtual_relvars.insert(name.to_string(), definition);
+
+        result
     }
 
     /// Deletes tuples matching a predicate from a relation.
@@ -723,6 +925,13 @@ impl Database {
     where
         F: Fn(&Tuple) -> bool,
     {
+        // Check if trying to delete from a virtual relvar
+        if self.virtual_relvars.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyVirtualRelvar(
+                relation_name.to_string(),
+            ));
+        }
+
         // Clone foreign key constraints to avoid borrowing issues
         let fk_constraints_clone = self.foreign_key_constraints.clone();
 
@@ -840,6 +1049,13 @@ impl Database {
         F: Fn(&Tuple) -> bool,
         U: Fn(&mut Tuple),
     {
+        // Check if trying to update a virtual relvar
+        if self.virtual_relvars.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyVirtualRelvar(
+                relation_name.to_string(),
+            ));
+        }
+
         // Get metadata (clone to avoid borrow issues)
         let metadata = self
             .catalog
@@ -1395,6 +1611,382 @@ mod tests {
         assert!(matches!(
             result.unwrap_err(),
             DatabaseError::TypeConstraintViolation(_)
+        ));
+    }
+
+    // ==========================================================================
+    // Virtual Relvar Tests (TTM RM Prescription 10 - Virtual Relation Variables)
+    // ==========================================================================
+
+    #[test]
+    fn test_create_virtual_relvar() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String)
+            .with_attribute("salary".to_string(), ScalarType::Float);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        db.create_virtual_relvar("HIGH_EARNERS", |db| {
+            Ok(db
+                .query("EMP")?
+                .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
+        })
+        .unwrap();
+
+        assert!(db.virtual_relvar_exists("HIGH_EARNERS"));
+    }
+
+    #[test]
+    fn test_virtual_relvar_re_evaluates_on_query() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String)
+            .with_attribute("salary".to_string(), ScalarType::Float);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        db.insert("EMP", tuple! { id: 1i64, name: "Alice", salary: 150000.0 })
+            .unwrap();
+        db.insert("EMP", tuple! { id: 2i64, name: "Bob", salary: 50000.0 })
+            .unwrap();
+
+        db.create_virtual_relvar("HIGH_EARNERS", |db| {
+            Ok(db
+                .query("EMP")?
+                .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
+        })
+        .unwrap();
+
+        let result = db.query("HIGH_EARNERS").unwrap();
+        assert_eq!(result.cardinality(), 1);
+
+        db.insert(
+            "EMP",
+            tuple! { id: 3i64, name: "Charlie", salary: 200000.0 },
+        )
+        .unwrap();
+
+        let result = db.query("HIGH_EARNERS").unwrap();
+        assert_eq!(result.cardinality(), 2);
+    }
+
+    #[test]
+    fn test_virtual_relvar_appears_in_listing() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        db.create_virtual_relvar("NAMES_ONLY", |db| Ok(db.query("EMP")?.project(&["name"])))
+            .unwrap();
+
+        let virtual_relvars = db.list_virtual_relvars();
+        assert!(virtual_relvars.contains(&"NAMES_ONLY".to_string()));
+    }
+
+    #[test]
+    fn test_drop_virtual_relvar() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        db.create_virtual_relvar("NAMES_ONLY", |db| Ok(db.query("EMP")?.project(&["name"])))
+            .unwrap();
+
+        assert!(db.virtual_relvar_exists("NAMES_ONLY"));
+
+        db.drop_virtual_relvar("NAMES_ONLY").unwrap();
+
+        assert!(!db.virtual_relvar_exists("NAMES_ONLY"));
+    }
+
+    #[test]
+    fn test_insert_into_virtual_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
+
+        let result = db.insert("EMP_VIRTUAL", tuple! { id: 1i64, name: "Alice" });
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyVirtualRelvar(_)
+        ));
+    }
+
+    #[test]
+    fn test_delete_from_virtual_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+        db.insert("EMP", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
+
+        let result = db.delete("EMP_VIRTUAL", |_| true);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyVirtualRelvar(_)
+        ));
+    }
+
+    #[test]
+    fn test_update_virtual_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+        db.insert("EMP", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
+
+        let result = db.update(
+            "EMP_VIRTUAL",
+            |_| true,
+            |t| {
+                t.set("name".to_string(), ScalarValue::String("Bob".to_string()))
+                    .unwrap();
+            },
+        );
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyVirtualRelvar(_)
+        ));
+    }
+
+    #[test]
+    fn test_query_nonexistent_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let result = db.query("NONEXISTENT");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::RelationNotFound(_)
+        ));
+    }
+
+    #[test]
+    fn test_create_duplicate_virtual_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
+
+        let result = db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::VirtualRelvarAlreadyExists(_)
+        ));
+    }
+
+    #[test]
+    fn test_virtual_relvar_with_same_name_as_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        let result = db.create_virtual_relvar("EMP", |db| db.query("EMP"));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::RelationAlreadyExists(_)
+        ));
+    }
+
+    #[test]
+    fn test_relvar_with_same_name_as_virtual_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        let relation_type = RelationType::new(tuple_type.clone());
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
+
+        let result = db.create_relvar("EMP_VIRTUAL", RelationType::new(tuple_type));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::VirtualRelvarAlreadyExists(_)
+        ));
+    }
+
+    #[test]
+    fn test_drop_nonexistent_virtual_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let result = db.drop_virtual_relvar("NONEXISTENT");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::VirtualRelvarNotFound(_)
+        ));
+    }
+
+    #[test]
+    fn test_virtual_relvar_with_join() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let emp_type = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String)
+            .with_attribute("dept_id".to_string(), ScalarType::Int);
+        db.create_relvar("EMP", RelationType::new(emp_type))
+            .unwrap();
+
+        let dept_type = TupleType::new()
+            .with_attribute("dept_id".to_string(), ScalarType::Int)
+            .with_attribute("dept_name".to_string(), ScalarType::String);
+        db.create_relvar("DEPT", RelationType::new(dept_type))
+            .unwrap();
+
+        db.insert(
+            "EMP",
+            tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 },
+        )
+        .unwrap();
+        db.insert("EMP", tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+        db.insert("DEPT", tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+        db.insert("DEPT", tuple! { dept_id: 20i64, dept_name: "Sales" })
+            .unwrap();
+
+        db.create_virtual_relvar("EMP_WITH_DEPT", |db| {
+            let emp = db.query("EMP")?;
+            let dept = db.query("DEPT")?;
+            Ok(emp.join(&dept))
+        })
+        .unwrap();
+
+        let result = db.query("EMP_WITH_DEPT").unwrap();
+        assert_eq!(result.cardinality(), 2);
+        assert_eq!(result.degree(), 4);
+    }
+
+    #[test]
+    fn test_virtual_relvar_evaluation_error_preserves_definition() {
+        // Verifies that if a virtual relvar's definition returns an error,
+        // the virtual relvar is still preserved and can be queried again.
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create a virtual relvar that queries a non-existent base relvar
+        db.create_virtual_relvar("BAD_VIRTUAL", |db| db.query("NONEXISTENT"))
+            .unwrap();
+
+        // First query fails (NONEXISTENT doesn't exist)
+        let result = db.query("BAD_VIRTUAL");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::RelationNotFound(_)
+        ));
+
+        // Virtual relvar should still exist after the error
+        assert!(db.virtual_relvar_exists("BAD_VIRTUAL"));
+
+        // Can query it again (still fails, but proves definition wasn't lost)
+        let result2 = db.query("BAD_VIRTUAL");
+        assert!(result2.is_err());
+    }
+
+    #[test]
+    fn test_drop_relvar_breaks_dependent_virtual_relvar() {
+        // Verifies behavior when a base relvar is dropped while a virtual relvar depends on it.
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        db.create_relvar("EMP", RelationType::new(tuple_type))
+            .unwrap();
+
+        db.insert("EMP", tuple! { id: 1i64 }).unwrap();
+
+        // Create a virtual relvar that depends on EMP
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
+
+        // Virtual relvar works initially
+        let result = db.query("EMP_VIRTUAL").unwrap();
+        assert_eq!(result.cardinality(), 1);
+
+        // Drop the base relvar
+        db.drop_relvar("EMP").unwrap();
+
+        // Virtual relvar still exists
+        assert!(db.virtual_relvar_exists("EMP_VIRTUAL"));
+
+        // But querying it now fails because EMP no longer exists
+        let result = db.query("EMP_VIRTUAL");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::RelationNotFound(_)
         ));
     }
 }
