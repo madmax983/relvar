@@ -84,7 +84,7 @@
 //! | TTM Term | SQL Equivalent | Description |
 //! |----------|----------------|-------------|
 //! | Relation | Table | A set of tuples with a common heading |
-//! | Tuple | Row | An ordered set of attribute-value pairs |
+//! | Tuple | Row | A set of attribute-value pairs |
 //! | Attribute | Column | A named component of a tuple |
 //! | Heading | Schema | The set of attributes defining a relation's structure |
 //! | Relvar | Table variable | A variable whose value is a relation |
