@@ -11,44 +11,40 @@ pub enum DivideError {
     EmptyRemainder,
 }
 
-/// Relational division operator (÷)
-///
-/// TTM: RM Prescription 7 - Relational algebra completeness (8/8 operators).
-///
-/// Returns all tuples from the dividend's remainder attributes such that
-/// for every tuple in the divisor, the extended tuple exists in the dividend.
-///
-/// Mathematical definition: R1 DIVIDEBY R2 returns all tuples t from
-/// (R1.attributes - R2.attributes) such that for all s in R2, (t ∪ s) ∈ R1.
-///
-/// Result heading: R1.attributes - R2.attributes (set difference)
-///
-/// # Examples
-///
-/// ```
-/// // SUPPLIES(supplier_id, part_id):
-/// // S1 supplies: P1, P2
-/// // S2 supplies: P1
-/// // S3 supplies: P1, P2
-/// //
-/// // PARTS(part_id): P1, P2
-/// //
-/// // SUPPLIES.divide(&PARTS) = {supplier_id}
-/// // Result: {S1, S3} - suppliers who supply ALL parts
-/// ```
-///
-/// # Errors
-///
-/// Returns `Err` if:
-/// - Divisor has attributes not in dividend
-/// - Attribute types don't match
-/// - Divisor heading equals dividend heading (no remainder)
-pub trait DivideOps {
-    fn divide(&self, divisor: &Relation) -> Result<Relation, DivideError>;
-}
-
-impl DivideOps for Relation {
-    fn divide(&self, divisor: &Relation) -> Result<Relation, DivideError> {
+impl Relation {
+    /// Relational division operator (÷)
+    ///
+    /// TTM: RM Prescription 7 - Relational algebra completeness (8/8 operators).
+    ///
+    /// Returns all tuples from the dividend's remainder attributes such that
+    /// for every tuple in the divisor, the extended tuple exists in the dividend.
+    ///
+    /// Mathematical definition: R1 DIVIDEBY R2 returns all tuples t from
+    /// (R1.attributes - R2.attributes) such that for all s in R2, (t ∪ s) ∈ R1.
+    ///
+    /// Result heading: R1.attributes - R2.attributes (set difference)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // SUPPLIES(supplier_id, part_id):
+    /// // S1 supplies: P1, P2
+    /// // S2 supplies: P1
+    /// // S3 supplies: P1, P2
+    /// //
+    /// // PARTS(part_id): P1, P2
+    /// //
+    /// // SUPPLIES.divide(&PARTS) = {supplier_id}
+    /// // Result: {S1, S3} - suppliers who supply ALL parts
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// - Divisor has attributes not in dividend
+    /// - Attribute types don't match
+    /// - Divisor heading equals dividend heading (no remainder)
+    pub fn divide(&self, divisor: &Relation) -> Result<Relation, DivideError> {
         let dividend_heading = self.relation_type().heading();
         let divisor_heading = divisor.relation_type().heading();
 
@@ -138,27 +134,21 @@ fn filter_matching_candidates(
 ) -> Vec<crate::values::Tuple> {
     use std::collections::BTreeMap;
 
+    // Clone dividend_heading once outside the loop to avoid repeated clones
+    let dividend_heading = dividend_heading.clone();
+
     candidates
         .tuples()
         .filter(|candidate| {
             // Check if ALL divisor tuples match when extended with this candidate
             divisor.tuples().all(|divisor_tuple| {
-                // Extend candidate with divisor tuple
-                let mut extended_values = BTreeMap::new();
-
-                // Add candidate attributes
-                for attr_name in candidate.attribute_names() {
-                    if let Some(value) = candidate.get(attr_name) {
-                        extended_values.insert(attr_name.clone(), value.clone());
-                    }
-                }
-
-                // Add divisor attributes
-                for attr_name in divisor_tuple.attribute_names() {
-                    if let Some(value) = divisor_tuple.get(attr_name) {
-                        extended_values.insert(attr_name.clone(), value.clone());
-                    }
-                }
+                // Extend candidate with divisor tuple using iterator-based approach
+                let extended_values: BTreeMap<_, _> = candidate
+                    .values()
+                    .iter()
+                    .chain(divisor_tuple.values())
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
 
                 // Create extended tuple
                 let extended_tuple =
