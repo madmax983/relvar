@@ -1,29 +1,129 @@
+//! Foreign key constraints for referential integrity.
+//!
+//! Foreign keys ensure that values in one relation (the referencing relation)
+//! correspond to existing values in another relation (the referenced relation).
+//! This maintains referential integrity across related relations.
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::constraints::{ForeignKey, ForeignKeyConstraints};
+//!
+//! // Employees.dept_id must reference an existing Departments.dept_id
+//! let fk = ForeignKey::new(
+//!     vec!["dept_id".to_string()],       // Foreign key attribute(s)
+//!     "DEPARTMENTS".to_string(),          // Referenced relation name
+//!     vec!["dept_id".to_string()],       // Referenced attribute(s)
+//! ).unwrap();
+//!
+//! // Composite foreign key (multiple attributes)
+//! let composite_fk = ForeignKey::new(
+//!     vec!["project_id".to_string(), "task_id".to_string()],
+//!     "TASKS".to_string(),
+//!     vec!["proj_id".to_string(), "task_num".to_string()],
+//! ).unwrap();
+//! ```
+//!
+//! # Detecting Foreign Key Violations
+//!
+//! Foreign key constraints can detect when an insert would reference
+//! a non-existent tuple (dangling reference):
+//!
+//! ```
+//! use relvar::constraints::ForeignKey;
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::Relation;
+//! use relvar::tuple;
+//!
+//! // Create departments relation (the referenced relation)
+//! let dept_heading = TupleType::new()
+//!     .with_attribute("dept_id", ScalarType::Int)
+//!     .with_attribute("dept_name", ScalarType::String);
+//!
+//! let mut departments = Relation::new(RelationType::new(dept_heading));
+//! departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+//! departments.insert(tuple! { dept_id: 20i64, dept_name: "Sales" }).unwrap();
+//!
+//! // Define foreign key: employees.dept_id -> departments.dept_id
+//! let fk = ForeignKey::new(
+//!     vec!["dept_id".to_string()],
+//!     "DEPARTMENTS".to_string(),
+//!     vec!["dept_id".to_string()],
+//! ).unwrap();
+//!
+//! // Valid insert - dept_id 10 exists in departments
+//! let valid_employee = tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 };
+//! assert!(!fk.would_violate_on_insert(&valid_employee, &departments).unwrap());
+//!
+//! // Invalid insert - dept_id 99 does NOT exist in departments!
+//! let invalid_employee = tuple! { emp_id: 2i64, name: "Bob", dept_id: 99i64 };
+//! assert!(fk.would_violate_on_insert(&invalid_employee, &departments).unwrap());
+//! ```
+
 use crate::values::{Relation, Tuple};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Errors that can occur with foreign key constraints.
 #[derive(Debug, Error)]
 pub enum ForeignKeyError {
+    /// A foreign key value doesn't correspond to any tuple in the referenced relation.
     #[error("Foreign key constraint violation: referenced tuple not found")]
     ReferencedTupleNotFound,
+
+    /// The foreign key references attributes that don't exist in the referencing relation.
     #[error("Foreign key attributes {0:?} do not exist in referencing relation")]
     InvalidForeignKeyAttributes(Vec<String>),
+
+    /// The referenced attributes don't exist in the referenced relation.
     #[error("Referenced attributes {0:?} do not exist in referenced relation")]
     InvalidReferencedAttributes(Vec<String>),
+
+    /// The number of foreign key attributes must match the number of referenced attributes.
     #[error("Foreign key and referenced attributes must have same count")]
     AttributeCountMismatch,
+
+    /// A foreign key must have at least one attribute.
     #[error("Foreign key cannot be empty")]
     EmptyForeignKey,
 }
 
-/// A foreign key constraint ensures referential integrity between relations
+/// A foreign key constraint ensuring referential integrity between relations.
+///
+/// A foreign key links attributes in one relation (referencing) to attributes
+/// in another relation (referenced). Every combination of foreign key values
+/// must exist as a corresponding combination in the referenced relation.
+///
+/// # Referential Integrity Rules
+///
+/// - **Insert**: Cannot insert a tuple with foreign key values that don't exist
+///   in the referenced relation
+/// - **Delete**: Cannot delete a tuple from the referenced relation if it's
+///   referenced by tuples in the referencing relation
+/// - **Update**: Updates must maintain the integrity of references
+///
+/// # Example
+///
+/// ```
+/// use relvar::constraints::ForeignKey;
+///
+/// // Simple foreign key: employees.dept_id -> departments.dept_id
+/// let fk = ForeignKey::new(
+///     vec!["dept_id".to_string()],
+///     "DEPARTMENTS".to_string(),
+///     vec!["dept_id".to_string()],
+/// ).unwrap();
+///
+/// assert_eq!(fk.foreign_key_attributes(), &["dept_id"]);
+/// assert_eq!(fk.referenced_relation_name(), "DEPARTMENTS");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForeignKey {
-    /// Attributes in the referencing relation
+    /// Attributes in the referencing relation.
     foreign_key_attributes: Vec<String>,
-    /// Name of the referenced relation
+    /// Name of the referenced relation.
     referenced_relation_name: String,
-    /// Attributes in the referenced relation
+    /// Attributes in the referenced relation.
     referenced_attributes: Vec<String>,
 }
 

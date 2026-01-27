@@ -1,32 +1,136 @@
+//! Tuple values for the relational model.
+//!
+//! A tuple is a set of attribute-value pairs that conforms to a tuple type.
+//! This module provides the [`Tuple`] struct and the `tuple!` macro for
+//! convenient tuple creation.
+//!
+//! # TTM Compliance
+//!
+//! - **Proscription 1**: No NULL values - all attributes must have values
+//! - **Proscription 4**: No attribute ordering - attributes identified by name
+//! - Tuple equality is based on attribute values, not physical identity
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::tuple;
+//! use relvar::values::ScalarValue;
+//!
+//! // Create a tuple using the macro
+//! let employee = tuple! {
+//!     emp_id: 1i64,
+//!     name: "Alice",
+//!     active: true,
+//! };
+//!
+//! assert_eq!(employee.degree(), 3);
+//! assert_eq!(employee.get("name"), Some(&ScalarValue::String("Alice".to_string())));
+//! ```
+
 use crate::types::TupleType;
 use crate::values::ScalarValue;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+/// Errors that can occur when creating or modifying tuples.
 #[derive(Debug, Error)]
 pub enum TupleError {
+    /// An attribute name was provided that doesn't exist in the tuple type.
     #[error("Attribute '{0}' not found in tuple type")]
     AttributeNotFound(String),
+
+    /// A value's type doesn't match the expected type for its attribute.
     #[error("Type mismatch for attribute '{0}': expected {1:?}, got {2:?}")]
     TypeMismatch(String, String, String),
+
+    /// An attribute defined in the tuple type has no corresponding value.
+    ///
+    /// This enforces TTM Proscription 1 (no NULL values).
     #[error("Missing value for attribute '{0}'")]
     MissingValue(String),
 }
 
-/// A tuple value conforming to a tuple type.
-/// Per Date's relational model:
-/// - All attributes must have values (no nulls)
-/// - Tuples are equal iff all attribute values are equal
-/// - No ordering of attributes
+/// A tuple value that conforms to a tuple type.
+///
+/// A tuple is an unordered set of attribute-value pairs. Each attribute
+/// has a name and a scalar value. The tuple must conform to its tuple type,
+/// meaning all attributes defined in the type must be present with values
+/// of the correct types.
+///
+/// # No NULL Values
+///
+/// Per TTM Proscription 1, every attribute must have a value. Attempting to
+/// create a tuple with missing attributes will result in an error.
+///
+/// # Equality
+///
+/// Two tuples are equal if and only if they have the same tuple type and
+/// all their attribute values are equal. The order of insertion does not
+/// affect equality.
+///
+/// # Example
+///
+/// ```
+/// use relvar::tuple;
+/// use relvar::values::ScalarValue;
+///
+/// let person = tuple! {
+///     id: 1i64,
+///     name: "Alice",
+///     age: 30i64,
+/// };
+///
+/// // Access values by attribute name
+/// assert_eq!(person.get("id"), Some(&ScalarValue::Int(1)));
+///
+/// // Use typed access
+/// let age: i64 = person.get_typed("age").unwrap();
+/// assert_eq!(age, 30);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Tuple {
+    /// The tuple type (heading) that this tuple conforms to.
     tuple_type: TupleType,
+    /// The attribute values, keyed by attribute name.
     values: BTreeMap<String, ScalarValue>,
 }
 
 impl Tuple {
-    /// Create a new tuple from a type and values
+    /// Creates a new tuple from a type and values.
+    ///
+    /// Validates that all attributes defined in the tuple type have
+    /// corresponding values and that all values match their expected types.
+    ///
+    /// # Arguments
+    ///
+    /// * `tuple_type` - The tuple type (heading) this tuple must conform to
+    /// * `values` - A map of attribute names to scalar values
+    ///
+    /// # Errors
+    ///
+    /// - [`TupleError::MissingValue`] - An attribute has no value (violates Proscription 1)
+    /// - [`TupleError::AttributeNotFound`] - A value is provided for an undefined attribute
+    /// - [`TupleError::TypeMismatch`] - A value's type doesn't match the attribute type
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, ScalarType};
+    /// use relvar::values::{Tuple, ScalarValue};
+    /// use std::collections::BTreeMap;
+    ///
+    /// let tuple_type = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    ///
+    /// let mut values = BTreeMap::new();
+    /// values.insert("id".to_string(), ScalarValue::Int(1));
+    /// values.insert("name".to_string(), ScalarValue::String("Alice".to_string()));
+    ///
+    /// let tuple = Tuple::new(tuple_type, values).unwrap();
+    /// assert_eq!(tuple.degree(), 2);
+    /// ```
     pub fn new(
         tuple_type: TupleType,
         values: BTreeMap<String, ScalarValue>,

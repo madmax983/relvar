@@ -1,12 +1,87 @@
+//! Rename operator for attribute renaming.
+//!
+//! The rename operator (ρ in relational algebra) changes the names of attributes
+//! in a relation while preserving their types and values.
+//!
+//! # TTM Compliance
+//!
+//! - Attribute types are preserved during renaming
+//! - Result is a valid relation with the renamed heading
+//! - Set semantics are maintained
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::Relation;
+//! use relvar::tuple;
+//!
+//! let heading = TupleType::new()
+//!     .with_attribute("emp_id", ScalarType::Int)
+//!     .with_attribute("name", ScalarType::String);
+//!
+//! let mut relation = Relation::new(RelationType::new(heading));
+//! relation.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+//!
+//! // Rename emp_id to employee_id
+//! let renamed = relation.rename(&[("emp_id", "employee_id")]);
+//! assert!(renamed.relation_type().heading().has_attribute("employee_id"));
+//! assert!(!renamed.relation_type().heading().has_attribute("emp_id"));
+//! ```
+
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
 use std::collections::BTreeMap;
 
-/// Rename operation
-/// Renames attributes while preserving types
 impl Relation {
-    /// Rename attributes according to the provided mapping
-    /// Maps old_name -> new_name
+    /// Renames attributes in this relation according to the provided mapping.
+    ///
+    /// This is the relational algebra ρ (rho) operator. It produces a new relation
+    /// with the same tuples but with some attribute names changed. The attribute
+    /// types and values are preserved.
+    ///
+    /// # Arguments
+    ///
+    /// * `mappings` - A slice of (old_name, new_name) pairs specifying which
+    ///   attributes to rename. Attributes not in the mapping are unchanged.
+    ///
+    /// # Returns
+    ///
+    /// A new relation with the renamed attributes.
+    ///
+    /// # Behavior
+    ///
+    /// - Attributes listed in mappings are renamed to their new names
+    /// - Attributes not in mappings retain their original names
+    /// - Attribute types are preserved
+    /// - Tuple values are preserved (associated with new names)
+    /// - Mappings for non-existent attributes are silently ignored
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    /// use relvar::values::Relation;
+    /// use relvar::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String)
+    ///     .with_attribute("dept_id", ScalarType::Int);
+    ///
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    /// relation.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+    ///
+    /// // Rename multiple attributes
+    /// let renamed = relation.rename(&[
+    ///     ("emp_id", "employee_id"),
+    ///     ("dept_id", "department_id"),
+    /// ]);
+    ///
+    /// assert!(renamed.relation_type().heading().has_attribute("employee_id"));
+    /// assert!(renamed.relation_type().heading().has_attribute("department_id"));
+    /// assert!(renamed.relation_type().heading().has_attribute("name"));
+    /// ```
     pub fn rename(&self, mappings: &[(&str, &str)]) -> Self {
         // Build new heading with renamed attributes
         let mut new_heading = TupleType::new();

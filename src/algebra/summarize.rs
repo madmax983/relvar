@@ -1,38 +1,155 @@
+//! Summarize operator for aggregation with grouping.
+//!
+//! The summarize operator computes aggregate values (count, sum, average, min, max)
+//! over groups of tuples. It is similar to SQL's GROUP BY with aggregate functions.
+//!
+//! # TTM Compliance
+//!
+//! - Aggregation is performed on tuple values, not physical storage
+//! - Result is a valid relation with the grouped and computed attributes
+//! - Set semantics are maintained
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::Relation;
+//! use relvar::algebra::summarize::{SummarizeOps, Aggregation};
+//! use relvar::tuple;
+//!
+//! let heading = TupleType::new()
+//!     .with_attribute("dept_id", ScalarType::Int)
+//!     .with_attribute("salary", ScalarType::Int);
+//!
+//! let mut relation = Relation::new(RelationType::new(heading));
+//! relation.insert(tuple! { dept_id: 10i64, salary: 50000i64 }).unwrap();
+//! relation.insert(tuple! { dept_id: 10i64, salary: 60000i64 }).unwrap();
+//! relation.insert(tuple! { dept_id: 20i64, salary: 70000i64 }).unwrap();
+//!
+//! // Summarize by department
+//! let result = relation.summarize(
+//!     &["dept_id"],
+//!     &[
+//!         Aggregation::count("emp_count"),
+//!         Aggregation::sum("total_salary", "salary"),
+//!     ],
+//! ).unwrap();
+//!
+//! assert_eq!(result.cardinality(), 2);  // Two departments
+//! ```
+
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
 
+/// Errors that can occur during summarize operations.
 #[derive(Debug, Error)]
 pub enum SummarizeError {
+    /// A specified grouping attribute does not exist in the relation.
     #[error("Grouping attribute '{0}' does not exist in relation")]
     GroupingAttributeNotFound(String),
+
+    /// The result attribute name conflicts with an existing attribute.
     #[error("Result attribute '{0}' already exists")]
     ResultAttributeExists(String),
+
+    /// Failed to construct a tuple during the summarization process.
     #[error("Failed to create summarized tuple: {0}")]
     TupleCreation(String),
+
+    /// An error occurred during aggregate computation.
+    ///
+    /// This can happen if the attribute being aggregated doesn't exist
+    /// or has an incompatible type.
     #[error("Aggregation error: {0}")]
     AggregationError(String),
 }
 
-/// Aggregation function type
+/// Specifies the type of aggregation function to apply.
+///
+/// Each variant represents a different aggregate computation that can
+/// be performed over a group of tuples.
 pub enum AggregationFn {
+    /// Counts the number of tuples in the group.
     Count,
-    Sum(String), // attribute name to sum
-    Avg(String), // attribute name to average
-    Min(String), // attribute name for minimum
-    Max(String), // attribute name for maximum
+
+    /// Computes the sum of an integer attribute across the group.
+    ///
+    /// The string parameter specifies the attribute name to sum.
+    Sum(String),
+
+    /// Computes the average of an integer attribute across the group.
+    ///
+    /// The string parameter specifies the attribute name to average.
+    /// Result is a floating-point value.
+    Avg(String),
+
+    /// Finds the minimum value of an attribute in the group.
+    ///
+    /// The string parameter specifies the attribute name.
+    Min(String),
+
+    /// Finds the maximum value of an attribute in the group.
+    ///
+    /// The string parameter specifies the attribute name.
+    Max(String),
+
+    /// A custom aggregation function.
+    ///
+    /// Takes a slice of tuple references and returns a computed scalar value.
     #[allow(clippy::type_complexity)]
     Custom(Box<dyn Fn(&[&Tuple]) -> ScalarValue>),
 }
 
+/// Defines a single aggregation to compute in a summarize operation.
+///
+/// An aggregation specifies what to compute (the function), what to call
+/// the result (the name), and what type the result will be.
+///
+/// # Example
+///
+/// ```
+/// use relvar::types::ScalarType;
+/// use relvar::algebra::summarize::Aggregation;
+///
+/// // Count all tuples, store in "total" as Int
+/// let count_agg = Aggregation::count("total");
+///
+/// // Sum the "salary" attribute, store in "total_pay" as Int
+/// let sum_agg = Aggregation::sum("total_pay", "salary");
+///
+/// // Average the "age" attribute, store in "avg_age" as Float
+/// let avg_agg = Aggregation::avg("avg_age", "age");
+/// ```
 pub struct Aggregation {
+    /// The name for the computed result attribute.
     pub result_name: String,
+
+    /// The scalar type of the result value.
     pub result_type: ScalarType,
+
+    /// The aggregation function to apply.
     pub function: AggregationFn,
 }
 
 impl Aggregation {
+    /// Creates a COUNT aggregation.
+    ///
+    /// Counts the number of tuples in each group. The result type is always
+    /// [`ScalarType::Int`].
+    ///
+    /// # Arguments
+    ///
+    /// * `result_name` - The name for the count result attribute
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::algebra::summarize::Aggregation;
+    ///
+    /// let agg = Aggregation::count("num_employees");
+    /// ```
     pub fn count(result_name: &str) -> Self {
         Self {
             result_name: result_name.to_string(),
@@ -41,6 +158,23 @@ impl Aggregation {
         }
     }
 
+    /// Creates a SUM aggregation.
+    ///
+    /// Computes the sum of an integer attribute across all tuples in each group.
+    /// The result type is [`ScalarType::Int`].
+    ///
+    /// # Arguments
+    ///
+    /// * `result_name` - The name for the sum result attribute
+    /// * `attr_name` - The attribute to sum (must be Int type)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::algebra::summarize::Aggregation;
+    ///
+    /// let agg = Aggregation::sum("total_salary", "salary");
+    /// ```
     pub fn sum(result_name: &str, attr_name: &str) -> Self {
         Self {
             result_name: result_name.to_string(),
@@ -49,6 +183,23 @@ impl Aggregation {
         }
     }
 
+    /// Creates an AVG (average) aggregation.
+    ///
+    /// Computes the arithmetic mean of an integer attribute across all tuples
+    /// in each group. The result type is [`ScalarType::Float`].
+    ///
+    /// # Arguments
+    ///
+    /// * `result_name` - The name for the average result attribute
+    /// * `attr_name` - The attribute to average (must be Int type)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::algebra::summarize::Aggregation;
+    ///
+    /// let agg = Aggregation::avg("avg_salary", "salary");
+    /// ```
     pub fn avg(result_name: &str, attr_name: &str) -> Self {
         Self {
             result_name: result_name.to_string(),
@@ -57,6 +208,25 @@ impl Aggregation {
         }
     }
 
+    /// Creates a MIN aggregation.
+    ///
+    /// Finds the minimum value of an attribute across all tuples in each group.
+    /// The result type must be specified and should match the attribute type.
+    ///
+    /// # Arguments
+    ///
+    /// * `result_name` - The name for the minimum result attribute
+    /// * `attr_name` - The attribute to find the minimum of
+    /// * `result_type` - The type of the result (should match the attribute type)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::ScalarType;
+    /// use relvar::algebra::summarize::Aggregation;
+    ///
+    /// let agg = Aggregation::min("lowest_salary", "salary", ScalarType::Int);
+    /// ```
     pub fn min(result_name: &str, attr_name: &str, result_type: ScalarType) -> Self {
         Self {
             result_name: result_name.to_string(),
@@ -65,6 +235,25 @@ impl Aggregation {
         }
     }
 
+    /// Creates a MAX aggregation.
+    ///
+    /// Finds the maximum value of an attribute across all tuples in each group.
+    /// The result type must be specified and should match the attribute type.
+    ///
+    /// # Arguments
+    ///
+    /// * `result_name` - The name for the maximum result attribute
+    /// * `attr_name` - The attribute to find the maximum of
+    /// * `result_type` - The type of the result (should match the attribute type)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::ScalarType;
+    /// use relvar::algebra::summarize::Aggregation;
+    ///
+    /// let agg = Aggregation::max("highest_salary", "salary", ScalarType::Int);
+    /// ```
     pub fn max(result_name: &str, attr_name: &str, result_type: ScalarType) -> Self {
         Self {
             result_name: result_name.to_string(),
@@ -159,8 +348,66 @@ impl Aggregation {
     }
 }
 
+/// Trait providing the summarize operation for relations.
+///
+/// This trait defines the `summarize` method which computes aggregate
+/// values over groups of tuples. It is implemented for [`Relation`].
 pub trait SummarizeOps {
-    /// Summarize the relation with aggregations, optionally grouped by attributes
+    /// Summarizes the relation by computing aggregations over groups.
+    ///
+    /// This operator groups tuples by the specified attributes and computes
+    /// aggregate values (count, sum, avg, min, max, or custom) for each group.
+    /// It is similar to SQL's `GROUP BY` clause with aggregate functions.
+    ///
+    /// # Arguments
+    ///
+    /// * `group_by` - Attribute names to group by. If empty, all tuples are
+    ///   treated as a single group.
+    /// * `aggregations` - The aggregation functions to compute for each group
+    ///
+    /// # Returns
+    ///
+    /// A new relation with the grouping attributes plus the computed aggregate
+    /// attributes. There is one tuple per distinct combination of grouping
+    /// attribute values.
+    ///
+    /// # Errors
+    ///
+    /// - [`SummarizeError::GroupingAttributeNotFound`] - A grouping attribute
+    ///   doesn't exist
+    /// - [`SummarizeError::ResultAttributeExists`] - An aggregation result name
+    ///   conflicts with a grouping attribute
+    /// - [`SummarizeError::AggregationError`] - An aggregation failed (e.g.,
+    ///   MIN/MAX on empty set)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    /// use relvar::values::Relation;
+    /// use relvar::algebra::summarize::{SummarizeOps, Aggregation};
+    /// use relvar::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("dept_id", ScalarType::Int)
+    ///     .with_attribute("salary", ScalarType::Int);
+    ///
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    /// relation.insert(tuple! { dept_id: 10i64, salary: 50000i64 }).unwrap();
+    /// relation.insert(tuple! { dept_id: 10i64, salary: 60000i64 }).unwrap();
+    /// relation.insert(tuple! { dept_id: 20i64, salary: 70000i64 }).unwrap();
+    ///
+    /// // Compute aggregates per department
+    /// let result = relation.summarize(
+    ///     &["dept_id"],
+    ///     &[
+    ///         Aggregation::count("emp_count"),
+    ///         Aggregation::avg("avg_salary", "salary"),
+    ///     ],
+    /// ).unwrap();
+    ///
+    /// assert_eq!(result.cardinality(), 2);  // One row per department
+    /// ```
     fn summarize(
         &self,
         group_by: &[&str],

@@ -35,22 +35,76 @@ pub(crate) struct TupleId {
     pub(crate) slot: u32,
 }
 
+/// Errors that can occur during heap file operations.
 #[derive(Debug, Error)]
 pub enum HeapError {
+    /// An error occurred at the page layer.
     #[error("Page error: {0}")]
     Page(#[from] PageError),
+
+    /// Tuple serialization or deserialization failed.
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    /// The requested tuple was not found.
+    /// Physical details (page_id, slot) hidden per TTM Proscription 6.
     #[error("Tuple not found")]
-    TupleNotFound, // Physical details (page_id, slot) hidden per TTM Proscription 6
+    TupleNotFound,
+
+    /// The page has insufficient space for the tuple.
     #[error("Page full")]
     PageFull,
 }
 
-/// Heap file stores tuples in an unordered collection of pages.
-/// Each page contains a slot directory and tuple data.
+/// Stores tuples in an unordered collection of slotted pages.
+///
+/// A heap file is the primary storage structure for relation tuples. Tuples
+/// are stored in pages without any particular ordering. Each page uses a
+/// slotted page format with a slot directory at the beginning and tuple
+/// data growing from the end.
+///
+/// # Page Layout
+///
+/// ```text
+/// ┌─────────────────────────────────────────────────────────────┐
+/// │ slot_count │ slot[0] │ slot[1] │ ... │ free space │ tuples  │
+/// └─────────────────────────────────────────────────────────────┘
+/// ```
+///
+/// # TTM Compliance
+///
+/// This struct carefully maintains TTM Proscription 6 compliance:
+/// - `insert_tuple()` returns `Result<(), HeapError>` (no TupleId)
+/// - `scan()` returns `Vec<Tuple>` (no TupleId)
+/// - `read_tuple(TupleId)` is `pub(crate)` (internal only)
+///
+/// # Example
+///
+/// ```no_run
+/// use relvar::storage::HeapFile;
+/// use relvar::types::{RelationType, TupleType, ScalarType};
+/// use relvar::tuple;
+///
+/// // Create heap file
+/// let heading = TupleType::new()
+///     .with_attribute("id".to_string(), ScalarType::Int)
+///     .with_attribute("name".to_string(), ScalarType::String);
+/// let rel_type = RelationType::new(heading);
+///
+/// let mut heap = HeapFile::create("employees.heap", rel_type).unwrap();
+///
+/// // Insert tuples
+/// heap.insert_tuple(&tuple! { id: 1i64, name: "Alice" }).unwrap();
+/// heap.insert_tuple(&tuple! { id: 2i64, name: "Bob" }).unwrap();
+///
+/// // Scan all tuples
+/// let tuples = heap.scan().unwrap();
+/// assert_eq!(tuples.len(), 2);
+/// ```
 pub struct HeapFile {
+    /// The underlying page file for storage.
     page_file: PageFile,
+    /// The type of tuples stored in this heap file.
     relation_type: RelationType,
 }
 
@@ -69,7 +123,16 @@ struct SlottedPage {
 }
 
 impl HeapFile {
-    /// Create a new heap file
+    /// Creates a new heap file, truncating any existing file.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path where the heap file will be created
+    /// * `relation_type` - The type of tuples that will be stored
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::Page`] if the file cannot be created.
     pub fn create<P: AsRef<Path>>(path: P, relation_type: RelationType) -> Result<Self, HeapError> {
         let page_file = PageFile::create(path)?;
         Ok(Self {
@@ -78,7 +141,18 @@ impl HeapFile {
         })
     }
 
-    /// Open an existing heap file
+    /// Opens an existing heap file, or creates one if it doesn't exist.
+    ///
+    /// Unlike [`create`](Self::create), this preserves existing data.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the heap file
+    /// * `relation_type` - The type of tuples stored in this heap file
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::Page`] if the file cannot be opened.
     pub fn open<P: AsRef<Path>>(path: P, relation_type: RelationType) -> Result<Self, HeapError> {
         let page_file = PageFile::open(path)?;
         Ok(Self {
@@ -87,7 +161,24 @@ impl HeapFile {
         })
     }
 
-    /// Insert a tuple into the heap file
+    /// Inserts a tuple into the heap file.
+    ///
+    /// The tuple is serialized and stored in the first page with sufficient
+    /// space. If no existing page has room, a new page is allocated.
+    ///
+    /// # TTM Compliance
+    ///
+    /// Returns `Result<(), HeapError>` rather than a TupleId, per TTM
+    /// Proscription 6.
+    ///
+    /// # Arguments
+    ///
+    /// * `tuple` - The tuple to insert
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::Serialization`] if the tuple cannot be serialized.
+    /// Returns [`HeapError::Page`] if a page I/O error occurs.
     pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<(), HeapError> {
         // Serialize the tuple
         let tuple_data =
@@ -256,7 +347,25 @@ impl HeapFile {
         Ok(tuple)
     }
 
-    /// Scan all tuples in the heap file
+    /// Scans all tuples in the heap file.
+    ///
+    /// Iterates through all pages and returns every valid tuple. The order
+    /// of tuples is not guaranteed (heap files are unordered).
+    ///
+    /// # TTM Compliance
+    ///
+    /// Returns `Vec<Tuple>` without TupleId, per TTM Proscription 6.
+    ///
+    /// # Performance
+    ///
+    /// This is a full table scan with O(n) complexity where n is the number
+    /// of pages. For large relations, consider using indexes for selective
+    /// queries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::Page`] if a page read fails.
+    /// Returns [`HeapError::Serialization`] if tuple deserialization fails.
     pub fn scan(&mut self) -> Result<Vec<Tuple>, HeapError> {
         let mut results = Vec::new();
         let mut page_id = 0;
@@ -308,7 +417,15 @@ impl HeapFile {
         Ok(results)
     }
 
-    /// Load all tuples into a Relation
+    /// Loads all tuples from the heap file into a `Relation`.
+    ///
+    /// This is a convenience method that scans all tuples and constructs
+    /// a [`Relation`] value with the heap file's relation type.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::Serialization`] if tuples cannot be deserialized
+    /// or if the relation cannot be constructed.
     pub fn load_relation(&mut self) -> Result<Relation, HeapError> {
         let tuples = self.scan()?; // Already returns Vec<Tuple>
 
@@ -316,7 +433,23 @@ impl HeapFile {
             .map_err(|e| HeapError::Serialization(e.to_string()))
     }
 
-    /// Store a relation's tuples into the heap file
+    /// Stores all tuples from a relation into the heap file.
+    ///
+    /// Iterates through the relation's tuples and inserts each one.
+    ///
+    /// # TTM Compliance
+    ///
+    /// Returns `Result<(), HeapError>` (no TupleId vector), per TTM
+    /// Proscription 6.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation` - The relation whose tuples should be stored
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::Serialization`] if a tuple cannot be serialized.
+    /// Returns [`HeapError::Page`] if a page I/O error occurs.
     pub fn store_relation(&mut self, relation: &Relation) -> Result<(), HeapError> {
         for tuple in relation.tuples() {
             self.insert_tuple(tuple)?;

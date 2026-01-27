@@ -1,37 +1,148 @@
+//! Scalar types for the relational model.
+//!
+//! This module defines [`ScalarType`], which represents the atomic types that
+//! can appear as attribute values in tuples. It includes built-in types
+//! (Int, Float, String, Bool, Bytes) and user-defined types.
+//!
+//! # TTM Compliance
+//!
+//! - **Prescription 1**: User-defined scalar types are supported via the POSSREP
+//!   (possible representation) pattern
+//! - Type identity is determined by name, not representation
+//! - Built-in types provide the foundation for user-defined types
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::ScalarType;
+//!
+//! // Built-in types
+//! let int_type = ScalarType::Int;
+//! let string_type = ScalarType::String;
+//!
+//! // User-defined types with distinct identity
+//! let widget_id = ScalarType::user_defined("WidgetId", ScalarType::Int);
+//! let supplier_id = ScalarType::user_defined("SupplierId", ScalarType::Int);
+//!
+//! // Same representation, but different types!
+//! assert_ne!(widget_id, supplier_id);
+//! ```
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Errors related to user-defined type operations
+/// Errors that can occur during scalar type operations.
 #[derive(Debug, Error)]
 pub enum ScalarTypeError {
+    /// A value's type doesn't match the expected type.
+    ///
+    /// This typically occurs when using a selector with a value of the
+    /// wrong representation type.
     #[error("Type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch { expected: String, actual: String },
+    TypeMismatch {
+        /// The expected type name.
+        expected: String,
+        /// The actual type name of the provided value.
+        actual: String,
+    },
 }
 
-/// Scalar type representation per Date's relational model.
-/// Types are identified by name and support equality comparison.
+/// Represents a scalar (atomic) type in the relational model.
 ///
-/// TTM Prescription 1: The system must allow users to define their own scalar types.
-/// This is implemented via the UserDefined variant which supports the POSSREP pattern.
+/// Scalar types are the building blocks of the type system. Each attribute
+/// in a tuple has a scalar type that defines what values it can hold.
+///
+/// # Built-in Types
+///
+/// - [`Int`](ScalarType::Int) - 64-bit signed integer
+/// - [`Float`](ScalarType::Float) - 64-bit floating point
+/// - [`String`](ScalarType::String) - UTF-8 string
+/// - [`Bool`](ScalarType::Bool) - Boolean (true/false)
+/// - [`Bytes`](ScalarType::Bytes) - Arbitrary byte sequence
+///
+/// # Advanced Types
+///
+/// - [`Relation`](ScalarType::Relation) - Nested relation (relation-valued attribute)
+/// - [`UserDefined`](ScalarType::UserDefined) - Custom type with POSSREP pattern
+///
+/// # TTM Prescription 1
+///
+/// Users can define their own scalar types using the POSSREP (possible
+/// representation) pattern. A user-defined type has:
+///
+/// - A **name** that provides type identity
+/// - A **representation** type for storage
+///
+/// Two user-defined types with the same representation but different names
+/// are considered distinct types.
+///
+/// # Example
+///
+/// ```
+/// use relvar::types::ScalarType;
+///
+/// // Built-in types
+/// let age_type = ScalarType::Int;
+/// let name_type = ScalarType::String;
+///
+/// // User-defined type for type safety
+/// let employee_id = ScalarType::user_defined("EmployeeId", ScalarType::Int);
+/// let department_id = ScalarType::user_defined("DepartmentId", ScalarType::Int);
+///
+/// // These are different types despite same representation
+/// assert_ne!(employee_id, department_id);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ScalarType {
-    /// 64-bit signed integer
+    /// 64-bit signed integer.
+    ///
+    /// Corresponds to Rust's `i64` type.
     Int,
-    /// 64-bit floating point
+
+    /// 64-bit floating point number.
+    ///
+    /// Corresponds to Rust's `f64` type.
     Float,
-    /// UTF-8 string
+
+    /// UTF-8 encoded string.
+    ///
+    /// Corresponds to Rust's `String` type.
     String,
-    /// Boolean value
+
+    /// Boolean value (true or false).
+    ///
+    /// Corresponds to Rust's `bool` type.
     Bool,
-    /// Arbitrary bytes
+
+    /// Arbitrary byte sequence.
+    ///
+    /// Corresponds to Rust's `Vec<u8>` type.
     Bytes,
-    /// Relation-valued attribute type
+
+    /// Relation-valued attribute (RVA) type.
+    ///
+    /// Contains a nested relation, enabling hierarchical data modeling.
+    /// The boxed `RelationType` specifies the heading of the nested relation.
     Relation(Box<crate::types::RelationType>),
-    /// User-defined type with a name and base representation type.
-    /// TTM: This implements POSSREP (possible representation) pattern.
-    /// The name provides type identity, the representation provides storage.
+
+    /// User-defined scalar type.
+    ///
+    /// Implements the POSSREP (possible representation) pattern from TTM.
+    /// The type has a unique name (providing type identity) and a base
+    /// representation type (defining storage and valid values).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::ScalarType;
+    ///
+    /// let currency = ScalarType::user_defined("Currency", ScalarType::Float);
+    /// assert_eq!(currency.name(), "Currency");
+    /// ```
     UserDefined {
+        /// The unique name identifying this type.
         name: String,
+        /// The underlying representation type.
         representation: Box<ScalarType>,
     },
 }

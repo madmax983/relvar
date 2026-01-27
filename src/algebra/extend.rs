@@ -1,16 +1,87 @@
+//! Extend operator for adding computed attributes.
+//!
+//! The extend operator adds a new computed attribute to each tuple in a relation.
+//! The new attribute's value is computed from the existing attribute values
+//! using a user-provided function.
+//!
+//! # TTM Compliance
+//!
+//! - Result is a valid relation with an extended heading
+//! - New attribute must not conflict with existing attribute names
+//! - Set semantics are maintained
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::{Relation, ScalarValue};
+//! use relvar::algebra::extend::ExtendOps;
+//! use relvar::tuple;
+//!
+//! let heading = TupleType::new()
+//!     .with_attribute("price", ScalarType::Int)
+//!     .with_attribute("quantity", ScalarType::Int);
+//!
+//! let mut relation = Relation::new(RelationType::new(heading));
+//! relation.insert(tuple! { price: 10i64, quantity: 5i64 }).unwrap();
+//!
+//! // Add a computed "total" attribute
+//! let result = relation.extend("total", ScalarType::Int, |t| {
+//!     let price = t.get_typed::<i64>("price").unwrap();
+//!     let quantity = t.get_typed::<i64>("quantity").unwrap();
+//!     ScalarValue::Int(price * quantity)
+//! }).unwrap();
+//!
+//! assert_eq!(result.degree(), 3);  // price, quantity, total
+//! ```
+
 use crate::values::{Relation, ScalarValue, Tuple};
 use thiserror::Error;
 
+/// Errors that can occur during extend operations.
 #[derive(Debug, Error)]
 pub enum ExtendError {
+    /// The new attribute name conflicts with an existing attribute.
+    ///
+    /// Each attribute in a relation must have a unique name. Use rename
+    /// first if you need to replace an existing attribute.
     #[error("Attribute '{0}' already exists in relation")]
     AttributeExists(String),
+
+    /// Failed to create a tuple with the extended attributes.
+    ///
+    /// This can occur if the computed value type doesn't match the
+    /// declared result type.
     #[error("Failed to create extended tuple: {0}")]
     TupleCreation(String),
 }
 
+/// Trait providing the extend operation for relations.
+///
+/// This trait defines the `extend` method which adds computed attributes
+/// to relations. It is implemented for [`Relation`].
 pub trait ExtendOps {
-    /// Extend the relation with a new computed attribute
+    /// Extends the relation with a new computed attribute.
+    ///
+    /// This operator adds a new attribute to each tuple, where the value
+    /// is computed from the tuple's existing attribute values using the
+    /// provided function.
+    ///
+    /// # Arguments
+    ///
+    /// * `attr_name` - The name for the new attribute (must not already exist)
+    /// * `attr_type` - The scalar type of the new attribute
+    /// * `compute` - A function that computes the new attribute value from
+    ///   each tuple
+    ///
+    /// # Returns
+    ///
+    /// A new relation with the additional computed attribute.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExtendError::AttributeExists`] if an attribute with the
+    /// given name already exists in the relation.
     fn extend<F>(
         &self,
         attr_name: &str,
