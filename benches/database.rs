@@ -395,6 +395,77 @@ fn bench_realistic_workload(c: &mut Criterion) {
     group.finish();
 }
 
+// =============================================================================
+// View Benchmarks (TTM RM Prescription 10)
+// =============================================================================
+
+/// Helper to create a database with an EMP relvar pre-populated with data
+fn create_populated_database(count: usize) -> (TempDir, Database) {
+    let (_temp_dir, mut db) = create_database_with_relvar();
+    for i in 0..count {
+        let tuple = tuple! {
+            emp_id: i as i64,
+            name: format!("Employee_{}", i),
+            dept_id: (i % 10) as i64,
+            salary: 50000.0 + (i as f64 * 1000.0)
+        };
+        db.insert("EMP", tuple).unwrap();
+    }
+    (_temp_dir, db)
+}
+
+/// Benchmark view creation
+fn bench_view_creation(c: &mut Criterion) {
+    let mut group = c.benchmark_group("view_creation");
+
+    group.bench_function("create_simple_view", |b| {
+        b.iter_batched(
+            || create_populated_database(100),
+            |(_temp_dir, mut db)| {
+                db.create_view("HIGH_EARNERS", |db| {
+                    Ok(db
+                        .query("EMP")?
+                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
+                })
+                .unwrap();
+                black_box(db);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.finish();
+}
+
+/// Benchmark view query (re-evaluation)
+fn bench_view_query(c: &mut Criterion) {
+    let mut group = c.benchmark_group("view_query");
+
+    for count in [100, 500, 1000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(
+            BenchmarkId::new("restrict_view", count),
+            count,
+            |b, &count| {
+                let (_temp_dir, mut db) = create_populated_database(count);
+                db.create_view("HIGH_EARNERS", |db| {
+                    Ok(db
+                        .query("EMP")?
+                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
+                })
+                .unwrap();
+
+                b.iter(|| {
+                    let result = db.query("HIGH_EARNERS").unwrap();
+                    black_box(result);
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_database_open,
@@ -406,6 +477,9 @@ criterion_group!(
     bench_delete,
     bench_update,
     bench_transaction,
-    bench_realistic_workload
+    bench_realistic_workload,
+    // View benchmarks (TTM RM Prescription 10)
+    bench_view_creation,
+    bench_view_query
 );
 criterion_main!(benches);
