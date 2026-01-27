@@ -1927,4 +1927,66 @@ mod tests {
         assert_eq!(result.cardinality(), 2);
         assert_eq!(result.degree(), 4);
     }
+
+    #[test]
+    fn test_virtual_relvar_evaluation_error_preserves_definition() {
+        // Verifies that if a virtual relvar's definition returns an error,
+        // the virtual relvar is still preserved and can be queried again.
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create a virtual relvar that queries a non-existent base relvar
+        db.create_virtual_relvar("BAD_VIRTUAL", |db| db.query("NONEXISTENT"))
+            .unwrap();
+
+        // First query fails (NONEXISTENT doesn't exist)
+        let result = db.query("BAD_VIRTUAL");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::RelationNotFound(_)
+        ));
+
+        // Virtual relvar should still exist after the error
+        assert!(db.virtual_relvar_exists("BAD_VIRTUAL"));
+
+        // Can query it again (still fails, but proves definition wasn't lost)
+        let result2 = db.query("BAD_VIRTUAL");
+        assert!(result2.is_err());
+    }
+
+    #[test]
+    fn test_drop_relvar_breaks_dependent_virtual_relvar() {
+        // Verifies behavior when a base relvar is dropped while a virtual relvar depends on it.
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        db.create_relvar("EMP", RelationType::new(tuple_type))
+            .unwrap();
+
+        db.insert("EMP", tuple! { id: 1i64 }).unwrap();
+
+        // Create a virtual relvar that depends on EMP
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
+
+        // Virtual relvar works initially
+        let result = db.query("EMP_VIRTUAL").unwrap();
+        assert_eq!(result.cardinality(), 1);
+
+        // Drop the base relvar
+        db.drop_relvar("EMP").unwrap();
+
+        // Virtual relvar still exists
+        assert!(db.virtual_relvar_exists("EMP_VIRTUAL"));
+
+        // But querying it now fails because EMP no longer exists
+        let result = db.query("EMP_VIRTUAL");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::RelationNotFound(_)
+        ));
+    }
 }

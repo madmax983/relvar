@@ -447,18 +447,25 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
             BenchmarkId::new("restrict_virtual_relvar", count),
             count,
             |b, &count| {
-                let (_temp_dir, mut db) = create_populated_database(count);
-                db.create_virtual_relvar("HIGH_EARNERS", |db| {
-                    Ok(db
-                        .query("EMP")?
-                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
-                })
-                .unwrap();
-
-                b.iter(|| {
-                    let result = db.query("HIGH_EARNERS").unwrap();
-                    black_box(result);
-                });
+                b.iter_batched(
+                    || {
+                        // Setup: create database with data and virtual relvar
+                        let (_temp_dir, mut db) = create_populated_database(count);
+                        db.create_virtual_relvar("HIGH_EARNERS", |db| {
+                            Ok(db
+                                .query("EMP")?
+                                .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
+                        })
+                        .unwrap();
+                        (_temp_dir, db)
+                    },
+                    |(_temp_dir, mut db)| {
+                        // Measured: just the virtual relvar query
+                        let result = db.query("HIGH_EARNERS").unwrap();
+                        black_box(result);
+                    },
+                    BatchSize::SmallInput,
+                );
             },
         );
     }
