@@ -66,9 +66,16 @@ pub mod btree;
 pub mod catalog;
 pub mod heap;
 pub mod page;
+pub mod system_relvars;
+pub mod type_serializer;
 
 pub use btree::{BTreeIndex, BTreeIndexError};
 pub use catalog::{Catalog, CatalogError};
 pub use heap::{HeapError, HeapFile};
 // TupleId is now pub(crate) in heap.rs, not exported
 pub use page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
+pub use system_relvars::{
+    SYS_ATTRIBUTES, SYS_CONSTRAINTS, SYS_RELVARS, is_system_relvar, sys_attributes_type,
+    sys_constraints_type, sys_relvars_type,
+};
+pub use type_serializer::{TypeSerializerError, deserialize_scalar_type, serialize_scalar_type};

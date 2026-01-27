@@ -50,7 +50,12 @@
 //! ```
 
 use crate::constraints::{AttributeConstraints, ForeignKey, ForeignKeyConstraints, KeyConstraints};
-use crate::storage::{BTreeIndex, Catalog, CatalogError, HeapError, HeapFile};
+use crate::storage::{
+    BTreeIndex, Catalog, CatalogError, HeapError, HeapFile, SYS_ATTRIBUTES, SYS_CONSTRAINTS,
+    SYS_RELVARS, is_system_relvar, serialize_scalar_type, sys_attributes_type,
+    sys_constraints_type, sys_relvars_type,
+};
+use crate::tuple;
 use crate::types::RelationType;
 use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
@@ -151,6 +156,19 @@ pub enum DatabaseError {
     /// Modifications must be made to the underlying base relvars.
     #[error("Cannot modify virtual relvar {0}: virtual relvars are read-only")]
     CannotModifyVirtualRelvar(String),
+
+    /// The SYS_ prefix is reserved for system relvars.
+    ///
+    /// TTM: RM Prescription 12 - System catalog relvars use the SYS_ prefix.
+    /// User-defined relvars cannot use this reserved prefix.
+    #[error("Relvar name {0} uses reserved SYS_ prefix")]
+    SystemRelvarReserved(String),
+
+    /// Cannot drop a system relvar.
+    ///
+    /// TTM: RM Prescription 12 - System catalog relvars cannot be dropped.
+    #[error("Cannot drop system relvar {0}: system relvars are protected")]
+    CannotDropSystemRelvar(String),
 }
 
 /// Type alias for virtual relvar definition functions.
@@ -297,7 +315,7 @@ impl Database {
             cat
         };
 
-        Ok(Self {
+        let mut db = Self {
             db_path,
             catalog,
             catalog_path,
@@ -309,7 +327,12 @@ impl Database {
             in_transaction: false,
             savepoint: None,
             virtual_relvars: HashMap::new(),
-        })
+        };
+
+        // Register system catalog relvars
+        db.register_system_relvars();
+
+        Ok(db)
     }
 
     /// Creates a new relation (base relvar) in the database.
@@ -347,6 +370,11 @@ impl Database {
         name: &str,
         relation_type: RelationType,
     ) -> Result<(), DatabaseError> {
+        // Check if name uses reserved SYS_ prefix
+        if is_system_relvar(name) {
+            return Err(DatabaseError::SystemRelvarReserved(name.to_string()));
+        }
+
         // Check if relation already exists
         if self.catalog.get_relation(name).is_ok() {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -392,6 +420,11 @@ impl Database {
     /// This operation is irreversible outside of a transaction. All data in
     /// the relation will be permanently deleted.
     pub fn drop_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
+        // Protect system relvars from being dropped
+        if is_system_relvar(name) {
+            return Err(DatabaseError::CannotDropSystemRelvar(name.to_string()));
+        }
+
         if self.catalog.get_relation(name).is_err() {
             return Err(DatabaseError::RelationNotFound(name.to_string()));
         }
@@ -476,6 +509,11 @@ impl Database {
     where
         F: Fn(&mut Database) -> Result<Relation, DatabaseError> + Send + Sync + 'static,
     {
+        // Check if name uses reserved SYS_ prefix
+        if is_system_relvar(name) {
+            return Err(DatabaseError::SystemRelvarReserved(name.to_string()));
+        }
+
         // Check if a base relvar with this name exists
         if self.catalog.get_relation(name).is_ok() {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -503,6 +541,11 @@ impl Database {
     /// Returns [`DatabaseError::VirtualRelvarNotFound`] if no virtual relvar with
     /// the given name exists.
     pub fn drop_virtual_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
+        // Protect system relvars from being dropped
+        if is_system_relvar(name) {
+            return Err(DatabaseError::CannotDropSystemRelvar(name.to_string()));
+        }
+
         if self.virtual_relvars.remove(name).is_none() {
             return Err(DatabaseError::VirtualRelvarNotFound(name.to_string()));
         }
@@ -887,6 +930,173 @@ impl Database {
         self.virtual_relvars.insert(name.to_string(), definition);
 
         result
+    }
+
+    /// Registers system catalog relvars as virtual relvars.
+    ///
+    /// TTM: RM Prescription 12 - The system catalog is relational.
+    /// System relvars are virtual relvars that compute their content from internal
+    /// metadata structures.
+    ///
+    /// This method is called during database initialization to set up the three
+    /// system relvars: SYS_RELVARS, SYS_ATTRIBUTES, and SYS_CONSTRAINTS.
+    ///
+    /// Note: This bypasses the is_system_relvar() check by directly inserting into
+    /// the virtual_relvars map, since system relvars themselves use the SYS_ prefix.
+    fn register_system_relvars(&mut self) {
+        // Register SYS_RELVARS
+        self.virtual_relvars.insert(
+            SYS_RELVARS.to_string(),
+            Box::new(|db: &mut Database| db.build_sys_relvars()),
+        );
+
+        // Register SYS_ATTRIBUTES
+        self.virtual_relvars.insert(
+            SYS_ATTRIBUTES.to_string(),
+            Box::new(|db: &mut Database| db.build_sys_attributes()),
+        );
+
+        // Register SYS_CONSTRAINTS
+        self.virtual_relvars.insert(
+            SYS_CONSTRAINTS.to_string(),
+            Box::new(|db: &mut Database| db.build_sys_constraints()),
+        );
+    }
+
+    /// Builds the SYS_RELVARS system catalog relation.
+    ///
+    /// Returns a relation containing one tuple for each relvar (base or virtual)
+    /// in the database.
+    fn build_sys_relvars(&self) -> Result<Relation, DatabaseError> {
+        let mut relation = Relation::new(sys_relvars_type());
+
+        // Add base relvars from catalog
+        for rel_name in self.catalog.list_relations() {
+            if let Ok(metadata) = self.catalog.get_relation(&rel_name) {
+                let tuple = tuple! {
+                    relvar_name: rel_name.clone(),
+                    relvar_type: "BASE",
+                    heap_file_path: metadata.heap_file_path.to_string_lossy().to_string()
+                };
+                relation.insert(tuple)?;
+            }
+        }
+
+        // Add virtual relvars (including system relvars)
+        // Note: The system relvar being queried may not be in the map temporarily
+        // (due to query_virtual_relvar removing it), so we explicitly add all system relvars
+        let system_relvars = vec![SYS_RELVARS, SYS_ATTRIBUTES, SYS_CONSTRAINTS];
+        for sys_relvar in &system_relvars {
+            let tuple = tuple! {
+                relvar_name: sys_relvar.to_string(),
+                relvar_type: "VIRTUAL",
+                heap_file_path: ""
+            };
+            relation.insert(tuple)?;
+        }
+
+        // Add other virtual relvars (non-system)
+        for virtual_rel_name in self.virtual_relvars.keys() {
+            if !is_system_relvar(virtual_rel_name) {
+                let tuple = tuple! {
+                    relvar_name: virtual_rel_name.clone(),
+                    relvar_type: "VIRTUAL",
+                    heap_file_path: ""
+                };
+                relation.insert(tuple)?;
+            }
+        }
+
+        Ok(relation)
+    }
+
+    /// Builds the SYS_ATTRIBUTES system catalog relation.
+    ///
+    /// Returns a relation containing one tuple for each attribute in each relvar.
+    fn build_sys_attributes(&self) -> Result<Relation, DatabaseError> {
+        let mut relation = Relation::new(sys_attributes_type());
+
+        // Add attributes from base relvars
+        for rel_name in self.catalog.list_relations() {
+            if let Ok(metadata) = self.catalog.get_relation(&rel_name) {
+                let attributes = metadata.relation_type.heading().attributes();
+                for (position, (attr_name, attr_type)) in attributes.iter().enumerate() {
+                    let tuple = tuple! {
+                        relvar_name: rel_name.clone(),
+                        attr_name: attr_name.clone(),
+                        attr_type: serialize_scalar_type(attr_type),
+                        attr_position: position as i64
+                    };
+                    relation.insert(tuple)?;
+                }
+            }
+        }
+
+        // Add attributes from virtual relvars
+        // We need to query each virtual relvar to get its schema
+        // However, we can't call self.query() here because we're already borrowed
+        // For now, we'll skip virtual relvar attributes or add them later
+        // A full implementation would cache the schema separately
+
+        Ok(relation)
+    }
+
+    /// Builds the SYS_CONSTRAINTS system catalog relation.
+    ///
+    /// Returns a relation containing one tuple for each constraint in the database.
+    fn build_sys_constraints(&self) -> Result<Relation, DatabaseError> {
+        let mut relation = Relation::new(sys_constraints_type());
+
+        // Add primary key constraints
+        for (rel_name, key_constraints) in &self.key_constraints {
+            if let Some(pk) = key_constraints.primary_key() {
+                let attrs = pk.attributes().join(",");
+                let tuple = tuple! {
+                    relvar_name: rel_name.clone(),
+                    constraint_name: format!("{}_pk", rel_name),
+                    constraint_type: "PRIMARY_KEY",
+                    constraint_def: format!("PRIMARY KEY ({})", attrs)
+                };
+                relation.insert(tuple)?;
+            }
+
+            // Add candidate key constraints
+            for (i, ck) in key_constraints.candidate_keys().iter().enumerate() {
+                let attrs = ck.attributes().join(",");
+                let tuple = tuple! {
+                    relvar_name: rel_name.clone(),
+                    constraint_name: format!("{}_ck_{}", rel_name, i),
+                    constraint_type: "CANDIDATE_KEY",
+                    constraint_def: format!("CANDIDATE KEY ({})", attrs)
+                };
+                relation.insert(tuple)?;
+            }
+        }
+
+        // Add foreign key constraints
+        for (rel_name, fk_constraints) in &self.foreign_key_constraints {
+            for (i, fk) in fk_constraints.foreign_keys().iter().enumerate() {
+                let local_attrs = fk.foreign_key_attributes().join(",");
+                let foreign_attrs = fk.referenced_attributes().join(",");
+                let tuple = tuple! {
+                    relvar_name: rel_name.clone(),
+                    constraint_name: format!("{}_fk_{}", rel_name, i),
+                    constraint_type: "FOREIGN_KEY",
+                    constraint_def: format!(
+                        "FOREIGN KEY ({}) REFERENCES {} ({})",
+                        local_attrs,
+                        fk.referenced_relation_name(),
+                        foreign_attrs
+                    )
+                };
+                relation.insert(tuple)?;
+            }
+        }
+
+        // Type constraints would be added here if we exposed them in the HashMap
+        // For now, we skip them as they're stored per-attribute
+
+        Ok(relation)
     }
 
     /// Deletes tuples matching a predicate from a relation.
@@ -1988,5 +2198,345 @@ mod tests {
             result.unwrap_err(),
             DatabaseError::RelationNotFound(_)
         ));
+    }
+
+    // ====================================================================================
+    // System Catalog Tests (TTM RM Prescription 12 - Relational System Catalog)
+    // ====================================================================================
+
+    #[test]
+    fn test_sys_prefix_reserved_for_create_relvar() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        let relation_type = RelationType::new(tuple_type);
+
+        // Should reject SYS_ prefix
+        let result = db.create_relvar("SYS_MY_RELVAR", relation_type);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::SystemRelvarReserved(_)
+        ));
+    }
+
+    #[test]
+    fn test_sys_prefix_reserved_for_create_virtual_relvar() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Should reject SYS_ prefix
+        let result = db.create_virtual_relvar("SYS_MY_VIRTUAL", |_db| {
+            Ok(Relation::new(sys_relvars_type()))
+        });
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::SystemRelvarReserved(_)
+        ));
+    }
+
+    #[test]
+    fn test_cannot_drop_sys_relvars() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Should not be able to drop system relvars
+        let result = db.drop_relvar(SYS_RELVARS);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotDropSystemRelvar(_)
+        ));
+
+        let result = db.drop_virtual_relvar(SYS_RELVARS);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotDropSystemRelvar(_)
+        ));
+    }
+
+    #[test]
+    fn test_cannot_insert_into_sys_relvars() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // System relvars are virtual, so insert should fail
+        let result = db.insert(
+            SYS_RELVARS,
+            tuple! {
+                relvar_name: "TEST",
+                relvar_type: "BASE",
+                heap_file_path: "test.heap"
+            },
+        );
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyVirtualRelvar(_)
+        ));
+    }
+
+    #[test]
+    fn test_cannot_delete_from_sys_relvars() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // System relvars are virtual, so delete should fail
+        let result = db.delete(SYS_RELVARS, |_| true);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyVirtualRelvar(_)
+        ));
+    }
+
+    #[test]
+    fn test_cannot_update_sys_relvars() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // System relvars are virtual, so update should fail
+        let result = db.update(SYS_RELVARS, |_| true, |_| {});
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyVirtualRelvar(_)
+        ));
+    }
+
+    #[test]
+    fn test_query_sys_relvars_lists_base_relvars() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create a base relvar
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        db.create_relvar("EMP", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Query SYS_RELVARS
+        let sys_relvars = db.query(SYS_RELVARS).unwrap();
+
+        // Should contain EMP and the three system relvars
+        assert!(sys_relvars.cardinality() >= 4);
+
+        // Check that EMP is in the result
+        let emp_tuples: Vec<_> = sys_relvars
+            .tuples()
+            .filter(|t| t.get_typed::<String>("relvar_name").unwrap() == "EMP")
+            .collect();
+        assert_eq!(emp_tuples.len(), 1);
+
+        let emp_tuple = emp_tuples[0];
+        assert_eq!(
+            emp_tuple.get_typed::<String>("relvar_type").unwrap(),
+            "BASE"
+        );
+        assert!(
+            emp_tuple
+                .get_typed::<String>("heap_file_path")
+                .unwrap()
+                .ends_with("EMP.heap")
+        );
+    }
+
+    #[test]
+    fn test_query_sys_relvars_lists_virtual_relvars() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create a base relvar
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        db.create_relvar("EMP", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Create a virtual relvar
+        db.create_virtual_relvar("EMP_VIEW", |db| db.query("EMP"))
+            .unwrap();
+
+        // Query SYS_RELVARS
+        let sys_relvars = db.query(SYS_RELVARS).unwrap();
+
+        // Check that EMP_VIEW is in the result
+        let view_tuples: Vec<_> = sys_relvars
+            .tuples()
+            .filter(|t| t.get_typed::<String>("relvar_name").unwrap() == "EMP_VIEW")
+            .collect();
+        assert_eq!(view_tuples.len(), 1);
+
+        let view_tuple = view_tuples[0];
+        assert_eq!(
+            view_tuple.get_typed::<String>("relvar_type").unwrap(),
+            "VIRTUAL"
+        );
+        assert_eq!(
+            view_tuple.get_typed::<String>("heap_file_path").unwrap(),
+            ""
+        );
+    }
+
+    #[test]
+    fn test_query_sys_attributes_lists_attributes() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create a relvar with multiple attributes
+        let tuple_type = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String)
+            .with_attribute("salary".to_string(), ScalarType::Float);
+        db.create_relvar("EMP", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Query SYS_ATTRIBUTES
+        let sys_attrs = db.query(SYS_ATTRIBUTES).unwrap();
+
+        // Filter for EMP attributes
+        let emp_attrs: Vec<_> = sys_attrs
+            .tuples()
+            .filter(|t| t.get_typed::<String>("relvar_name").unwrap() == "EMP")
+            .collect();
+
+        // Should have 3 attributes
+        assert_eq!(emp_attrs.len(), 3);
+
+        // Check that all attribute names are present
+        let attr_names: Vec<String> = emp_attrs
+            .iter()
+            .map(|t| t.get_typed::<String>("attr_name").unwrap())
+            .collect();
+        assert!(attr_names.contains(&"emp_id".to_string()));
+        assert!(attr_names.contains(&"name".to_string()));
+        assert!(attr_names.contains(&"salary".to_string()));
+    }
+
+    #[test]
+    fn test_sys_relvars_reflects_create_relvar() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Check initial count
+        let initial = db.query(SYS_RELVARS).unwrap();
+        let initial_count = initial.cardinality();
+
+        // Create a relvar
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        db.create_relvar("TEST", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Check that SYS_RELVARS reflects the change
+        let after = db.query(SYS_RELVARS).unwrap();
+        assert_eq!(after.cardinality(), initial_count + 1);
+
+        // Verify TEST is present
+        let test_tuples: Vec<_> = after
+            .tuples()
+            .filter(|t| t.get_typed::<String>("relvar_name").unwrap() == "TEST")
+            .collect();
+        assert_eq!(test_tuples.len(), 1);
+    }
+
+    #[test]
+    fn test_sys_relvars_reflects_drop_relvar() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create a relvar
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        db.create_relvar("TEMP", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Check count after creation
+        let after_create = db.query(SYS_RELVARS).unwrap();
+        let count_after_create = after_create.cardinality();
+
+        // Drop the relvar
+        db.drop_relvar("TEMP").unwrap();
+
+        // Check that SYS_RELVARS reflects the change
+        let after_drop = db.query(SYS_RELVARS).unwrap();
+        assert_eq!(after_drop.cardinality(), count_after_create - 1);
+
+        // Verify TEMP is not present
+        let temp_tuples: Vec<_> = after_drop
+            .tuples()
+            .filter(|t| t.get_typed::<String>("relvar_name").unwrap() == "TEMP")
+            .collect();
+        assert_eq!(temp_tuples.len(), 0);
+    }
+
+    #[test]
+    fn test_restrict_on_sys_relvars() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create some relvars
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        db.create_relvar("EMP", RelationType::new(tuple_type.clone()))
+            .unwrap();
+        db.create_relvar("DEPT", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Query and restrict
+        let base_relvars = db
+            .query(SYS_RELVARS)
+            .unwrap()
+            .restrict(|t| t.get_typed::<String>("relvar_type").unwrap() == "BASE");
+
+        // Should have at least EMP and DEPT
+        assert!(base_relvars.cardinality() >= 2);
+
+        // All should be BASE type
+        for tuple in base_relvars.tuples() {
+            assert_eq!(tuple.get_typed::<String>("relvar_type").unwrap(), "BASE");
+        }
+    }
+
+    #[test]
+    fn test_project_on_sys_attributes() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        db.create_relvar("EMP", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Project to just attribute names for EMP
+        let attr_names = db
+            .query(SYS_ATTRIBUTES)
+            .unwrap()
+            .restrict(|t| t.get_typed::<String>("relvar_name").unwrap() == "EMP")
+            .project(&["attr_name"]);
+
+        // Should have 2 tuples (id and name)
+        assert_eq!(attr_names.cardinality(), 2);
+        assert_eq!(attr_names.degree(), 1);
+    }
+
+    #[test]
+    fn test_join_sys_relvars_and_sys_attributes() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        db.create_relvar("TEST", RelationType::new(tuple_type))
+            .unwrap();
+
+        // Join SYS_RELVARS and SYS_ATTRIBUTES on relvar_name
+        let relvars = db.query(SYS_RELVARS).unwrap();
+        let attributes = db.query(SYS_ATTRIBUTES).unwrap();
+
+        let joined = relvars.join(&attributes);
+
+        // Should have combined schema
+        assert!(joined.relation_type().has_attribute("relvar_name"));
+        assert!(joined.relation_type().has_attribute("relvar_type"));
+        assert!(joined.relation_type().has_attribute("attr_name"));
+        assert!(joined.relation_type().has_attribute("attr_type"));
     }
 }
