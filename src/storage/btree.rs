@@ -1,3 +1,47 @@
+//! B-tree index for efficient key-based tuple lookup.
+//!
+//! This module provides a B-tree index that maps scalar key values to tuples.
+//! It supports point lookups, range scans, and persistence to disk.
+//!
+//! # TTM Compliance
+//!
+//! This index stores full tuples rather than TupleId references, complying
+//! with TTM Proscription 6: "The database must not generate or expose
+//! tuple-level identifiers."
+//!
+//! From the relational perspective, tuples are identified by their attribute
+//! values (keys), not by physical storage locations.
+//!
+//! # Implementation Note
+//!
+//! This is a simplified implementation using Rust's `BTreeMap`. Production
+//! systems would implement a proper on-disk B-tree with:
+//! - Page-based storage
+//! - Split and merge operations
+//! - Write-ahead logging
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::storage::BTreeIndex;
+//! use relvar::values::ScalarValue;
+//! use relvar::tuple;
+//!
+//! let mut index = BTreeIndex::new();
+//!
+//! // Insert key-tuple pairs
+//! index.insert(ScalarValue::Int(1), tuple! { id: 1i64, name: "Alice" });
+//! index.insert(ScalarValue::Int(2), tuple! { id: 2i64, name: "Bob" });
+//!
+//! // Point lookup
+//! let results = index.search(&ScalarValue::Int(1)).unwrap();
+//! assert_eq!(results.len(), 1);
+//!
+//! // Range scan
+//! let range = index.range_scan(&ScalarValue::Int(1), &ScalarValue::Int(2));
+//! assert_eq!(range.len(), 2);
+//! ```
+
 use crate::values::{ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -6,23 +50,37 @@ use std::io::{Read, Write};
 use std::path::Path;
 use thiserror::Error;
 
+/// Errors that can occur during B-tree index operations.
 #[derive(Debug, Error)]
 pub enum BTreeIndexError {
+    /// An I/O error occurred while reading or writing the index.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Serialization or deserialization of the index failed.
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    /// The requested key was not found in the index.
     #[error("Key not found")]
     KeyNotFound,
 }
 
-/// A B-tree index mapping scalar values to tuples.
+/// A B-tree index mapping scalar key values to tuples.
 ///
-/// **TTM Compliance Note:**
-/// This redesigned index stores full tuple values instead of TupleId references
-/// to comply with TTM Proscription 6 (no tuple-level identifiers).
+/// This index provides O(log n) lookup, insertion, and deletion. Multiple
+/// tuples can share the same key value (non-unique index). The index
+/// maintains keys in sorted order, enabling efficient range scans.
 ///
-/// **Design Tradeoffs:**
+/// # TTM Compliance
+///
+/// This index stores full tuple values instead of TupleId references,
+/// complying with TTM Proscription 6 (no tuple-level identifiers).
+/// From the relational perspective, tuples are identified by their
+/// attribute values, not by physical storage locations.
+///
+/// # Design Tradeoffs
+///
 /// - **Memory overhead:** Tuples are duplicated in both heap and indexes
 /// - **Consistency:** Indexes must be updated when heap tuples change (not yet implemented)
 /// - **Benefit:** No exposure of physical storage identifiers; pure value-based indexing
@@ -38,30 +96,101 @@ pub enum BTreeIndexError {
 ///
 /// **Implementation:** Simplified in-memory BTreeMap. Production systems would
 /// implement proper on-disk B-tree with more sophisticated storage strategies.
+///
+/// # Example
+///
+/// ```
+/// use relvar::storage::BTreeIndex;
+/// use relvar::values::ScalarValue;
+/// use relvar::tuple;
+///
+/// let mut index = BTreeIndex::new();
+///
+/// // Index supports duplicate keys
+/// index.insert(ScalarValue::String("Sales".to_string()),
+///              tuple! { id: 1i64, dept: "Sales" });
+/// index.insert(ScalarValue::String("Sales".to_string()),
+///              tuple! { id: 2i64, dept: "Sales" });
+///
+/// // Search returns all matching tuples
+/// let results = index.search(&ScalarValue::String("Sales".to_string())).unwrap();
+/// assert_eq!(results.len(), 2);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BTreeIndex {
-    /// Map from key value to list of tuples
+    /// Map from key value to list of tuples with that key.
     index: BTreeMap<ScalarValue, Vec<Tuple>>,
 }
 
 impl BTreeIndex {
+    /// Creates a new empty B-tree index.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::storage::BTreeIndex;
+    ///
+    /// let index = BTreeIndex::new();
+    /// assert!(index.is_empty());
+    /// ```
     pub fn new() -> Self {
         Self {
             index: BTreeMap::new(),
         }
     }
 
-    /// Insert a key-tuple pair
+    /// Inserts a key-tuple pair into the index.
+    ///
+    /// Multiple tuples can be associated with the same key. This is useful
+    /// for non-unique indexes (e.g., indexing by department name).
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key value to index by
+    /// * `tuple` - The tuple to associate with this key
     pub fn insert(&mut self, key: ScalarValue, tuple: Tuple) {
         self.index.entry(key).or_default().push(tuple);
     }
 
-    /// Search for a key and return all matching tuples
+    /// Searches for all tuples with the given key.
+    ///
+    /// Returns `None` if no tuples match the key, or `Some(&[Tuple])`
+    /// containing all matching tuples.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key value to search for
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::storage::BTreeIndex;
+    /// use relvar::values::ScalarValue;
+    /// use relvar::tuple;
+    ///
+    /// let mut index = BTreeIndex::new();
+    /// index.insert(ScalarValue::Int(42), tuple! { id: 42i64, name: "Answer" });
+    ///
+    /// assert!(index.search(&ScalarValue::Int(42)).is_some());
+    /// assert!(index.search(&ScalarValue::Int(0)).is_none());
+    /// ```
     pub fn search(&self, key: &ScalarValue) -> Option<&[Tuple]> {
         self.index.get(key).map(|v| v.as_slice())
     }
 
-    /// Remove a specific tuple for a key
+    /// Removes a specific tuple for a key.
+    ///
+    /// If the key has multiple tuples, only the matching tuple is removed.
+    /// If this was the last tuple for the key, the key is also removed.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to look up
+    /// * `tuple` - The specific tuple to remove
+    ///
+    /// # Returns
+    ///
+    /// `true` if the tuple was found and removed, `false` otherwise.
     pub fn remove(&mut self, key: &ScalarValue, tuple: &Tuple) -> bool {
         if let Some(tuples) = self.index.get_mut(key)
             && let Some(pos) = tuples.iter().position(|t| t == tuple)
@@ -75,12 +204,46 @@ impl BTreeIndex {
         false
     }
 
-    /// Delete all entries for a key
+    /// Deletes all entries for a key.
+    ///
+    /// Removes the key and all associated tuples from the index.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to delete
+    ///
+    /// # Returns
+    ///
+    /// `true` if the key existed and was deleted, `false` otherwise.
     pub fn delete(&mut self, key: &ScalarValue) -> bool {
         self.index.remove(key).is_some()
     }
 
-    /// Range scan: find all keys in [start, end]
+    /// Performs a range scan for keys in the inclusive range `[start, end]`.
+    ///
+    /// Returns all (key, tuple) pairs where `start <= key <= end`, in
+    /// sorted order by key.
+    ///
+    /// # Arguments
+    ///
+    /// * `start` - The lower bound of the range (inclusive)
+    /// * `end` - The upper bound of the range (inclusive)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::storage::BTreeIndex;
+    /// use relvar::values::ScalarValue;
+    /// use relvar::tuple;
+    ///
+    /// let mut index = BTreeIndex::new();
+    /// index.insert(ScalarValue::Int(10), tuple! { id: 10i64 });
+    /// index.insert(ScalarValue::Int(20), tuple! { id: 20i64 });
+    /// index.insert(ScalarValue::Int(30), tuple! { id: 30i64 });
+    ///
+    /// let results = index.range_scan(&ScalarValue::Int(15), &ScalarValue::Int(25));
+    /// assert_eq!(results.len(), 1); // Only key 20 is in range
+    /// ```
     pub fn range_scan(&self, start: &ScalarValue, end: &ScalarValue) -> Vec<(ScalarValue, Tuple)> {
         let mut results = Vec::new();
         for (key, tuples) in self.index.range(start.clone()..=end.clone()) {
@@ -96,18 +259,31 @@ impl BTreeIndex {
         results
     }
 
+    /// Returns the number of unique keys in the index.
     pub fn key_count(&self) -> usize {
         self.index.len()
     }
 
+    /// Returns the total number of tuple entries in the index.
+    ///
+    /// This may be larger than `key_count()` if keys have multiple tuples.
     pub fn entry_count(&self) -> usize {
         self.index.values().map(|v| v.len()).sum()
     }
 
+    /// Returns `true` if the index contains no entries.
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
     }
 
+    /// Saves the index to a file.
+    ///
+    /// The index is serialized using bincode and written to the specified path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BTreeIndexError::Io`] if the file cannot be written.
+    /// Returns [`BTreeIndexError::Serialization`] if serialization fails.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), BTreeIndexError> {
         let contents =
             bincode::serialize(self).map_err(|e| BTreeIndexError::Serialization(e.to_string()))?;
@@ -124,6 +300,14 @@ impl BTreeIndex {
         Ok(())
     }
 
+    /// Loads an index from a file.
+    ///
+    /// If the file is empty, returns an empty index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BTreeIndexError::Io`] if the file cannot be read.
+    /// Returns [`BTreeIndexError::Serialization`] if deserialization fails.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, BTreeIndexError> {
         let mut file = File::open(path)?;
         let mut contents = Vec::new();

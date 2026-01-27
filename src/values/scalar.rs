@@ -1,37 +1,138 @@
+//! Scalar values for the relational model.
+//!
+//! This module defines [`ScalarValue`], which represents atomic runtime values
+//! that can be stored as attribute values in tuples.
+//!
+//! # TTM Compliance
+//!
+//! - All values carry their type (introspection is possible)
+//! - No NULL values are permitted
+//! - User-defined values via POSSREP pattern (Prescription 1)
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::values::ScalarValue;
+//! use relvar::types::ScalarType;
+//!
+//! // Built-in values
+//! let age = ScalarValue::Int(42);
+//! let name = ScalarValue::String("Alice".to_string());
+//! let pi = ScalarValue::Float(3.14159);
+//! let active = ScalarValue::Bool(true);
+//!
+//! // Check types
+//! assert!(age.is_type(&ScalarType::Int));
+//! assert!(name.is_type(&ScalarType::String));
+//! ```
+
 use crate::types::ScalarType;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Errors related to scalar value operations
+/// Errors that can occur during scalar value operations.
 #[derive(Debug, Error)]
 pub enum ScalarValueError {
+    /// Attempted to use an observer on a built-in type.
+    ///
+    /// The observer operation is only valid for user-defined types.
     #[error("Cannot extract observer from built-in type")]
     NotUserDefined,
 }
 
-/// A scalar value with its type.
-/// Per Date's relational model, all values carry their type.
+/// Represents an atomic (scalar) value at runtime.
 ///
-/// TTM Prescription 1: Support for user-defined types via POSSREP pattern.
+/// Each `ScalarValue` holds data of a specific type and can report its type
+/// via the [`scalar_type()`](Self::scalar_type) method. This implements the
+/// TTM principle that all values carry their type.
+///
+/// # Built-in Value Types
+///
+/// - [`Int`](ScalarValue::Int) - 64-bit signed integer (`i64`)
+/// - [`Float`](ScalarValue::Float) - 64-bit floating point (`f64`)
+/// - [`String`](ScalarValue::String) - UTF-8 string
+/// - [`Bool`](ScalarValue::Bool) - Boolean
+/// - [`Bytes`](ScalarValue::Bytes) - Byte sequence
+///
+/// # Advanced Values
+///
+/// - [`Relation`](ScalarValue::Relation) - Nested relation (for RVAs)
+/// - [`UserDefined`](ScalarValue::UserDefined) - Custom type value
+///
+/// # Equality and Hashing
+///
+/// `ScalarValue` implements `Eq` and `Hash` to support use in sets and as
+/// hash map keys. Notably, floating-point values use bit equality, which
+/// means `NaN == NaN` (required for database set semantics).
+///
+/// # Example
+///
+/// ```
+/// use relvar::values::ScalarValue;
+/// use relvar::types::ScalarType;
+///
+/// let value = ScalarValue::Int(100);
+///
+/// // Introspect the type
+/// assert_eq!(value.scalar_type(), ScalarType::Int);
+/// assert!(value.is_type(&ScalarType::Int));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ScalarValue {
+    /// 64-bit signed integer value.
     Int(i64),
+
+    /// 64-bit floating point value.
+    ///
+    /// Uses bit equality for comparison, so `NaN == NaN` for set semantics.
     Float(f64),
+
+    /// UTF-8 string value.
     String(String),
+
+    /// Boolean value.
     Bool(bool),
+
+    /// Arbitrary byte sequence.
     Bytes(Vec<u8>),
+
+    /// Relation value (for relation-valued attributes).
+    ///
+    /// Enables nested relations within tuples.
     Relation(crate::values::Relation),
-    /// User-defined value wrapping its type definition and underlying representation.
-    /// TTM: Implements POSSREP - the value carries both its type identity
-    /// and its representation value.
+
+    /// User-defined type value.
+    ///
+    /// Implements the POSSREP pattern: the value carries both its type
+    /// identity (via `type_def`) and its representation value (via `value`).
+    ///
+    /// Use [`ScalarType::selector()`] to create user-defined values.
     UserDefined {
+        /// The type definition for this user-defined value.
         type_def: ScalarType,
+        /// The underlying representation value.
         value: Box<ScalarValue>,
     },
 }
 
 impl ScalarValue {
-    /// Returns the type of this value
+    /// Returns the scalar type of this value.
+    ///
+    /// Every value in the relational model carries its type. This method
+    /// allows introspection of the value's type at runtime.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::values::ScalarValue;
+    /// use relvar::types::ScalarType;
+    ///
+    /// let value = ScalarValue::Int(42);
+    /// assert_eq!(value.scalar_type(), ScalarType::Int);
+    ///
+    /// let value = ScalarValue::String("hello".to_string());
+    /// assert_eq!(value.scalar_type(), ScalarType::String);
+    /// ```
     pub fn scalar_type(&self) -> ScalarType {
         match self {
             ScalarValue::Int(_) => ScalarType::Int,

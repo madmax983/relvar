@@ -1,17 +1,110 @@
+//! Difference operator for set subtraction.
+//!
+//! The difference operator (also called "minus" or "except") returns tuples
+//! that are in the first relation but not in the second relation.
+//!
+//! # TTM Compliance
+//!
+//! - Relations must be type-compatible (identical headings)
+//! - Result contains tuples from first relation not in second
+//! - Set semantics are maintained
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::Relation;
+//! use relvar::tuple;
+//!
+//! let heading = TupleType::new()
+//!     .with_attribute("emp_id", ScalarType::Int)
+//!     .with_attribute("name", ScalarType::String);
+//!
+//! let rel_type = RelationType::new(heading);
+//!
+//! let mut all_employees = Relation::new(rel_type.clone());
+//! all_employees.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+//! all_employees.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+//!
+//! let mut terminated = Relation::new(rel_type);
+//! terminated.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+//!
+//! let active = all_employees.difference(&terminated).unwrap();
+//! assert_eq!(active.cardinality(), 1);  // Only Alice remains
+//! ```
+
 use crate::values::Relation;
 use thiserror::Error;
 
+/// Errors that can occur during difference operations.
 #[derive(Debug, Error)]
 pub enum DifferenceError {
+    /// The two relations have incompatible types (different headings).
+    ///
+    /// Difference requires both relations to have exactly the same heading
+    /// (attribute names and types).
     #[error("Relations must have the same type (heading) for difference")]
     TypeMismatch,
 }
 
-/// Difference operation (MINUS in SQL)
 impl Relation {
-    /// Set difference with another relation
-    /// Relations must be type-compatible (same heading)
-    /// Result contains tuples in self but not in other
+    /// Computes the set difference of this relation with another.
+    ///
+    /// This is the set difference operator from relational algebra (A - B or
+    /// A MINUS B in SQL). It produces a new relation containing only the tuples
+    /// that appear in this relation but not in the other relation.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The relation to subtract. Must have the same heading
+    ///   (type) as this relation.
+    ///
+    /// # Returns
+    ///
+    /// A new relation containing tuples that are in `self` but not in `other`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DifferenceError::TypeMismatch`] if the relations have different
+    /// headings (different attribute names or types).
+    ///
+    /// # Behavior
+    ///
+    /// - Both relations must be type-compatible (identical headings)
+    /// - Tuples present in both relations are excluded from the result
+    /// - Order matters: A - B is different from B - A
+    /// - Difference with self returns empty relation
+    /// - Difference with empty relation returns the original relation
+    ///
+    /// # Complexity
+    ///
+    /// O(n * m) where n and m are the cardinalities of the two relations,
+    /// due to tuple membership testing.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    /// use relvar::values::Relation;
+    /// use relvar::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    ///
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// let mut all = Relation::new(rel_type.clone());
+    /// all.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+    /// all.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+    /// all.insert(tuple! { emp_id: 3i64, name: "Charlie" }).unwrap();
+    ///
+    /// let mut subset = Relation::new(rel_type);
+    /// subset.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+    ///
+    /// let result = all.difference(&subset).unwrap();
+    /// assert_eq!(result.cardinality(), 2);  // Alice and Charlie
+    /// ```
     pub fn difference(&self, other: &Relation) -> Result<Self, DifferenceError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
@@ -31,7 +124,31 @@ impl Relation {
         )
     }
 
-    /// Alias for difference (more SQL-like naming)
+    /// Alias for [`difference`](Self::difference) with SQL-style naming.
+    ///
+    /// This method is identical to `difference()` but uses the SQL-style
+    /// name "minus" which some users may find more intuitive.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    /// use relvar::values::Relation;
+    /// use relvar::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int);
+    ///
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// let mut rel1 = Relation::new(rel_type.clone());
+    /// rel1.insert(tuple! { id: 1i64 }).unwrap();
+    ///
+    /// let rel2 = Relation::new(rel_type);
+    ///
+    /// let result = rel1.minus(&rel2).unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
     pub fn minus(&self, other: &Relation) -> Result<Self, DifferenceError> {
         self.difference(other)
     }

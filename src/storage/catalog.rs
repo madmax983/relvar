@@ -1,3 +1,43 @@
+//! System catalog for database metadata management.
+//!
+//! The catalog stores metadata about all relations in the database, including
+//! their names, types (headings), and storage locations. It serves as the
+//! single source of truth for database schema information.
+//!
+//! # Metadata Storage
+//!
+//! For each relation, the catalog stores:
+//! - **Name** - The unique identifier for the relation
+//! - **RelationType** - The heading (attribute names and types)
+//! - **Heap file path** - Location of the data file on disk
+//!
+//! # Example
+//!
+//! ```no_run
+//! use relvar::storage::Catalog;
+//! use relvar::types::{RelationType, TupleType, ScalarType};
+//! use std::path::PathBuf;
+//!
+//! let mut catalog = Catalog::new();
+//!
+//! // Define relation type
+//! let heading = TupleType::new()
+//!     .with_attribute("id".to_string(), ScalarType::Int)
+//!     .with_attribute("name".to_string(), ScalarType::String);
+//! let rel_type = RelationType::new(heading);
+//!
+//! // Register relation in catalog
+//! catalog.create_relation(
+//!     "employees".to_string(),
+//!     rel_type,
+//!     PathBuf::from("employees.heap"),
+//! ).unwrap();
+//!
+//! // Look up relation metadata
+//! let metadata = catalog.get_relation("employees").unwrap();
+//! assert_eq!(metadata.name, "employees");
+//! ```
+
 use crate::types::RelationType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -6,41 +46,116 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+/// Errors that can occur during catalog operations.
 #[derive(Debug, Error)]
 pub enum CatalogError {
+    /// An I/O error occurred while reading or writing the catalog.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Serialization or deserialization of the catalog failed.
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    /// The requested relation was not found in the catalog.
     #[error("Relation '{0}' not found")]
     RelationNotFound(String),
+
+    /// A relation with this name already exists.
     #[error("Relation '{0}' already exists")]
     RelationExists(String),
 }
 
-/// Metadata for a stored relation
+/// Metadata for a stored relation (relvar).
+///
+/// Contains all the information needed to locate and interpret a relation's
+/// data on disk.
+///
+/// # Fields
+///
+/// - `name` - The unique name identifying this relation
+/// - `relation_type` - The type (heading) defining attribute names and types
+/// - `heap_file_path` - Path to the heap file containing the relation's tuples
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationMetadata {
+    /// The unique name of the relation.
     pub name: String,
+    /// The relation's type (heading).
     pub relation_type: RelationType,
+    /// Path to the heap file storing the relation's data.
     pub heap_file_path: PathBuf,
 }
 
-/// System catalog stores metadata about all relations in the database
+/// The system catalog storing metadata for all relations in the database.
+///
+/// The catalog is the central registry for relation metadata. It maintains
+/// a mapping from relation names to their metadata (type and storage location).
+///
+/// # Persistence
+///
+/// The catalog can be saved to and loaded from a JSON file for persistence
+/// across database restarts.
+///
+/// # Example
+///
+/// ```no_run
+/// use relvar::storage::Catalog;
+/// use relvar::types::{RelationType, TupleType, ScalarType};
+/// use std::path::PathBuf;
+///
+/// // Create and populate catalog
+/// let mut catalog = Catalog::new();
+///
+/// let emp_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id".to_string(), ScalarType::Int)
+///         .with_attribute("name".to_string(), ScalarType::String)
+/// );
+///
+/// catalog.create_relation(
+///     "employees".to_string(),
+///     emp_type,
+///     PathBuf::from("data/employees.heap"),
+/// ).unwrap();
+///
+/// // Save to disk
+/// catalog.save("catalog.json").unwrap();
+///
+/// // Later: load from disk
+/// let loaded = Catalog::load("catalog.json").unwrap();
+/// assert!(loaded.relation_exists("employees"));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Catalog {
+    /// Map from relation name to metadata.
     relations: HashMap<String, RelationMetadata>,
 }
 
 impl Catalog {
-    /// Create a new empty catalog
+    /// Creates a new empty catalog.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::storage::Catalog;
+    ///
+    /// let catalog = Catalog::new();
+    /// assert_eq!(catalog.relation_count(), 0);
+    /// ```
     pub fn new() -> Self {
         Self {
             relations: HashMap::new(),
         }
     }
 
-    /// Load catalog from a file
+    /// Loads a catalog from a JSON file.
+    ///
+    /// If the file is empty, returns an empty catalog.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CatalogError::Io`] if the file cannot be read.
+    /// Returns [`CatalogError::Serialization`] if the JSON is invalid.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, CatalogError> {
         let mut file = File::open(path)?;
         let mut contents = String::new();
@@ -53,7 +168,14 @@ impl Catalog {
         serde_json::from_str(&contents).map_err(|e| CatalogError::Serialization(e.to_string()))
     }
 
-    /// Save catalog to a file
+    /// Saves the catalog to a JSON file.
+    ///
+    /// The file is written in pretty-printed JSON format for readability.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CatalogError::Io`] if the file cannot be written.
+    /// Returns [`CatalogError::Serialization`] if serialization fails.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), CatalogError> {
         let contents = serde_json::to_string_pretty(self)
             .map_err(|e| CatalogError::Serialization(e.to_string()))?;
@@ -70,7 +192,18 @@ impl Catalog {
         Ok(())
     }
 
-    /// Register a new relation
+    /// Registers a new relation in the catalog.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Unique name for the relation
+    /// * `relation_type` - The relation's type (heading)
+    /// * `heap_file_path` - Path where the relation's data will be stored
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CatalogError::RelationExists`] if a relation with this
+    /// name already exists.
     pub fn create_relation(
         &mut self,
         name: String,
@@ -91,31 +224,50 @@ impl Catalog {
         Ok(())
     }
 
-    /// Get metadata for a relation
+    /// Retrieves metadata for a relation by name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CatalogError::RelationNotFound`] if no relation with
+    /// this name exists.
     pub fn get_relation(&self, name: &str) -> Result<&RelationMetadata, CatalogError> {
         self.relations
             .get(name)
             .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))
     }
 
-    /// Check if a relation exists
+    /// Checks if a relation with the given name exists.
     pub fn relation_exists(&self, name: &str) -> bool {
         self.relations.contains_key(name)
     }
 
-    /// Drop a relation
+    /// Removes a relation from the catalog.
+    ///
+    /// This only removes the catalog entry; it does not delete the data file.
+    ///
+    /// # Returns
+    ///
+    /// The removed relation's metadata, so the caller can clean up the
+    /// data file if desired.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CatalogError::RelationNotFound`] if no relation with
+    /// this name exists.
     pub fn drop_relation(&mut self, name: &str) -> Result<RelationMetadata, CatalogError> {
         self.relations
             .remove(name)
             .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))
     }
 
-    /// List all relation names
+    /// Returns a list of all relation names in the catalog.
+    ///
+    /// The order of names is not guaranteed (hash map iteration order).
     pub fn list_relations(&self) -> Vec<String> {
         self.relations.keys().cloned().collect()
     }
 
-    /// Get the number of relations
+    /// Returns the number of relations in the catalog.
     pub fn relation_count(&self) -> usize {
         self.relations.len()
     }

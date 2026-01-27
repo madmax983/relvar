@@ -1,17 +1,105 @@
+//! Union operator for combining relations.
+//!
+//! The union operator combines all tuples from two type-compatible relations
+//! into a single relation. As required by set semantics, duplicate tuples
+//! are automatically eliminated.
+//!
+//! # TTM Compliance
+//!
+//! - Relations must be type-compatible (identical headings)
+//! - Duplicates are automatically eliminated (set semantics)
+//! - Result is a valid relation
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::Relation;
+//! use relvar::tuple;
+//!
+//! let heading = TupleType::new()
+//!     .with_attribute("emp_id", ScalarType::Int)
+//!     .with_attribute("name", ScalarType::String);
+//!
+//! let rel_type = RelationType::new(heading);
+//!
+//! let mut rel1 = Relation::new(rel_type.clone());
+//! rel1.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+//!
+//! let mut rel2 = Relation::new(rel_type);
+//! rel2.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+//!
+//! let result = rel1.union(&rel2).unwrap();
+//! assert_eq!(result.cardinality(), 2);  // Alice and Bob
+//! ```
+
 use crate::values::Relation;
 use thiserror::Error;
 
+/// Errors that can occur during union operations.
 #[derive(Debug, Error)]
 pub enum UnionError {
+    /// The two relations have incompatible types (different headings).
+    ///
+    /// Union requires both relations to have exactly the same heading
+    /// (attribute names and types).
     #[error("Relations must have the same type (heading) for union")]
     TypeMismatch,
 }
 
-/// Union operation
 impl Relation {
-    /// Union with another relation
-    /// Relations must be type-compatible (same heading)
-    /// Result contains all tuples from both relations, with duplicates removed
+    /// Computes the union of this relation with another.
+    ///
+    /// This is the set union operator from relational algebra. It produces a
+    /// new relation containing all tuples that appear in either relation.
+    /// Duplicate tuples are automatically eliminated per set semantics.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The relation to union with. Must have the same heading
+    ///   (type) as this relation.
+    ///
+    /// # Returns
+    ///
+    /// A new relation containing all tuples from both relations, with
+    /// duplicates removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnionError::TypeMismatch`] if the relations have different
+    /// headings (different attribute names or types).
+    ///
+    /// # Behavior
+    ///
+    /// - Both relations must be type-compatible (identical headings)
+    /// - Duplicate tuples across relations are eliminated
+    /// - Union with self returns an equivalent relation
+    /// - Union with empty relation returns the non-empty relation
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    /// use relvar::values::Relation;
+    /// use relvar::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    ///
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// let mut rel1 = Relation::new(rel_type.clone());
+    /// rel1.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+    /// rel1.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+    ///
+    /// let mut rel2 = Relation::new(rel_type);
+    /// rel2.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();  // Duplicate
+    /// rel2.insert(tuple! { emp_id: 3i64, name: "Charlie" }).unwrap();
+    ///
+    /// let result = rel1.union(&rel2).unwrap();
+    /// assert_eq!(result.cardinality(), 3);  // Alice, Bob (once), Charlie
+    /// ```
     pub fn union(&self, other: &Relation) -> Result<Self, UnionError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {

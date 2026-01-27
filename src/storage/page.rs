@@ -1,37 +1,118 @@
+//! Page-based I/O for fixed-size disk blocks.
+//!
+//! This module provides the lowest-level storage abstraction: fixed-size pages
+//! that serve as the unit of I/O between disk and memory. All higher-level
+//! storage structures (heap files, indexes) are built on top of pages.
+//!
+//! # Page Layout
+//!
+//! Each page on disk has the following format:
+//!
+//! ```text
+//! ┌────────────────────────────────────────────────────┐
+//! │ data_length (8 bytes, little-endian u64)           │
+//! ├────────────────────────────────────────────────────┤
+//! │ actual_data (variable, up to PAGE_SIZE - 8 bytes)  │
+//! ├────────────────────────────────────────────────────┤
+//! │ padding (zeros to fill PAGE_SIZE)                  │
+//! └────────────────────────────────────────────────────┘
+//! ```
+//!
+//! # Example
+//!
+//! ```no_run
+//! use relvar::storage::{Page, PageFile, PAGE_SIZE};
+//!
+//! // Create a page file
+//! let mut pf = PageFile::create("data.pages").unwrap();
+//!
+//! // Create and write a page
+//! let page = Page::from_data(0, vec![1, 2, 3, 4, 5]).unwrap();
+//! pf.write_page(&page).unwrap();
+//!
+//! // Read it back
+//! let loaded = pf.read_page(0).unwrap();
+//! assert_eq!(loaded.data(), &[1, 2, 3, 4, 5]);
+//! ```
+
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use thiserror::Error;
 
-/// Page size in bytes (4KB is a common choice)
+/// Page size in bytes (4KB).
+///
+/// This is a common page size that balances I/O efficiency with memory usage.
+/// Larger pages reduce I/O overhead but may waste space for small tuples.
 pub const PAGE_SIZE: usize = 4096;
 
-/// Page ID type
+/// Unique identifier for a page within a page file.
+///
+/// Pages are numbered sequentially starting from 0. The page ID determines
+/// the byte offset in the file: `offset = page_id * PAGE_SIZE`.
 pub type PageId = u64;
 
+/// Errors that can occur during page operations.
 #[derive(Debug, Error)]
 pub enum PageError {
+    /// An I/O error occurred while reading or writing.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Serialization or deserialization failed.
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    /// The page data exceeds the maximum allowed size.
     #[error("Page data exceeds maximum size")]
     PageTooLarge,
 }
 
-/// A page is a fixed-size block of data stored on disk.
-/// Pages are the unit of I/O between disk and memory.
+/// A fixed-size block of data stored on disk.
+///
+/// Pages are the fundamental unit of I/O between disk and memory. Each page
+/// has a unique ID and can hold up to [`PAGE_SIZE`] bytes of data. The actual
+/// data is stored along with its length to handle variable-size content.
+///
+/// # Example
+///
+/// ```
+/// use relvar::storage::{Page, PAGE_SIZE};
+///
+/// // Create an empty page
+/// let mut page = Page::new(0);
+/// assert!(page.is_empty());
+/// assert_eq!(page.available_space(), PAGE_SIZE);
+///
+/// // Create a page with data
+/// let page = Page::from_data(1, vec![1, 2, 3, 4, 5]).unwrap();
+/// assert_eq!(page.data().len(), 5);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Page {
-    /// Page identifier
+    /// Page identifier.
     id: PageId,
-    /// Raw page data (up to PAGE_SIZE bytes)
+    /// Raw page data (up to PAGE_SIZE bytes).
     data: Vec<u8>,
 }
 
 impl Page {
-    /// Create a new empty page
+    /// Creates a new empty page with the given ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier for this page
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::storage::Page;
+    ///
+    /// let page = Page::new(0);
+    /// assert_eq!(page.id(), 0);
+    /// assert!(page.is_empty());
+    /// ```
     pub fn new(id: PageId) -> Self {
         Self {
             id,
@@ -39,7 +120,26 @@ impl Page {
         }
     }
 
-    /// Create a page from data
+    /// Creates a page with the given ID and data.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier for this page
+    /// * `data` - The data to store in the page
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PageError::PageTooLarge`] if `data.len() > PAGE_SIZE`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::storage::Page;
+    ///
+    /// let page = Page::from_data(42, vec![1, 2, 3]).unwrap();
+    /// assert_eq!(page.id(), 42);
+    /// assert_eq!(page.data(), &[1, 2, 3]);
+    /// ```
     pub fn from_data(id: PageId, data: Vec<u8>) -> Result<Self, PageError> {
         if data.len() > PAGE_SIZE {
             return Err(PageError::PageTooLarge);
@@ -47,17 +147,21 @@ impl Page {
         Ok(Self { id, data })
     }
 
-    /// Get page ID
+    /// Returns the page's unique identifier.
     pub fn id(&self) -> PageId {
         self.id
     }
 
-    /// Get page data
+    /// Returns a reference to the page's data.
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 
-    /// Set page data
+    /// Replaces the page's data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PageError::PageTooLarge`] if `data.len() > PAGE_SIZE`.
     pub fn set_data(&mut self, data: Vec<u8>) -> Result<(), PageError> {
         if data.len() > PAGE_SIZE {
             return Err(PageError::PageTooLarge);
@@ -66,24 +170,67 @@ impl Page {
         Ok(())
     }
 
-    /// Get available space in the page
+    /// Returns the number of bytes available in this page.
+    ///
+    /// This is `PAGE_SIZE - data.len()`.
     pub fn available_space(&self) -> usize {
         PAGE_SIZE - self.data.len()
     }
 
-    /// Check if the page is empty
+    /// Returns `true` if the page contains no data.
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 }
 
-/// Page file manages pages on disk
+/// Manages fixed-size pages stored in a file on disk.
+///
+/// `PageFile` provides random access to pages by their ID. Pages are stored
+/// at fixed offsets (`page_id * PAGE_SIZE`), allowing efficient seek-based
+/// access without scanning the entire file.
+///
+/// # File Format
+///
+/// The file consists of consecutive PAGE_SIZE blocks:
+///
+/// ```text
+/// Offset 0:                 Page 0
+/// Offset PAGE_SIZE:         Page 1
+/// Offset 2*PAGE_SIZE:       Page 2
+/// ...
+/// ```
+///
+/// # Example
+///
+/// ```no_run
+/// use relvar::storage::{Page, PageFile};
+///
+/// // Create a new page file
+/// let mut pf = PageFile::create("data.pages").unwrap();
+///
+/// // Write pages (can write in any order)
+/// pf.write_page(&Page::from_data(0, vec![1, 2, 3]).unwrap()).unwrap();
+/// pf.write_page(&Page::from_data(5, vec![4, 5, 6]).unwrap()).unwrap();
+///
+/// // Read pages back
+/// let page0 = pf.read_page(0).unwrap();
+/// let page5 = pf.read_page(5).unwrap();
+/// ```
 pub struct PageFile {
+    /// The underlying file handle.
     file: File,
 }
 
 impl PageFile {
-    /// Create a new page file
+    /// Creates a new page file, truncating any existing file.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path where the page file will be created
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PageError::Io`] if the file cannot be created.
     pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, PageError> {
         let file = OpenOptions::new()
             .read(true)
@@ -94,7 +241,17 @@ impl PageFile {
         Ok(Self { file })
     }
 
-    /// Open an existing page file
+    /// Opens an existing page file, or creates one if it doesn't exist.
+    ///
+    /// Unlike [`create`](Self::create), this preserves existing content.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the page file
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PageError::Io`] if the file cannot be opened.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, PageError> {
         let file = OpenOptions::new()
             .read(true)
@@ -105,7 +262,18 @@ impl PageFile {
         Ok(Self { file })
     }
 
-    /// Read a page from disk
+    /// Reads a page from disk.
+    ///
+    /// Seeks to the page's offset (`page_id * PAGE_SIZE`) and reads the data.
+    /// If the page doesn't exist or is unreadable, returns an empty page.
+    ///
+    /// # Arguments
+    ///
+    /// * `page_id` - The ID of the page to read
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PageError::Io`] if the read fails.
     pub fn read_page(&mut self, page_id: PageId) -> Result<Page, PageError> {
         // Seek to the page offset
         let offset = page_id * PAGE_SIZE as u64;
@@ -132,7 +300,18 @@ impl PageFile {
         Ok(Page::new(page_id))
     }
 
-    /// Write a page to disk
+    /// Writes a page to disk.
+    ///
+    /// The page is written at offset `page.id() * PAGE_SIZE`. The data is
+    /// prefixed with its length and padded to fill exactly PAGE_SIZE bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `page` - The page to write
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PageError::Io`] if the write fails.
     pub fn write_page(&mut self, page: &Page) -> Result<(), PageError> {
         // Seek to the page offset
         let offset = page.id() * PAGE_SIZE as u64;
@@ -160,7 +339,13 @@ impl PageFile {
         Ok(())
     }
 
-    /// Flush all changes to disk
+    /// Flushes all pending writes to disk.
+    ///
+    /// Ensures durability by calling `fsync` on the underlying file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PageError::Io`] if the sync fails.
     pub fn sync(&mut self) -> Result<(), PageError> {
         self.file.sync_all()?;
         Ok(())

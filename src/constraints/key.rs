@@ -1,21 +1,115 @@
+//! Key constraints for ensuring tuple uniqueness.
+//!
+//! Key constraints define which attributes (or combinations of attributes)
+//! must have unique values across all tuples in a relation.
+//!
+//! # TTM Compliance
+//!
+//! Per **Proscription 2** (No duplicate tuples), relations are true sets.
+//! Key constraints enforce this at the schema level by defining which
+//! attributes must be unique across all tuples.
+//!
+//! # Key Types
+//!
+//! - **Candidate Key** - Any minimal set of attributes that uniquely identifies tuples
+//! - **Primary Key** - A designated candidate key chosen as the main identifier
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::constraints::{PrimaryKey, CandidateKey, KeyConstraints};
+//!
+//! // Single-attribute primary key
+//! let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+//!
+//! // Composite candidate key (email must also be unique)
+//! let ck = CandidateKey::new(vec!["email".to_string()]).unwrap();
+//!
+//! // Create key constraints
+//! let constraints = KeyConstraints::new()
+//!     .with_primary_key(pk)
+//!     .with_candidate_key(ck);
+//! ```
+//!
+//! # Detecting Key Violations
+//!
+//! Key constraints can detect when an insert would create duplicates:
+//!
+//! ```
+//! use relvar::constraints::{PrimaryKey, KeyConstraints};
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::Relation;
+//! use relvar::tuple;
+//!
+//! // Create a relation with employee data
+//! let heading = TupleType::new()
+//!     .with_attribute("emp_id", ScalarType::Int)
+//!     .with_attribute("name", ScalarType::String);
+//!
+//! let mut relation = Relation::new(RelationType::new(heading));
+//! relation.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+//! relation.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+//!
+//! // Define primary key on emp_id
+//! let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+//! let constraints = KeyConstraints::new().with_primary_key(pk);
+//!
+//! // Check if current data satisfies the key constraint
+//! assert!(constraints.are_satisfied_by(&relation).unwrap());
+//!
+//! // Check if inserting a duplicate would violate the constraint
+//! let duplicate = tuple! { emp_id: 1i64, name: "Charlie" };  // emp_id=1 already exists!
+//! let violation = constraints.would_violate_on_insert(&relation, &duplicate).unwrap();
+//!
+//! // Violation detected - returns the violated key attributes
+//! assert!(violation.is_some());
+//! assert_eq!(violation.unwrap(), vec!["emp_id"]);
+//! ```
+
 use crate::values::{Relation, Tuple};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use thiserror::Error;
 
+/// Errors that can occur with key constraints.
 #[derive(Debug, Error)]
 pub enum KeyConstraintError {
+    /// A tuple would create a duplicate key value.
     #[error("Key constraint violation: duplicate key value for attributes {0:?}")]
     DuplicateKey(Vec<String>),
+
+    /// The key references attributes that don't exist in the relation.
     #[error("Key attributes {0:?} do not exist in relation")]
     InvalidKeyAttributes(Vec<String>),
+
+    /// A key must have at least one attribute.
     #[error("Key cannot be empty")]
     EmptyKey,
 }
 
-/// A candidate key is a minimal set of attributes that uniquely identifies tuples
+/// A candidate key - a minimal set of attributes that uniquely identifies tuples.
+///
+/// A candidate key has two properties:
+/// 1. **Uniqueness** - No two tuples can have the same values for all key attributes
+/// 2. **Minimality** - No proper subset of the attributes has the uniqueness property
+///
+/// # Example
+///
+/// ```
+/// use relvar::constraints::CandidateKey;
+///
+/// // Single-attribute key
+/// let emp_key = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
+///
+/// // Composite key (multiple attributes together form the key)
+/// let composite_key = CandidateKey::new(vec![
+///     "dept_id".to_string(),
+///     "emp_num".to_string(),
+/// ]).unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CandidateKey {
+    /// The attribute names that compose this key.
     attributes: Vec<String>,
 }
 

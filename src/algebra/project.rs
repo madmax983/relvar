@@ -1,11 +1,77 @@
+//! Project operator for attribute selection.
+//!
+//! The project operator (π in relational algebra) selects a subset of
+//! attributes from a relation, eliminating all other attributes.
+//!
+//! # TTM Compliance
+//!
+//! - Duplicates are automatically eliminated (set semantics)
+//! - Result is a valid relation with the projected heading
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::Relation;
+//! use relvar::tuple;
+//!
+//! let heading = TupleType::new()
+//!     .with_attribute("emp_id", ScalarType::Int)
+//!     .with_attribute("name", ScalarType::String)
+//!     .with_attribute("dept_id", ScalarType::Int);
+//!
+//! let mut relation = Relation::new(RelationType::new(heading));
+//! relation.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+//! relation.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 10i64 }).unwrap();
+//!
+//! // Project onto just dept_id
+//! let result = relation.project(&["dept_id"]);
+//! assert_eq!(result.degree(), 1);
+//! assert_eq!(result.cardinality(), 1);  // Duplicates eliminated!
+//! ```
+
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
 use std::collections::BTreeMap;
 
-/// Project operation (SELECT columns in SQL)
-/// Selects a subset of attributes
 impl Relation {
-    /// Project this relation onto a subset of attributes
+    /// Projects this relation onto a subset of attributes.
+    ///
+    /// This is the relational algebra π (pi) operator. It produces a new
+    /// relation containing only the specified attributes. Duplicate tuples
+    /// that result from the projection are automatically eliminated.
+    ///
+    /// # Arguments
+    ///
+    /// * `attributes` - The attribute names to include in the result
+    ///
+    /// # Returns
+    ///
+    /// A new relation with only the specified attributes.
+    ///
+    /// # Behavior
+    ///
+    /// - Attributes not in the list are removed
+    /// - Attributes that don't exist in the relation are silently ignored
+    /// - Duplicate tuples are automatically eliminated
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    /// use relvar::values::Relation;
+    /// use relvar::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    ///
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    /// relation.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+    ///
+    /// let names_only = relation.project(&["name"]);
+    /// assert_eq!(names_only.degree(), 1);
+    /// ```
     pub fn project(&self, attributes: &[&str]) -> Self {
         // Build new heading with selected attributes
         let mut new_heading = TupleType::new();

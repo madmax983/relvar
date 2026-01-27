@@ -1,3 +1,54 @@
+//! Core database instance and operations.
+//!
+//! This module provides the [`Database`] struct, which is the main entry point
+//! for all database operations including:
+//!
+//! - Creating and dropping relations (base relvars)
+//! - Inserting, updating, and deleting tuples
+//! - Querying relations with relational algebra
+//! - Managing transactions
+//! - Setting up constraints (primary keys, foreign keys, type constraints)
+//!
+//! # TTM Compliance
+//!
+//! The database enforces The Third Manifesto principles:
+//!
+//! - **No NULL values**: All tuple attributes must have values
+//! - **No duplicates**: Relations are true sets
+//! - **Constraint enforcement**: Keys and foreign keys are validated on mutation
+//! - **Type safety**: Tuples must conform to their relation's heading
+//!
+//! # Example
+//!
+//! ```no_run
+//! use relvar::Database;
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::constraints::{PrimaryKey, KeyConstraints};
+//! use relvar::tuple;
+//!
+//! // Open or create a database
+//! let mut db = Database::open("my_database")?;
+//!
+//! // Define and create a relation
+//! let emp_type = TupleType::new()
+//!     .with_attribute("emp_id", ScalarType::Int)
+//!     .with_attribute("name", ScalarType::String);
+//!
+//! db.create_relvar("EMP", RelationType::new(emp_type))?;
+//!
+//! // Set primary key constraint
+//! let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+//! db.set_key_constraints("EMP", KeyConstraints::new().with_primary_key(pk))?;
+//!
+//! // Insert data
+//! db.insert("EMP", tuple! { emp_id: 1i64, name: "Alice" })?;
+//!
+//! // Query with relational algebra
+//! let result = db.query("EMP")?.project(&["name"]);
+//!
+//! # Ok::<(), relvar::DatabaseError>(())
+//! ```
+
 use crate::constraints::{AttributeConstraints, ForeignKey, ForeignKeyConstraints, KeyConstraints};
 use crate::storage::{BTreeIndex, Catalog, CatalogError, HeapError, HeapFile};
 use crate::types::RelationType;
@@ -7,62 +58,190 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+/// Errors that can occur during database operations.
+///
+/// This enum covers all error conditions including I/O errors, constraint
+/// violations, and transaction errors.
 #[derive(Debug, Error)]
 pub enum DatabaseError {
+    /// An I/O error occurred during file operations.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// An error occurred in the system catalog.
     #[error("Catalog error: {0}")]
     Catalog(#[from] CatalogError),
+
+    /// An error occurred in the heap file storage.
     #[error("Heap file error: {0}")]
     HeapFile(#[from] HeapError),
+
+    /// An error occurred with a relation value.
     #[error("Relation error: {0}")]
     Relation(#[from] RelationError),
+
+    /// Attempted to create a relation that already exists.
     #[error("Relation {0} already exists")]
     RelationAlreadyExists(String),
+
+    /// The specified relation does not exist.
     #[error("Relation {0} not found")]
     RelationNotFound(String),
+
+    /// The tuple's type does not match the relation's heading.
+    ///
+    /// This occurs when inserting or updating a tuple that doesn't
+    /// conform to the relation's declared type.
     #[error("Tuple type does not match relation type")]
     TupleMismatch,
+
+    /// Inserting a tuple would violate the primary key constraint.
+    ///
+    /// Primary key values must be unique across all tuples in a relation.
     #[error("Primary key constraint violation")]
     PrimaryKeyViolation,
+
+    /// Inserting a tuple would violate a candidate key constraint.
+    ///
+    /// Candidate key values must be unique across all tuples in a relation.
     #[error("Candidate key constraint violation")]
     CandidateKeyViolation,
+
+    /// A foreign key constraint was violated.
+    ///
+    /// This occurs when:
+    /// - Inserting a tuple with a foreign key value that doesn't exist in the referenced relation
+    /// - Deleting a tuple that is referenced by another relation
     #[error("Foreign key constraint violation: {0}")]
     ForeignKeyViolation(String),
+
+    /// A type constraint was violated.
+    ///
+    /// This occurs when a value doesn't satisfy the defined type constraints
+    /// (e.g., range, enum, string length).
     #[error("Type constraint violation: {0}")]
     TypeConstraintViolation(String),
+
+    /// The specified attribute does not exist in the relation.
     #[error("Attribute {0} not found")]
     AttributeNotFound(String),
+
+    /// A transaction-related error occurred.
+    ///
+    /// This includes attempting to commit/rollback without an active transaction,
+    /// or beginning a transaction when one is already in progress.
     #[error("Transaction error: {0}")]
     TransactionError(String),
 }
 
-/// A database instance managing relations, storage, and constraints
+/// A database instance managing relations, storage, and constraints.
+///
+/// `Database` is the main entry point for all database operations. It manages:
+///
+/// - **Relations (Relvars)**: Create, drop, and query base relations
+/// - **Data Manipulation**: Insert, update, and delete tuples
+/// - **Constraints**: Primary keys, foreign keys, and type constraints
+/// - **Transactions**: Begin, commit, and rollback operations
+/// - **Storage**: Heap files and indexes for persistent storage
+///
+/// # Architecture
+///
+/// ```text
+/// Database
+/// ├── Catalog (metadata about all relations)
+/// ├── HeapFiles (tuple storage, keyed by relation name)
+/// ├── Indexes (B-tree indexes for efficient lookups)
+/// └── Constraints
+///     ├── KeyConstraints (primary and candidate keys)
+///     ├── ForeignKeyConstraints (referential integrity)
+///     └── TypeConstraints (value domain restrictions)
+/// ```
+///
+/// # Example
+///
+/// ```no_run
+/// use relvar::Database;
+/// use relvar::types::{TupleType, RelationType, ScalarType};
+/// use relvar::tuple;
+///
+/// // Create or open a database
+/// let mut db = Database::open("my_db")?;
+///
+/// // Create a relation
+/// let heading = TupleType::new()
+///     .with_attribute("id", ScalarType::Int)
+///     .with_attribute("name", ScalarType::String);
+/// db.create_relvar("USERS", RelationType::new(heading))?;
+///
+/// // Insert tuples
+/// db.insert("USERS", tuple! { id: 1i64, name: "Alice" })?;
+///
+/// // Query with relational algebra
+/// let users = db.query("USERS")?;
+/// let names = users.project(&["name"]);
+///
+/// // Use transactions for atomic operations
+/// db.begin()?;
+/// db.insert("USERS", tuple! { id: 2i64, name: "Bob" })?;
+/// db.commit()?;  // or db.rollback()?
+///
+/// # Ok::<(), relvar::DatabaseError>(())
+/// ```
 pub struct Database {
-    /// Base directory for database files
+    /// Base directory for database files.
     db_path: PathBuf,
-    /// Path to catalog file
+    /// Path to the catalog file.
     catalog_path: PathBuf,
-    /// System catalog
+    /// System catalog containing relation metadata.
     catalog: Catalog,
-    /// Open heap files (relation_name -> heap_file)
+    /// Open heap files, keyed by relation name.
     heap_files: HashMap<String, HeapFile>,
-    /// Indexes (relation_name.attribute -> index)
+    /// B-tree indexes, keyed by "relation_name.attribute".
     indexes: HashMap<String, BTreeIndex>,
-    /// Key constraints per relation
+    /// Key constraints (primary and candidate) per relation.
     key_constraints: HashMap<String, KeyConstraints>,
-    /// Foreign key constraints per relation
+    /// Foreign key constraints per relation.
     foreign_key_constraints: HashMap<String, ForeignKeyConstraints>,
-    /// Type constraints per relation per attribute
+    /// Type constraints per relation, per attribute.
     type_constraints: HashMap<String, HashMap<String, AttributeConstraints>>,
-    /// Transaction state
+    /// Whether a transaction is currently in progress.
     in_transaction: bool,
-    /// Savepoint for rollback (simplified - just store full relations)
+    /// Savepoint data for transaction rollback.
+    ///
+    /// This is a simplified implementation that stores full relation snapshots.
+    /// A production system would use write-ahead logging (WAL).
     savepoint: Option<HashMap<String, Relation>>,
 }
 
 impl Database {
-    /// Open or create a database at the specified path
+    /// Opens or creates a database at the specified path.
+    ///
+    /// If the database directory does not exist, it will be created along with
+    /// an empty catalog. If the database already exists, the catalog is loaded
+    /// from disk.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The directory path where the database files will be stored
+    ///
+    /// # Returns
+    ///
+    /// A `Database` instance ready for use.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The directory cannot be created
+    /// - The catalog file cannot be read or created
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    ///
+    /// let db = Database::open("my_database")?;
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, DatabaseError> {
         let db_path = path.as_ref().to_path_buf();
         std::fs::create_dir_all(&db_path)?;
@@ -90,7 +269,36 @@ impl Database {
         })
     }
 
-    /// Create a new relation (base relvar)
+    /// Creates a new relation (base relvar) in the database.
+    ///
+    /// A relation is defined by its [`RelationType`], which specifies the
+    /// heading (attribute names and types). The relation is initially empty.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the relation (case-sensitive)
+    /// * `relation_type` - The type definition for the relation
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::RelationAlreadyExists`] if a relation with
+    /// the given name already exists.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    ///
+    /// let mut db = Database::open("test_db")?;
+    ///
+    /// let emp_type = TupleType::new()
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    ///
+    /// db.create_relvar("EMPLOYEES", RelationType::new(emp_type))?;
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn create_relvar(
         &mut self,
         name: &str,
@@ -118,7 +326,23 @@ impl Database {
         Ok(())
     }
 
-    /// Drop a relation
+    /// Drops (deletes) a relation from the database.
+    ///
+    /// This removes the relation and all its data, including associated
+    /// constraints and indexes.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the relation to drop
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::RelationNotFound`] if the relation does not exist.
+    ///
+    /// # Warning
+    ///
+    /// This operation is irreversible outside of a transaction. All data in
+    /// the relation will be permanently deleted.
     pub fn drop_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
         if self.catalog.get_relation(name).is_err() {
             return Err(DatabaseError::RelationNotFound(name.to_string()));
@@ -145,7 +369,37 @@ impl Database {
         Ok(())
     }
 
-    /// Set key constraints for a relation
+    /// Sets key constraints (primary and candidate keys) for a relation.
+    ///
+    /// Key constraints ensure uniqueness of specified attribute combinations.
+    /// A primary key is a designated candidate key that uniquely identifies tuples.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation
+    /// * `constraints` - The key constraints to apply
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::RelationNotFound`] if the relation does not exist.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    /// use relvar::constraints::{PrimaryKey, CandidateKey, KeyConstraints};
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// let pk = PrimaryKey::new(vec!["emp_id".to_string()])?;
+    /// let ck = CandidateKey::new(vec!["email".to_string()])?;
+    ///
+    /// let constraints = KeyConstraints::new()
+    ///     .with_primary_key(pk)
+    ///     .with_candidate_key(ck);
+    ///
+    /// db.set_key_constraints("EMPLOYEES", constraints)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn set_key_constraints(
         &mut self,
         relation_name: &str,
@@ -160,7 +414,37 @@ impl Database {
         Ok(())
     }
 
-    /// Add a foreign key constraint
+    /// Adds a foreign key constraint to a relation.
+    ///
+    /// Foreign keys enforce referential integrity by requiring that values in
+    /// specified attributes exist in another relation's corresponding attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the referencing relation
+    /// * `foreign_key` - The foreign key constraint to add
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::RelationNotFound`] if the relation does not exist.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    /// use relvar::constraints::ForeignKey;
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// // EMP.dept_id references DEPT.dept_id
+    /// let fk = ForeignKey::new(
+    ///     vec!["dept_id".to_string()],
+    ///     "DEPT".to_string(),
+    ///     vec!["dept_id".to_string()],
+    /// )?;
+    ///
+    /// db.add_foreign_key("EMP", fk)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn add_foreign_key(
         &mut self,
         relation_name: &str,
@@ -182,7 +466,37 @@ impl Database {
         Ok(())
     }
 
-    /// Set type constraints for an attribute
+    /// Sets type constraints for an attribute in a relation.
+    ///
+    /// Type constraints restrict the allowed values for an attribute beyond
+    /// its base type. Supported constraints include ranges, enumerations,
+    /// string length limits, and custom validators.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation
+    /// * `attribute` - The name of the attribute to constrain
+    /// * `constraints` - The constraints to apply
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::RelationNotFound`] if the relation does not exist.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    /// use relvar::types::ScalarType;
+    /// use relvar::constraints::{AttributeConstraints, TypeConstraint};
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// // Age must be positive
+    /// let age_constraint = AttributeConstraints::new("age".to_string(), ScalarType::Int)
+    ///     .with_constraint(TypeConstraint::PositiveInt);
+    ///
+    /// db.set_type_constraints("EMPLOYEES", "age", age_constraint)?;
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn set_type_constraints(
         &mut self,
         relation_name: &str,
@@ -201,7 +515,45 @@ impl Database {
         Ok(())
     }
 
-    /// Insert a tuple into a relation
+    /// Inserts a tuple into a relation.
+    ///
+    /// The tuple must conform to the relation's type (heading). All constraints
+    /// are validated before insertion:
+    ///
+    /// 1. **Type matching**: Tuple type must match relation type
+    /// 2. **Type constraints**: Values must satisfy attribute constraints
+    /// 3. **Primary key**: No duplicate key values
+    /// 4. **Candidate keys**: No duplicate key values
+    /// 5. **Foreign keys**: Referenced values must exist
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation
+    /// * `tuple` - The tuple to insert
+    ///
+    /// # Errors
+    ///
+    /// - [`DatabaseError::RelationNotFound`] - Relation does not exist
+    /// - [`DatabaseError::TupleMismatch`] - Tuple type doesn't match relation type
+    /// - [`DatabaseError::TypeConstraintViolation`] - Value violates type constraint
+    /// - [`DatabaseError::PrimaryKeyViolation`] - Duplicate primary key
+    /// - [`DatabaseError::CandidateKeyViolation`] - Duplicate candidate key
+    /// - [`DatabaseError::ForeignKeyViolation`] - Referenced value doesn't exist
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    /// use relvar::tuple;
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// db.insert("EMPLOYEES", tuple! {
+    ///     emp_id: 1i64,
+    ///     name: "Alice",
+    ///     dept_id: 10i64
+    /// })?;
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
         // Get relation metadata
         let metadata = self
@@ -280,7 +632,38 @@ impl Database {
         Ok(())
     }
 
-    /// Query a relation (returns the full relation for algebra operations)
+    /// Queries a relation, returning all tuples as a [`Relation`] value.
+    ///
+    /// The returned relation can be transformed using relational algebra
+    /// operators such as `project`, `restrict`, `join`, `union`, etc.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation to query
+    ///
+    /// # Returns
+    ///
+    /// A [`Relation`] containing all tuples from the stored relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::RelationNotFound`] if the relation does not exist.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// // Get all employees
+    /// let employees = db.query("EMPLOYEES")?;
+    ///
+    /// // Use relational algebra
+    /// let senior_employees = employees
+    ///     .restrict(|t| t.get_typed::<i64>("salary").unwrap() > 100000)
+    ///     .project(&["name", "salary"]);
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Get relation metadata (clone to avoid borrow issues)
         let relation_type = self
@@ -304,7 +687,38 @@ impl Database {
         Ok(relation)
     }
 
-    /// Delete tuples matching a predicate
+    /// Deletes tuples matching a predicate from a relation.
+    ///
+    /// All tuples for which the predicate returns `true` are removed. Foreign
+    /// key constraints are checked before deletion to prevent orphaned references.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation
+    /// * `predicate` - A function that returns `true` for tuples to delete
+    ///
+    /// # Returns
+    ///
+    /// The number of tuples deleted.
+    ///
+    /// # Errors
+    ///
+    /// - [`DatabaseError::RelationNotFound`] - Relation does not exist
+    /// - [`DatabaseError::ForeignKeyViolation`] - Deletion would orphan references
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// // Delete employee with emp_id = 42
+    /// let deleted = db.delete("EMPLOYEES", |t| {
+    ///     t.get_typed::<i64>("emp_id").unwrap() == 42
+    /// })?;
+    /// println!("Deleted {} tuples", deleted);
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn delete<F>(&mut self, relation_name: &str, predicate: F) -> Result<usize, DatabaseError>
     where
         F: Fn(&Tuple) -> bool,
@@ -377,7 +791,45 @@ impl Database {
         Ok(deleted_count)
     }
 
-    /// Update tuples matching a predicate
+    /// Updates tuples matching a predicate.
+    ///
+    /// All tuples for which the predicate returns `true` are modified by
+    /// the updater function. After modification, type conformance is verified.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation
+    /// * `predicate` - A function that returns `true` for tuples to update
+    /// * `updater` - A function that modifies the tuple in place
+    ///
+    /// # Returns
+    ///
+    /// The number of tuples updated.
+    ///
+    /// # Errors
+    ///
+    /// - [`DatabaseError::RelationNotFound`] - Relation does not exist
+    /// - [`DatabaseError::TupleMismatch`] - Updated tuple doesn't conform to type
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    /// use relvar::values::ScalarValue;
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// // Give all employees in dept 10 a 10% raise
+    /// let updated = db.update(
+    ///     "EMPLOYEES",
+    ///     |t| t.get_typed::<i64>("dept_id").unwrap() == 10,
+    ///     |t| {
+    ///         let old_salary = t.get_typed::<i64>("salary").unwrap();
+    ///         t.set("salary".to_string(), ScalarValue::Int(old_salary * 11 / 10)).unwrap();
+    ///     },
+    /// )?;
+    /// println!("Updated {} tuples", updated);
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn update<F, U>(
         &mut self,
         relation_name: &str,
@@ -431,7 +883,33 @@ impl Database {
         Ok(updated_count)
     }
 
-    /// Begin a transaction
+    /// Begins a new transaction.
+    ///
+    /// A transaction provides atomicity - all changes within the transaction
+    /// are either committed together or rolled back together.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TransactionError`] if a transaction is already
+    /// in progress.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    /// use relvar::tuple;
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// db.begin()?;
+    ///
+    /// // Multiple operations
+    /// db.insert("EMPLOYEES", tuple! { emp_id: 1i64, name: "Alice" })?;
+    /// db.insert("EMPLOYEES", tuple! { emp_id: 2i64, name: "Bob" })?;
+    ///
+    /// // Commit all changes atomically
+    /// db.commit()?;
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn begin(&mut self) -> Result<(), DatabaseError> {
         if self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -452,7 +930,14 @@ impl Database {
         Ok(())
     }
 
-    /// Commit a transaction
+    /// Commits the current transaction.
+    ///
+    /// All changes made since [`begin()`](Self::begin) are made permanent.
+    /// The transaction is ended after commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TransactionError`] if no transaction is in progress.
     pub fn commit(&mut self) -> Result<(), DatabaseError> {
         if !self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -467,7 +952,31 @@ impl Database {
         Ok(())
     }
 
-    /// Rollback a transaction
+    /// Rolls back the current transaction.
+    ///
+    /// All changes made since [`begin()`](Self::begin) are discarded and
+    /// the database is restored to its pre-transaction state.
+    /// The transaction is ended after rollback.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TransactionError`] if no transaction is in progress.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use relvar::Database;
+    /// use relvar::tuple;
+    ///
+    /// # let mut db = Database::open("test")?;
+    /// db.begin()?;
+    /// db.insert("EMPLOYEES", tuple! { emp_id: 999i64, name: "Test" })?;
+    ///
+    /// // Oops, changed our mind - rollback
+    /// db.rollback()?;
+    /// // The insert never happened
+    /// # Ok::<(), relvar::DatabaseError>(())
+    /// ```
     pub fn rollback(&mut self) -> Result<(), DatabaseError> {
         if !self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -501,7 +1010,9 @@ impl Database {
         Ok(())
     }
 
-    /// Helper to get or open a heap file
+    /// Gets or opens a heap file for a relation.
+    ///
+    /// This is an internal helper that lazily opens heap files as needed.
     fn get_or_open_heap_file(
         &mut self,
         relation_name: &str,

@@ -1,11 +1,104 @@
+//! Join operators for combining relations.
+//!
+//! This module implements the join operators from relational algebra:
+//!
+//! - **Natural Join** - Joins on common attributes, combining matching tuples
+//! - **Theta Join** - Joins with an arbitrary predicate condition
+//!
+//! # TTM Compliance
+//!
+//! - Natural join matches on attribute names and types (not physical identifiers)
+//! - Result heading is the union of both relation headings
+//! - Duplicate tuples are automatically eliminated (set semantics)
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::Relation;
+//! use relvar::tuple;
+//!
+//! // Employees with dept_id
+//! let emp_heading = TupleType::new()
+//!     .with_attribute("emp_id", ScalarType::Int)
+//!     .with_attribute("name", ScalarType::String)
+//!     .with_attribute("dept_id", ScalarType::Int);
+//!
+//! let mut employees = Relation::new(RelationType::new(emp_heading));
+//! employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+//!
+//! // Departments with dept_id
+//! let dept_heading = TupleType::new()
+//!     .with_attribute("dept_id", ScalarType::Int)
+//!     .with_attribute("dept_name", ScalarType::String);
+//!
+//! let mut departments = Relation::new(RelationType::new(dept_heading));
+//! departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+//!
+//! // Natural join on dept_id
+//! let result = employees.join(&departments);
+//! assert_eq!(result.degree(), 4);  // emp_id, name, dept_id, dept_name
+//! ```
+
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
 use std::collections::BTreeMap;
 
-/// Join operations
 impl Relation {
-    /// Natural join with another relation
-    /// Joins on common attributes, combining tuples that match on those attributes
+    /// Performs a natural join with another relation.
+    ///
+    /// The natural join combines tuples from two relations based on matching values
+    /// in their common attributes (attributes with the same name and type). The
+    /// result contains combined tuples where all common attributes have equal values.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The relation to join with
+    ///
+    /// # Returns
+    ///
+    /// A new relation with the union of both headings. Each result tuple is a
+    /// combination of tuples from both relations that match on common attributes.
+    ///
+    /// # Behavior
+    ///
+    /// - If there are no common attributes, produces a Cartesian product
+    /// - Common attributes appear once in the result (not duplicated)
+    /// - Tuples that don't match on common attributes are excluded
+    /// - Result maintains set semantics (no duplicate tuples)
+    ///
+    /// # Complexity
+    ///
+    /// O(n * m) where n and m are the cardinalities of the two relations.
+    /// This is a nested-loop join implementation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    /// use relvar::values::Relation;
+    /// use relvar::tuple;
+    ///
+    /// // Employees
+    /// let emp_heading = TupleType::new()
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("dept_id", ScalarType::Int);
+    ///
+    /// let mut employees = Relation::new(RelationType::new(emp_heading));
+    /// employees.insert(tuple! { emp_id: 1i64, dept_id: 10i64 }).unwrap();
+    /// employees.insert(tuple! { emp_id: 2i64, dept_id: 20i64 }).unwrap();
+    ///
+    /// // Departments
+    /// let dept_heading = TupleType::new()
+    ///     .with_attribute("dept_id", ScalarType::Int)
+    ///     .with_attribute("budget", ScalarType::Int);
+    ///
+    /// let mut departments = Relation::new(RelationType::new(dept_heading));
+    /// departments.insert(tuple! { dept_id: 10i64, budget: 100000i64 }).unwrap();
+    ///
+    /// let result = employees.join(&departments);
+    /// assert_eq!(result.cardinality(), 1);  // Only emp 1 matches (dept 10)
+    /// ```
     pub fn join(&self, other: &Relation) -> Self {
         // Find common attributes
         let common_attrs: Vec<String> = self
@@ -71,8 +164,69 @@ impl Relation {
             .expect("Joined tuples should conform to result relation type")
     }
 
-    /// Theta join with arbitrary predicate
-    /// More general than natural join - allows any join condition
+    /// Performs a theta join with another relation using an arbitrary predicate.
+    ///
+    /// The theta join (θ-join) is a more general form of join that combines
+    /// tuples based on any arbitrary predicate, not just equality on common
+    /// attributes. This allows for comparisons like greater-than, less-than,
+    /// or complex multi-attribute conditions.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The relation to join with
+    /// * `predicate` - A function that takes references to tuples from both
+    ///   relations and returns `true` if they should be combined
+    ///
+    /// # Returns
+    ///
+    /// A new relation with the union of both headings. Each result tuple is a
+    /// combination of tuples from both relations for which the predicate
+    /// returns `true`.
+    ///
+    /// # Behavior
+    ///
+    /// - All attribute pairs are combined (no automatic deduplication of common names)
+    /// - If relations have common attribute names, the first relation's values
+    ///   take precedence
+    /// - Result maintains set semantics
+    ///
+    /// # Complexity
+    ///
+    /// O(n * m) where n and m are the cardinalities of the two relations.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::types::{TupleType, RelationType, ScalarType};
+    /// use relvar::values::{Relation, ScalarValue};
+    /// use relvar::tuple;
+    ///
+    /// // Employees with salaries
+    /// let emp_heading = TupleType::new()
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("salary", ScalarType::Int);
+    ///
+    /// let mut employees = Relation::new(RelationType::new(emp_heading));
+    /// employees.insert(tuple! { emp_id: 1i64, salary: 50000i64 }).unwrap();
+    /// employees.insert(tuple! { emp_id: 2i64, salary: 75000i64 }).unwrap();
+    ///
+    /// // Departments with minimum salary requirements
+    /// let dept_heading = TupleType::new()
+    ///     .with_attribute("dept_id", ScalarType::Int)
+    ///     .with_attribute("min_salary", ScalarType::Int);
+    ///
+    /// let mut departments = Relation::new(RelationType::new(dept_heading));
+    /// departments.insert(tuple! { dept_id: 10i64, min_salary: 60000i64 }).unwrap();
+    ///
+    /// // Join employees to departments where salary meets minimum
+    /// let result = employees.theta_join(&departments, |emp, dept| {
+    ///     let salary = emp.get_typed::<i64>("salary").unwrap();
+    ///     let min_sal = dept.get_typed::<i64>("min_salary").unwrap();
+    ///     salary >= min_sal
+    /// });
+    /// // Only employee 2 (salary 75000) qualifies for dept 10 (min 60000)
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
     pub fn theta_join<F>(&self, other: &Relation, predicate: F) -> Self
     where
         F: Fn(&Tuple, &Tuple) -> bool,

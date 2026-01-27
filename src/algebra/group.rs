@@ -1,37 +1,131 @@
+//! Group and ungroup operators for relation-valued attributes.
+//!
+//! The group operator creates relation-valued attributes (RVAs) by collecting
+//! related tuples into nested relations. The ungroup operator is the inverse,
+//! flattening RVAs back into regular attributes.
+//!
+//! # TTM Compliance
+//!
+//! - Relation-valued attributes are a key feature of the relational model
+//! - Group and ungroup are inverses: `ungroup(group(R, attrs, name), name) ≡ R`
+//! - Set semantics are maintained at all levels
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::{Relation, ScalarValue};
+//! use relvar::algebra::group::GroupOps;
+//! use relvar::tuple;
+//!
+//! let heading = TupleType::new()
+//!     .with_attribute("dept_id", ScalarType::Int)
+//!     .with_attribute("emp_id", ScalarType::Int)
+//!     .with_attribute("name", ScalarType::String);
+//!
+//! let mut relation = Relation::new(RelationType::new(heading));
+//! relation.insert(tuple! { dept_id: 10i64, emp_id: 1i64, name: "Alice" }).unwrap();
+//! relation.insert(tuple! { dept_id: 10i64, emp_id: 2i64, name: "Bob" }).unwrap();
+//! relation.insert(tuple! { dept_id: 20i64, emp_id: 3i64, name: "Charlie" }).unwrap();
+//!
+//! // Group employees by department
+//! let grouped = relation.group(&["emp_id", "name"], "employees").unwrap();
+//! assert_eq!(grouped.cardinality(), 2);  // Two departments
+//! assert_eq!(grouped.degree(), 2);  // dept_id and employees RVA
+//! ```
+
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
 
+/// Errors that can occur during group operations.
 #[derive(Debug, Error)]
 pub enum GroupError {
+    /// An attribute specified for grouping does not exist in the relation.
     #[error("Grouping attribute '{0}' does not exist in relation")]
     AttributeNotFound(String),
+
+    /// No attributes were specified to group into the RVA.
     #[error("No attributes specified for grouping")]
     NoAttributesSpecified,
+
+    /// Cannot group all attributes - at least one must remain as a grouping key.
     #[error("All attributes cannot be grouped (need at least one non-grouped attribute)")]
     AllAttributesGrouped,
+
+    /// The name for the result RVA conflicts with an existing attribute.
     #[error("Result attribute '{0}' already exists")]
     ResultAttributeExists(String),
+
+    /// Failed to construct a tuple during the grouping process.
     #[error("Failed to create grouped tuple: {0}")]
     TupleCreation(String),
 }
 
+/// Errors that can occur during ungroup operations.
 #[derive(Debug, Error)]
 pub enum UngroupError {
+    /// The specified RVA attribute does not exist in the relation.
     #[error("Attribute '{0}' does not exist in relation")]
     AttributeNotFound(String),
+
+    /// The specified attribute is not a relation-valued attribute.
     #[error("Attribute '{0}' is not a relation-valued attribute")]
     NotRelationValued(String),
+
+    /// Failed to construct a tuple during the ungrouping process.
     #[error("Failed to create ungrouped tuple: {0}")]
     TupleCreation(String),
 }
 
+/// Trait providing group and ungroup operations for relations.
+///
+/// This trait defines methods for creating and flattening relation-valued
+/// attributes (RVAs), which allow nested relations within tuples.
 pub trait GroupOps {
-    /// Group specified attributes into a relation-valued attribute
+    /// Groups specified attributes into a relation-valued attribute.
+    ///
+    /// This operator collects tuples with matching values on the non-grouped
+    /// attributes and creates a nested relation (RVA) containing the grouped
+    /// attribute values.
+    ///
+    /// # Arguments
+    ///
+    /// * `attrs_to_group` - The attribute names to collect into the RVA
+    /// * `rva_name` - The name for the new relation-valued attribute
+    ///
+    /// # Returns
+    ///
+    /// A new relation where the grouped attributes have been replaced by a
+    /// single relation-valued attribute containing nested relations.
+    ///
+    /// # Errors
+    ///
+    /// - [`GroupError::AttributeNotFound`] - A specified attribute doesn't exist
+    /// - [`GroupError::NoAttributesSpecified`] - Empty attributes list
+    /// - [`GroupError::AllAttributesGrouped`] - No grouping key attributes remain
+    /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts
     fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError>;
 
-    /// Ungroup a relation-valued attribute back into regular attributes
+    /// Ungroups a relation-valued attribute back into regular attributes.
+    ///
+    /// This is the inverse of [`group`](Self::group). It flattens a nested
+    /// relation by combining each inner tuple with its parent tuple's
+    /// non-RVA attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `rva_name` - The name of the relation-valued attribute to flatten
+    ///
+    /// # Returns
+    ///
+    /// A new relation with the RVA replaced by its constituent attributes.
+    ///
+    /// # Errors
+    ///
+    /// - [`UngroupError::AttributeNotFound`] - The attribute doesn't exist
+    /// - [`UngroupError::NotRelationValued`] - The attribute is not an RVA
     fn ungroup(&self, rva_name: &str) -> Result<Relation, UngroupError>;
 }
 

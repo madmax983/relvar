@@ -1,35 +1,127 @@
+//! Type constraints for value domain restrictions.
+//!
+//! Type constraints define additional rules beyond basic type checking that
+//! values must satisfy. These include range limits, enumerated values,
+//! string length requirements, and custom validation functions.
+//!
+//! # Constraint Types
+//!
+//! - [`TypeConstraint::Range`] - Value must be within min/max bounds
+//! - [`TypeConstraint::Enum`] - Value must be one of specified options
+//! - [`TypeConstraint::StringLength`] - String length must be within bounds
+//! - [`TypeConstraint::PositiveInt`] - Integer must be > 0
+//! - [`TypeConstraint::NonNegativeInt`] - Integer must be >= 0
+//! - [`TypeConstraint::Custom`] - User-defined validation function
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::constraints::{TypeConstraint, AttributeConstraints};
+//! use relvar::types::ScalarType;
+//! use relvar::values::ScalarValue;
+//!
+//! // Age must be between 0 and 150
+//! let age_constraint = TypeConstraint::Range {
+//!     min: ScalarValue::Int(0),
+//!     max: ScalarValue::Int(150),
+//! };
+//!
+//! assert!(age_constraint.is_satisfied_by(&ScalarValue::Int(25)).unwrap());
+//! assert!(!age_constraint.is_satisfied_by(&ScalarValue::Int(200)).unwrap());
+//! ```
+
 use crate::types::ScalarType;
 use crate::values::ScalarValue;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Errors that can occur with type constraints.
 #[derive(Debug, Error)]
 pub enum TypeConstraintError {
+    /// A value violates a constraint.
     #[error("Type constraint violation: value {0:?} does not satisfy constraint")]
     ConstraintViolation(ScalarValue),
+
+    /// A value's type doesn't match what the constraint expects.
     #[error("Type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch { expected: String, actual: String },
+    TypeMismatch {
+        /// The expected type name.
+        expected: String,
+        /// The actual type name of the value.
+        actual: String,
+    },
 }
 
-/// A constraint on a scalar type
+/// A constraint that restricts the valid values for a scalar type.
+///
+/// Type constraints add domain restrictions beyond the basic type system.
+/// They can enforce ranges, enumerated values, string lengths, or custom
+/// validation logic.
+///
+/// # Example
+///
+/// ```
+/// use relvar::constraints::TypeConstraint;
+/// use relvar::values::ScalarValue;
+///
+/// // Range constraint for percentages
+/// let percentage = TypeConstraint::Range {
+///     min: ScalarValue::Int(0),
+///     max: ScalarValue::Int(100),
+/// };
+///
+/// // Enum constraint for status values
+/// let status = TypeConstraint::Enum {
+///     allowed_values: vec![
+///         ScalarValue::String("active".to_string()),
+///         ScalarValue::String("inactive".to_string()),
+///         ScalarValue::String("pending".to_string()),
+///     ],
+/// };
+/// ```
 #[derive(Serialize, Deserialize)]
 pub enum TypeConstraint {
-    /// Value must be within a range (inclusive)
-    Range { min: ScalarValue, max: ScalarValue },
-    /// Value must be one of the specified values
-    Enum { allowed_values: Vec<ScalarValue> },
-    /// String must match a pattern (simplified - just length for now)
-    StringLength { min: usize, max: usize },
-    /// Integer must be positive
+    /// Value must be within an inclusive range.
+    ///
+    /// Both `min` and `max` bounds are included in the valid range.
+    Range {
+        /// The minimum allowed value (inclusive).
+        min: ScalarValue,
+        /// The maximum allowed value (inclusive).
+        max: ScalarValue,
+    },
+
+    /// Value must be one of the specified allowed values.
+    Enum {
+        /// The list of valid values.
+        allowed_values: Vec<ScalarValue>,
+    },
+
+    /// String length must be within the specified bounds.
+    StringLength {
+        /// Minimum string length (inclusive).
+        min: usize,
+        /// Maximum string length (inclusive).
+        max: usize,
+    },
+
+    /// Integer must be strictly positive (> 0).
     PositiveInt,
-    /// Integer must be non-negative
+
+    /// Integer must be non-negative (>= 0).
     NonNegativeInt,
-    /// Custom validation function (not serializable, for in-memory use only)
+
+    /// Custom validation function.
+    ///
+    /// The validator function is not serializable. After deserialization,
+    /// the validator will be `None` and validation will pass by default.
     #[serde(skip)]
     Custom {
+        /// The validation function (optional for deserialization support).
         #[serde(skip)]
         #[allow(clippy::type_complexity)]
         validator: Option<Box<dyn Fn(&ScalarValue) -> bool + Send + Sync>>,
+        /// Human-readable description of the constraint.
         description: String,
     },
 }
