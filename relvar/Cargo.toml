@@ -1,0 +1,27 @@
+[package]
+name = "relvar"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A pure relational DBMS in Rust based on Date and Darwen's relational principles"
+keywords = ["database", "relational", "dbms", "date", "relational-algebra"]
+categories = ["database-implementations"]
+
+[features]
+default = ["storage"]
+storage = ["dep:relvar-storage"]
+
+[dependencies]
+relvar-core.workspace = true
+relvar-storage = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "database"
+harness = false
