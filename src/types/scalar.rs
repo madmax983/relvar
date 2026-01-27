@@ -92,7 +92,7 @@ pub enum ScalarTypeError {
 /// // These are different types despite same representation
 /// assert_ne!(employee_id, department_id);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScalarType {
     /// 64-bit signed integer.
     ///
@@ -228,6 +228,122 @@ impl ScalarType {
     }
 }
 
+impl std::hash::Hash for ScalarType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash the discriminant first
+        std::mem::discriminant(self).hash(state);
+
+        // Then hash the data based on variant
+        match self {
+            ScalarType::Int => {}
+            ScalarType::Float => {}
+            ScalarType::String => {}
+            ScalarType::Bool => {}
+            ScalarType::Bytes => {}
+            ScalarType::Relation(rel_type) => {
+                // Hash the relation type's heading
+                rel_type.heading().hash(state);
+            }
+            ScalarType::UserDefined {
+                name,
+                representation,
+            } => {
+                name.hash(state);
+                representation.hash(state);
+            }
+        }
+    }
+}
+
+impl PartialOrd for ScalarType {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ScalarType {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+
+        // Helper to get a discriminant value for ordering
+        let disc_value = |t: &ScalarType| match t {
+            ScalarType::Int => 0,
+            ScalarType::Float => 1,
+            ScalarType::String => 2,
+            ScalarType::Bool => 3,
+            ScalarType::Bytes => 4,
+            ScalarType::Relation(_) => 5,
+            ScalarType::UserDefined { .. } => 6,
+        };
+
+        match disc_value(self).cmp(&disc_value(other)) {
+            Ordering::Equal => {
+                // Same variant, compare data
+                match (self, other) {
+                    (ScalarType::Int, ScalarType::Int)
+                    | (ScalarType::Float, ScalarType::Float)
+                    | (ScalarType::String, ScalarType::String)
+                    | (ScalarType::Bool, ScalarType::Bool)
+                    | (ScalarType::Bytes, ScalarType::Bytes) => Ordering::Equal,
+                    (ScalarType::Relation(a), ScalarType::Relation(b)) => {
+                        // Compare relation types by their headings
+                        // Since TupleType doesn't have Ord, we need a custom comparison
+                        let a_attrs: Vec<_> = a
+                            .heading()
+                            .attribute_names()
+                            .map(|n| (n, a.heading().get_attribute_type(n).unwrap()))
+                            .collect();
+                        let b_attrs: Vec<_> = b
+                            .heading()
+                            .attribute_names()
+                            .map(|n| (n, b.heading().get_attribute_type(n).unwrap()))
+                            .collect();
+
+                        // Compare by count first, then by sorted attributes
+                        match a_attrs.len().cmp(&b_attrs.len()) {
+                            Ordering::Equal => {
+                                let mut a_sorted = a_attrs;
+                                let mut b_sorted = b_attrs;
+                                a_sorted.sort_by_key(|(name, _)| *name);
+                                b_sorted.sort_by_key(|(name, _)| *name);
+
+                                for ((a_name, a_ty), (b_name, b_ty)) in
+                                    a_sorted.iter().zip(b_sorted.iter())
+                                {
+                                    match a_name.cmp(b_name) {
+                                        Ordering::Equal => match a_ty.cmp(b_ty) {
+                                            Ordering::Equal => continue,
+                                            other => return other,
+                                        },
+                                        other => return other,
+                                    }
+                                }
+                                Ordering::Equal
+                            }
+                            other => other,
+                        }
+                    }
+                    (
+                        ScalarType::UserDefined {
+                            name: a_name,
+                            representation: a_rep,
+                        },
+                        ScalarType::UserDefined {
+                            name: b_name,
+                            representation: b_rep,
+                        },
+                    ) => match a_name.cmp(b_name) {
+                        Ordering::Equal => a_rep.cmp(b_rep),
+                        other => other,
+                    },
+                    _ => unreachable!("Discriminants matched but variants don't"),
+                }
+            }
+            other => other,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,5 +431,189 @@ mod tests {
         let result = int_type.selector(int_value.clone());
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), int_value);
+    }
+
+    // Tests for Ord/PartialOrd implementations (for coverage)
+    #[test]
+    fn test_scalar_type_ord_basic_types() {
+        use std::cmp::Ordering;
+
+        // Test discriminant ordering: Int < Float < String < Bool < Bytes < Relation < UserDefined
+        assert_eq!(ScalarType::Int.cmp(&ScalarType::Float), Ordering::Less);
+        assert_eq!(ScalarType::Float.cmp(&ScalarType::String), Ordering::Less);
+        assert_eq!(ScalarType::String.cmp(&ScalarType::Bool), Ordering::Less);
+        assert_eq!(ScalarType::Bool.cmp(&ScalarType::Bytes), Ordering::Less);
+
+        // Same types are equal
+        assert_eq!(ScalarType::Int.cmp(&ScalarType::Int), Ordering::Equal);
+        assert_eq!(ScalarType::Float.cmp(&ScalarType::Float), Ordering::Equal);
+        assert_eq!(ScalarType::String.cmp(&ScalarType::String), Ordering::Equal);
+        assert_eq!(ScalarType::Bool.cmp(&ScalarType::Bool), Ordering::Equal);
+        assert_eq!(ScalarType::Bytes.cmp(&ScalarType::Bytes), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_scalar_type_ord_relation_types() {
+        use crate::types::{RelationType, TupleType};
+        use std::cmp::Ordering;
+
+        // Create relation types with different headings
+        let heading_a = TupleType::new().with_attribute("a", ScalarType::Int);
+        let heading_b = TupleType::new().with_attribute("b", ScalarType::Int);
+        let heading_a_copy = TupleType::new().with_attribute("a", ScalarType::Int);
+
+        let rel_type_a = ScalarType::Relation(Box::new(RelationType::new(heading_a)));
+        let rel_type_b = ScalarType::Relation(Box::new(RelationType::new(heading_b)));
+        let rel_type_a_copy = ScalarType::Relation(Box::new(RelationType::new(heading_a_copy)));
+
+        // Same heading should be equal
+        assert_eq!(rel_type_a.cmp(&rel_type_a_copy), Ordering::Equal);
+
+        // Different headings should have consistent ordering
+        let result = rel_type_a.cmp(&rel_type_b);
+        assert_ne!(result, Ordering::Equal);
+
+        // Ordering should be transitive and antisymmetric
+        assert_eq!(rel_type_b.cmp(&rel_type_a), result.reverse());
+    }
+
+    #[test]
+    fn test_scalar_type_ord_relation_types_different_degrees() {
+        use crate::types::{RelationType, TupleType};
+        use std::cmp::Ordering;
+
+        // Different degree headings
+        let heading_1 = TupleType::new().with_attribute("a", ScalarType::Int);
+        let heading_2 = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+
+        let rel_type_1 = ScalarType::Relation(Box::new(RelationType::new(heading_1)));
+        let rel_type_2 = ScalarType::Relation(Box::new(RelationType::new(heading_2)));
+
+        // Different degrees should have consistent ordering
+        let result = rel_type_1.cmp(&rel_type_2);
+        assert_ne!(result, Ordering::Equal);
+        assert_eq!(rel_type_2.cmp(&rel_type_1), result.reverse());
+    }
+
+    #[test]
+    fn test_scalar_type_ord_user_defined_by_name() {
+        use std::cmp::Ordering;
+
+        let widget_id = ScalarType::user_defined("WidgetId", ScalarType::Int);
+        let supplier_id = ScalarType::user_defined("SupplierId", ScalarType::Int);
+        let widget_id_copy = ScalarType::user_defined("WidgetId", ScalarType::Int);
+
+        // Same name and representation should be equal
+        assert_eq!(widget_id.cmp(&widget_id_copy), Ordering::Equal);
+
+        // Different names should have consistent ordering
+        let result = widget_id.cmp(&supplier_id);
+        assert_ne!(result, Ordering::Equal);
+        assert_eq!(supplier_id.cmp(&widget_id), result.reverse());
+    }
+
+    #[test]
+    fn test_scalar_type_ord_user_defined_by_representation() {
+        use std::cmp::Ordering;
+
+        // Same name but different representation
+        let widget_id_int = ScalarType::user_defined("WidgetId", ScalarType::Int);
+        let widget_id_string = ScalarType::user_defined("WidgetId", ScalarType::String);
+
+        // Different representations should have consistent ordering
+        let result = widget_id_int.cmp(&widget_id_string);
+        assert_ne!(result, Ordering::Equal);
+        assert_eq!(widget_id_string.cmp(&widget_id_int), result.reverse());
+    }
+
+    #[test]
+    fn test_scalar_type_ord_mixed_variants() {
+        use crate::types::{RelationType, TupleType};
+        use std::cmp::Ordering;
+
+        let int_type = ScalarType::Int;
+        let relation_type = ScalarType::Relation(Box::new(RelationType::new(
+            TupleType::new().with_attribute("a", ScalarType::Int),
+        )));
+        let user_type = ScalarType::user_defined("CustomType", ScalarType::Int);
+
+        // Relation comes after basic types
+        assert_eq!(int_type.cmp(&relation_type), Ordering::Less);
+
+        // UserDefined comes after Relation
+        assert_eq!(relation_type.cmp(&user_type), Ordering::Less);
+
+        // Transitive property
+        assert_eq!(int_type.cmp(&user_type), Ordering::Less);
+    }
+
+    #[test]
+    fn test_scalar_type_partial_ord_consistency() {
+        // PartialOrd should be consistent with Ord
+        let int_type = ScalarType::Int;
+        let float_type = ScalarType::Float;
+
+        assert_eq!(
+            int_type.partial_cmp(&float_type),
+            Some(int_type.cmp(&float_type))
+        );
+        assert_eq!(
+            int_type.partial_cmp(&int_type),
+            Some(std::cmp::Ordering::Equal)
+        );
+    }
+
+    #[test]
+    fn test_scalar_type_ord_reflexivity() {
+        // x.cmp(x) == Equal (reflexivity)
+        let types = vec![
+            ScalarType::Int,
+            ScalarType::Float,
+            ScalarType::String,
+            ScalarType::Bool,
+            ScalarType::Bytes,
+            ScalarType::user_defined("Test", ScalarType::Int),
+        ];
+
+        for ty in types {
+            assert_eq!(ty.cmp(&ty), std::cmp::Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn test_scalar_type_ord_transitivity() {
+        use std::cmp::Ordering;
+
+        // If a < b and b < c, then a < c (transitivity)
+        let a = ScalarType::Int;
+        let b = ScalarType::Float;
+        let c = ScalarType::String;
+
+        assert_eq!(a.cmp(&b), Ordering::Less);
+        assert_eq!(b.cmp(&c), Ordering::Less);
+        assert_eq!(a.cmp(&c), Ordering::Less);
+    }
+
+    #[test]
+    fn test_scalar_type_can_be_sorted() {
+        // Practical test: should be able to sort a Vec of ScalarTypes
+        let mut types = [
+            ScalarType::String,
+            ScalarType::Int,
+            ScalarType::Float,
+            ScalarType::Bool,
+            ScalarType::Bytes,
+        ];
+
+        types.sort();
+
+        // Should be sorted by discriminant order
+        assert_eq!(types[0], ScalarType::Int);
+        assert_eq!(types[1], ScalarType::Float);
+        assert_eq!(types[2], ScalarType::String);
+        assert_eq!(types[3], ScalarType::Bool);
+        assert_eq!(types[4], ScalarType::Bytes);
     }
 }

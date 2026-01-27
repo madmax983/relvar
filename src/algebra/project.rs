@@ -32,7 +32,7 @@
 
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 impl Relation {
     /// Projects this relation onto a subset of attributes.
@@ -87,7 +87,7 @@ impl Relation {
         let projected_tuples: Vec<_> = self
             .tuples()
             .map(|tuple| {
-                let mut values = BTreeMap::new();
+                let mut values = HashMap::new();
                 for attr_name in attributes {
                     if let Some(value) = tuple.get(attr_name) {
                         values.insert(attr_name.to_string(), value.clone());

@@ -60,7 +60,7 @@ use serde::{Deserialize, Serialize};
 /// assert!(employee_type.has_attribute("emp_id"));
 /// assert!(!employee_type.has_attribute("salary"));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelationType {
     /// The heading (tuple type) that defines this relation type.
     heading: TupleType,
@@ -168,6 +168,13 @@ impl RelationType {
     /// ```
     pub fn has_attribute(&self, name: &str) -> bool {
         self.heading.has_attribute(name)
+    }
+}
+
+impl std::hash::Hash for RelationType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Just hash the heading
+        self.heading.hash(state);
     }
 }
 
