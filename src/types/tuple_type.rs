@@ -331,16 +331,11 @@ mod tests {
 
         // TTM Proscription 4: Attributes must have no ordering.
         // We verify all expected attributes are present, but we do NOT
-        // check for any particular order.
+        // check for any particular order. HashMap ensures no guaranteed ordering.
         assert_eq!(names.len(), 3);
         assert!(names.contains(&"emp_id".to_string()));
         assert!(names.contains(&"name".to_string()));
         assert!(names.contains(&"dept_id".to_string()));
-
-        // PHILOSOPHICAL ISSUE with current BTreeMap implementation:
-        // BTreeMap imposes alphabetical ordering, which violates TTM even if
-        // we don't rely on it. The correct implementation should use HashMap
-        // to make it clear there is NO guaranteed ordering.
     }
 
     #[test]
