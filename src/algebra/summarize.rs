@@ -40,7 +40,7 @@
 
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur during summarize operations.
@@ -475,7 +475,7 @@ impl SummarizeOps for Relation {
         // Compute aggregations for each group
         let mut result_tuples = Vec::new();
         for (key, group_tuples) in groups {
-            let mut values = BTreeMap::new();
+            let mut values = HashMap::new();
 
             // Add grouping attribute values
             for (i, attr) in group_by.iter().enumerate() {

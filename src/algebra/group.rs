@@ -36,7 +36,7 @@
 
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur during group operations.
@@ -206,7 +206,7 @@ impl GroupOps for Relation {
                 .collect();
 
             // Extract grouped attributes for RVA
-            let mut rva_values = BTreeMap::new();
+            let mut rva_values = HashMap::new();
             for attr in attrs_to_group {
                 rva_values.insert(attr.to_string(), tuple.get(attr).unwrap().clone());
             }
@@ -220,7 +220,7 @@ impl GroupOps for Relation {
         // Build result tuples
         let mut result_tuples = Vec::new();
         for (key, rva_tuples) in groups {
-            let mut values = BTreeMap::new();
+            let mut values = HashMap::new();
 
             // Add grouping attribute values
             for (i, attr) in grouping_attrs.iter().enumerate() {
@@ -300,7 +300,7 @@ impl GroupOps for Relation {
 
             // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
             for rva_tuple in rva_relation.tuples() {
-                let mut values = BTreeMap::new();
+                let mut values = HashMap::new();
 
                 // Add non-RVA attribute values
                 for attr_name in self.relation_type().tuple_type().attribute_names() {

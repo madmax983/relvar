@@ -92,7 +92,7 @@ pub enum ScalarTypeError {
 /// // These are different types despite same representation
 /// assert_ne!(employee_id, department_id);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScalarType {
     /// 64-bit signed integer.
     ///
@@ -224,6 +224,122 @@ impl ScalarType {
                 }
                 Ok(value)
             }
+        }
+    }
+}
+
+impl std::hash::Hash for ScalarType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash the discriminant first
+        std::mem::discriminant(self).hash(state);
+
+        // Then hash the data based on variant
+        match self {
+            ScalarType::Int => {}
+            ScalarType::Float => {}
+            ScalarType::String => {}
+            ScalarType::Bool => {}
+            ScalarType::Bytes => {}
+            ScalarType::Relation(rel_type) => {
+                // Hash the relation type's heading
+                rel_type.heading().hash(state);
+            }
+            ScalarType::UserDefined {
+                name,
+                representation,
+            } => {
+                name.hash(state);
+                representation.hash(state);
+            }
+        }
+    }
+}
+
+impl PartialOrd for ScalarType {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ScalarType {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+
+        // Helper to get a discriminant value for ordering
+        let disc_value = |t: &ScalarType| match t {
+            ScalarType::Int => 0,
+            ScalarType::Float => 1,
+            ScalarType::String => 2,
+            ScalarType::Bool => 3,
+            ScalarType::Bytes => 4,
+            ScalarType::Relation(_) => 5,
+            ScalarType::UserDefined { .. } => 6,
+        };
+
+        match disc_value(self).cmp(&disc_value(other)) {
+            Ordering::Equal => {
+                // Same variant, compare data
+                match (self, other) {
+                    (ScalarType::Int, ScalarType::Int)
+                    | (ScalarType::Float, ScalarType::Float)
+                    | (ScalarType::String, ScalarType::String)
+                    | (ScalarType::Bool, ScalarType::Bool)
+                    | (ScalarType::Bytes, ScalarType::Bytes) => Ordering::Equal,
+                    (ScalarType::Relation(a), ScalarType::Relation(b)) => {
+                        // Compare relation types by their headings
+                        // Since TupleType doesn't have Ord, we need a custom comparison
+                        let a_attrs: Vec<_> = a
+                            .heading()
+                            .attribute_names()
+                            .map(|n| (n, a.heading().get_attribute_type(n).unwrap()))
+                            .collect();
+                        let b_attrs: Vec<_> = b
+                            .heading()
+                            .attribute_names()
+                            .map(|n| (n, b.heading().get_attribute_type(n).unwrap()))
+                            .collect();
+
+                        // Compare by count first, then by sorted attributes
+                        match a_attrs.len().cmp(&b_attrs.len()) {
+                            Ordering::Equal => {
+                                let mut a_sorted = a_attrs;
+                                let mut b_sorted = b_attrs;
+                                a_sorted.sort_by_key(|(name, _)| *name);
+                                b_sorted.sort_by_key(|(name, _)| *name);
+
+                                for ((a_name, a_ty), (b_name, b_ty)) in
+                                    a_sorted.iter().zip(b_sorted.iter())
+                                {
+                                    match a_name.cmp(b_name) {
+                                        Ordering::Equal => match a_ty.cmp(b_ty) {
+                                            Ordering::Equal => continue,
+                                            other => return other,
+                                        },
+                                        other => return other,
+                                    }
+                                }
+                                Ordering::Equal
+                            }
+                            other => other,
+                        }
+                    }
+                    (
+                        ScalarType::UserDefined {
+                            name: a_name,
+                            representation: a_rep,
+                        },
+                        ScalarType::UserDefined {
+                            name: b_name,
+                            representation: b_rep,
+                        },
+                    ) => match a_name.cmp(b_name) {
+                        Ordering::Equal => a_rep.cmp(b_rep),
+                        other => other,
+                    },
+                    _ => unreachable!("Discriminants matched but variants don't"),
+                }
+            }
+            other => other,
         }
     }
 }

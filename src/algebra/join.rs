@@ -42,7 +42,7 @@
 
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 impl Relation {
     /// Performs a natural join with another relation.
@@ -138,7 +138,7 @@ impl Relation {
 
                 if matches {
                     // Combine tuples
-                    let mut combined_values = BTreeMap::new();
+                    let mut combined_values = HashMap::new();
 
                     // Add all values from tuple1
                     for (attr_name, value) in tuple1.values() {
@@ -256,7 +256,7 @@ impl Relation {
             for tuple2 in other.tuples() {
                 if predicate(tuple1, tuple2) {
                     // Combine tuples
-                    let mut combined_values = BTreeMap::new();
+                    let mut combined_values = HashMap::new();
 
                     for (attr_name, value) in tuple1.values() {
                         combined_values.insert(attr_name.clone(), value.clone());

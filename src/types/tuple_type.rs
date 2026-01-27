@@ -26,7 +26,7 @@
 
 use crate::types::ScalarType;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 /// Defines the structure (heading) of tuples.
 ///
@@ -37,9 +37,8 @@ use std::collections::BTreeMap;
 /// # Attribute Ordering
 ///
 /// Per TTM Proscription 4, attributes have no inherent ordering. They are
-/// identified solely by name. The implementation uses `BTreeMap` internally
-/// for deterministic iteration, but this ordering should not be relied upon
-/// for semantic purposes.
+/// identified solely by name. The implementation uses `HashMap` to enforce
+/// that there is no guaranteed ordering of attributes.
 ///
 /// # Type Equality
 ///
@@ -63,10 +62,10 @@ use std::collections::BTreeMap;
 /// assert_eq!(person_type.get_attribute_type("id"), Some(&ScalarType::Int));
 /// assert!(!person_type.has_attribute("nonexistent"));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TupleType {
     /// The attributes of this tuple type, mapping names to scalar types.
-    attributes: BTreeMap<String, ScalarType>,
+    attributes: HashMap<String, ScalarType>,
 }
 
 impl TupleType {
@@ -86,7 +85,7 @@ impl TupleType {
     /// ```
     pub fn new() -> Self {
         Self {
-            attributes: BTreeMap::new(),
+            attributes: HashMap::new(),
         }
     }
 
@@ -163,8 +162,8 @@ impl TupleType {
 
     /// Returns an iterator over all attribute names.
     ///
-    /// The order of iteration is deterministic (sorted by name) but should
-    /// not be relied upon for semantic purposes per TTM Proscription 4.
+    /// Per TTM Proscription 4, the order of iteration is arbitrary and
+    /// should not be relied upon. Attributes are identified by name only.
     ///
     /// # Example
     ///
@@ -219,7 +218,7 @@ impl TupleType {
     ///     println!("{}: {:?}", name, scalar_type);
     /// }
     /// ```
-    pub fn attributes(&self) -> &BTreeMap<String, ScalarType> {
+    pub fn attributes(&self) -> &HashMap<String, ScalarType> {
         &self.attributes
     }
 }
@@ -227,6 +226,23 @@ impl TupleType {
 impl Default for TupleType {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::hash::Hash for TupleType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash in a deterministic way by sorting the entries
+        let mut entries: Vec<_> = self.attributes.iter().collect();
+        entries.sort_by_key(|(name, _)| *name);
+
+        // Hash the count first
+        self.attributes.len().hash(state);
+
+        // Then hash each entry
+        for (name, ty) in entries {
+            name.hash(state);
+            ty.hash(state);
+        }
     }
 }
 
@@ -299,6 +315,34 @@ mod tests {
         assert!(!tuple_type.has_attribute("salary"));
     }
 
+    /// TTM Proscription 4: Attributes have no ordering.
+    ///
+    /// This test verifies that we don't guarantee any particular ordering
+    /// of attributes. The iteration order should be considered arbitrary
+    /// and must not be relied upon for semantic purposes.
+    #[test]
+    fn test_ttm_proscription_4_no_attribute_ordering() {
+        let tuple_type = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String)
+            .with_attribute("dept_id", ScalarType::Int);
+
+        let names: Vec<_> = tuple_type.attribute_names().cloned().collect();
+
+        // TTM Proscription 4: Attributes must have no ordering.
+        // We verify all expected attributes are present, but we do NOT
+        // check for any particular order.
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"emp_id".to_string()));
+        assert!(names.contains(&"name".to_string()));
+        assert!(names.contains(&"dept_id".to_string()));
+
+        // PHILOSOPHICAL ISSUE with current BTreeMap implementation:
+        // BTreeMap imposes alphabetical ordering, which violates TTM even if
+        // we don't rely on it. The correct implementation should use HashMap
+        // to make it clear there is NO guaranteed ordering.
+    }
+
     #[test]
     fn test_attribute_names_iterator() {
         let tuple_type = TupleType::new()
@@ -308,8 +352,12 @@ mod tests {
 
         let names: Vec<_> = tuple_type.attribute_names().cloned().collect();
 
-        // BTreeMap maintains sorted order
-        assert_eq!(names, vec!["dept_id", "emp_id", "name"]);
+        // TTM Proscription 4: Attributes have no ordering.
+        // Verify all attributes are present, but don't check order.
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"emp_id".to_string()));
+        assert!(names.contains(&"name".to_string()));
+        assert!(names.contains(&"dept_id".to_string()));
     }
 
     #[test]

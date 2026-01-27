@@ -30,7 +30,7 @@
 use crate::types::TupleType;
 use crate::values::ScalarValue;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur when creating or modifying tuples.
@@ -88,12 +88,12 @@ pub enum TupleError {
 /// let age: i64 = person.get_typed("age").unwrap();
 /// assert_eq!(age, 30);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tuple {
     /// The tuple type (heading) that this tuple conforms to.
     tuple_type: TupleType,
     /// The attribute values, keyed by attribute name.
-    values: BTreeMap<String, ScalarValue>,
+    values: HashMap<String, ScalarValue>,
 }
 
 impl Tuple {
@@ -118,13 +118,13 @@ impl Tuple {
     /// ```
     /// use relvar::types::{TupleType, ScalarType};
     /// use relvar::values::{Tuple, ScalarValue};
-    /// use std::collections::BTreeMap;
+    /// use std::collections::HashMap;
     ///
     /// let tuple_type = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int)
     ///     .with_attribute("name", ScalarType::String);
     ///
-    /// let mut values = BTreeMap::new();
+    /// let mut values = HashMap::new();
     /// values.insert("id".to_string(), ScalarValue::Int(1));
     /// values.insert("name".to_string(), ScalarValue::String("Alice".to_string()));
     ///
@@ -133,7 +133,7 @@ impl Tuple {
     /// ```
     pub fn new(
         tuple_type: TupleType,
-        values: BTreeMap<String, ScalarValue>,
+        values: HashMap<String, ScalarValue>,
     ) -> Result<Self, TupleError> {
         // Verify all attributes have values
         for attr_name in tuple_type.attribute_names() {
@@ -185,7 +185,7 @@ impl Tuple {
     }
 
     /// Get all values
-    pub fn values(&self) -> &BTreeMap<String, ScalarValue> {
+    pub fn values(&self) -> &HashMap<String, ScalarValue> {
         &self.values
     }
 
@@ -239,13 +239,33 @@ impl Tuple {
     }
 }
 
+impl std::hash::Hash for Tuple {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash the tuple type first
+        self.tuple_type.hash(state);
+
+        // Hash values in a deterministic way by sorting the entries
+        let mut entries: Vec<_> = self.values.iter().collect();
+        entries.sort_by_key(|(name, _)| *name);
+
+        // Hash the count
+        self.values.len().hash(state);
+
+        // Then hash each entry
+        for (name, value) in entries {
+            name.hash(state);
+            value.hash(state);
+        }
+    }
+}
+
 /// Helper macro for creating tuples
 #[macro_export]
 macro_rules! tuple {
     ($($name:ident: $value:expr),* $(,)?) => {{
-        use std::collections::BTreeMap;
+        use std::collections::HashMap;
         let mut type_builder = $crate::types::TupleType::new();
-        let mut values = BTreeMap::new();
+        let mut values = HashMap::new();
 
         $(
             let value = $crate::values::ScalarValue::from($value);
@@ -346,7 +366,7 @@ mod tests {
             .with_attribute("emp_id", ScalarType::Int)
             .with_attribute("name", ScalarType::String);
 
-        let mut values = BTreeMap::new();
+        let mut values = HashMap::new();
         values.insert("emp_id".to_string(), ScalarValue::Int(1));
         values.insert("name".to_string(), ScalarValue::String("Alice".to_string()));
 
@@ -360,7 +380,7 @@ mod tests {
             .with_attribute("emp_id", ScalarType::Int)
             .with_attribute("name", ScalarType::String);
 
-        let mut values = BTreeMap::new();
+        let mut values = HashMap::new();
         values.insert("emp_id".to_string(), ScalarValue::Int(1));
         // Missing "name"
 
@@ -375,7 +395,7 @@ mod tests {
             .with_attribute("emp_id", ScalarType::Int)
             .with_attribute("name", ScalarType::String);
 
-        let mut values = BTreeMap::new();
+        let mut values = HashMap::new();
         values.insert("emp_id".to_string(), ScalarValue::Int(1));
         values.insert("name".to_string(), ScalarValue::Int(42)); // Wrong type
 
@@ -393,11 +413,11 @@ mod tests {
             .with_attribute("emp_id", ScalarType::Int)
             .with_attribute("name", ScalarType::String);
 
-        let mut values1 = BTreeMap::new();
+        let mut values1 = HashMap::new();
         values1.insert("emp_id".to_string(), ScalarValue::Int(1));
         values1.insert("name".to_string(), ScalarValue::String("Alice".to_string()));
 
-        let mut values2 = BTreeMap::new();
+        let mut values2 = HashMap::new();
         values2.insert("name".to_string(), ScalarValue::String("Alice".to_string()));
         values2.insert("emp_id".to_string(), ScalarValue::Int(1)); // Different insertion order
 
@@ -413,7 +433,7 @@ mod tests {
             .with_attribute("emp_id", ScalarType::Int)
             .with_attribute("name", ScalarType::String);
 
-        let mut values = BTreeMap::new();
+        let mut values = HashMap::new();
         values.insert("emp_id".to_string(), ScalarValue::Int(42));
         values.insert("name".to_string(), ScalarValue::String("Bob".to_string()));
 
