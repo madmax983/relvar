@@ -45,6 +45,50 @@ fn create_department_relation(size: usize) -> Relation {
     relation
 }
 
+// Create supplier-parts relation for division benchmark
+fn create_supplies_relation(num_suppliers: usize, num_parts: usize) -> Relation {
+    let heading = TupleType::new()
+        .with_attribute("supplier_id".to_string(), ScalarType::Int)
+        .with_attribute("part_id".to_string(), ScalarType::Int);
+
+    let mut relation = Relation::new(RelationType::new(heading));
+
+    // Each supplier supplies a random subset of parts
+    // Approximately 70% of suppliers supply all parts (to make division meaningful)
+    for supplier in 0..num_suppliers {
+        let supplies_all = supplier % 10 < 7; // 70% supply all parts
+
+        for part in 0..num_parts {
+            // If supplier supplies all, or randomly include this part
+            if supplies_all || (supplier + part) % 3 != 0 {
+                let tuple = tuple! {
+                    supplier_id: supplier as i64,
+                    part_id: part as i64
+                };
+                relation.insert(tuple).unwrap();
+            }
+        }
+    }
+
+    relation
+}
+
+// Create parts relation for division benchmark
+fn create_parts_relation(num_parts: usize) -> Relation {
+    let heading = TupleType::new().with_attribute("part_id".to_string(), ScalarType::Int);
+
+    let mut relation = Relation::new(RelationType::new(heading));
+
+    for part in 0..num_parts {
+        let tuple = tuple! {
+            part_id: part as i64
+        };
+        relation.insert(tuple).unwrap();
+    }
+
+    relation
+}
+
 // Restrict benchmark
 fn bench_restrict(c: &mut Criterion) {
     let mut group = c.benchmark_group("restrict");
@@ -240,6 +284,27 @@ fn bench_summarize(c: &mut Criterion) {
     group.finish();
 }
 
+// Division benchmark
+fn bench_divide(c: &mut Criterion) {
+    let mut group = c.benchmark_group("divide");
+
+    for size in [100, 500, 1000].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            // Create dividend relation (supplier-parts with size * 10 tuples)
+            let dividend = create_supplies_relation(size, 10);
+            // Create divisor relation (parts to match - 10 parts)
+            let divisor = create_parts_relation(10);
+
+            b.iter(|| {
+                let result = dividend.divide(&divisor).unwrap();
+                black_box(result);
+            });
+        });
+    }
+    group.finish();
+}
+
 // Chained operations benchmark (realistic query)
 fn bench_chained_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("chained_operations");
@@ -273,6 +338,7 @@ criterion_group!(
     bench_union,
     bench_intersect,
     bench_difference,
+    bench_divide,
     bench_extend,
     bench_summarize,
     bench_chained_operations

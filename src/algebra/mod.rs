@@ -1,4 +1,5 @@
 pub mod difference;
+pub mod divide;
 pub mod extend;
 pub mod group;
 pub mod intersect;
