@@ -395,6 +395,248 @@ fn bench_realistic_workload(c: &mut Criterion) {
     group.finish();
 }
 
+// =============================================================================
+// View Benchmarks (TTM RM Prescription 10)
+// =============================================================================
+
+/// Helper to create a database with an EMP relvar pre-populated with data
+fn create_populated_database(count: usize) -> (TempDir, Database) {
+    let (_temp_dir, mut db) = create_database_with_relvar();
+    for i in 0..count {
+        let tuple = tuple! {
+            emp_id: i as i64,
+            name: format!("Employee_{}", i),
+            dept_id: (i % 10) as i64,
+            salary: 50000.0 + (i as f64 * 1000.0)
+        };
+        db.insert("EMP", tuple).unwrap();
+    }
+    (_temp_dir, db)
+}
+
+/// Benchmark view creation
+fn bench_view_creation(c: &mut Criterion) {
+    let mut group = c.benchmark_group("view_creation");
+
+    group.bench_function("create_simple_view", |b| {
+        b.iter_batched(
+            || {
+                // Setup: create database with relvar and data
+                create_populated_database(100)
+            },
+            |(_temp_dir, mut db)| {
+                // Measured: just the view creation
+                db.create_view("HIGH_EARNERS", |db| {
+                    Ok(db
+                        .query("EMP")?
+                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
+                })
+                .unwrap();
+                black_box(db);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.bench_function("create_projected_view", |b| {
+        b.iter_batched(
+            || create_populated_database(100),
+            |(_temp_dir, mut db)| {
+                db.create_view("EMP_NAMES", |db| {
+                    Ok(db.query("EMP")?.project(&["emp_id", "name"]))
+                })
+                .unwrap();
+                black_box(db);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.finish();
+}
+
+/// Benchmark view query (re-evaluation)
+fn bench_view_query(c: &mut Criterion) {
+    let mut group = c.benchmark_group("view_query");
+
+    for count in [100, 500, 1000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(
+            BenchmarkId::new("restrict_view", count),
+            count,
+            |b, &count| {
+                // Setup: create database, relvar, data, and view
+                let (_temp_dir, mut db) = create_populated_database(count);
+                db.create_view("HIGH_EARNERS", |db| {
+                    Ok(db
+                        .query("EMP")?
+                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
+                })
+                .unwrap();
+
+                // Measured: query the view (which re-evaluates the definition)
+                b.iter(|| {
+                    let result = db.query("HIGH_EARNERS").unwrap();
+                    black_box(result);
+                });
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("project_view", count),
+            count,
+            |b, &count| {
+                let (_temp_dir, mut db) = create_populated_database(count);
+                db.create_view("EMP_NAMES", |db| {
+                    Ok(db.query("EMP")?.project(&["emp_id", "name"]))
+                })
+                .unwrap();
+
+                b.iter(|| {
+                    let result = db.query("EMP_NAMES").unwrap();
+                    black_box(result);
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Benchmark view query vs direct query (comparison)
+fn bench_view_vs_direct_query(c: &mut Criterion) {
+    let mut group = c.benchmark_group("view_vs_direct");
+
+    for count in [100, 500, 1000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+
+        // Direct query baseline
+        group.bench_with_input(
+            BenchmarkId::new("direct_restrict", count),
+            count,
+            |b, &count| {
+                let (_temp_dir, mut db) = create_populated_database(count);
+
+                b.iter(|| {
+                    let result = db
+                        .query("EMP")
+                        .unwrap()
+                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0);
+                    black_box(result);
+                });
+            },
+        );
+
+        // View query
+        group.bench_with_input(
+            BenchmarkId::new("view_restrict", count),
+            count,
+            |b, &count| {
+                let (_temp_dir, mut db) = create_populated_database(count);
+                db.create_view("HIGH_EARNERS", |db| {
+                    Ok(db
+                        .query("EMP")?
+                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
+                })
+                .unwrap();
+
+                b.iter(|| {
+                    let result = db.query("HIGH_EARNERS").unwrap();
+                    black_box(result);
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Benchmark view with join operation
+fn bench_view_with_join(c: &mut Criterion) {
+    let mut group = c.benchmark_group("view_with_join");
+
+    fn create_emp_dept_database(emp_count: usize) -> (TempDir, Database) {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create EMP relvar
+        let emp_type = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String)
+            .with_attribute("dept_id".to_string(), ScalarType::Int)
+            .with_attribute("salary".to_string(), ScalarType::Float);
+        db.create_relvar("EMP", RelationType::new(emp_type))
+            .unwrap();
+
+        // Create DEPT relvar
+        let dept_type = TupleType::new()
+            .with_attribute("dept_id".to_string(), ScalarType::Int)
+            .with_attribute("dept_name".to_string(), ScalarType::String);
+        db.create_relvar("DEPT", RelationType::new(dept_type))
+            .unwrap();
+
+        // Insert departments (10 departments)
+        for i in 0..10 {
+            let tuple = tuple! {
+                dept_id: i as i64,
+                dept_name: format!("Department_{}", i)
+            };
+            db.insert("DEPT", tuple).unwrap();
+        }
+
+        // Insert employees
+        for i in 0..emp_count {
+            let tuple = tuple! {
+                emp_id: i as i64,
+                name: format!("Employee_{}", i),
+                dept_id: (i % 10) as i64,
+                salary: 50000.0 + (i as f64 * 1000.0)
+            };
+            db.insert("EMP", tuple).unwrap();
+        }
+
+        (temp_dir, db)
+    }
+
+    for count in [100, 500, 1000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+
+        // Direct join
+        group.bench_with_input(
+            BenchmarkId::new("direct_join", count),
+            count,
+            |b, &count| {
+                let (_temp_dir, mut db) = create_emp_dept_database(count);
+
+                b.iter(|| {
+                    let emp = db.query("EMP").unwrap();
+                    let dept = db.query("DEPT").unwrap();
+                    let result = emp.join(&dept);
+                    black_box(result);
+                });
+            },
+        );
+
+        // Join via view
+        group.bench_with_input(BenchmarkId::new("view_join", count), count, |b, &count| {
+            let (_temp_dir, mut db) = create_emp_dept_database(count);
+            db.create_view("EMP_WITH_DEPT", |db| {
+                let emp = db.query("EMP")?;
+                let dept = db.query("DEPT")?;
+                Ok(emp.join(&dept))
+            })
+            .unwrap();
+
+            b.iter(|| {
+                let result = db.query("EMP_WITH_DEPT").unwrap();
+                black_box(result);
+            });
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_database_open,
@@ -406,6 +648,11 @@ criterion_group!(
     bench_delete,
     bench_update,
     bench_transaction,
-    bench_realistic_workload
+    bench_realistic_workload,
+    // View benchmarks (TTM RM Prescription 10)
+    bench_view_creation,
+    bench_view_query,
+    bench_view_vs_direct_query,
+    bench_view_with_join
 );
 criterion_main!(benches);

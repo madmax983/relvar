@@ -7,37 +7,88 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+/// Errors that can occur during database operations.
 #[derive(Debug, Error)]
 pub enum DatabaseError {
+    /// An I/O error occurred.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// An error occurred in the catalog.
     #[error("Catalog error: {0}")]
     Catalog(#[from] CatalogError),
+    /// An error occurred in a heap file.
     #[error("Heap file error: {0}")]
     HeapFile(#[from] HeapError),
+    /// An error occurred in a relation.
     #[error("Relation error: {0}")]
     Relation(#[from] RelationError),
+    /// A relation with the given name already exists.
     #[error("Relation {0} already exists")]
     RelationAlreadyExists(String),
+    /// No relation with the given name was found.
     #[error("Relation {0} not found")]
     RelationNotFound(String),
+    /// The tuple type does not match the relation type.
     #[error("Tuple type does not match relation type")]
     TupleMismatch,
+    /// A primary key constraint was violated.
     #[error("Primary key constraint violation")]
     PrimaryKeyViolation,
+    /// A candidate key constraint was violated.
     #[error("Candidate key constraint violation")]
     CandidateKeyViolation,
+    /// A foreign key constraint was violated.
     #[error("Foreign key constraint violation: {0}")]
     ForeignKeyViolation(String),
+    /// A type constraint was violated.
     #[error("Type constraint violation: {0}")]
     TypeConstraintViolation(String),
+    /// The specified attribute was not found.
     #[error("Attribute {0} not found")]
     AttributeNotFound(String),
+    /// A transaction error occurred.
     #[error("Transaction error: {0}")]
     TransactionError(String),
+    /// A view with the given name already exists.
+    ///
+    /// TTM: RM Prescription 10 - View names must be unique within the database.
+    #[error("View {0} already exists")]
+    ViewAlreadyExists(String),
+    /// No view with the given name was found.
+    ///
+    /// TTM: RM Prescription 10 - Views must exist to be queried or dropped.
+    #[error("View {0} not found")]
+    ViewNotFound(String),
+    /// Cannot modify a view because views are read-only.
+    ///
+    /// TTM: RM Prescription 10 - Views are virtual relvars and cannot be
+    /// directly modified. Modifications must be made to the underlying
+    /// base relvars.
+    #[error("Cannot modify view {0}: views are read-only")]
+    CannotModifyView(String),
 }
 
+/// Type alias for view definition functions.
+///
+/// A view definition is a closure that takes a mutable reference to the database
+/// and returns a [`Relation`] value. The closure is re-evaluated each time the
+/// view is queried, ensuring the view always reflects the current state of the
+/// underlying base relvars.
+///
+/// TTM: RM Prescription 10 - Views are virtual relation variables defined by
+/// relational expressions. They are not stored, but computed on demand.
+///
+/// # Thread Safety
+///
+/// View definitions must be `Send + Sync` to allow the database to be used
+/// across threads safely.
+pub type ViewDefinition =
+    Box<dyn Fn(&mut Database) -> Result<Relation, DatabaseError> + Send + Sync>;
+
 /// A database instance managing relations, storage, and constraints
+///
+/// TTM: RM Prescription 10 - Supports both base relvars (stored relations)
+/// and views (virtual relvars defined by expressions).
 pub struct Database {
     /// Base directory for database files
     db_path: PathBuf,
@@ -59,6 +110,8 @@ pub struct Database {
     in_transaction: bool,
     /// Savepoint for rollback (simplified - just store full relations)
     savepoint: Option<HashMap<String, Relation>>,
+    /// Views (virtual relvars) - TTM RM Prescription 10
+    views: HashMap<String, ViewDefinition>,
 }
 
 impl Database {
@@ -87,6 +140,7 @@ impl Database {
             type_constraints: HashMap::new(),
             in_transaction: false,
             savepoint: None,
+            views: HashMap::new(),
         })
     }
 
@@ -99,6 +153,11 @@ impl Database {
         // Check if relation already exists
         if self.catalog.get_relation(name).is_ok() {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
+        }
+
+        // Check if a view with this name exists
+        if self.views.contains_key(name) {
+            return Err(DatabaseError::ViewAlreadyExists(name.to_string()));
         }
 
         // Create heap file
@@ -143,6 +202,108 @@ impl Database {
         self.type_constraints.remove(name);
 
         Ok(())
+    }
+
+    /// Create a new view (virtual relvar).
+    ///
+    /// TTM: RM Prescription 10 - The system must support views (virtual relation
+    /// variables defined by expressions).
+    ///
+    /// Views are read-only and re-evaluate their defining expression on each query.
+    /// The view definition is a closure that takes a mutable reference to the database
+    /// and returns a relation value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::Database;
+    /// use relvar::types::{RelationType, ScalarType, TupleType};
+    /// use relvar::tuple;
+    ///
+    /// let temp_dir = tempfile::TempDir::new().unwrap();
+    /// let mut db = Database::open(temp_dir.path()).unwrap();
+    ///
+    /// // Create a base relvar
+    /// let emp_type = TupleType::new()
+    ///     .with_attribute("id".to_string(), ScalarType::Int)
+    ///     .with_attribute("salary".to_string(), ScalarType::Float);
+    /// db.create_relvar("EMP", RelationType::new(emp_type)).unwrap();
+    ///
+    /// // Insert some data
+    /// db.insert("EMP", tuple! { id: 1i64, salary: 150000.0 }).unwrap();
+    /// db.insert("EMP", tuple! { id: 2i64, salary: 50000.0 }).unwrap();
+    ///
+    /// // Create a view for high earners (salary > 100000)
+    /// db.create_view("HIGH_EARNERS", |db| {
+    ///     Ok(db.query("EMP")?
+    ///         .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
+    /// }).unwrap();
+    ///
+    /// // Query the view - re-evaluates each time
+    /// let high_earners = db.query("HIGH_EARNERS").unwrap();
+    /// assert_eq!(high_earners.cardinality(), 1);
+    ///
+    /// // Views are read-only - insert fails
+    /// let result = db.insert("HIGH_EARNERS", tuple! { id: 3i64, salary: 200000.0 });
+    /// assert!(result.is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::RelationAlreadyExists`] if a base relvar with the
+    /// same name already exists.
+    ///
+    /// Returns [`DatabaseError::ViewAlreadyExists`] if a view with the same name
+    /// already exists.
+    pub fn create_view<F>(&mut self, name: &str, definition: F) -> Result<(), DatabaseError>
+    where
+        F: Fn(&mut Database) -> Result<Relation, DatabaseError> + Send + Sync + 'static,
+    {
+        // Check if a base relvar with this name exists
+        if self.catalog.get_relation(name).is_ok() {
+            return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
+        }
+
+        // Check if a view with this name already exists
+        if self.views.contains_key(name) {
+            return Err(DatabaseError::ViewAlreadyExists(name.to_string()));
+        }
+
+        // Store the view definition
+        self.views.insert(name.to_string(), Box::new(definition));
+
+        Ok(())
+    }
+
+    /// Drop a view.
+    ///
+    /// Removes the view definition from the database. This does not affect
+    /// any base relvars that the view was derived from.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::ViewNotFound`] if no view with the given name exists.
+    pub fn drop_view(&mut self, name: &str) -> Result<(), DatabaseError> {
+        if self.views.remove(name).is_none() {
+            return Err(DatabaseError::ViewNotFound(name.to_string()));
+        }
+        Ok(())
+    }
+
+    /// Check if a view exists.
+    ///
+    /// Returns `true` if a view with the given name exists, `false` otherwise.
+    /// This only checks for views, not base relvars.
+    pub fn view_exists(&self, name: &str) -> bool {
+        self.views.contains_key(name)
+    }
+
+    /// List all view names.
+    ///
+    /// Returns a vector of all view names currently defined in the database.
+    /// This does not include base relvars.
+    pub fn list_views(&self) -> Vec<String> {
+        self.views.keys().cloned().collect()
     }
 
     /// Set key constraints for a relation
@@ -203,6 +364,11 @@ impl Database {
 
     /// Insert a tuple into a relation
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
+        // Check if trying to insert into a view
+        if self.views.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyView(relation_name.to_string()));
+        }
+
         // Get relation metadata
         let metadata = self
             .catalog
@@ -280,8 +446,26 @@ impl Database {
         Ok(())
     }
 
-    /// Query a relation (returns the full relation for algebra operations)
+    /// Query a relation or view (returns the full relation for algebra operations).
+    ///
+    /// For base relvars, this loads the relation from storage.
+    /// For views, this re-evaluates the view definition and returns the result.
+    ///
+    /// TTM: RM Prescription 10 - Views re-evaluate their defining expression
+    /// on each query, ensuring they always reflect the current state of the
+    /// underlying base relvars.
     pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
+        // Check if this is a view - if so, evaluate the view definition
+        if self.views.contains_key(relation_name) {
+            return self.query_view(relation_name);
+        }
+
+        // Otherwise, query the base relvar
+        self.query_base_relvar(relation_name)
+    }
+
+    /// Query a base relvar (stored relation).
+    fn query_base_relvar(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Get relation metadata (clone to avoid borrow issues)
         let relation_type = self
             .catalog
@@ -304,11 +488,38 @@ impl Database {
         Ok(relation)
     }
 
+    /// Query a view by evaluating its definition.
+    ///
+    /// This is tricky because the view definition needs &mut self to query
+    /// base relvars, but we can't hold a reference to the view while calling it.
+    /// We solve this by temporarily removing the view, evaluating it, and
+    /// putting it back.
+    fn query_view(&mut self, view_name: &str) -> Result<Relation, DatabaseError> {
+        // Temporarily remove the view definition to avoid borrow issues
+        let view_def = self
+            .views
+            .remove(view_name)
+            .ok_or_else(|| DatabaseError::ViewNotFound(view_name.to_string()))?;
+
+        // Evaluate the view definition
+        let result = view_def(self);
+
+        // Put the view definition back
+        self.views.insert(view_name.to_string(), view_def);
+
+        result
+    }
+
     /// Delete tuples matching a predicate
     pub fn delete<F>(&mut self, relation_name: &str, predicate: F) -> Result<usize, DatabaseError>
     where
         F: Fn(&Tuple) -> bool,
     {
+        // Check if trying to delete from a view
+        if self.views.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyView(relation_name.to_string()));
+        }
+
         // Clone foreign key constraints to avoid borrowing issues
         let fk_constraints_clone = self.foreign_key_constraints.clone();
 
@@ -388,6 +599,11 @@ impl Database {
         F: Fn(&Tuple) -> bool,
         U: Fn(&mut Tuple),
     {
+        // Check if trying to update a view
+        if self.views.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyView(relation_name.to_string()));
+        }
+
         // Get metadata (clone to avoid borrow issues)
         let metadata = self
             .catalog
@@ -885,5 +1101,352 @@ mod tests {
             result.unwrap_err(),
             DatabaseError::TypeConstraintViolation(_)
         ));
+    }
+
+    // ==========================================================================
+    // View Tests (TTM RM Prescription 10 - Virtual Relation Variables)
+    // ==========================================================================
+
+    #[test]
+    fn test_create_view() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String)
+            .with_attribute("salary".to_string(), ScalarType::Float);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        // Create view for high earners
+        db.create_view("HIGH_EARNERS", |db| {
+            Ok(db
+                .query("EMP")?
+                .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
+        })
+        .unwrap();
+
+        // View should exist
+        assert!(db.view_exists("HIGH_EARNERS"));
+    }
+
+    #[test]
+    fn test_view_re_evaluates_on_query() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String)
+            .with_attribute("salary".to_string(), ScalarType::Float);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        // Insert initial data
+        db.insert("EMP", tuple! { id: 1i64, name: "Alice", salary: 150000.0 })
+            .unwrap();
+        db.insert("EMP", tuple! { id: 2i64, name: "Bob", salary: 50000.0 })
+            .unwrap();
+
+        // Create view
+        db.create_view("HIGH_EARNERS", |db| {
+            Ok(db
+                .query("EMP")?
+                .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
+        })
+        .unwrap();
+
+        // Query view - should have 1 tuple
+        let result = db.query("HIGH_EARNERS").unwrap();
+        assert_eq!(result.cardinality(), 1);
+
+        // Insert another high earner into base relvar
+        db.insert(
+            "EMP",
+            tuple! { id: 3i64, name: "Charlie", salary: 200000.0 },
+        )
+        .unwrap();
+
+        // Query view again - should now have 2 tuples (re-evaluated)
+        let result = db.query("HIGH_EARNERS").unwrap();
+        assert_eq!(result.cardinality(), 2);
+    }
+
+    #[test]
+    fn test_view_appears_in_catalog() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        // Create view
+        db.create_view("NAMES_ONLY", |db| Ok(db.query("EMP")?.project(&["name"])))
+            .unwrap();
+
+        // View should be listed
+        let views = db.list_views();
+        assert!(views.contains(&"NAMES_ONLY".to_string()));
+    }
+
+    #[test]
+    fn test_drop_view() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        // Create view
+        db.create_view("NAMES_ONLY", |db| Ok(db.query("EMP")?.project(&["name"])))
+            .unwrap();
+
+        assert!(db.view_exists("NAMES_ONLY"));
+
+        // Drop view
+        db.drop_view("NAMES_ONLY").unwrap();
+
+        assert!(!db.view_exists("NAMES_ONLY"));
+    }
+
+    #[test]
+    fn test_insert_into_view_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        // Create view
+        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+
+        // Try to insert into view - should fail
+        let result = db.insert("EMP_VIEW", tuple! { id: 1i64, name: "Alice" });
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyView(_)
+        ));
+    }
+
+    #[test]
+    fn test_delete_from_view_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+        db.insert("EMP", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Create view
+        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+
+        // Try to delete from view - should fail
+        let result = db.delete("EMP_VIEW", |_| true);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyView(_)
+        ));
+    }
+
+    #[test]
+    fn test_update_view_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+        db.insert("EMP", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Create view
+        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+
+        // Try to update view - should fail
+        let result = db.update(
+            "EMP_VIEW",
+            |_| true,
+            |t| {
+                t.set("name".to_string(), ScalarValue::String("Bob".to_string()))
+                    .unwrap();
+            },
+        );
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::CannotModifyView(_)
+        ));
+    }
+
+    #[test]
+    fn test_query_nonexistent_view_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Query nonexistent view/relvar
+        let result = db.query("NONEXISTENT");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::RelationNotFound(_)
+        ));
+    }
+
+    #[test]
+    fn test_create_duplicate_view_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        // Create view
+        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+
+        // Try to create duplicate view
+        let result = db.create_view("EMP_VIEW", |db| db.query("EMP"));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::ViewAlreadyExists(_)
+        ));
+    }
+
+    #[test]
+    fn test_view_with_same_name_as_relvar_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        let relation_type = RelationType::new(tuple_type);
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        // Try to create view with same name as relvar
+        let result = db.create_view("EMP", |db| db.query("EMP"));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::RelationAlreadyExists(_)
+        ));
+    }
+
+    #[test]
+    fn test_relvar_with_same_name_as_view_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create base relvar
+        let tuple_type = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        let relation_type = RelationType::new(tuple_type.clone());
+
+        db.create_relvar("EMP", relation_type).unwrap();
+
+        // Create view
+        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+
+        // Try to create relvar with same name as view
+        let result = db.create_relvar("EMP_VIEW", RelationType::new(tuple_type));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::ViewAlreadyExists(_)
+        ));
+    }
+
+    #[test]
+    fn test_drop_nonexistent_view_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        let result = db.drop_view("NONEXISTENT");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::ViewNotFound(_)
+        ));
+    }
+
+    #[test]
+    fn test_view_with_join() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut db = Database::open(temp_dir.path()).unwrap();
+
+        // Create EMP relvar
+        let emp_type = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String)
+            .with_attribute("dept_id".to_string(), ScalarType::Int);
+        db.create_relvar("EMP", RelationType::new(emp_type))
+            .unwrap();
+
+        // Create DEPT relvar
+        let dept_type = TupleType::new()
+            .with_attribute("dept_id".to_string(), ScalarType::Int)
+            .with_attribute("dept_name".to_string(), ScalarType::String);
+        db.create_relvar("DEPT", RelationType::new(dept_type))
+            .unwrap();
+
+        // Insert data
+        db.insert(
+            "EMP",
+            tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 },
+        )
+        .unwrap();
+        db.insert("EMP", tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+        db.insert("DEPT", tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+        db.insert("DEPT", tuple! { dept_id: 20i64, dept_name: "Sales" })
+            .unwrap();
+
+        // Create view joining EMP and DEPT
+        db.create_view("EMP_WITH_DEPT", |db| {
+            let emp = db.query("EMP")?;
+            let dept = db.query("DEPT")?;
+            Ok(emp.join(&dept))
+        })
+        .unwrap();
+
+        // Query view
+        let result = db.query("EMP_WITH_DEPT").unwrap();
+        assert_eq!(result.cardinality(), 2);
+        assert_eq!(result.degree(), 4); // emp_id, name, dept_id, dept_name
     }
 }
