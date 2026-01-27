@@ -133,42 +133,41 @@ pub enum DatabaseError {
     #[error("Transaction error: {0}")]
     TransactionError(String),
 
-    /// A view with the given name already exists.
+    /// A virtual relvar with the given name already exists.
     ///
-    /// TTM: RM Prescription 10 - View names must be unique within the database.
-    #[error("View {0} already exists")]
-    ViewAlreadyExists(String),
+    /// TTM: RM Prescription 10 - Virtual relvar names must be unique within the database.
+    #[error("Virtual relvar {0} already exists")]
+    VirtualRelvarAlreadyExists(String),
 
-    /// No view with the given name was found.
+    /// No virtual relvar with the given name was found.
     ///
-    /// TTM: RM Prescription 10 - Views must exist to be queried or dropped.
-    #[error("View {0} not found")]
-    ViewNotFound(String),
+    /// TTM: RM Prescription 10 - Virtual relvars must exist to be queried or dropped.
+    #[error("Virtual relvar {0} not found")]
+    VirtualRelvarNotFound(String),
 
-    /// Cannot modify a view because views are read-only.
+    /// Cannot modify a virtual relvar because virtual relvars are read-only.
     ///
-    /// TTM: RM Prescription 10 - Views are virtual relvars and cannot be
-    /// directly modified. Modifications must be made to the underlying
-    /// base relvars.
-    #[error("Cannot modify view {0}: views are read-only")]
-    CannotModifyView(String),
+    /// TTM: RM Prescription 10 - Virtual relvars cannot be directly modified.
+    /// Modifications must be made to the underlying base relvars.
+    #[error("Cannot modify virtual relvar {0}: virtual relvars are read-only")]
+    CannotModifyVirtualRelvar(String),
 }
 
-/// Type alias for view definition functions.
+/// Type alias for virtual relvar definition functions.
 ///
-/// A view definition is a closure that takes a mutable reference to the database
-/// and returns a [`Relation`] value. The closure is re-evaluated each time the
-/// view is queried, ensuring the view always reflects the current state of the
-/// underlying base relvars.
+/// A virtual relvar definition is a closure that takes a mutable reference to the
+/// database and returns a [`Relation`] value. The closure is re-evaluated each time
+/// the virtual relvar is queried, ensuring it always reflects the current state of
+/// the underlying base relvars.
 ///
-/// TTM: RM Prescription 10 - Views are virtual relation variables defined by
-/// relational expressions. They are not stored, but computed on demand.
+/// TTM: RM Prescription 10 - Virtual relvars (virtual relation variables) are defined
+/// by relational expressions. They are not stored, but computed on demand.
 ///
 /// # Thread Safety
 ///
-/// View definitions must be `Send + Sync` to allow the database to be used
+/// Virtual relvar definitions must be `Send + Sync` to allow the database to be used
 /// across threads safely.
-pub type ViewDefinition =
+pub type VirtualRelvarDefinition =
     Box<dyn Fn(&mut Database) -> Result<Relation, DatabaseError> + Send + Sync>;
 
 /// A database instance managing relations, storage, and constraints.
@@ -176,7 +175,7 @@ pub type ViewDefinition =
 /// `Database` is the main entry point for all database operations. It manages:
 ///
 /// - **Relations (Relvars)**: Create, drop, and query base relations
-/// - **Views**: Virtual relvars defined by expressions (TTM RM Prescription 10)
+/// - **Virtual Relvars**: Virtual relation variables defined by expressions (TTM RM Prescription 10)
 /// - **Data Manipulation**: Insert, update, and delete tuples
 /// - **Constraints**: Primary keys, foreign keys, and type constraints
 /// - **Transactions**: Begin, commit, and rollback operations
@@ -249,11 +248,11 @@ pub struct Database {
     /// This is a simplified implementation that stores full relation snapshots.
     /// A production system would use write-ahead logging (WAL).
     savepoint: Option<HashMap<String, Relation>>,
-    /// Views (virtual relvars) defined by expressions.
+    /// Virtual relvars defined by expressions.
     ///
-    /// TTM: RM Prescription 10 - Views are virtual relation variables that
+    /// TTM: RM Prescription 10 - Virtual relvars (virtual relation variables)
     /// re-evaluate their defining expression on each query.
-    views: HashMap<String, ViewDefinition>,
+    virtual_relvars: HashMap<String, VirtualRelvarDefinition>,
 }
 
 impl Database {
@@ -309,7 +308,7 @@ impl Database {
             type_constraints: HashMap::new(),
             in_transaction: false,
             savepoint: None,
-            views: HashMap::new(),
+            virtual_relvars: HashMap::new(),
         })
     }
 
@@ -353,9 +352,9 @@ impl Database {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
         }
 
-        // Check if a view with this name exists
-        if self.views.contains_key(name) {
-            return Err(DatabaseError::ViewAlreadyExists(name.to_string()));
+        // Check if a virtual relvar with this name exists
+        if self.virtual_relvars.contains_key(name) {
+            return Err(DatabaseError::VirtualRelvarAlreadyExists(name.to_string()));
         }
 
         // Create heap file
@@ -418,14 +417,14 @@ impl Database {
         Ok(())
     }
 
-    /// Creates a new view (virtual relvar).
+    /// Creates a new virtual relvar.
     ///
-    /// TTM: RM Prescription 10 - The system must support views (virtual relation
-    /// variables defined by expressions).
+    /// TTM: RM Prescription 10 - The system must support virtual relvars (virtual
+    /// relation variables defined by expressions).
     ///
-    /// Views are read-only and re-evaluate their defining expression on each query.
-    /// The view definition is a closure that takes a mutable reference to the database
-    /// and returns a relation value.
+    /// Virtual relvars are read-only and re-evaluate their defining expression on
+    /// each query. The definition is a closure that takes a mutable reference to
+    /// the database and returns a relation value.
     ///
     /// # Examples
     ///
@@ -447,17 +446,17 @@ impl Database {
     /// db.insert("EMP", tuple! { id: 1i64, salary: 150000.0 }).unwrap();
     /// db.insert("EMP", tuple! { id: 2i64, salary: 50000.0 }).unwrap();
     ///
-    /// // Create a view for high earners (salary > 100000)
-    /// db.create_view("HIGH_EARNERS", |db| {
+    /// // Create a virtual relvar for high earners (salary > 100000)
+    /// db.create_virtual_relvar("HIGH_EARNERS", |db| {
     ///     Ok(db.query("EMP")?
     ///         .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
     /// }).unwrap();
     ///
-    /// // Query the view - re-evaluates each time
+    /// // Query the virtual relvar - re-evaluates each time
     /// let high_earners = db.query("HIGH_EARNERS").unwrap();
     /// assert_eq!(high_earners.cardinality(), 1);
     ///
-    /// // Views are read-only - insert fails
+    /// // Virtual relvars are read-only - insert fails
     /// let result = db.insert("HIGH_EARNERS", tuple! { id: 3i64, salary: 200000.0 });
     /// assert!(result.is_err());
     /// ```
@@ -467,9 +466,13 @@ impl Database {
     /// Returns [`DatabaseError::RelationAlreadyExists`] if a base relvar with the
     /// same name already exists.
     ///
-    /// Returns [`DatabaseError::ViewAlreadyExists`] if a view with the same name
-    /// already exists.
-    pub fn create_view<F>(&mut self, name: &str, definition: F) -> Result<(), DatabaseError>
+    /// Returns [`DatabaseError::VirtualRelvarAlreadyExists`] if a virtual relvar
+    /// with the same name already exists.
+    pub fn create_virtual_relvar<F>(
+        &mut self,
+        name: &str,
+        definition: F,
+    ) -> Result<(), DatabaseError>
     where
         F: Fn(&mut Database) -> Result<Relation, DatabaseError> + Send + Sync + 'static,
     {
@@ -478,46 +481,48 @@ impl Database {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
         }
 
-        // Check if a view with this name already exists
-        if self.views.contains_key(name) {
-            return Err(DatabaseError::ViewAlreadyExists(name.to_string()));
+        // Check if a virtual relvar with this name already exists
+        if self.virtual_relvars.contains_key(name) {
+            return Err(DatabaseError::VirtualRelvarAlreadyExists(name.to_string()));
         }
 
-        // Store the view definition
-        self.views.insert(name.to_string(), Box::new(definition));
+        // Store the virtual relvar definition
+        self.virtual_relvars
+            .insert(name.to_string(), Box::new(definition));
 
         Ok(())
     }
 
-    /// Drops a view.
+    /// Drops a virtual relvar.
     ///
-    /// Removes the view definition from the database. This does not affect
-    /// any base relvars that the view was derived from.
+    /// Removes the virtual relvar definition from the database. This does not
+    /// affect any base relvars that the virtual relvar was derived from.
     ///
     /// # Errors
     ///
-    /// Returns [`DatabaseError::ViewNotFound`] if no view with the given name exists.
-    pub fn drop_view(&mut self, name: &str) -> Result<(), DatabaseError> {
-        if self.views.remove(name).is_none() {
-            return Err(DatabaseError::ViewNotFound(name.to_string()));
+    /// Returns [`DatabaseError::VirtualRelvarNotFound`] if no virtual relvar with
+    /// the given name exists.
+    pub fn drop_virtual_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
+        if self.virtual_relvars.remove(name).is_none() {
+            return Err(DatabaseError::VirtualRelvarNotFound(name.to_string()));
         }
         Ok(())
     }
 
-    /// Checks if a view exists.
+    /// Checks if a virtual relvar exists.
     ///
-    /// Returns `true` if a view with the given name exists, `false` otherwise.
-    /// This only checks for views, not base relvars.
-    pub fn view_exists(&self, name: &str) -> bool {
-        self.views.contains_key(name)
+    /// Returns `true` if a virtual relvar with the given name exists, `false` otherwise.
+    /// This only checks for virtual relvars, not base relvars.
+    pub fn virtual_relvar_exists(&self, name: &str) -> bool {
+        self.virtual_relvars.contains_key(name)
     }
 
-    /// Lists all view names.
+    /// Lists all virtual relvar names.
     ///
-    /// Returns a vector of all view names currently defined in the database.
+    /// Returns a vector of all virtual relvar names currently defined in the database.
     /// This does not include base relvars.
-    pub fn list_views(&self) -> Vec<String> {
-        self.views.keys().cloned().collect()
+    pub fn list_virtual_relvars(&self) -> Vec<String> {
+        self.virtual_relvars.keys().cloned().collect()
     }
 
     /// Sets key constraints (primary and candidate keys) for a relation.
@@ -706,9 +711,11 @@ impl Database {
     /// # Ok::<(), relvar::DatabaseError>(())
     /// ```
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
-        // Check if trying to insert into a view
-        if self.views.contains_key(relation_name) {
-            return Err(DatabaseError::CannotModifyView(relation_name.to_string()));
+        // Check if trying to insert into a virtual relvar
+        if self.virtual_relvars.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyVirtualRelvar(
+                relation_name.to_string(),
+            ));
         }
 
         // Get relation metadata
@@ -788,12 +795,12 @@ impl Database {
         Ok(())
     }
 
-    /// Queries a relation or view, returning all tuples as a [`Relation`] value.
+    /// Queries a relation or virtual relvar, returning all tuples as a [`Relation`] value.
     ///
     /// For base relvars, this loads the relation from storage.
-    /// For views, this re-evaluates the view definition and returns the result.
+    /// For virtual relvars, this re-evaluates the definition and returns the result.
     ///
-    /// TTM: RM Prescription 10 - Views re-evaluate their defining expression
+    /// TTM: RM Prescription 10 - Virtual relvars re-evaluate their defining expression
     /// on each query, ensuring they always reflect the current state of the
     /// underlying base relvars.
     ///
@@ -802,7 +809,7 @@ impl Database {
     ///
     /// # Arguments
     ///
-    /// * `relation_name` - The name of the relation or view to query
+    /// * `relation_name` - The name of the relation or virtual relvar to query
     ///
     /// # Returns
     ///
@@ -810,8 +817,8 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// Returns [`DatabaseError::RelationNotFound`] if neither a relation nor
-    /// a view with the given name exists.
+    /// Returns [`DatabaseError::RelationNotFound`] if neither a base relvar nor
+    /// a virtual relvar with the given name exists.
     ///
     /// # Example
     ///
@@ -829,9 +836,9 @@ impl Database {
     /// # Ok::<(), relvar::DatabaseError>(())
     /// ```
     pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
-        // Check if this is a view - if so, evaluate the view definition
-        if self.views.contains_key(relation_name) {
-            return self.query_view(relation_name);
+        // Check if this is a virtual relvar - if so, evaluate the definition
+        if self.virtual_relvars.contains_key(relation_name) {
+            return self.query_virtual_relvar(relation_name);
         }
 
         // Otherwise, query the base relvar
@@ -862,22 +869,22 @@ impl Database {
         Ok(relation)
     }
 
-    /// Queries a view by evaluating its definition.
+    /// Queries a virtual relvar by evaluating its definition.
     ///
-    /// This temporarily removes the view definition to avoid borrow issues,
+    /// This temporarily removes the virtual relvar definition to avoid borrow issues,
     /// evaluates it, and puts it back.
-    fn query_view(&mut self, view_name: &str) -> Result<Relation, DatabaseError> {
-        // Temporarily remove the view definition to avoid borrow issues
-        let view_def = self
-            .views
-            .remove(view_name)
-            .ok_or_else(|| DatabaseError::ViewNotFound(view_name.to_string()))?;
+    fn query_virtual_relvar(&mut self, name: &str) -> Result<Relation, DatabaseError> {
+        // Temporarily remove the virtual relvar definition to avoid borrow issues
+        let definition = self
+            .virtual_relvars
+            .remove(name)
+            .ok_or_else(|| DatabaseError::VirtualRelvarNotFound(name.to_string()))?;
 
-        // Evaluate the view definition
-        let result = view_def(self);
+        // Evaluate the virtual relvar definition
+        let result = definition(self);
 
-        // Put the view definition back
-        self.views.insert(view_name.to_string(), view_def);
+        // Put the virtual relvar definition back
+        self.virtual_relvars.insert(name.to_string(), definition);
 
         result
     }
@@ -918,9 +925,11 @@ impl Database {
     where
         F: Fn(&Tuple) -> bool,
     {
-        // Check if trying to delete from a view
-        if self.views.contains_key(relation_name) {
-            return Err(DatabaseError::CannotModifyView(relation_name.to_string()));
+        // Check if trying to delete from a virtual relvar
+        if self.virtual_relvars.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyVirtualRelvar(
+                relation_name.to_string(),
+            ));
         }
 
         // Clone foreign key constraints to avoid borrowing issues
@@ -1040,9 +1049,11 @@ impl Database {
         F: Fn(&Tuple) -> bool,
         U: Fn(&mut Tuple),
     {
-        // Check if trying to update a view
-        if self.views.contains_key(relation_name) {
-            return Err(DatabaseError::CannotModifyView(relation_name.to_string()));
+        // Check if trying to update a virtual relvar
+        if self.virtual_relvars.contains_key(relation_name) {
+            return Err(DatabaseError::CannotModifyVirtualRelvar(
+                relation_name.to_string(),
+            ));
         }
 
         // Get metadata (clone to avoid borrow issues)
@@ -1604,11 +1615,11 @@ mod tests {
     }
 
     // ==========================================================================
-    // View Tests (TTM RM Prescription 10 - Virtual Relation Variables)
+    // Virtual Relvar Tests (TTM RM Prescription 10 - Virtual Relation Variables)
     // ==========================================================================
 
     #[test]
-    fn test_create_view() {
+    fn test_create_virtual_relvar() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1620,18 +1631,18 @@ mod tests {
 
         db.create_relvar("EMP", relation_type).unwrap();
 
-        db.create_view("HIGH_EARNERS", |db| {
+        db.create_virtual_relvar("HIGH_EARNERS", |db| {
             Ok(db
                 .query("EMP")?
                 .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
         })
         .unwrap();
 
-        assert!(db.view_exists("HIGH_EARNERS"));
+        assert!(db.virtual_relvar_exists("HIGH_EARNERS"));
     }
 
     #[test]
-    fn test_view_re_evaluates_on_query() {
+    fn test_virtual_relvar_re_evaluates_on_query() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1648,7 +1659,7 @@ mod tests {
         db.insert("EMP", tuple! { id: 2i64, name: "Bob", salary: 50000.0 })
             .unwrap();
 
-        db.create_view("HIGH_EARNERS", |db| {
+        db.create_virtual_relvar("HIGH_EARNERS", |db| {
             Ok(db
                 .query("EMP")?
                 .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 100000.0))
@@ -1669,7 +1680,7 @@ mod tests {
     }
 
     #[test]
-    fn test_view_appears_in_catalog() {
+    fn test_virtual_relvar_appears_in_listing() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1680,15 +1691,15 @@ mod tests {
 
         db.create_relvar("EMP", relation_type).unwrap();
 
-        db.create_view("NAMES_ONLY", |db| Ok(db.query("EMP")?.project(&["name"])))
+        db.create_virtual_relvar("NAMES_ONLY", |db| Ok(db.query("EMP")?.project(&["name"])))
             .unwrap();
 
-        let views = db.list_views();
-        assert!(views.contains(&"NAMES_ONLY".to_string()));
+        let virtual_relvars = db.list_virtual_relvars();
+        assert!(virtual_relvars.contains(&"NAMES_ONLY".to_string()));
     }
 
     #[test]
-    fn test_drop_view() {
+    fn test_drop_virtual_relvar() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1699,18 +1710,18 @@ mod tests {
 
         db.create_relvar("EMP", relation_type).unwrap();
 
-        db.create_view("NAMES_ONLY", |db| Ok(db.query("EMP")?.project(&["name"])))
+        db.create_virtual_relvar("NAMES_ONLY", |db| Ok(db.query("EMP")?.project(&["name"])))
             .unwrap();
 
-        assert!(db.view_exists("NAMES_ONLY"));
+        assert!(db.virtual_relvar_exists("NAMES_ONLY"));
 
-        db.drop_view("NAMES_ONLY").unwrap();
+        db.drop_virtual_relvar("NAMES_ONLY").unwrap();
 
-        assert!(!db.view_exists("NAMES_ONLY"));
+        assert!(!db.virtual_relvar_exists("NAMES_ONLY"));
     }
 
     #[test]
-    fn test_insert_into_view_fails() {
+    fn test_insert_into_virtual_relvar_fails() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1721,18 +1732,19 @@ mod tests {
 
         db.create_relvar("EMP", relation_type).unwrap();
 
-        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
 
-        let result = db.insert("EMP_VIEW", tuple! { id: 1i64, name: "Alice" });
+        let result = db.insert("EMP_VIRTUAL", tuple! { id: 1i64, name: "Alice" });
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            DatabaseError::CannotModifyView(_)
+            DatabaseError::CannotModifyVirtualRelvar(_)
         ));
     }
 
     #[test]
-    fn test_delete_from_view_fails() {
+    fn test_delete_from_virtual_relvar_fails() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1745,18 +1757,19 @@ mod tests {
         db.insert("EMP", tuple! { id: 1i64, name: "Alice" })
             .unwrap();
 
-        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
 
-        let result = db.delete("EMP_VIEW", |_| true);
+        let result = db.delete("EMP_VIRTUAL", |_| true);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            DatabaseError::CannotModifyView(_)
+            DatabaseError::CannotModifyVirtualRelvar(_)
         ));
     }
 
     #[test]
-    fn test_update_view_fails() {
+    fn test_update_virtual_relvar_fails() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1769,10 +1782,11 @@ mod tests {
         db.insert("EMP", tuple! { id: 1i64, name: "Alice" })
             .unwrap();
 
-        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
 
         let result = db.update(
-            "EMP_VIEW",
+            "EMP_VIRTUAL",
             |_| true,
             |t| {
                 t.set("name".to_string(), ScalarValue::String("Bob".to_string()))
@@ -1782,12 +1796,12 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            DatabaseError::CannotModifyView(_)
+            DatabaseError::CannotModifyVirtualRelvar(_)
         ));
     }
 
     #[test]
-    fn test_query_nonexistent_view_fails() {
+    fn test_query_nonexistent_relvar_fails() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1800,7 +1814,7 @@ mod tests {
     }
 
     #[test]
-    fn test_create_duplicate_view_fails() {
+    fn test_create_duplicate_virtual_relvar_fails() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1809,18 +1823,19 @@ mod tests {
 
         db.create_relvar("EMP", relation_type).unwrap();
 
-        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
 
-        let result = db.create_view("EMP_VIEW", |db| db.query("EMP"));
+        let result = db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"));
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            DatabaseError::ViewAlreadyExists(_)
+            DatabaseError::VirtualRelvarAlreadyExists(_)
         ));
     }
 
     #[test]
-    fn test_view_with_same_name_as_relvar_fails() {
+    fn test_virtual_relvar_with_same_name_as_relvar_fails() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1829,7 +1844,7 @@ mod tests {
 
         db.create_relvar("EMP", relation_type).unwrap();
 
-        let result = db.create_view("EMP", |db| db.query("EMP"));
+        let result = db.create_virtual_relvar("EMP", |db| db.query("EMP"));
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -1838,7 +1853,7 @@ mod tests {
     }
 
     #[test]
-    fn test_relvar_with_same_name_as_view_fails() {
+    fn test_relvar_with_same_name_as_virtual_relvar_fails() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1847,31 +1862,32 @@ mod tests {
 
         db.create_relvar("EMP", relation_type).unwrap();
 
-        db.create_view("EMP_VIEW", |db| db.query("EMP")).unwrap();
+        db.create_virtual_relvar("EMP_VIRTUAL", |db| db.query("EMP"))
+            .unwrap();
 
-        let result = db.create_relvar("EMP_VIEW", RelationType::new(tuple_type));
+        let result = db.create_relvar("EMP_VIRTUAL", RelationType::new(tuple_type));
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            DatabaseError::ViewAlreadyExists(_)
+            DatabaseError::VirtualRelvarAlreadyExists(_)
         ));
     }
 
     #[test]
-    fn test_drop_nonexistent_view_fails() {
+    fn test_drop_nonexistent_virtual_relvar_fails() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
-        let result = db.drop_view("NONEXISTENT");
+        let result = db.drop_virtual_relvar("NONEXISTENT");
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            DatabaseError::ViewNotFound(_)
+            DatabaseError::VirtualRelvarNotFound(_)
         ));
     }
 
     #[test]
-    fn test_view_with_join() {
+    fn test_virtual_relvar_with_join() {
         let temp_dir = TempDir::new().unwrap();
         let mut db = Database::open(temp_dir.path()).unwrap();
 
@@ -1900,7 +1916,7 @@ mod tests {
         db.insert("DEPT", tuple! { dept_id: 20i64, dept_name: "Sales" })
             .unwrap();
 
-        db.create_view("EMP_WITH_DEPT", |db| {
+        db.create_virtual_relvar("EMP_WITH_DEPT", |db| {
             let emp = db.query("EMP")?;
             let dept = db.query("DEPT")?;
             Ok(emp.join(&dept))

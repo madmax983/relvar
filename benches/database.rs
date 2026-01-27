@@ -396,7 +396,7 @@ fn bench_realistic_workload(c: &mut Criterion) {
 }
 
 // =============================================================================
-// View Benchmarks (TTM RM Prescription 10)
+// Virtual Relvar Benchmarks (TTM RM Prescription 10)
 // =============================================================================
 
 /// Helper to create a database with an EMP relvar pre-populated with data
@@ -414,15 +414,15 @@ fn create_populated_database(count: usize) -> (TempDir, Database) {
     (_temp_dir, db)
 }
 
-/// Benchmark view creation
-fn bench_view_creation(c: &mut Criterion) {
-    let mut group = c.benchmark_group("view_creation");
+/// Benchmark virtual relvar creation
+fn bench_virtual_relvar_creation(c: &mut Criterion) {
+    let mut group = c.benchmark_group("virtual_relvar_creation");
 
-    group.bench_function("create_simple_view", |b| {
+    group.bench_function("create_simple_virtual_relvar", |b| {
         b.iter_batched(
             || create_populated_database(100),
             |(_temp_dir, mut db)| {
-                db.create_view("HIGH_EARNERS", |db| {
+                db.create_virtual_relvar("HIGH_EARNERS", |db| {
                     Ok(db
                         .query("EMP")?
                         .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
@@ -437,18 +437,18 @@ fn bench_view_creation(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark view query (re-evaluation)
-fn bench_view_query(c: &mut Criterion) {
-    let mut group = c.benchmark_group("view_query");
+/// Benchmark virtual relvar query (re-evaluation)
+fn bench_virtual_relvar_query(c: &mut Criterion) {
+    let mut group = c.benchmark_group("virtual_relvar_query");
 
     for count in [100, 500, 1000].iter() {
         group.throughput(Throughput::Elements(*count as u64));
         group.bench_with_input(
-            BenchmarkId::new("restrict_view", count),
+            BenchmarkId::new("restrict_virtual_relvar", count),
             count,
             |b, &count| {
                 let (_temp_dir, mut db) = create_populated_database(count);
-                db.create_view("HIGH_EARNERS", |db| {
+                db.create_virtual_relvar("HIGH_EARNERS", |db| {
                     Ok(db
                         .query("EMP")?
                         .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
@@ -478,8 +478,8 @@ criterion_group!(
     bench_update,
     bench_transaction,
     bench_realistic_workload,
-    // View benchmarks (TTM RM Prescription 10)
-    bench_view_creation,
-    bench_view_query
+    // Virtual relvar benchmarks (TTM RM Prescription 10)
+    bench_virtual_relvar_creation,
+    bench_virtual_relvar_query
 );
 criterion_main!(benches);
