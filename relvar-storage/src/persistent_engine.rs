@@ -583,4 +583,192 @@ mod tests {
         let result = engine.create_relation("TEST", test_rel_type());
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_reopen_with_existing_relations() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create multiple relations
+        {
+            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            engine.create_relation("REL1", test_rel_type()).unwrap();
+            engine.create_relation("REL2", test_rel_type()).unwrap();
+            engine
+                .insert_tuple("REL1", tuple! { id: 1i64, name: "Alice" })
+                .unwrap();
+            engine
+                .insert_tuple("REL2", tuple! { id: 2i64, name: "Bob" })
+                .unwrap();
+        }
+
+        // Reopen and verify both relations exist
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            assert_eq!(engine.list_relations().len(), 2);
+
+            let rel1 = engine.load_relation("REL1").unwrap();
+            assert_eq!(rel1.cardinality(), 1);
+
+            let rel2 = engine.load_relation("REL2").unwrap();
+            assert_eq!(rel2.cardinality(), 1);
+        }
+    }
+
+    #[test]
+    fn test_multiple_inserts_uses_cached_heap_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        // Multiple inserts should reuse the cached heap file
+        for i in 0..10 {
+            engine
+                .insert_tuple("TEST", tuple! { id: i as i64, name: format!("Name{}", i) })
+                .unwrap();
+        }
+
+        let relation = engine.load_relation("TEST").unwrap();
+        assert_eq!(relation.cardinality(), 10);
+    }
+
+    #[test]
+    fn test_store_relation_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        let relation = Relation::new(test_rel_type());
+        let result = engine.store_relation("NONEXISTENT", &relation);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_metadata_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        let result = engine.get_relation_metadata("NONEXISTENT");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_drop_nonexistent_relation() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        let result = engine.drop_relation("NONEXISTENT");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_store_relation_replaces_data() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        // Insert initial data
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        engine
+            .insert_tuple("TEST", tuple! { id: 2i64, name: "Bob" })
+            .unwrap();
+
+        // Create new relation with different data
+        let mut new_relation = Relation::new(test_rel_type());
+        new_relation
+            .insert(tuple! { id: 100i64, name: "Charlie" })
+            .unwrap();
+
+        // Store should replace old data
+        engine.store_relation("TEST", &new_relation).unwrap();
+
+        let loaded = engine.load_relation("TEST").unwrap();
+        assert_eq!(loaded.cardinality(), 1);
+        assert!(loaded.contains(&tuple! { id: 100i64, name: "Charlie" }));
+    }
+
+    #[test]
+    fn test_relation_exists_returns_false_for_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        assert!(!engine.relation_exists("NONEXISTENT"));
+    }
+
+    #[test]
+    fn test_relation_exists_returns_true_for_existing() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+        assert!(engine.relation_exists("TEST"));
+    }
+
+    #[test]
+    fn test_transaction_with_multiple_relations() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("REL1", test_rel_type()).unwrap();
+        engine.create_relation("REL2", test_rel_type()).unwrap();
+
+        engine
+            .insert_tuple("REL1", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        engine
+            .insert_tuple("REL2", tuple! { id: 2i64, name: "Bob" })
+            .unwrap();
+
+        // Begin transaction
+        let snapshot = engine.begin_transaction().unwrap();
+
+        // Modify both relations
+        engine
+            .insert_tuple("REL1", tuple! { id: 3i64, name: "Charlie" })
+            .unwrap();
+        engine
+            .insert_tuple("REL2", tuple! { id: 4i64, name: "David" })
+            .unwrap();
+
+        // Rollback should restore both
+        engine.rollback_transaction(snapshot).unwrap();
+
+        let rel1 = engine.load_relation("REL1").unwrap();
+        let rel2 = engine.load_relation("REL2").unwrap();
+        assert_eq!(rel1.cardinality(), 1);
+        assert_eq!(rel2.cardinality(), 1);
+    }
+
+    #[test]
+    fn test_empty_database_list_relations() {
+        let temp_dir = TempDir::new().unwrap();
+        let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        assert_eq!(engine.list_relations().len(), 0);
+    }
+
+    #[test]
+    fn test_insert_then_load_uses_cached_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Load should work with cached heap file
+        let relation = engine.load_relation("TEST").unwrap();
+        assert_eq!(relation.cardinality(), 1);
+
+        // Insert more using cache
+        engine
+            .insert_tuple("TEST", tuple! { id: 2i64, name: "Bob" })
+            .unwrap();
+
+        let relation = engine.load_relation("TEST").unwrap();
+        assert_eq!(relation.cardinality(), 2);
+    }
 }

@@ -762,4 +762,287 @@ mod tests {
             SummarizeError::GroupingAttributeNotFound(_)
         ));
     }
+
+    #[test]
+    fn test_summarize_result_attribute_exists() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("salary".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+        relation
+            .insert(tuple! { emp_id: 1i64, salary: 50000i64 })
+            .unwrap();
+
+        // Result name conflicts with grouping attribute
+        let result = relation.summarize(&["emp_id"], &[Aggregation::count("emp_id")]);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SummarizeError::ResultAttributeExists(_)
+        ));
+    }
+
+    #[test]
+    fn test_sum_attribute_not_found() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Try to sum a non-existent attribute
+        let result = relation.summarize(&[], &[Aggregation::sum("total", "salary")]);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SummarizeError::AggregationError(_)
+        ));
+    }
+
+    #[test]
+    fn test_avg_attribute_not_found() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Try to average a non-existent attribute
+        let result = relation.summarize(&[], &[Aggregation::avg("average", "salary")]);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SummarizeError::AggregationError(_)
+        ));
+    }
+
+    #[test]
+    fn test_avg_empty_tuples() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("salary".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let relation = Relation::new(rel_type);
+
+        // Average on empty relation (with grouping)
+        let result = relation.summarize(&[], &[Aggregation::avg("avg_salary", "salary")]);
+
+        // This should succeed with 0.0
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<f64>("avg_salary").unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_min_on_empty_set() {
+        let heading = TupleType::new()
+            .with_attribute("salary".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let empty_rel = Relation::new(rel_type);
+
+        // MIN on empty set should error
+        let result = empty_rel.summarize(&[], &[Aggregation::min("min_salary", "salary", ScalarType::Int)]);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SummarizeError::AggregationError(_)
+        ));
+    }
+
+    #[test]
+    fn test_max_on_empty_set() {
+        let heading = TupleType::new()
+            .with_attribute("salary".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let empty_rel = Relation::new(rel_type);
+
+        // MAX on empty set should error
+        let result = empty_rel.summarize(&[], &[Aggregation::max("max_salary", "salary", ScalarType::Int)]);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SummarizeError::AggregationError(_)
+        ));
+    }
+
+    #[test]
+    fn test_min_attribute_not_found() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Try MIN on non-existent attribute
+        let result = relation.summarize(&[], &[Aggregation::min("min_salary", "salary", ScalarType::Int)]);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SummarizeError::AggregationError(_)
+        ));
+    }
+
+    #[test]
+    fn test_max_attribute_not_found() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Try MAX on non-existent attribute
+        let result = relation.summarize(&[], &[Aggregation::max("max_salary", "salary", ScalarType::Int)]);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SummarizeError::AggregationError(_)
+        ));
+    }
+
+    #[test]
+    fn test_custom_aggregation() {
+        let heading = TupleType::new()
+            .with_attribute("value".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+        relation.insert(tuple! { value: 10i64 }).unwrap();
+        relation.insert(tuple! { value: 20i64 }).unwrap();
+        relation.insert(tuple! { value: 30i64 }).unwrap();
+
+        // Custom aggregation: product of all values
+        let custom_agg = Aggregation {
+            result_name: "product".to_string(),
+            result_type: ScalarType::Int,
+            function: AggregationFn::Custom(Box::new(|tuples| {
+                let mut product = 1i64;
+                for tuple in tuples {
+                    if let Some(val) = tuple.get_typed::<i64>("value") {
+                        product *= val;
+                    }
+                }
+                ScalarValue::Int(product)
+            })),
+        };
+
+        let result = relation.summarize(&[], &[custom_agg]).unwrap();
+
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<i64>("product").unwrap(), 6000); // 10 * 20 * 30
+    }
+
+    #[test]
+    fn test_min_with_multiple_tuples() {
+        let heading = TupleType::new()
+            .with_attribute("dept_id".to_string(), ScalarType::Int)
+            .with_attribute("salary".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { dept_id: 10i64, salary: 70000i64 })
+            .unwrap();
+        relation
+            .insert(tuple! { dept_id: 10i64, salary: 50000i64 })
+            .unwrap();
+        relation
+            .insert(tuple! { dept_id: 10i64, salary: 60000i64 })
+            .unwrap();
+
+        let result = relation.summarize(
+            &["dept_id"],
+            &[Aggregation::min("min_salary", "salary", ScalarType::Int)],
+        ).unwrap();
+
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<i64>("min_salary").unwrap(), 50000);
+    }
+
+    #[test]
+    fn test_max_with_multiple_tuples() {
+        let heading = TupleType::new()
+            .with_attribute("dept_id".to_string(), ScalarType::Int)
+            .with_attribute("salary".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { dept_id: 10i64, salary: 50000i64 })
+            .unwrap();
+        relation
+            .insert(tuple! { dept_id: 10i64, salary: 70000i64 })
+            .unwrap();
+        relation
+            .insert(tuple! { dept_id: 10i64, salary: 60000i64 })
+            .unwrap();
+
+        let result = relation.summarize(
+            &["dept_id"],
+            &[Aggregation::max("max_salary", "salary", ScalarType::Int)],
+        ).unwrap();
+
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<i64>("max_salary").unwrap(), 70000);
+    }
+
+    #[test]
+    fn test_min_max_with_strings() {
+        let heading = TupleType::new()
+            .with_attribute("name".to_string(), ScalarType::String);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation.insert(tuple! { name: "Charlie" }).unwrap();
+        relation.insert(tuple! { name: "Alice" }).unwrap();
+        relation.insert(tuple! { name: "Bob" }).unwrap();
+
+        let result = relation.summarize(
+            &[],
+            &[
+                Aggregation::min("min_name", "name", ScalarType::String),
+                Aggregation::max("max_name", "name", ScalarType::String),
+            ],
+        ).unwrap();
+
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<String>("min_name").unwrap(), "Alice");
+        assert_eq!(tuple.get_typed::<String>("max_name").unwrap(), "Charlie");
+    }
 }

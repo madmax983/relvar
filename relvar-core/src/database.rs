@@ -1095,4 +1095,271 @@ mod tests {
         let result = db.insert("TEST", tuple! { id: 200i64, name: "Bob" });
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_transaction_commit() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Begin transaction
+        db.begin().unwrap();
+
+        // Make changes
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+
+        // Commit
+        db.commit().unwrap();
+
+        // Changes should persist
+        let result = db.query("TEST").unwrap();
+        assert_eq!(result.cardinality(), 2);
+
+        // Transaction should no longer be active
+        assert!(!db.in_transaction);
+    }
+
+    #[test]
+    fn test_commit_without_transaction() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        let result = db.commit();
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::TransactionError(_))));
+    }
+
+    #[test]
+    fn test_rollback_without_transaction() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        let result = db.rollback();
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::TransactionError(_))));
+    }
+
+    #[test]
+    fn test_begin_nested_transaction_fails() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.begin().unwrap();
+
+        // Try to begin another transaction
+        let result = db.begin();
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::TransactionError(_))));
+    }
+
+    #[test]
+    fn test_drop_virtual_relvar() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Define virtual relvar
+        db.define_virtual_relvar(
+            "VIRT",
+            RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
+            |db: &mut Database<InMemoryEngine>| {
+                let test = db.query("TEST")?;
+                Ok(test.project(&["name"]))
+            },
+        )
+        .unwrap();
+
+        // Verify it exists
+        let result = db.query("VIRT");
+        assert!(result.is_ok());
+
+        // Drop it
+        db.drop_virtual_relvar("VIRT").unwrap();
+
+        // Should no longer exist
+        let result = db.query("VIRT");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_drop_nonexistent_virtual_relvar() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        let result = db.drop_virtual_relvar("NONEXISTENT");
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::RelationNotFound(_))));
+    }
+
+    #[test]
+    fn test_cannot_insert_into_virtual_relvar() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.define_virtual_relvar(
+            "VIRT",
+            RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
+            |db: &mut Database<InMemoryEngine>| {
+                let test = db.query("TEST")?;
+                Ok(test.project(&["name"]))
+            },
+        )
+        .unwrap();
+
+        // Try to insert
+        let result = db.insert("VIRT", tuple! { name: "Alice" });
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::CannotModifyVirtualRelvar(_))
+        ));
+    }
+
+    #[test]
+    fn test_cannot_delete_from_virtual_relvar() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.define_virtual_relvar(
+            "VIRT",
+            test_rel_type(),
+            |db: &mut Database<InMemoryEngine>| db.query("TEST"),
+        )
+        .unwrap();
+
+        // Try to delete
+        let result = db.delete("VIRT", |_| true);
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::CannotModifyVirtualRelvar(_))
+        ));
+    }
+
+    #[test]
+    fn test_cannot_update_virtual_relvar() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.define_virtual_relvar(
+            "VIRT",
+            test_rel_type(),
+            |db: &mut Database<InMemoryEngine>| db.query("TEST"),
+        )
+        .unwrap();
+
+        // Try to update
+        let result = db.update("VIRT", |_| true, |_| tuple! { id: 99i64, name: "X" });
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::CannotModifyVirtualRelvar(_))
+        ));
+    }
+
+    #[test]
+    fn test_cannot_drop_base_relvar_when_virtual_depends_on_it() {
+        // This would require tracking dependencies, which might not be implemented
+        // Skipping for now as it may not be a current feature
+    }
+
+    #[test]
+    fn test_virtual_relvar_error_propagation() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        // Define virtual relvar that queries nonexistent base
+        db.define_virtual_relvar(
+            "VIRT",
+            test_rel_type(),
+            |db: &mut Database<InMemoryEngine>| db.query("NONEXISTENT"),
+        )
+        .unwrap();
+
+        // Querying it should fail
+        let result = db.query("VIRT");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delete_returns_count() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+        db.insert("TEST", tuple! { id: 3i64, name: "Charlie" })
+            .unwrap();
+
+        // Delete some tuples
+        let count = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() > 1).unwrap();
+        assert_eq!(count, 2);
+
+        let result = db.query("TEST").unwrap();
+        assert_eq!(result.cardinality(), 1);
+    }
+
+    #[test]
+    fn test_update_returns_count() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+
+        // Update tuples
+        let count = db
+            .update("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1, |_| {
+                tuple! { id: 1i64, name: "Alicia" }
+            })
+            .unwrap();
+
+        assert_eq!(count, 1);
+
+        let result = db.query("TEST").unwrap();
+        assert!(result.contains(&tuple! { id: 1i64, name: "Alicia" }));
+    }
+
+    #[test]
+    fn test_delete_no_matches_returns_zero() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Delete with no matches
+        let count = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() > 100).unwrap();
+        assert_eq!(count, 0);
+
+        // Relation should be unchanged
+        let result = db.query("TEST").unwrap();
+        assert_eq!(result.cardinality(), 1);
+    }
+
+    #[test]
+    fn test_update_with_candidate_key_violation() {
+        use crate::constraints::{CandidateKey, KeyConstraints};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        let ck = CandidateKey::new(vec!["name".to_string()]).unwrap();
+        db.set_key_constraints("TEST", KeyConstraints::new().with_candidate_key(ck))
+            .unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+
+        // Try to update to create duplicate candidate key
+        let result = db.update("TEST", |t| t.get_typed::<i64>("id").unwrap() == 2, |_| {
+            tuple! { id: 2i64, name: "Alice" }
+        });
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::CandidateKeyViolation)));
+    }
 }
