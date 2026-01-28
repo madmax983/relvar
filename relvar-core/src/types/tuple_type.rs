@@ -386,6 +386,9 @@ mod tests {
         type2.hash(&mut hasher2);
         let hash2 = hasher2.finish();
 
-        assert_eq!(hash1, hash2, "TupleTypes with same attributes but different insertion order must hash identically");
+        assert_eq!(
+            hash1, hash2,
+            "TupleTypes with same attributes but different insertion order must hash identically"
+        );
     }
 }
