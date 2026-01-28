@@ -236,9 +236,7 @@ impl StorageEngine for PersistentEngine {
             HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
                 .map_err(Self::convert_heap_error)?;
 
-        heap_file
-            .load_relation()
-            .map_err(Self::convert_heap_error)
+        heap_file.load_relation().map_err(Self::convert_heap_error)
     }
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {

@@ -253,7 +253,7 @@ impl<E: StorageEngine> Database<E> {
                     .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
                 {
                     return Err(DatabaseError::ForeignKeyViolation(
-                        "Existing tuple violates foreign key".to_string()
+                        "Existing tuple violates foreign key".to_string(),
                     ));
                 }
             }
@@ -290,7 +290,7 @@ impl<E: StorageEngine> Database<E> {
                     .map_err(|e| DatabaseError::TypeConstraintViolation(e.to_string()))?
             {
                 return Err(DatabaseError::TypeConstraintViolation(
-                    "Existing value violates constraint".to_string()
+                    "Existing value violates constraint".to_string(),
                 ));
             }
         }
@@ -376,7 +376,7 @@ impl<E: StorageEngine> Database<E> {
                     .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
                 {
                     return Err(DatabaseError::ForeignKeyViolation(
-                        "Foreign key constraint violated".to_string()
+                        "Foreign key constraint violated".to_string(),
                     ));
                 }
             }
