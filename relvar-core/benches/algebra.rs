@@ -166,6 +166,44 @@ fn bench_join(c: &mut Criterion) {
     group.finish();
 }
 
+// Semijoin benchmark
+fn bench_semijoin(c: &mut Criterion) {
+    let mut group = c.benchmark_group("semijoin");
+
+    for size in [10, 50, 100].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            let employees = create_employee_relation(size * 10);
+            let departments = create_department_relation(size);
+
+            b.iter(|| {
+                let result = employees.semijoin(&departments);
+                black_box(result);
+            });
+        });
+    }
+    group.finish();
+}
+
+// Semidifference benchmark
+fn bench_semidifference(c: &mut Criterion) {
+    let mut group = c.benchmark_group("semidifference");
+
+    for size in [10, 50, 100].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            let employees = create_employee_relation(size * 10);
+            let departments = create_department_relation(size);
+
+            b.iter(|| {
+                let result = employees.semidifference(&departments);
+                black_box(result);
+            });
+        });
+    }
+    group.finish();
+}
+
 // Union benchmark
 fn bench_union(c: &mut Criterion) {
     let mut group = c.benchmark_group("union");
@@ -335,6 +373,8 @@ criterion_group!(
     bench_project,
     bench_rename,
     bench_join,
+    bench_semijoin,
+    bench_semidifference,
     bench_union,
     bench_intersect,
     bench_difference,
