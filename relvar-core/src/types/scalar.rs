@@ -8,7 +8,7 @@
 //!
 //! - **Prescription 1**: User-defined scalar types are supported via the POSSREP
 //!   (possible representation) pattern
-//! - Type identity is determined by name, not representation
+//! - Type identity for user-defined types is structural (name + representation)
 //! - Built-in types provide the foundation for user-defined types
 //!
 //! # Example

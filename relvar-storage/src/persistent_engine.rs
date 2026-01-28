@@ -116,6 +116,34 @@ impl PersistentEngine {
         StorageError::Other(format!("Heap error: {}", e))
     }
 
+    /// Validate that a relvar name is safe for use in file paths.
+    ///
+    /// Rejects names containing path separators or parent directory references
+    /// to prevent path traversal attacks.
+    fn validate_relvar_name(name: &str) -> Result<(), StorageError> {
+        if name.is_empty() {
+            return Err(StorageError::Other(
+                "Relvar name cannot be empty".to_string(),
+            ));
+        }
+
+        if name.contains('/') || name.contains('\\') {
+            return Err(StorageError::Other(format!(
+                "Relvar name '{}' cannot contain path separators",
+                name
+            )));
+        }
+
+        if name == "." || name == ".." || name.contains("..") {
+            return Err(StorageError::Other(format!(
+                "Relvar name '{}' cannot contain parent directory references",
+                name
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Save the catalog to disk.
     fn save_catalog(&self) -> Result<(), StorageError> {
         self.catalog.save(&self.catalog_path).map_err(|e| match e {
@@ -137,6 +165,9 @@ impl StorageEngine for PersistentEngine {
         name: &str,
         relation_type: RelationType,
     ) -> Result<(), StorageError> {
+        // Validate relvar name for filesystem safety
+        Self::validate_relvar_name(name)?;
+
         if self.catalog.relation_exists(name) {
             return Err(StorageError::RelationAlreadyExists(name.to_string()));
         }

@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_attribute_names_must_be_unique() {
-        // The BTreeMap will simply overwrite duplicates
+        // The underlying HashMap will simply overwrite duplicates
         let tuple_type = TupleType::new()
             .with_attribute("id", ScalarType::Int)
             .with_attribute("id", ScalarType::String); // Overwrites previous

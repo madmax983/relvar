@@ -115,7 +115,6 @@ pub enum TypeConstraint {
     ///
     /// The validator function is not serializable. After deserialization,
     /// the validator will be `None` and validation will pass by default.
-    #[serde(skip)]
     Custom {
         /// The validation function (optional for deserialization support).
         #[serde(skip)]

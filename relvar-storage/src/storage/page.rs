@@ -141,7 +141,9 @@ impl Page {
     /// assert_eq!(page.data(), &[1, 2, 3]);
     /// ```
     pub fn from_data(id: PageId, data: Vec<u8>) -> Result<Self, PageError> {
-        if data.len() > PAGE_SIZE {
+        // Limit to PAGE_SIZE - 8 to account for the 8-byte length prefix
+        // written by write_page(), ensuring total on-disk size is exactly PAGE_SIZE
+        if data.len() > PAGE_SIZE - 8 {
             return Err(PageError::PageTooLarge);
         }
         Ok(Self { id, data })
@@ -326,6 +328,11 @@ impl PageFile {
 
         // Write actual data
         buffer.extend_from_slice(page.data());
+
+        // Ensure buffer doesn't exceed PAGE_SIZE (would corrupt page alignment)
+        if buffer.len() > PAGE_SIZE {
+            return Err(PageError::PageTooLarge);
+        }
 
         // Pad to PAGE_SIZE
         if buffer.len() < PAGE_SIZE {
