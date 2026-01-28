@@ -626,6 +626,7 @@ mod tests {
 
     #[test]
     fn test_heap_scan_large_volume() {
+        const NUM_PAGES: u64 = 1005;
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
 
@@ -641,7 +642,7 @@ mod tests {
         // We just need > 1000 pages, the content size doesn't matter as long as it's valid
         let payload = vec![0u8; 100];
 
-        for i in 0..1005 {
+        for i in 0..NUM_PAGES {
             let tuple = tuple! {
                 id: i as i64,
                 data: payload.clone(),
@@ -651,8 +652,8 @@ mod tests {
             // Construct a SlottedPage with one tuple
             // We place tuple at the end of the page (standard behavior)
             let tuple_len = tuple_data.len();
-            // USABLE_PAGE_SIZE = 4096 - 8 = 4088
-            let offset = 4088 - tuple_len;
+            // USABLE_PAGE_SIZE = PAGE_SIZE - 8
+            let offset = (PAGE_SIZE - 8) - tuple_len;
 
             let slotted_page = SlottedPage {
                 slot_count: 1,
@@ -667,16 +668,17 @@ mod tests {
                 .serialize_slotted_page_with_tuples(&slotted_page, &[tuple_data])
                 .unwrap();
 
-            let page = Page::from_data(i as u64, page_data).unwrap();
+            let page = Page::from_data(i, page_data).unwrap();
             heap.page_file.write_page(&page).unwrap();
         }
 
         // Scan and verify count
         let tuples = heap.scan().unwrap();
         assert_eq!(
-            tuples.len(),
-            1005,
-            "Scan stopped early! Expected 1005 tuples, got {}",
+            tuples.len() as u64,
+            NUM_PAGES,
+            "Scan stopped early! Expected {} tuples, got {}",
+            NUM_PAGES,
             tuples.len()
         );
     }
