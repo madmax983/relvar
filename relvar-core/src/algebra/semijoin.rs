@@ -393,4 +393,142 @@ mod tests {
         assert!(result.contains(&tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }));
         assert!(!result.contains(&tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }));
     }
+
+    #[test]
+    fn test_semidifference_empty_self() {
+        let employees = Relation::new(RelationType::new(emp_heading()));
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+
+        let result = employees.semidifference(&departments);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_semidifference_empty_other() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+
+        let departments = Relation::new(RelationType::new(dept_heading()));
+
+        let result = employees.semidifference(&departments);
+        assert_eq!(result, employees);
+    }
+
+    #[test]
+    fn test_semidifference_both_empty() {
+        let employees = Relation::new(RelationType::new(emp_heading()));
+        let departments = Relation::new(RelationType::new(dept_heading()));
+
+        let result = employees.semidifference(&departments);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_semidifference_no_common_attributes_other_non_empty() {
+        // Disjoint headings + B non-empty => semijoin = A, so semidiff = A - A = empty
+        let heading_a = TupleType::new().with_attribute("a", ScalarType::Int);
+        let mut rel_a = Relation::new(RelationType::new(heading_a));
+        rel_a.insert(tuple! { a: 1i64 }).unwrap();
+
+        let heading_b = TupleType::new().with_attribute("b", ScalarType::String);
+        let mut rel_b = Relation::new(RelationType::new(heading_b));
+        rel_b.insert(tuple! { b: "x" }).unwrap();
+
+        let result = rel_a.semidifference(&rel_b);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_semidifference_no_common_attributes_other_empty() {
+        // Disjoint headings + B empty => semijoin = empty, so semidiff = A
+        let heading_a = TupleType::new().with_attribute("a", ScalarType::Int);
+        let mut rel_a = Relation::new(RelationType::new(heading_a));
+        rel_a.insert(tuple! { a: 1i64 }).unwrap();
+
+        let heading_b = TupleType::new().with_attribute("b", ScalarType::String);
+        let rel_b = Relation::new(RelationType::new(heading_b));
+
+        let result = rel_a.semidifference(&rel_b);
+        assert_eq!(result, rel_a);
+    }
+
+    #[test]
+    fn test_semidifference_same_heading_equals_difference() {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+
+        let mut rel_a = Relation::new(rel_type.clone());
+        rel_a.insert(tuple! { id: 1i64 }).unwrap();
+        rel_a.insert(tuple! { id: 2i64 }).unwrap();
+        rel_a.insert(tuple! { id: 3i64 }).unwrap();
+
+        let mut rel_b = Relation::new(rel_type);
+        rel_b.insert(tuple! { id: 2i64 }).unwrap();
+        rel_b.insert(tuple! { id: 3i64 }).unwrap();
+
+        let semidiff_result = rel_a.semidifference(&rel_b);
+        let diff_result = rel_a.difference(&rel_b).unwrap();
+
+        assert_eq!(semidiff_result, diff_result);
+    }
+
+    #[test]
+    fn test_semidifference_no_matches() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 99i64 }).unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+
+        let result = employees.semidifference(&departments);
+        assert_eq!(result, employees);
+    }
+
+    #[test]
+    fn test_semidifference_all_match() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+
+        let result = employees.semidifference(&departments);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_semidifference_preserves_heading() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+
+        let departments = Relation::new(RelationType::new(dept_heading()));
+
+        let result = employees.semidifference(&departments);
+        assert_eq!(result.relation_type(), employees.relation_type());
+    }
+
+    #[test]
+    fn test_semidifference_multiple_common_attributes() {
+        let heading_a = TupleType::new()
+            .with_attribute("x", ScalarType::Int)
+            .with_attribute("y", ScalarType::Int)
+            .with_attribute("data", ScalarType::String);
+        let mut rel_a = Relation::new(RelationType::new(heading_a));
+        rel_a.insert(tuple! { x: 1i64, y: 10i64, data: "a" }).unwrap();
+        rel_a.insert(tuple! { x: 1i64, y: 20i64, data: "b" }).unwrap();
+        rel_a.insert(tuple! { x: 2i64, y: 10i64, data: "c" }).unwrap();
+
+        let heading_b = TupleType::new()
+            .with_attribute("x", ScalarType::Int)
+            .with_attribute("y", ScalarType::Int)
+            .with_attribute("label", ScalarType::String);
+        let mut rel_b = Relation::new(RelationType::new(heading_b));
+        rel_b.insert(tuple! { x: 1i64, y: 10i64, label: "match" }).unwrap();
+
+        let result = rel_a.semidifference(&rel_b);
+        assert_eq!(result.cardinality(), 2);
+        assert!(result.contains(&tuple! { x: 1i64, y: 20i64, data: "b" }));
+        assert!(result.contains(&tuple! { x: 2i64, y: 10i64, data: "c" }));
+    }
 }
