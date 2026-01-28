@@ -519,4 +519,196 @@ mod tests {
 
         assert!(!constraint.is_satisfied_by(&ScalarValue::Int(1)).unwrap());
     }
+
+    #[test]
+    fn test_range_constraint_min_equals_max() {
+        let constraint = TypeConstraint::Range {
+            min: ScalarValue::Int(5),
+            max: ScalarValue::Int(5),
+        };
+
+        // Exactly 5 should pass
+        assert!(constraint.is_satisfied_by(&ScalarValue::Int(5)).unwrap());
+
+        // Other values should fail
+        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(4)).unwrap());
+        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(6)).unwrap());
+    }
+
+    #[test]
+    fn test_range_constraint_float() {
+        let constraint = TypeConstraint::Range {
+            min: ScalarValue::Float(0.0),
+            max: ScalarValue::Float(1.0),
+        };
+
+        assert!(constraint.is_satisfied_by(&ScalarValue::Float(0.0)).unwrap());
+        assert!(constraint.is_satisfied_by(&ScalarValue::Float(0.5)).unwrap());
+        assert!(constraint.is_satisfied_by(&ScalarValue::Float(1.0)).unwrap());
+        assert!(!constraint.is_satisfied_by(&ScalarValue::Float(-0.1)).unwrap());
+        assert!(!constraint.is_satisfied_by(&ScalarValue::Float(1.1)).unwrap());
+    }
+
+    #[test]
+    fn test_string_length_min_equals_max() {
+        let constraint = TypeConstraint::StringLength { min: 5, max: 5 };
+
+        // Exactly 5 chars should pass
+        assert!(constraint
+            .is_satisfied_by(&ScalarValue::String("hello".to_string()))
+            .unwrap());
+
+        // Other lengths should fail
+        assert!(!constraint
+            .is_satisfied_by(&ScalarValue::String("hi".to_string()))
+            .unwrap());
+        assert!(!constraint
+            .is_satisfied_by(&ScalarValue::String("hello!".to_string()))
+            .unwrap());
+    }
+
+    #[test]
+    fn test_string_length_empty_string() {
+        let constraint = TypeConstraint::StringLength { min: 1, max: 10 };
+
+        // Empty string should fail
+        assert!(!constraint
+            .is_satisfied_by(&ScalarValue::String("".to_string()))
+            .unwrap());
+    }
+
+    #[test]
+    fn test_string_length_zero_min() {
+        let constraint = TypeConstraint::StringLength { min: 0, max: 5 };
+
+        // Empty string should pass with min=0
+        assert!(constraint
+            .is_satisfied_by(&ScalarValue::String("".to_string()))
+            .unwrap());
+    }
+
+    #[test]
+    fn test_positive_int_with_negative() {
+        let constraint = TypeConstraint::PositiveInt;
+
+        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(-100)).unwrap());
+        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(-1)).unwrap());
+    }
+
+    #[test]
+    fn test_non_negative_int_with_negative() {
+        let constraint = TypeConstraint::NonNegativeInt;
+
+        // Zero should pass
+        assert!(constraint.is_satisfied_by(&ScalarValue::Int(0)).unwrap());
+
+        // Negative should fail
+        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(-1)).unwrap());
+        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(-100)).unwrap());
+    }
+
+    #[test]
+    fn test_non_negative_int_type_mismatch() {
+        let constraint = TypeConstraint::NonNegativeInt;
+
+        // Should return error for non-int type
+        let result = constraint.is_satisfied_by(&ScalarValue::String("test".to_string()));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_positive_int_type_mismatch() {
+        let constraint = TypeConstraint::PositiveInt;
+
+        // Should return error for non-int type
+        let result = constraint.is_satisfied_by(&ScalarValue::Float(1.5));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_enum_constraint_with_different_types() {
+        let constraint = TypeConstraint::Enum {
+            allowed_values: vec![
+                ScalarValue::Int(1),
+                ScalarValue::Int(2),
+                ScalarValue::Int(3),
+            ],
+        };
+
+        // Wrong type should return error (type mismatch)
+        let result = constraint.is_satisfied_by(&ScalarValue::String("1".to_string()));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_custom_constraint_clone() {
+        let constraint = TypeConstraint::Custom {
+            validator: Some(Box::new(|v: &ScalarValue| match v {
+                ScalarValue::Int(i) => *i % 2 == 0,
+                _ => false,
+            })),
+            description: "Even numbers only".to_string(),
+        };
+
+        let cloned = constraint.clone();
+
+        // Cloned validator should be None
+        if let TypeConstraint::Custom {
+            validator,
+            description,
+        } = cloned
+        {
+            assert!(validator.is_none());
+            assert_eq!(description, "Even numbers only");
+        } else {
+            panic!("Expected Custom variant");
+        }
+    }
+
+    #[test]
+    fn test_custom_constraint_without_validator() {
+        // Custom constraint with validator = None should always pass
+        let constraint = TypeConstraint::Custom {
+            validator: None,
+            description: "No validator".to_string(),
+        };
+
+        assert!(constraint.is_satisfied_by(&ScalarValue::Int(42)).unwrap());
+        assert!(constraint
+            .is_satisfied_by(&ScalarValue::String("anything".to_string()))
+            .unwrap());
+    }
+
+    #[test]
+    fn test_range_constraint_string() {
+        let constraint = TypeConstraint::Range {
+            min: ScalarValue::String("a".to_string()),
+            max: ScalarValue::String("z".to_string()),
+        };
+
+        assert!(constraint
+            .is_satisfied_by(&ScalarValue::String("m".to_string()))
+            .unwrap());
+        assert!(constraint
+            .is_satisfied_by(&ScalarValue::String("a".to_string()))
+            .unwrap());
+        assert!(constraint
+            .is_satisfied_by(&ScalarValue::String("z".to_string()))
+            .unwrap());
+    }
+
+    #[test]
+    fn test_attribute_constraints_multiple_failures() {
+        let constraints = AttributeConstraints::new("age".to_string(), ScalarType::Int)
+            .with_constraint(TypeConstraint::PositiveInt)
+            .with_constraint(TypeConstraint::Range {
+                min: ScalarValue::Int(1),
+                max: ScalarValue::Int(120),
+            });
+
+        // Value that fails multiple constraints should return false
+        let result = constraints.is_satisfied_by(&ScalarValue::Int(-5));
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
 }
