@@ -97,6 +97,82 @@ impl Relation {
     pub fn matching(&self, other: &Relation) -> Self {
         self.semijoin(other)
     }
+
+    /// Computes the semidifference of this relation with another (A NOT MATCHING B).
+    ///
+    /// Returns tuples from this relation that have NO matching tuple in
+    /// `other` on their common attributes. The result heading is always
+    /// this relation's heading. Also known as antijoin.
+    ///
+    /// Formally: `A SEMIDIFFERENCE B = A MINUS (A SEMIJOIN B)`
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The relation to match against
+    ///
+    /// # Returns
+    ///
+    /// A new relation with this relation's heading, containing only the
+    /// tuples that have NO match in `other`.
+    ///
+    /// # Behavior
+    ///
+    /// - If there are no common attributes and `other` is non-empty, returns
+    ///   an empty relation (all tuples vacuously match, so none remain)
+    /// - If `other` is empty, returns `self` (no tuples to exclude)
+    /// - If headings are identical, equivalent to [`difference()`](Self::difference)
+    ///
+    /// # Complexity
+    ///
+    /// O(n * m) where n and m are the cardinalities of the two relations.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let emp_heading = TupleType::new()
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("dept_id", ScalarType::Int);
+    /// let mut employees = Relation::new(RelationType::new(emp_heading));
+    /// employees.insert(tuple! { emp_id: 1i64, dept_id: 10i64 }).unwrap();
+    /// employees.insert(tuple! { emp_id: 2i64, dept_id: 20i64 }).unwrap();
+    ///
+    /// let dept_heading = TupleType::new()
+    ///     .with_attribute("dept_id", ScalarType::Int)
+    ///     .with_attribute("dept_name", ScalarType::String);
+    /// let mut departments = Relation::new(RelationType::new(dept_heading));
+    /// departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+    ///
+    /// let result = employees.semidifference(&departments);
+    /// assert_eq!(result.cardinality(), 1); // Only emp 2 (no matching dept)
+    /// ```
+    pub fn semidifference(&self, other: &Relation) -> Self {
+        let common_attrs: Vec<String> = self
+            .relation_type()
+            .heading()
+            .attribute_names()
+            .filter(|attr| other.relation_type().heading().has_attribute(attr))
+            .cloned()
+            .collect();
+
+        let non_matched: Vec<_> = self
+            .tuples()
+            .filter(|tuple| {
+                !other.tuples().any(|other_tuple| {
+                    common_attrs
+                        .iter()
+                        .all(|attr| tuple.get(attr) == other_tuple.get(attr))
+                })
+            })
+            .cloned()
+            .collect();
+
+        Relation::from_tuples(self.relation_type().clone(), non_matched)
+            .expect("Semidifference tuples conform to self's relation type")
+    }
 }
 
 #[cfg(test)]
@@ -296,5 +372,25 @@ mod tests {
             employees.matching(&departments),
             employees.semijoin(&departments)
         );
+    }
+
+    #[test]
+    fn test_semidifference_returns_non_matching_tuples() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
+        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments.insert(tuple! { dept_id: 20i64, dept_name: "Sales" }).unwrap();
+
+        let result = employees.semidifference(&departments);
+
+        // Only Charlie (dept_id 30 has no match)
+        assert_eq!(result.cardinality(), 1);
+        assert_eq!(result.degree(), 3);
+        assert!(result.contains(&tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }));
+        assert!(!result.contains(&tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }));
     }
 }
