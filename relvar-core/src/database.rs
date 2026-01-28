@@ -3,7 +3,10 @@
 //! This module provides the [`Database`] struct, which is the main entry point
 //! for all database operations.
 
-use crate::constraints::{AttributeConstraints, ForeignKeyConstraints, KeyConstraints};
+use crate::constraints::{
+    AttributeConstraints, CheckConstraintError, CheckConstraints, ForeignKeyConstraints,
+    KeyConstraints,
+};
 use crate::storage_engine::{StorageEngine, StorageError};
 use crate::types::RelationType;
 use crate::values::relation::RelationError;
@@ -50,6 +53,10 @@ pub enum DatabaseError {
     /// Type constraint violation.
     #[error("Type constraint violation: {0}")]
     TypeConstraintViolation(String),
+
+    /// CHECK constraint violation.
+    #[error("CHECK constraint violation: {0}")]
+    CheckConstraintViolation(#[from] CheckConstraintError),
 
     /// Transaction error.
     #[error("Transaction error: {0}")]
@@ -123,6 +130,8 @@ pub struct Database<E: StorageEngine> {
     foreign_key_constraints: HashMap<String, ForeignKeyConstraints>,
     /// Type constraints per relation, per attribute.
     type_constraints: HashMap<String, HashMap<String, AttributeConstraints>>,
+    /// CHECK constraints (tuple-level predicates) per relation.
+    check_constraints: HashMap<String, CheckConstraints>,
     /// Whether a transaction is currently in progress.
     in_transaction: bool,
     /// Transaction savepoint.
@@ -139,6 +148,7 @@ impl<E: StorageEngine> Database<E> {
             key_constraints: HashMap::new(),
             foreign_key_constraints: HashMap::new(),
             type_constraints: HashMap::new(),
+            check_constraints: HashMap::new(),
             in_transaction: false,
             transaction_snapshot: None,
             virtual_relvars: HashMap::new(),
@@ -302,6 +312,36 @@ impl<E: StorageEngine> Database<E> {
         Ok(())
     }
 
+    /// Set CHECK constraints for a relation.
+    ///
+    /// TTM: RM Prescription 9 - General integrity constraints (tuple-level).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Relation doesn't exist
+    /// - Existing tuples violate the new constraints
+    pub fn set_check_constraints(
+        &mut self,
+        relation_name: &str,
+        constraints: CheckConstraints,
+    ) -> Result<(), DatabaseError> {
+        if !self.engine.relation_exists(relation_name) {
+            return Err(DatabaseError::RelationNotFound(relation_name.to_string()));
+        }
+
+        // Validate constraints against existing data
+        let relation = self.query(relation_name)?;
+
+        for tuple in relation.tuples() {
+            constraints.are_all_satisfied_by(tuple)?;
+        }
+
+        self.check_constraints
+            .insert(relation_name.to_string(), constraints);
+        Ok(())
+    }
+
     /// Insert a tuple into a relation.
     ///
     /// # Errors
@@ -340,6 +380,11 @@ impl<E: StorageEngine> Database<E> {
                     )));
                 }
             }
+        }
+
+        // Check CHECK constraints (tuple-level predicates)
+        if let Some(check_constraints) = self.check_constraints.get(relation_name) {
+            check_constraints.are_all_satisfied_by(&tuple)?;
         }
 
         // Load current relation to check key constraints
@@ -647,6 +692,8 @@ impl<E: StorageEngine> Database<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constraints::check::{CheckConstraint, CheckConstraints};
+    use crate::constraints::expression::{ConstraintExpression, ValueOrRef};
     use crate::storage_engine::InMemoryEngine;
     use crate::tuple;
     use crate::types::{ScalarType, TupleType};
@@ -1374,5 +1421,142 @@ mod tests {
 
         assert!(result.is_err());
         assert!(matches!(result, Err(DatabaseError::CandidateKeyViolation)));
+    }
+
+    #[test]
+    fn test_set_check_constraints() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("salary", ScalarType::Int),
+        );
+
+        db.create_relvar("EMPLOYEES", rel_type).unwrap();
+
+        // Create CHECK constraint: salary must be positive
+        let constraints =
+            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
+                "positive_salary",
+                "Salary must be positive",
+                ConstraintExpression::Gt(
+                    "salary".to_string(),
+                    ValueOrRef::Value(ScalarValue::Int(0)),
+                ),
+            ));
+
+        db.set_check_constraints("EMPLOYEES", constraints).unwrap();
+    }
+
+    #[test]
+    fn test_set_check_constraint_validates_existing_data() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("salary", ScalarType::Int),
+        );
+
+        db.create_relvar("EMPLOYEES", rel_type).unwrap();
+
+        // Insert tuple with negative salary
+        db.insert("EMPLOYEES", tuple! { id: 1i64, salary: -100i64 })
+            .unwrap();
+
+        // Try to add CHECK constraint - should fail because existing data violates it
+        let constraints =
+            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
+                "positive_salary",
+                "Salary must be positive",
+                ConstraintExpression::Gt(
+                    "salary".to_string(),
+                    ValueOrRef::Value(ScalarValue::Int(0)),
+                ),
+            ));
+
+        let result = db.set_check_constraints("EMPLOYEES", constraints);
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::CheckConstraintViolation(_))
+        ));
+    }
+
+    #[test]
+    fn test_insert_enforces_check_constraints() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("salary", ScalarType::Int),
+        );
+
+        db.create_relvar("EMPLOYEES", rel_type).unwrap();
+
+        // Add CHECK constraint: salary must be positive
+        let constraints =
+            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
+                "positive_salary",
+                "Salary must be positive",
+                ConstraintExpression::Gt(
+                    "salary".to_string(),
+                    ValueOrRef::Value(ScalarValue::Int(0)),
+                ),
+            ));
+        db.set_check_constraints("EMPLOYEES", constraints).unwrap();
+
+        // Insert with positive salary should succeed
+        let result = db.insert("EMPLOYEES", tuple! { id: 1i64, salary: 50000i64 });
+        assert!(result.is_ok());
+
+        // Insert with negative salary should fail
+        let result = db.insert("EMPLOYEES", tuple! { id: 2i64, salary: -100i64 });
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::CheckConstraintViolation(_))
+        ));
+    }
+
+    #[test]
+    fn test_insert_satisfies_check_constraints() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("age", ScalarType::Int),
+        );
+
+        db.create_relvar("PERSONS", rel_type).unwrap();
+
+        // Add complex CHECK constraint: age between 0 and 150
+        let constraints =
+            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
+                "valid_age",
+                "Age must be between 0 and 150",
+                ConstraintExpression::And(
+                    Box::new(ConstraintExpression::Gt(
+                        "age".to_string(),
+                        ValueOrRef::Value(ScalarValue::Int(0)),
+                    )),
+                    Box::new(ConstraintExpression::Lt(
+                        "age".to_string(),
+                        ValueOrRef::Value(ScalarValue::Int(150)),
+                    )),
+                ),
+            ));
+        db.set_check_constraints("PERSONS", constraints).unwrap();
+
+        // Insert with valid age should succeed
+        let result = db.insert("PERSONS", tuple! { id: 1i64, age: 30i64 });
+        assert!(result.is_ok());
+
+        // Insert with invalid age (too low) should fail
+        let result = db.insert("PERSONS", tuple! { id: 2i64, age: -5i64 });
+        assert!(result.is_err());
+
+        // Insert with invalid age (too high) should fail
+        let result = db.insert("PERSONS", tuple! { id: 3i64, age: 200i64 });
+        assert!(result.is_err());
     }
 }

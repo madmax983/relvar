@@ -34,10 +34,14 @@
 //! ).unwrap();
 //! ```
 
+pub mod check;
+pub mod expression;
 pub mod foreign_key;
 pub mod key;
 pub mod type_constraint;
 
+pub use check::{CheckConstraint, CheckConstraintError, CheckConstraints, CheckPredicate};
+pub use expression::{CmpOp, ConstraintExpression, ExpressionError, ValueOrRef};
 pub use foreign_key::{ForeignKey, ForeignKeyConstraints, ForeignKeyError};
 pub use key::{CandidateKey, KeyConstraintError, KeyConstraints, PrimaryKey};
 pub use type_constraint::{AttributeConstraints, TypeConstraint, TypeConstraintError};
