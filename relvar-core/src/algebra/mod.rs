@@ -28,6 +28,8 @@
 //! |----------|--------|-------------|
 //! | Natural Join | [`join()`](crate::values::Relation::join) | Joins on common attributes |
 //! | Theta Join | [`theta_join()`](crate::values::Relation::theta_join) | Joins with arbitrary predicate |
+//! | Semijoin | [`semijoin()`](crate::values::Relation::semijoin) | Tuples from A matching B |
+//! | Semidifference | [`semidifference()`](crate::values::Relation::semidifference) | Tuples from A not matching B |
 //!
 //! ## Extended Operators
 //!
@@ -99,6 +101,9 @@ pub mod rename;
 
 /// Restrict operator for tuple filtering (σ).
 pub mod restrict;
+
+/// Semijoin and semidifference (antijoin) operators.
+pub mod semijoin;
 
 /// Summarize operator for aggregation with grouping.
 pub mod summarize;
