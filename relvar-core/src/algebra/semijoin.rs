@@ -196,13 +196,23 @@ mod tests {
     #[test]
     fn test_semijoin_returns_matching_tuples() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
-        departments.insert(tuple! { dept_id: 20i64, dept_name: "Sales" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+        departments
+            .insert(tuple! { dept_id: 20i64, dept_name: "Sales" })
+            .unwrap();
         // dept_id 30 is absent
 
         let result = employees.semijoin(&departments);
@@ -219,7 +229,9 @@ mod tests {
     fn test_semijoin_empty_self() {
         let employees = Relation::new(RelationType::new(emp_heading()));
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         let result = employees.semijoin(&departments);
         assert!(result.is_empty());
@@ -228,7 +240,9 @@ mod tests {
     #[test]
     fn test_semijoin_empty_other() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
 
         let departments = Relation::new(RelationType::new(dept_heading()));
 
@@ -300,10 +314,14 @@ mod tests {
     #[test]
     fn test_semijoin_no_matches() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 99i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 99i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         let result = employees.semijoin(&departments);
         assert!(result.is_empty());
@@ -312,12 +330,20 @@ mod tests {
     #[test]
     fn test_semijoin_all_match() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
-        departments.insert(tuple! { dept_id: 20i64, dept_name: "Sales" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+        departments
+            .insert(tuple! { dept_id: 20i64, dept_name: "Sales" })
+            .unwrap();
 
         let result = employees.semijoin(&departments);
         assert_eq!(result, employees);
@@ -326,10 +352,14 @@ mod tests {
     #[test]
     fn test_semijoin_preserves_heading() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         let result = employees.semijoin(&departments);
         assert_eq!(result.relation_type(), employees.relation_type());
@@ -342,16 +372,24 @@ mod tests {
             .with_attribute("y", ScalarType::Int)
             .with_attribute("data", ScalarType::String);
         let mut rel_a = Relation::new(RelationType::new(heading_a));
-        rel_a.insert(tuple! { x: 1i64, y: 10i64, data: "a" }).unwrap();
-        rel_a.insert(tuple! { x: 1i64, y: 20i64, data: "b" }).unwrap();
-        rel_a.insert(tuple! { x: 2i64, y: 10i64, data: "c" }).unwrap();
+        rel_a
+            .insert(tuple! { x: 1i64, y: 10i64, data: "a" })
+            .unwrap();
+        rel_a
+            .insert(tuple! { x: 1i64, y: 20i64, data: "b" })
+            .unwrap();
+        rel_a
+            .insert(tuple! { x: 2i64, y: 10i64, data: "c" })
+            .unwrap();
 
         let heading_b = TupleType::new()
             .with_attribute("x", ScalarType::Int)
             .with_attribute("y", ScalarType::Int)
             .with_attribute("label", ScalarType::String);
         let mut rel_b = Relation::new(RelationType::new(heading_b));
-        rel_b.insert(tuple! { x: 1i64, y: 10i64, label: "match" }).unwrap();
+        rel_b
+            .insert(tuple! { x: 1i64, y: 10i64, label: "match" })
+            .unwrap();
 
         let result = rel_a.semijoin(&rel_b);
         // Only (x=1, y=10) matches both common attrs
@@ -362,10 +400,14 @@ mod tests {
     #[test]
     fn test_matching_alias() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         assert_eq!(
             employees.matching(&departments),
@@ -376,13 +418,23 @@ mod tests {
     #[test]
     fn test_semidifference_returns_non_matching_tuples() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
-        departments.insert(tuple! { dept_id: 20i64, dept_name: "Sales" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+        departments
+            .insert(tuple! { dept_id: 20i64, dept_name: "Sales" })
+            .unwrap();
 
         let result = employees.semidifference(&departments);
 
@@ -397,7 +449,9 @@ mod tests {
     fn test_semidifference_empty_self() {
         let employees = Relation::new(RelationType::new(emp_heading()));
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         let result = employees.semidifference(&departments);
         assert!(result.is_empty());
@@ -406,7 +460,9 @@ mod tests {
     #[test]
     fn test_semidifference_empty_other() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
 
         let departments = Relation::new(RelationType::new(dept_heading()));
 
@@ -475,10 +531,14 @@ mod tests {
     #[test]
     fn test_semidifference_no_matches() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 99i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 99i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         let result = employees.semidifference(&departments);
         assert_eq!(result, employees);
@@ -487,10 +547,14 @@ mod tests {
     #[test]
     fn test_semidifference_all_match() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         let result = employees.semidifference(&departments);
         assert!(result.is_empty());
@@ -499,7 +563,9 @@ mod tests {
     #[test]
     fn test_semidifference_preserves_heading() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
 
         let departments = Relation::new(RelationType::new(dept_heading()));
 
@@ -514,16 +580,24 @@ mod tests {
             .with_attribute("y", ScalarType::Int)
             .with_attribute("data", ScalarType::String);
         let mut rel_a = Relation::new(RelationType::new(heading_a));
-        rel_a.insert(tuple! { x: 1i64, y: 10i64, data: "a" }).unwrap();
-        rel_a.insert(tuple! { x: 1i64, y: 20i64, data: "b" }).unwrap();
-        rel_a.insert(tuple! { x: 2i64, y: 10i64, data: "c" }).unwrap();
+        rel_a
+            .insert(tuple! { x: 1i64, y: 10i64, data: "a" })
+            .unwrap();
+        rel_a
+            .insert(tuple! { x: 1i64, y: 20i64, data: "b" })
+            .unwrap();
+        rel_a
+            .insert(tuple! { x: 2i64, y: 10i64, data: "c" })
+            .unwrap();
 
         let heading_b = TupleType::new()
             .with_attribute("x", ScalarType::Int)
             .with_attribute("y", ScalarType::Int)
             .with_attribute("label", ScalarType::String);
         let mut rel_b = Relation::new(RelationType::new(heading_b));
-        rel_b.insert(tuple! { x: 1i64, y: 10i64, label: "match" }).unwrap();
+        rel_b
+            .insert(tuple! { x: 1i64, y: 10i64, label: "match" })
+            .unwrap();
 
         let result = rel_a.semidifference(&rel_b);
         assert_eq!(result.cardinality(), 2);
@@ -534,7 +608,9 @@ mod tests {
     #[test]
     fn test_not_matching_alias() {
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
 
         let departments = Relation::new(RelationType::new(dept_heading()));
 
@@ -548,12 +624,20 @@ mod tests {
     fn test_semijoin_union_semidifference_equals_self() {
         // Partition law: A = (A SEMIJOIN B) UNION (A SEMIDIFFERENCE B)
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         let matched = employees.semijoin(&departments);
         let unmatched = employees.semidifference(&departments);
@@ -566,16 +650,28 @@ mod tests {
     fn test_semijoin_equals_join_project() {
         // Formal definition: A SEMIJOIN B = (A JOIN B) PROJECT {attrs of A}
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
-        departments.insert(tuple! { dept_id: 20i64, dept_name: "Sales" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+        departments
+            .insert(tuple! { dept_id: 20i64, dept_name: "Sales" })
+            .unwrap();
 
         let direct = employees.semijoin(&departments);
-        let via_join = employees.join(&departments).project(&["emp_id", "name", "dept_id"]);
+        let via_join = employees
+            .join(&departments)
+            .project(&["emp_id", "name", "dept_id"]);
 
         assert_eq!(direct, via_join);
     }
@@ -584,15 +680,25 @@ mod tests {
     fn test_semidifference_equals_self_minus_semijoin() {
         // Formal definition: A SEMIDIFFERENCE B = A MINUS (A SEMIJOIN B)
         let mut employees = Relation::new(RelationType::new(emp_heading()));
-        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
-        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 })
+            .unwrap();
 
         let mut departments = Relation::new(RelationType::new(dept_heading()));
-        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
 
         let direct = employees.semidifference(&departments);
-        let via_diff = employees.difference(&employees.semijoin(&departments)).unwrap();
+        let via_diff = employees
+            .difference(&employees.semijoin(&departments))
+            .unwrap();
 
         assert_eq!(direct, via_diff);
     }
