@@ -30,7 +30,7 @@
 use crate::types::TupleType;
 use crate::values::ScalarValue;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Errors that can occur when creating or modifying tuples.
@@ -93,7 +93,7 @@ pub struct Tuple {
     /// The tuple type (heading) that this tuple conforms to.
     tuple_type: TupleType,
     /// The attribute values, keyed by attribute name.
-    values: HashMap<String, ScalarValue>,
+    values: BTreeMap<String, ScalarValue>,
 }
 
 impl Tuple {
@@ -105,7 +105,7 @@ impl Tuple {
     /// # Arguments
     ///
     /// * `tuple_type` - The tuple type (heading) this tuple must conform to
-    /// * `values` - A map of attribute names to scalar values
+    /// * `values` - A map of attribute names to scalar values. Can be HashMap or BTreeMap (via IntoIterator)
     ///
     /// # Errors
     ///
@@ -131,19 +131,21 @@ impl Tuple {
     /// let tuple = Tuple::new(tuple_type, values).unwrap();
     /// assert_eq!(tuple.degree(), 2);
     /// ```
-    pub fn new(
-        tuple_type: TupleType,
-        values: HashMap<String, ScalarValue>,
-    ) -> Result<Self, TupleError> {
+    pub fn new<M>(tuple_type: TupleType, values: M) -> Result<Self, TupleError>
+    where
+        M: IntoIterator<Item = (String, ScalarValue)>,
+    {
+        let values_map: BTreeMap<String, ScalarValue> = values.into_iter().collect();
+
         // Verify all attributes have values
         for attr_name in tuple_type.attribute_names() {
-            if !values.contains_key(attr_name) {
+            if !values_map.contains_key(attr_name) {
                 return Err(TupleError::MissingValue(attr_name.clone()));
             }
         }
 
         // Verify all values match their types
-        for (attr_name, value) in &values {
+        for (attr_name, value) in &values_map {
             if let Some(expected_type) = tuple_type.get_attribute_type(attr_name) {
                 if !value.is_type(expected_type) {
                     return Err(TupleError::TypeMismatch(
@@ -157,7 +159,10 @@ impl Tuple {
             }
         }
 
-        Ok(Self { tuple_type, values })
+        Ok(Self {
+            tuple_type,
+            values: values_map,
+        })
     }
 
     /// Get the tuple type
@@ -185,7 +190,7 @@ impl Tuple {
     }
 
     /// Get all values
-    pub fn values(&self) -> &HashMap<String, ScalarValue> {
+    pub fn values(&self) -> &BTreeMap<String, ScalarValue> {
         &self.values
     }
 
@@ -247,16 +252,12 @@ impl std::hash::Hash for Tuple {
         // Hash the count
         self.values.len().hash(state);
 
-        // Hash values in a deterministic way using XOR strategy
-        // This avoids allocating a Vec and sorting it
-        let mut combined_hash = 0u64;
+        // Since BTreeMap iterates in sorted order, we can hash directly
+        // without collecting and sorting first.
         for (name, value) in &self.values {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            name.hash(&mut hasher);
-            value.hash(&mut hasher);
-            combined_hash = combined_hash.wrapping_add(std::hash::Hasher::finish(&hasher));
+            name.hash(state);
+            value.hash(state);
         }
-        state.write_u64(combined_hash);
     }
 }
 
@@ -360,6 +361,7 @@ impl TryFrom<ScalarValue> for bool {
 mod tests {
     use super::*;
     use crate::types::ScalarType;
+    use std::collections::HashMap;
 
     #[test]
     fn test_tuple_conforms_to_type() {
@@ -477,5 +479,41 @@ mod tests {
 
         let name: String = tuple.get_typed("name").unwrap();
         assert_eq!(name, "Bob");
+    }
+
+    #[test]
+    fn test_tuple_hash_consistency_with_different_insertion_order() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let tuple_type = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int)
+            .with_attribute("c", ScalarType::Int);
+
+        // Insertion order 1: a, b, c
+        let mut values1 = HashMap::new();
+        values1.insert("a".to_string(), ScalarValue::Int(1));
+        values1.insert("b".to_string(), ScalarValue::Int(2));
+        values1.insert("c".to_string(), ScalarValue::Int(3));
+        let tuple1 = Tuple::new(tuple_type.clone(), values1).unwrap();
+
+        // Insertion order 2: c, b, a (reversed)
+        let mut values2 = HashMap::new();
+        values2.insert("c".to_string(), ScalarValue::Int(3));
+        values2.insert("b".to_string(), ScalarValue::Int(2));
+        values2.insert("a".to_string(), ScalarValue::Int(1));
+        let tuple2 = Tuple::new(tuple_type, values2).unwrap();
+
+        // Hashes should be identical despite different insertion orders
+        let mut hasher1 = DefaultHasher::new();
+        tuple1.hash(&mut hasher1);
+        let hash1 = hasher1.finish();
+
+        let mut hasher2 = DefaultHasher::new();
+        tuple2.hash(&mut hasher2);
+        let hash2 = hasher2.finish();
+
+        assert_eq!(hash1, hash2, "Tuples with same content but different insertion order must hash identically");
     }
 }

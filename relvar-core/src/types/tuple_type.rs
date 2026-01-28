@@ -26,7 +26,7 @@
 
 use crate::types::ScalarType;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Defines the structure (heading) of tuples.
 ///
@@ -37,8 +37,10 @@ use std::collections::HashMap;
 /// # Attribute Ordering
 ///
 /// Per TTM Proscription 4, attributes have no inherent ordering. They are
-/// identified solely by name. The implementation uses `HashMap` to enforce
-/// that there is no guaranteed ordering of attributes.
+/// identified solely by name. The implementation uses `BTreeMap` which
+/// maintains an internal order for deterministic iteration and hashing,
+/// but this order is an implementation detail and should not be relied upon
+/// for semantic meaning.
 ///
 /// # Type Equality
 ///
@@ -65,7 +67,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TupleType {
     /// The attributes of this tuple type, mapping names to scalar types.
-    attributes: HashMap<String, ScalarType>,
+    attributes: BTreeMap<String, ScalarType>,
 }
 
 impl TupleType {
@@ -85,7 +87,7 @@ impl TupleType {
     /// ```
     pub fn new() -> Self {
         Self {
-            attributes: HashMap::new(),
+            attributes: BTreeMap::new(),
         }
     }
 
@@ -218,7 +220,7 @@ impl TupleType {
     ///     println!("{}: {:?}", name, scalar_type);
     /// }
     /// ```
-    pub fn attributes(&self) -> &HashMap<String, ScalarType> {
+    pub fn attributes(&self) -> &BTreeMap<String, ScalarType> {
         &self.attributes
     }
 }
@@ -234,16 +236,12 @@ impl std::hash::Hash for TupleType {
         // Hash the count first
         self.attributes.len().hash(state);
 
-        // Hash attributes in a deterministic way using XOR strategy
-        // This avoids allocating a Vec and sorting it
-        let mut combined_hash = 0u64;
+        // Since BTreeMap iterates in sorted order, we can hash directly
+        // without collecting and sorting first.
         for (name, ty) in &self.attributes {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            name.hash(&mut hasher);
-            ty.hash(&mut hasher);
-            combined_hash = combined_hash.wrapping_add(std::hash::Hasher::finish(&hasher));
+            name.hash(state);
+            ty.hash(state);
         }
-        state.write_u64(combined_hash);
     }
 }
 
@@ -361,5 +359,33 @@ mod tests {
         let empty = TupleType::new();
         assert_eq!(empty.degree(), 0);
         assert!(!empty.has_attribute("anything"));
+    }
+
+    #[test]
+    fn test_tuple_type_hash_consistency() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        // Order 1
+        let type1 = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int)
+            .with_attribute("c", ScalarType::Int);
+
+        // Order 2 (reversed)
+        let type2 = TupleType::new()
+            .with_attribute("c", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int)
+            .with_attribute("a", ScalarType::Int);
+
+        let mut hasher1 = DefaultHasher::new();
+        type1.hash(&mut hasher1);
+        let hash1 = hasher1.finish();
+
+        let mut hasher2 = DefaultHasher::new();
+        type2.hash(&mut hasher2);
+        let hash2 = hasher2.finish();
+
+        assert_eq!(hash1, hash2, "TupleTypes with same attributes but different insertion order must hash identically");
     }
 }
