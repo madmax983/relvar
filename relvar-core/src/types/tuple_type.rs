@@ -231,18 +231,19 @@ impl Default for TupleType {
 
 impl std::hash::Hash for TupleType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // Hash in a deterministic way by sorting the entries
-        let mut entries: Vec<_> = self.attributes.iter().collect();
-        entries.sort_by_key(|(name, _)| *name);
-
         // Hash the count first
         self.attributes.len().hash(state);
 
-        // Then hash each entry
-        for (name, ty) in entries {
-            name.hash(state);
-            ty.hash(state);
+        // Hash attributes in a deterministic way using XOR strategy
+        // This avoids allocating a Vec and sorting it
+        let mut combined_hash = 0u64;
+        for (name, ty) in &self.attributes {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            name.hash(&mut hasher);
+            ty.hash(&mut hasher);
+            combined_hash ^= std::hash::Hasher::finish(&hasher);
         }
+        state.write_u64(combined_hash);
     }
 }
 
