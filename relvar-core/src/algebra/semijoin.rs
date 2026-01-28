@@ -173,6 +173,11 @@ impl Relation {
         Relation::from_tuples(self.relation_type().clone(), non_matched)
             .expect("Semidifference tuples conform to self's relation type")
     }
+
+    /// Alias for [`semidifference`](Self::semidifference) using Tutorial D naming (NOT MATCHING).
+    pub fn not_matching(&self, other: &Relation) -> Self {
+        self.semidifference(other)
+    }
 }
 
 #[cfg(test)]
@@ -530,5 +535,18 @@ mod tests {
         assert_eq!(result.cardinality(), 2);
         assert!(result.contains(&tuple! { x: 1i64, y: 20i64, data: "b" }));
         assert!(result.contains(&tuple! { x: 2i64, y: 10i64, data: "c" }));
+    }
+
+    #[test]
+    fn test_not_matching_alias() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+
+        let departments = Relation::new(RelationType::new(dept_heading()));
+
+        assert_eq!(
+            employees.not_matching(&departments),
+            employees.semidifference(&departments)
+        );
     }
 }
