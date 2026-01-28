@@ -92,6 +92,11 @@ impl Relation {
         Relation::from_tuples(self.relation_type().clone(), matched)
             .expect("Semijoin tuples conform to self's relation type")
     }
+
+    /// Alias for [`semijoin`](Self::semijoin) using Tutorial D naming (MATCHING).
+    pub fn matching(&self, other: &Relation) -> Self {
+        self.semijoin(other)
+    }
 }
 
 #[cfg(test)]
@@ -277,5 +282,19 @@ mod tests {
         // Only (x=1, y=10) matches both common attrs
         assert_eq!(result.cardinality(), 1);
         assert!(result.contains(&tuple! { x: 1i64, y: 10i64, data: "a" }));
+    }
+
+    #[test]
+    fn test_matching_alias() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+
+        assert_eq!(
+            employees.matching(&departments),
+            employees.semijoin(&departments)
+        );
     }
 }
