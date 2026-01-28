@@ -407,11 +407,6 @@ impl HeapFile {
             }
 
             page_id += 1;
-
-            // Stop scanning after reasonable number of pages
-            if page_id > 1000 {
-                break;
-            }
         }
 
         Ok(results)
@@ -627,5 +622,64 @@ mod tests {
         let result = heap.store_relation(&relation);
         assert!(result.is_ok());
         let _unit: () = result.unwrap();
+    }
+
+    #[test]
+    fn test_heap_scan_large_volume() {
+        const NUM_PAGES: u64 = 1005;
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Create a relation type with a Bytes attribute
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("data", ScalarType::Bytes);
+        let rel_type = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Manually craft pages to avoid O(N^2) insert performance
+        // We just need > 1000 pages, the content size doesn't matter as long as it's valid
+        let payload = vec![0u8; 100];
+
+        for i in 0..NUM_PAGES {
+            let tuple = tuple! {
+                id: i as i64,
+                data: payload.clone(),
+            };
+            let tuple_data = bincode::serialize(&tuple).unwrap();
+
+            // Construct a SlottedPage with one tuple
+            // We place tuple at the end of the page (standard behavior)
+            let tuple_len = tuple_data.len();
+            // USABLE_PAGE_SIZE = PAGE_SIZE - 8
+            let offset = (PAGE_SIZE - 8) - tuple_len;
+
+            let slotted_page = SlottedPage {
+                slot_count: 1,
+                slots: vec![Some(SlotEntry {
+                    offset: offset as u32,
+                    length: tuple_len as u32,
+                })],
+            };
+
+            // We can use the helper method since we are in the same module (tests)
+            let page_data = heap
+                .serialize_slotted_page_with_tuples(&slotted_page, &[tuple_data])
+                .unwrap();
+
+            let page = Page::from_data(i, page_data).unwrap();
+            heap.page_file.write_page(&page).unwrap();
+        }
+
+        // Scan and verify count
+        let tuples = heap.scan().unwrap();
+        assert_eq!(
+            tuples.len() as u64,
+            NUM_PAGES,
+            "Scan stopped early! Expected {} tuples, got {}",
+            NUM_PAGES,
+            tuples.len()
+        );
     }
 }
