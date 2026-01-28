@@ -549,4 +549,57 @@ mod tests {
             employees.semidifference(&departments)
         );
     }
+
+    #[test]
+    fn test_semijoin_union_semidifference_equals_self() {
+        // Partition law: A = (A SEMIJOIN B) UNION (A SEMIDIFFERENCE B)
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
+        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+
+        let matched = employees.semijoin(&departments);
+        let unmatched = employees.semidifference(&departments);
+        let reunited = matched.union(&unmatched).unwrap();
+
+        assert_eq!(reunited, employees);
+    }
+
+    #[test]
+    fn test_semijoin_equals_join_project() {
+        // Formal definition: A SEMIJOIN B = (A JOIN B) PROJECT {attrs of A}
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
+        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+        departments.insert(tuple! { dept_id: 20i64, dept_name: "Sales" }).unwrap();
+
+        let direct = employees.semijoin(&departments);
+        let via_join = employees.join(&departments).project(&["emp_id", "name", "dept_id"]);
+
+        assert_eq!(direct, via_join);
+    }
+
+    #[test]
+    fn test_semidifference_equals_self_minus_semijoin() {
+        // Formal definition: A SEMIDIFFERENCE B = A MINUS (A SEMIJOIN B)
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees.insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }).unwrap();
+        employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
+        employees.insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 30i64 }).unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
+
+        let direct = employees.semidifference(&departments);
+        let via_diff = employees.difference(&employees.semijoin(&departments)).unwrap();
+
+        assert_eq!(direct, via_diff);
+    }
 }
