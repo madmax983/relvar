@@ -334,7 +334,6 @@ impl PageFile {
 
         // Write to file
         self.file.write_all(&buffer)?;
-        self.file.sync_all()?;
 
         Ok(())
     }

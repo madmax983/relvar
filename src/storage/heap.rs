@@ -161,6 +161,18 @@ impl HeapFile {
         })
     }
 
+    /// Flushes all pending writes to disk.
+    ///
+    /// Ensures durability by calling `fsync` on the underlying file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::Page`] if the sync fails.
+    pub fn sync(&mut self) -> Result<(), HeapError> {
+        self.page_file.sync()?;
+        Ok(())
+    }
+
     /// Inserts a tuple into the heap file.
     ///
     /// The tuple is serialized and stored in the first page with sufficient
@@ -627,5 +639,20 @@ mod tests {
         let result = heap.store_relation(&relation);
         assert!(result.is_ok());
         let _unit: () = result.unwrap();
+    }
+
+    #[test]
+    fn test_heap_sync() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        let tuple = tuple! { id: 1i64, name: "Alice" };
+        heap.insert_tuple(&tuple).unwrap();
+
+        // This should not fail
+        heap.sync().unwrap();
     }
 }
