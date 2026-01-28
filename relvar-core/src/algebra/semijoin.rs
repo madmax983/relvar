@@ -16,6 +16,28 @@
 
 use crate::values::Relation;
 
+/// Finds common attribute names between two relations' headings.
+fn common_attributes(a: &Relation, b: &Relation) -> Vec<String> {
+    a.relation_type()
+        .heading()
+        .attribute_names()
+        .filter(|attr| b.relation_type().heading().has_attribute(attr))
+        .cloned()
+        .collect()
+}
+
+/// Checks whether `tuple` has a matching tuple in `other` on the given common attributes.
+///
+/// Returns `true` if any tuple in `other` agrees with `tuple` on all `common_attrs`.
+/// If `common_attrs` is empty, returns `true` when `other` is non-empty (vacuous match).
+fn has_match(tuple: &crate::values::Tuple, other: &Relation, common_attrs: &[String]) -> bool {
+    other.tuples().any(|other_tuple| {
+        common_attrs
+            .iter()
+            .all(|attr| tuple.get(attr) == other_tuple.get(attr))
+    })
+}
+
 impl Relation {
     /// Computes the semijoin of this relation with another (A MATCHING B).
     ///
@@ -69,26 +91,12 @@ impl Relation {
     /// assert_eq!(result.cardinality(), 1); // Only emp 1 matches
     /// ```
     pub fn semijoin(&self, other: &Relation) -> Self {
-        let common_attrs: Vec<String> = self
-            .relation_type()
-            .heading()
-            .attribute_names()
-            .filter(|attr| other.relation_type().heading().has_attribute(attr))
-            .cloned()
-            .collect();
-
+        let common_attrs = common_attributes(self, other);
         let matched: Vec<_> = self
             .tuples()
-            .filter(|tuple| {
-                other.tuples().any(|other_tuple| {
-                    common_attrs
-                        .iter()
-                        .all(|attr| tuple.get(attr) == other_tuple.get(attr))
-                })
-            })
+            .filter(|tuple| has_match(tuple, other, &common_attrs))
             .cloned()
             .collect();
-
         Relation::from_tuples(self.relation_type().clone(), matched)
             .expect("Semijoin tuples conform to self's relation type")
     }
@@ -150,26 +158,12 @@ impl Relation {
     /// assert_eq!(result.cardinality(), 1); // Only emp 2 (no matching dept)
     /// ```
     pub fn semidifference(&self, other: &Relation) -> Self {
-        let common_attrs: Vec<String> = self
-            .relation_type()
-            .heading()
-            .attribute_names()
-            .filter(|attr| other.relation_type().heading().has_attribute(attr))
-            .cloned()
-            .collect();
-
+        let common_attrs = common_attributes(self, other);
         let non_matched: Vec<_> = self
             .tuples()
-            .filter(|tuple| {
-                !other.tuples().any(|other_tuple| {
-                    common_attrs
-                        .iter()
-                        .all(|attr| tuple.get(attr) == other_tuple.get(attr))
-                })
-            })
+            .filter(|tuple| !has_match(tuple, other, &common_attrs))
             .cloned()
             .collect();
-
         Relation::from_tuples(self.relation_type().clone(), non_matched)
             .expect("Semidifference tuples conform to self's relation type")
     }
