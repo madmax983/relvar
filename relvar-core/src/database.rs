@@ -742,4 +742,357 @@ mod tests {
         let result = db.query("TEST").unwrap();
         assert_eq!(result.cardinality(), 1);
     }
+
+    #[test]
+    fn test_primary_key_constraint() {
+        use crate::constraints::{KeyConstraints, PrimaryKey};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        // Add primary key constraint
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let constraints = KeyConstraints::new().with_primary_key(pk);
+        db.set_key_constraints("TEST", constraints).unwrap();
+
+        // First insert should succeed
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Duplicate primary key should fail
+        let result = db.insert("TEST", tuple! { id: 1i64, name: "Bob" });
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::PrimaryKeyViolation)));
+    }
+
+    #[test]
+    fn test_candidate_key_constraint() {
+        use crate::constraints::{CandidateKey, KeyConstraints};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        // Add candidate key constraint on name
+        let ck = CandidateKey::new(vec!["name".to_string()]).unwrap();
+        let constraints = KeyConstraints::new().with_candidate_key(ck);
+        db.set_key_constraints("TEST", constraints).unwrap();
+
+        // First insert should succeed
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Duplicate candidate key should fail
+        let result = db.insert("TEST", tuple! { id: 2i64, name: "Alice" });
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::CandidateKeyViolation)));
+    }
+
+    #[test]
+    fn test_foreign_key_constraint() {
+        use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        // Create parent and child relvars
+        let parent_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("dept_id", ScalarType::Int)
+                .with_attribute("dept_name", ScalarType::String),
+        );
+        let child_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("emp_id", ScalarType::Int)
+                .with_attribute("dept_id", ScalarType::Int),
+        );
+
+        db.create_relvar("DEPT", parent_type).unwrap();
+        db.create_relvar("EMP", child_type).unwrap();
+
+        // Add primary key to parent
+        let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
+        let dept_constraints = KeyConstraints::new().with_primary_key(pk);
+        db.set_key_constraints("DEPT", dept_constraints).unwrap();
+
+        // Insert parent record
+        db.insert("DEPT", tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+
+        // Add foreign key constraint
+        let fk = ForeignKey::new(
+            vec!["dept_id".to_string()],
+            "DEPT".to_string(),
+            vec!["dept_id".to_string()],
+        )
+        .unwrap();
+        let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+        db.set_foreign_key_constraints("EMP", fk_constraints).unwrap();
+
+        // Insert with valid foreign key should succeed
+        db.insert("EMP", tuple! { emp_id: 1i64, dept_id: 10i64 })
+            .unwrap();
+
+        // Insert with invalid foreign key should fail
+        let result = db.insert("EMP", tuple! { emp_id: 2i64, dept_id: 99i64 });
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::ForeignKeyViolation(_))
+        ));
+    }
+
+    #[test]
+    fn test_type_constraint_range() {
+        use crate::constraints::type_constraint::TypeConstraint;
+        use crate::constraints::AttributeConstraints;
+        use crate::values::ScalarValue;
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        // Add range constraint on id (1..100)
+        let range_constraint = TypeConstraint::Range {
+            min: ScalarValue::Int(1),
+            max: ScalarValue::Int(100),
+        };
+        let attr_constraints =
+            AttributeConstraints::new("id".to_string(), ScalarType::Int).with_constraint(range_constraint);
+        db.set_type_constraints("TEST", "id", attr_constraints)
+            .unwrap();
+
+        // Valid value should succeed
+        db.insert("TEST", tuple! { id: 50i64, name: "Alice" })
+            .unwrap();
+
+        // Value below min should fail
+        let result = db.insert("TEST", tuple! { id: 0i64, name: "Bob" });
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::TypeConstraintViolation(_))
+        ));
+
+        // Value above max should fail
+        let result = db.insert("TEST", tuple! { id: 101i64, name: "Charlie" });
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::TypeConstraintViolation(_))
+        ));
+    }
+
+    #[test]
+    fn test_type_constraint_positive_int() {
+        use crate::constraints::type_constraint::TypeConstraint;
+        use crate::constraints::AttributeConstraints;
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        // Add positive int constraint
+        let attr_constraints = AttributeConstraints::new("id".to_string(), ScalarType::Int)
+            .with_constraint(TypeConstraint::PositiveInt);
+        db.set_type_constraints("TEST", "id", attr_constraints)
+            .unwrap();
+
+        // Positive value should succeed
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Zero should fail
+        let result = db.insert("TEST", tuple! { id: 0i64, name: "Bob" });
+        assert!(result.is_err());
+
+        // Negative should fail
+        let result = db.insert("TEST", tuple! { id: -1i64, name: "Charlie" });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_virtual_relvar() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+
+        // Define virtual relvar that projects just names
+        db.define_virtual_relvar(
+            "NAMES",
+            RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
+            |db: &mut Database<InMemoryEngine>| {
+                let test = db.query("TEST")?;
+                Ok(test.project(&["name"]))
+            },
+        )
+        .unwrap();
+
+        // Query virtual relvar
+        let names = db.query("NAMES").unwrap();
+        assert_eq!(names.degree(), 1);
+        assert_eq!(names.cardinality(), 2);
+    }
+
+    #[test]
+    fn test_delete_with_foreign_key_constraint() {
+        use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        // Create parent and child
+        let parent_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("name", ScalarType::String),
+        );
+        let child_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("child_id", ScalarType::Int)
+                .with_attribute("parent_id", ScalarType::Int),
+        );
+
+        db.create_relvar("PARENT", parent_type).unwrap();
+        db.create_relvar("CHILD", child_type).unwrap();
+
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let parent_constraints = KeyConstraints::new().with_primary_key(pk);
+        db.set_key_constraints("PARENT", parent_constraints).unwrap();
+
+        let fk = ForeignKey::new(
+            vec!["parent_id".to_string()],
+            "PARENT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+        let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+        db.set_foreign_key_constraints("CHILD", fk_constraints).unwrap();
+
+        // Insert parent and child
+        db.insert("PARENT", tuple! { id: 1i64, name: "Parent1" })
+            .unwrap();
+        db.insert("CHILD", tuple! { child_id: 10i64, parent_id: 1i64 })
+            .unwrap();
+
+        // Deleting parent should fail due to foreign key
+        let result = db.delete("PARENT", |_| true);
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::ForeignKeyViolation(_))
+        ));
+    }
+
+    #[test]
+    fn test_update_with_primary_key_violation() {
+        use crate::constraints::{KeyConstraints, PrimaryKey};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let constraints = KeyConstraints::new().with_primary_key(pk);
+        db.set_key_constraints("TEST", constraints).unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+
+        // Update that would create duplicate primary key should fail
+        let result = db.update("TEST", |t| t.get_typed::<i64>("id").unwrap() == 2, |_| {
+            tuple! { id: 1i64, name: "Bob" }
+        });
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::PrimaryKeyViolation)));
+    }
+
+    #[test]
+    fn test_transaction_rollback_with_constraints() {
+        use crate::constraints::{KeyConstraints, PrimaryKey};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let constraints = KeyConstraints::new().with_primary_key(pk);
+        db.set_key_constraints("TEST", constraints).unwrap();
+
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        db.begin().unwrap();
+
+        // Make some changes
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+        db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1)
+            .unwrap();
+
+        let result = db.query("TEST").unwrap();
+        assert_eq!(result.cardinality(), 1);
+
+        // Rollback
+        db.rollback().unwrap();
+
+        // Should be back to original state
+        let result = db.query("TEST").unwrap();
+        assert_eq!(result.cardinality(), 1);
+        assert!(result.contains(&tuple! { id: 1i64, name: "Alice" }));
+    }
+
+    #[test]
+    fn test_error_relvar_not_found() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        let result = db.query("NONEXISTENT");
+        assert!(result.is_err());
+        // Error should be Storage(RelationNotFound) since it comes from the engine
+        match result {
+            Err(DatabaseError::Storage(StorageError::RelationNotFound(name))) => {
+                assert_eq!(name, "NONEXISTENT");
+            }
+            other => panic!("Expected RelationNotFound error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_error_duplicate_relvar() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        let result = db.create_relvar("TEST", test_rel_type());
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::RelationAlreadyExists(_))
+        ));
+    }
+
+    #[test]
+    fn test_set_type_constraints() {
+        use crate::constraints::type_constraint::TypeConstraint;
+        use crate::constraints::AttributeConstraints;
+        use crate::values::ScalarValue;
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        db.create_relvar("TEST", test_rel_type()).unwrap();
+
+        // Create attribute constraints
+        let range_constraint = TypeConstraint::Range {
+            min: ScalarValue::Int(1),
+            max: ScalarValue::Int(100),
+        };
+
+        let attr_constraints =
+            AttributeConstraints::new("id".to_string(), ScalarType::Int).with_constraint(range_constraint);
+
+        db.set_type_constraints("TEST", "id", attr_constraints)
+            .unwrap();
+
+        // Valid value should succeed
+        db.insert("TEST", tuple! { id: 50i64, name: "Alice" })
+            .unwrap();
+
+        // Invalid value should fail
+        let result = db.insert("TEST", tuple! { id: 200i64, name: "Bob" });
+        assert!(result.is_err());
+    }
 }
