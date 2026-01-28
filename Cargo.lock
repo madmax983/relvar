@@ -505,9 +505,32 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 name = "relvar"
 version = "0.1.0"
 dependencies = [
+ "criterion",
+ "proptest",
+ "relvar-core",
+ "relvar-storage",
+ "tempfile",
+]
+
+[[package]]
+name = "relvar-core"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "relvar-storage"
+version = "0.1.0"
+dependencies = [
  "bincode",
  "criterion",
  "proptest",
+ "relvar-core",
  "serde",
  "serde_json",
  "tempfile",

@@ -1,33 +1,30 @@
-[package]
-name = "relvar"
+[workspace]
+resolver = "2"
+members = [
+    "relvar-core",
+    "relvar-storage",
+    "relvar",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 authors = ["Mark M"]
-description = "A pure relational DBMS in Rust based on Date and Darwen's relational principles"
 license = "MIT"
 repository = "https://github.com/yourusername/relvar"
-keywords = ["database", "relational", "dbms", "date", "relational-algebra"]
-categories = ["database-implementations"]
 
-[dependencies]
+[workspace.dependencies]
+# Shared dependencies
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 bincode = "1"
 serde_json = "1"
 
-[dev-dependencies]
+# Dev dependencies
 proptest = "1"
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 
-[[bench]]
-name = "storage"
-harness = false
-
-[[bench]]
-name = "algebra"
-harness = false
-
-[[bench]]
-name = "database"
-harness = false
+# Internal crates
+relvar-core = { path = "relvar-core" }
+relvar-storage = { path = "relvar-storage" }

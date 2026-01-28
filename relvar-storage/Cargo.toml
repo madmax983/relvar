@@ -1,0 +1,26 @@
+[package]
+name = "relvar-storage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Persistent storage layer for Relvar"
+keywords = ["database", "storage", "persistence"]
+categories = ["database-implementations"]
+
+[dependencies]
+relvar-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+bincode.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "storage"
+harness = false
