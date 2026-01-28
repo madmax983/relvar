@@ -693,10 +693,11 @@ mod tests {
         db.create_relvar("TEST", test_rel_type()).unwrap();
         db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
             .unwrap();
-        db.insert("TEST", tuple! { id: 2i64, name: "Bob" })
-            .unwrap();
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
 
-        let deleted = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1).unwrap();
+        let deleted = db
+            .delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1)
+            .unwrap();
         assert_eq!(deleted, 1);
 
         let result = db.query("TEST").unwrap();
@@ -734,8 +735,7 @@ mod tests {
             .unwrap();
 
         db.begin().unwrap();
-        db.insert("TEST", tuple! { id: 2i64, name: "Bob" })
-            .unwrap();
+        db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
 
         let result = db.query("TEST").unwrap();
         assert_eq!(result.cardinality(), 2);

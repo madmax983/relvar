@@ -78,10 +78,8 @@ impl StorageEngine for InMemoryEngine {
 
         let relation = Relation::new(relation_type);
 
-        self.relations.insert(
-            name.to_string(),
-            StoredRelation { metadata, relation },
-        );
+        self.relations
+            .insert(name.to_string(), StoredRelation { metadata, relation });
 
         Ok(())
     }
@@ -158,10 +156,7 @@ impl StorageEngine for InMemoryEngine {
         Ok(TransactionSnapshot { saved_relations })
     }
 
-    fn rollback_transaction(
-        &mut self,
-        snapshot: TransactionSnapshot,
-    ) -> Result<(), StorageError> {
+    fn rollback_transaction(&mut self, snapshot: TransactionSnapshot) -> Result<(), StorageError> {
         // Restore saved state
         for (name, relation) in snapshot.saved_relations {
             if let Some(stored) = self.relations.get_mut(&name) {
@@ -202,9 +197,7 @@ mod tests {
     #[test]
     fn test_drop_relation() {
         let mut engine = InMemoryEngine::new();
-        engine
-            .create_relation("TEST", test_rel_type())
-            .unwrap();
+        engine.create_relation("TEST", test_rel_type()).unwrap();
 
         assert!(engine.drop_relation("TEST").is_ok());
         assert!(!engine.relation_exists("TEST"));
@@ -218,9 +211,7 @@ mod tests {
         let mut engine = InMemoryEngine::new();
         let rel_type = test_rel_type();
 
-        engine
-            .create_relation("TEST", rel_type.clone())
-            .unwrap();
+        engine.create_relation("TEST", rel_type.clone()).unwrap();
 
         let metadata = engine.get_relation_metadata("TEST").unwrap();
         assert_eq!(metadata.name, "TEST");

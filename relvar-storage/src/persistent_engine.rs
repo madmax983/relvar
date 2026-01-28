@@ -101,8 +101,9 @@ impl PersistentEngine {
                 CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
             })?;
 
-            let heap_file = HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
-                .map_err(|e| Self::convert_heap_error(e))?;
+            let heap_file =
+                HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
+                    .map_err(|e| Self::convert_heap_error(e))?;
 
             self.heap_files.insert(name.to_string(), heap_file);
         }
@@ -149,11 +150,7 @@ impl StorageEngine for PersistentEngine {
 
         // Add to catalog
         self.catalog
-            .create_relation(
-                name.to_string(),
-                relation_type,
-                heap_file_path.clone(),
-            )
+            .create_relation(name.to_string(), relation_type, heap_file_path.clone())
             .map_err(|e| match e {
                 CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
                 CatalogError::Io(io_err) => {
@@ -193,9 +190,8 @@ impl StorageEngine for PersistentEngine {
 
         // Delete heap file
         if Path::new(&metadata.heap_file_path).exists() {
-            std::fs::remove_file(&metadata.heap_file_path).map_err(|e| {
-                StorageError::Other(format!("Failed to delete heap file: {}", e))
-            })?;
+            std::fs::remove_file(&metadata.heap_file_path)
+                .map_err(|e| StorageError::Other(format!("Failed to delete heap file: {}", e)))?;
         }
 
         Ok(())
@@ -236,8 +232,9 @@ impl StorageEngine for PersistentEngine {
             CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
         })?;
 
-        let mut heap_file = HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
-            .map_err(|e| Self::convert_heap_error(e))?;
+        let mut heap_file =
+            HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
+                .map_err(|e| Self::convert_heap_error(e))?;
 
         heap_file
             .load_relation()
@@ -306,10 +303,7 @@ impl StorageEngine for PersistentEngine {
         Ok(TransactionSnapshot { saved_relations })
     }
 
-    fn rollback_transaction(
-        &mut self,
-        snapshot: TransactionSnapshot,
-    ) -> Result<(), StorageError> {
+    fn rollback_transaction(&mut self, snapshot: TransactionSnapshot) -> Result<(), StorageError> {
         // Restore all relations from snapshot
         for (name, relation) in snapshot.saved_relations {
             self.store_relation(&name, &relation)?;

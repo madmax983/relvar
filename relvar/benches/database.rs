@@ -401,7 +401,9 @@ fn bench_realistic_workload(c: &mut Criterion) {
 // =============================================================================
 
 /// Helper to create a database with an EMP relvar pre-populated with data
-fn create_populated_database(count: usize) -> (TempDir, relvar::Database<relvar::PersistentEngine>) {
+fn create_populated_database(
+    count: usize,
+) -> (TempDir, relvar::Database<relvar::PersistentEngine>) {
     let (_temp_dir, mut db) = create_database_with_relvar();
     for i in 0..count {
         let tuple = tuple! {
@@ -464,7 +466,8 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
 
                         fn high_earners_evaluator(
                             db: &mut relvar::Database<relvar::PersistentEngine>,
-                        ) -> Result<relvar::Relation, relvar::DatabaseError> {
+                        ) -> Result<relvar::Relation, relvar::DatabaseError>
+                        {
                             Ok(db
                                 .query("EMP")?
                                 .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))

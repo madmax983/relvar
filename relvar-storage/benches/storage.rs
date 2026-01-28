@@ -1,10 +1,10 @@
 use criterion::{
     BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
-use relvar_storage::storage::{HeapFile, Page, PageFile};
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Tuple;
+use relvar_storage::storage::{HeapFile, Page, PageFile};
 use tempfile::NamedTempFile;
 
 fn create_test_relation_type() -> RelationType {
