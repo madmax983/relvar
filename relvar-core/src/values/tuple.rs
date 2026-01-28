@@ -254,7 +254,7 @@ impl std::hash::Hash for Tuple {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             name.hash(&mut hasher);
             value.hash(&mut hasher);
-            combined_hash ^= std::hash::Hasher::finish(&hasher);
+            combined_hash = combined_hash.wrapping_add(std::hash::Hasher::finish(&hasher));
         }
         state.write_u64(combined_hash);
     }
