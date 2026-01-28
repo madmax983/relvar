@@ -421,4 +421,166 @@ mod tests {
         let relation = engine.load_relation("TEST").unwrap();
         assert_eq!(relation.cardinality(), 1);
     }
+
+    #[test]
+    fn test_path_traversal_protection() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        // Try to create relation with path separator
+        let result = engine.create_relation("../evil", test_rel_type());
+        assert!(result.is_err());
+
+        // Try with backslash
+        let result = engine.create_relation("..\\evil", test_rel_type());
+        assert!(result.is_err());
+
+        // Try with forward slash
+        let result = engine.create_relation("sub/dir", test_rel_type());
+        assert!(result.is_err());
+
+        // Try with parent directory reference
+        let result = engine.create_relation("..", test_rel_type());
+        assert!(result.is_err());
+
+        // Try with empty name
+        let result = engine.create_relation("", test_rel_type());
+        assert!(result.is_err());
+
+        // Valid name should work
+        let result = engine.create_relation("VALID_NAME", test_rel_type());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_drop_relation() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        assert!(engine.relation_exists("TEST"));
+
+        // Drop the relation
+        engine.drop_relation("TEST").unwrap();
+
+        assert!(!engine.relation_exists("TEST"));
+
+        // Dropping again should fail
+        let result = engine.drop_relation("TEST");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_store_relation_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        // Insert some data
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+        engine
+            .insert_tuple("TEST", tuple! { id: 2i64, name: "Bob" })
+            .unwrap();
+
+        // Store empty relation
+        let empty_relation = Relation::new(test_rel_type());
+        engine.store_relation("TEST", &empty_relation).unwrap();
+
+        // Verify relation is now empty
+        let loaded = engine.load_relation("TEST").unwrap();
+        assert_eq!(loaded.cardinality(), 0);
+    }
+
+    #[test]
+    fn test_store_relation_large() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        // Create relation with many tuples
+        let mut large_relation = Relation::new(test_rel_type());
+        for i in 0..100 {
+            large_relation
+                .insert(tuple! { id: i as i64, name: format!("Name{}", i) })
+                .unwrap();
+        }
+
+        engine.store_relation("TEST", &large_relation).unwrap();
+
+        // Verify all tuples persisted
+        let loaded = engine.load_relation("TEST").unwrap();
+        assert_eq!(loaded.cardinality(), 100);
+    }
+
+    #[test]
+    fn test_list_relations() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        // Initially empty
+        assert_eq!(engine.list_relations().len(), 0);
+
+        // Create some relations
+        engine.create_relation("REL1", test_rel_type()).unwrap();
+        engine.create_relation("REL2", test_rel_type()).unwrap();
+        engine.create_relation("REL3", test_rel_type()).unwrap();
+
+        let relations = engine.list_relations();
+        assert_eq!(relations.len(), 3);
+        assert!(relations.contains(&"REL1".to_string()));
+        assert!(relations.contains(&"REL2".to_string()));
+        assert!(relations.contains(&"REL3".to_string()));
+    }
+
+    #[test]
+    fn test_get_relation_metadata() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        let metadata = engine.get_relation_metadata("TEST").unwrap();
+        assert_eq!(metadata.name, "TEST");
+        assert_eq!(metadata.relation_type.degree(), 2);
+        assert!(metadata.relation_type.heading().has_attribute("id"));
+        assert!(metadata.relation_type.heading().has_attribute("name"));
+    }
+
+    #[test]
+    fn test_insert_tuple_nonexistent_relation() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        let result = engine.insert_tuple("NONEXISTENT", tuple! { id: 1i64, name: "Alice" });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_relation_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        let result = engine.load_relation("NONEXISTENT");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_duplicate_relation_name() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        // Creating again should fail
+        let result = engine.create_relation("TEST", test_rel_type());
+        assert!(result.is_err());
+    }
 }
