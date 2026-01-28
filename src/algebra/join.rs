@@ -41,7 +41,7 @@
 //! ```
 
 use crate::types::{RelationType, TupleType};
-use crate::values::{Relation, Tuple};
+use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
 
 impl Relation {
@@ -69,8 +69,9 @@ impl Relation {
     ///
     /// # Complexity
     ///
-    /// O(n * m) where n and m are the cardinalities of the two relations.
-    /// This is a nested-loop join implementation.
+    /// O(n + m) where n and m are the cardinalities of the two relations (assuming
+    /// common attributes exist). This uses a hash join implementation. If no common
+    /// attributes exist (Cartesian product), complexity is O(n * m).
     ///
     /// # Example
     ///
@@ -129,23 +130,16 @@ impl Relation {
         // Perform join
         let mut joined_tuples = Vec::new();
 
-        for tuple1 in self.tuples() {
-            for tuple2 in other.tuples() {
-                // Check if tuples match on common attributes
-                let matches = common_attrs
-                    .iter()
-                    .all(|attr| tuple1.get(attr) == tuple2.get(attr));
-
-                if matches {
-                    // Combine tuples
+        if common_attrs.is_empty() {
+            // No common attributes: Cartesian product (Nested Loop)
+            for tuple1 in self.tuples() {
+                for tuple2 in other.tuples() {
                     let mut combined_values = HashMap::new();
 
-                    // Add all values from tuple1
                     for (attr_name, value) in tuple1.values() {
                         combined_values.insert(attr_name.clone(), value.clone());
                     }
 
-                    // Add values from tuple2 that aren't common (common ones are already in)
                     for (attr_name, value) in tuple2.values() {
                         if !combined_values.contains_key(attr_name) {
                             combined_values.insert(attr_name.clone(), value.clone());
@@ -156,6 +150,63 @@ impl Relation {
                         .expect("Combined tuple should conform to result heading");
 
                     joined_tuples.push(combined_tuple);
+                }
+            }
+        } else {
+            // Common attributes exist: Hash Join
+            // Build phase: Create hash map of the 'other' relation keyed by common attribute values
+            // Key: Vec<ScalarValue> (values of common attributes)
+            // Value: Vec<&Tuple> (tuples that have these values)
+            let mut build_map: HashMap<Vec<ScalarValue>, Vec<&Tuple>> = HashMap::new();
+
+            for tuple in other.tuples() {
+                let key: Vec<ScalarValue> = common_attrs
+                    .iter()
+                    .map(|attr| {
+                        tuple
+                            .get(attr)
+                            .expect("Tuple must have attribute defined in relation type")
+                            .clone()
+                    })
+                    .collect();
+
+                build_map.entry(key).or_default().push(tuple);
+            }
+
+            // Probe phase: Iterate through 'self' relation and look up in hash map
+            for tuple1 in self.tuples() {
+                let key: Vec<ScalarValue> = common_attrs
+                    .iter()
+                    .map(|attr| {
+                        tuple1
+                            .get(attr)
+                            .expect("Tuple must have attribute defined in relation type")
+                            .clone()
+                    })
+                    .collect();
+
+                if let Some(matching_tuples) = build_map.get(&key) {
+                    for tuple2 in matching_tuples {
+                        // Combine tuples
+                        let mut combined_values = HashMap::new();
+
+                        // Add all values from tuple1
+                        for (attr_name, value) in tuple1.values() {
+                            combined_values.insert(attr_name.clone(), value.clone());
+                        }
+
+                        // Add values from tuple2 that aren't common (common ones are already in)
+                        for (attr_name, value) in tuple2.values() {
+                            if !combined_values.contains_key(attr_name) {
+                                combined_values.insert(attr_name.clone(), value.clone());
+                            }
+                        }
+
+                        let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
+                            .expect("Combined tuple should conform to result heading");
+
+                        joined_tuples.push(combined_tuple);
+                    }
                 }
             }
         }
