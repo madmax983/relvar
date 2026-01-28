@@ -851,14 +851,16 @@ mod tests {
 
     #[test]
     fn test_min_on_empty_set() {
-        let heading = TupleType::new()
-            .with_attribute("salary".to_string(), ScalarType::Int);
+        let heading = TupleType::new().with_attribute("salary".to_string(), ScalarType::Int);
 
         let rel_type = RelationType::new(heading);
         let empty_rel = Relation::new(rel_type);
 
         // MIN on empty set should error
-        let result = empty_rel.summarize(&[], &[Aggregation::min("min_salary", "salary", ScalarType::Int)]);
+        let result = empty_rel.summarize(
+            &[],
+            &[Aggregation::min("min_salary", "salary", ScalarType::Int)],
+        );
 
         assert!(result.is_err());
         assert!(matches!(
@@ -869,14 +871,16 @@ mod tests {
 
     #[test]
     fn test_max_on_empty_set() {
-        let heading = TupleType::new()
-            .with_attribute("salary".to_string(), ScalarType::Int);
+        let heading = TupleType::new().with_attribute("salary".to_string(), ScalarType::Int);
 
         let rel_type = RelationType::new(heading);
         let empty_rel = Relation::new(rel_type);
 
         // MAX on empty set should error
-        let result = empty_rel.summarize(&[], &[Aggregation::max("max_salary", "salary", ScalarType::Int)]);
+        let result = empty_rel.summarize(
+            &[],
+            &[Aggregation::max("max_salary", "salary", ScalarType::Int)],
+        );
 
         assert!(result.is_err());
         assert!(matches!(
@@ -898,7 +902,10 @@ mod tests {
             .unwrap();
 
         // Try MIN on non-existent attribute
-        let result = relation.summarize(&[], &[Aggregation::min("min_salary", "salary", ScalarType::Int)]);
+        let result = relation.summarize(
+            &[],
+            &[Aggregation::min("min_salary", "salary", ScalarType::Int)],
+        );
 
         assert!(result.is_err());
         assert!(matches!(
@@ -920,7 +927,10 @@ mod tests {
             .unwrap();
 
         // Try MAX on non-existent attribute
-        let result = relation.summarize(&[], &[Aggregation::max("max_salary", "salary", ScalarType::Int)]);
+        let result = relation.summarize(
+            &[],
+            &[Aggregation::max("max_salary", "salary", ScalarType::Int)],
+        );
 
         assert!(result.is_err());
         assert!(matches!(
@@ -931,8 +941,7 @@ mod tests {
 
     #[test]
     fn test_custom_aggregation() {
-        let heading = TupleType::new()
-            .with_attribute("value".to_string(), ScalarType::Int);
+        let heading = TupleType::new().with_attribute("value".to_string(), ScalarType::Int);
 
         let rel_type = RelationType::new(heading);
         let mut relation = Relation::new(rel_type);
@@ -981,10 +990,12 @@ mod tests {
             .insert(tuple! { dept_id: 10i64, salary: 60000i64 })
             .unwrap();
 
-        let result = relation.summarize(
-            &["dept_id"],
-            &[Aggregation::min("min_salary", "salary", ScalarType::Int)],
-        ).unwrap();
+        let result = relation
+            .summarize(
+                &["dept_id"],
+                &[Aggregation::min("min_salary", "salary", ScalarType::Int)],
+            )
+            .unwrap();
 
         assert_eq!(result.cardinality(), 1);
         let tuple = result.tuples().next().unwrap();
@@ -1010,10 +1021,12 @@ mod tests {
             .insert(tuple! { dept_id: 10i64, salary: 60000i64 })
             .unwrap();
 
-        let result = relation.summarize(
-            &["dept_id"],
-            &[Aggregation::max("max_salary", "salary", ScalarType::Int)],
-        ).unwrap();
+        let result = relation
+            .summarize(
+                &["dept_id"],
+                &[Aggregation::max("max_salary", "salary", ScalarType::Int)],
+            )
+            .unwrap();
 
         assert_eq!(result.cardinality(), 1);
         let tuple = result.tuples().next().unwrap();
@@ -1022,8 +1035,7 @@ mod tests {
 
     #[test]
     fn test_min_max_with_strings() {
-        let heading = TupleType::new()
-            .with_attribute("name".to_string(), ScalarType::String);
+        let heading = TupleType::new().with_attribute("name".to_string(), ScalarType::String);
 
         let rel_type = RelationType::new(heading);
         let mut relation = Relation::new(rel_type);
@@ -1032,13 +1044,15 @@ mod tests {
         relation.insert(tuple! { name: "Alice" }).unwrap();
         relation.insert(tuple! { name: "Bob" }).unwrap();
 
-        let result = relation.summarize(
-            &[],
-            &[
-                Aggregation::min("min_name", "name", ScalarType::String),
-                Aggregation::max("max_name", "name", ScalarType::String),
-            ],
-        ).unwrap();
+        let result = relation
+            .summarize(
+                &[],
+                &[
+                    Aggregation::min("min_name", "name", ScalarType::String),
+                    Aggregation::max("max_name", "name", ScalarType::String),
+                ],
+            )
+            .unwrap();
 
         assert_eq!(result.cardinality(), 1);
         let tuple = result.tuples().next().unwrap();

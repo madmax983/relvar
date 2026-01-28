@@ -825,7 +825,8 @@ mod tests {
         )
         .unwrap();
         let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
-        db.set_foreign_key_constraints("EMP", fk_constraints).unwrap();
+        db.set_foreign_key_constraints("EMP", fk_constraints)
+            .unwrap();
 
         // Insert with valid foreign key should succeed
         db.insert("EMP", tuple! { emp_id: 1i64, dept_id: 10i64 })
@@ -834,16 +835,13 @@ mod tests {
         // Insert with invalid foreign key should fail
         let result = db.insert("EMP", tuple! { emp_id: 2i64, dept_id: 99i64 });
         assert!(result.is_err());
-        assert!(matches!(
-            result,
-            Err(DatabaseError::ForeignKeyViolation(_))
-        ));
+        assert!(matches!(result, Err(DatabaseError::ForeignKeyViolation(_))));
     }
 
     #[test]
     fn test_type_constraint_range() {
-        use crate::constraints::type_constraint::TypeConstraint;
         use crate::constraints::AttributeConstraints;
+        use crate::constraints::type_constraint::TypeConstraint;
         use crate::values::ScalarValue;
 
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
@@ -854,8 +852,8 @@ mod tests {
             min: ScalarValue::Int(1),
             max: ScalarValue::Int(100),
         };
-        let attr_constraints =
-            AttributeConstraints::new("id".to_string(), ScalarType::Int).with_constraint(range_constraint);
+        let attr_constraints = AttributeConstraints::new("id".to_string(), ScalarType::Int)
+            .with_constraint(range_constraint);
         db.set_type_constraints("TEST", "id", attr_constraints)
             .unwrap();
 
@@ -882,8 +880,8 @@ mod tests {
 
     #[test]
     fn test_type_constraint_positive_int() {
-        use crate::constraints::type_constraint::TypeConstraint;
         use crate::constraints::AttributeConstraints;
+        use crate::constraints::type_constraint::TypeConstraint;
 
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
         db.create_relvar("TEST", test_rel_type()).unwrap();
@@ -956,7 +954,8 @@ mod tests {
 
         let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
         let parent_constraints = KeyConstraints::new().with_primary_key(pk);
-        db.set_key_constraints("PARENT", parent_constraints).unwrap();
+        db.set_key_constraints("PARENT", parent_constraints)
+            .unwrap();
 
         let fk = ForeignKey::new(
             vec!["parent_id".to_string()],
@@ -965,7 +964,8 @@ mod tests {
         )
         .unwrap();
         let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
-        db.set_foreign_key_constraints("CHILD", fk_constraints).unwrap();
+        db.set_foreign_key_constraints("CHILD", fk_constraints)
+            .unwrap();
 
         // Insert parent and child
         db.insert("PARENT", tuple! { id: 1i64, name: "Parent1" })
@@ -976,10 +976,7 @@ mod tests {
         // Deleting parent should fail due to foreign key
         let result = db.delete("PARENT", |_| true);
         assert!(result.is_err());
-        assert!(matches!(
-            result,
-            Err(DatabaseError::ForeignKeyViolation(_))
-        ));
+        assert!(matches!(result, Err(DatabaseError::ForeignKeyViolation(_))));
     }
 
     #[test]
@@ -998,9 +995,13 @@ mod tests {
         db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
 
         // Update that would create duplicate primary key should fail
-        let result = db.update("TEST", |t| t.get_typed::<i64>("id").unwrap() == 2, |_| {
-            tuple! { id: 1i64, name: "Bob" }
-        });
+        let result = db.update(
+            "TEST",
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |_| {
+                tuple! { id: 1i64, name: "Bob" }
+            },
+        );
         assert!(result.is_err());
         assert!(matches!(result, Err(DatabaseError::PrimaryKeyViolation)));
     }
@@ -1068,8 +1069,8 @@ mod tests {
 
     #[test]
     fn test_set_type_constraints() {
-        use crate::constraints::type_constraint::TypeConstraint;
         use crate::constraints::AttributeConstraints;
+        use crate::constraints::type_constraint::TypeConstraint;
         use crate::values::ScalarValue;
 
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
@@ -1081,8 +1082,8 @@ mod tests {
             max: ScalarValue::Int(100),
         };
 
-        let attr_constraints =
-            AttributeConstraints::new("id".to_string(), ScalarType::Int).with_constraint(range_constraint);
+        let attr_constraints = AttributeConstraints::new("id".to_string(), ScalarType::Int)
+            .with_constraint(range_constraint);
 
         db.set_type_constraints("TEST", "id", attr_constraints)
             .unwrap();
@@ -1293,7 +1294,9 @@ mod tests {
             .unwrap();
 
         // Delete some tuples
-        let count = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() > 1).unwrap();
+        let count = db
+            .delete("TEST", |t| t.get_typed::<i64>("id").unwrap() > 1)
+            .unwrap();
         assert_eq!(count, 2);
 
         let result = db.query("TEST").unwrap();
@@ -1311,9 +1314,13 @@ mod tests {
 
         // Update tuples
         let count = db
-            .update("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1, |_| {
-                tuple! { id: 1i64, name: "Alicia" }
-            })
+            .update(
+                "TEST",
+                |t| t.get_typed::<i64>("id").unwrap() == 1,
+                |_| {
+                    tuple! { id: 1i64, name: "Alicia" }
+                },
+            )
             .unwrap();
 
         assert_eq!(count, 1);
@@ -1331,7 +1338,9 @@ mod tests {
             .unwrap();
 
         // Delete with no matches
-        let count = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() > 100).unwrap();
+        let count = db
+            .delete("TEST", |t| t.get_typed::<i64>("id").unwrap() > 100)
+            .unwrap();
         assert_eq!(count, 0);
 
         // Relation should be unchanged
@@ -1355,9 +1364,13 @@ mod tests {
         db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
 
         // Try to update to create duplicate candidate key
-        let result = db.update("TEST", |t| t.get_typed::<i64>("id").unwrap() == 2, |_| {
-            tuple! { id: 2i64, name: "Alice" }
-        });
+        let result = db.update(
+            "TEST",
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |_| {
+                tuple! { id: 2i64, name: "Alice" }
+            },
+        );
 
         assert!(result.is_err());
         assert!(matches!(result, Err(DatabaseError::CandidateKeyViolation)));

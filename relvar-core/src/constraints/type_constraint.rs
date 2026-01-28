@@ -542,11 +542,31 @@ mod tests {
             max: ScalarValue::Float(1.0),
         };
 
-        assert!(constraint.is_satisfied_by(&ScalarValue::Float(0.0)).unwrap());
-        assert!(constraint.is_satisfied_by(&ScalarValue::Float(0.5)).unwrap());
-        assert!(constraint.is_satisfied_by(&ScalarValue::Float(1.0)).unwrap());
-        assert!(!constraint.is_satisfied_by(&ScalarValue::Float(-0.1)).unwrap());
-        assert!(!constraint.is_satisfied_by(&ScalarValue::Float(1.1)).unwrap());
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::Float(0.0))
+                .unwrap()
+        );
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::Float(0.5))
+                .unwrap()
+        );
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::Float(1.0))
+                .unwrap()
+        );
+        assert!(
+            !constraint
+                .is_satisfied_by(&ScalarValue::Float(-0.1))
+                .unwrap()
+        );
+        assert!(
+            !constraint
+                .is_satisfied_by(&ScalarValue::Float(1.1))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -554,17 +574,23 @@ mod tests {
         let constraint = TypeConstraint::StringLength { min: 5, max: 5 };
 
         // Exactly 5 chars should pass
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("hello".to_string()))
-            .unwrap());
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("hello".to_string()))
+                .unwrap()
+        );
 
         // Other lengths should fail
-        assert!(!constraint
-            .is_satisfied_by(&ScalarValue::String("hi".to_string()))
-            .unwrap());
-        assert!(!constraint
-            .is_satisfied_by(&ScalarValue::String("hello!".to_string()))
-            .unwrap());
+        assert!(
+            !constraint
+                .is_satisfied_by(&ScalarValue::String("hi".to_string()))
+                .unwrap()
+        );
+        assert!(
+            !constraint
+                .is_satisfied_by(&ScalarValue::String("hello!".to_string()))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -572,9 +598,11 @@ mod tests {
         let constraint = TypeConstraint::StringLength { min: 1, max: 10 };
 
         // Empty string should fail
-        assert!(!constraint
-            .is_satisfied_by(&ScalarValue::String("".to_string()))
-            .unwrap());
+        assert!(
+            !constraint
+                .is_satisfied_by(&ScalarValue::String("".to_string()))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -582,9 +610,11 @@ mod tests {
         let constraint = TypeConstraint::StringLength { min: 0, max: 5 };
 
         // Empty string should pass with min=0
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("".to_string()))
-            .unwrap());
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("".to_string()))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -674,9 +704,11 @@ mod tests {
         };
 
         assert!(constraint.is_satisfied_by(&ScalarValue::Int(42)).unwrap());
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("anything".to_string()))
-            .unwrap());
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("anything".to_string()))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -686,15 +718,21 @@ mod tests {
             max: ScalarValue::String("z".to_string()),
         };
 
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("m".to_string()))
-            .unwrap());
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("a".to_string()))
-            .unwrap());
-        assert!(constraint
-            .is_satisfied_by(&ScalarValue::String("z".to_string()))
-            .unwrap());
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("m".to_string()))
+                .unwrap()
+        );
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("a".to_string()))
+                .unwrap()
+        );
+        assert!(
+            constraint
+                .is_satisfied_by(&ScalarValue::String("z".to_string()))
+                .unwrap()
+        );
     }
 
     #[test]
