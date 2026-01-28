@@ -21,7 +21,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar::storage::{Page, PageFile, PAGE_SIZE};
+//! use relvar_storage::storage::{Page, PageFile, PAGE_SIZE};
 //!
 //! // Create a page file
 //! let mut pf = PageFile::create("data.pages").unwrap();
@@ -78,7 +78,7 @@ pub enum PageError {
 /// # Example
 ///
 /// ```
-/// use relvar::storage::{Page, PAGE_SIZE};
+/// use relvar_storage::storage::{Page, PAGE_SIZE};
 ///
 /// // Create an empty page
 /// let mut page = Page::new(0);
@@ -107,7 +107,7 @@ impl Page {
     /// # Example
     ///
     /// ```
-    /// use relvar::storage::Page;
+    /// use relvar_storage::storage::Page;
     ///
     /// let page = Page::new(0);
     /// assert_eq!(page.id(), 0);
@@ -134,7 +134,7 @@ impl Page {
     /// # Example
     ///
     /// ```
-    /// use relvar::storage::Page;
+    /// use relvar_storage::storage::Page;
     ///
     /// let page = Page::from_data(42, vec![1, 2, 3]).unwrap();
     /// assert_eq!(page.id(), 42);
@@ -203,7 +203,7 @@ impl Page {
 /// # Example
 ///
 /// ```no_run
-/// use relvar::storage::{Page, PageFile};
+/// use relvar_storage::storage::{Page, PageFile};
 ///
 /// // Create a new page file
 /// let mut pf = PageFile::create("data.pages").unwrap();

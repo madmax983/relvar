@@ -14,7 +14,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::ScalarType;
+//! use relvar_core::types::ScalarType;
 //!
 //! // Built-in types
 //! let int_type = ScalarType::Int;
@@ -79,7 +79,7 @@ pub enum ScalarTypeError {
 /// # Example
 ///
 /// ```
-/// use relvar::types::ScalarType;
+/// use relvar_core::types::ScalarType;
 ///
 /// // Built-in types
 /// let age_type = ScalarType::Int;
@@ -134,7 +134,7 @@ pub enum ScalarType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::ScalarType;
+    /// use relvar_core::types::ScalarType;
     ///
     /// let currency = ScalarType::user_defined("Currency", ScalarType::Float);
     /// assert_eq!(currency.name(), "Currency");
@@ -170,7 +170,7 @@ impl ScalarType {
     /// # Examples
     ///
     /// ```
-    /// use relvar::types::ScalarType;
+    /// use relvar_core::types::ScalarType;
     ///
     /// let widget_id = ScalarType::user_defined("WidgetId", ScalarType::Int);
     /// let supplier_id = ScalarType::user_defined("SupplierId", ScalarType::Int);

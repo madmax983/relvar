@@ -14,9 +14,9 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::values::Relation;
-//! use relvar::tuple;
+//! use relvar_core::types::{TupleType, RelationType, ScalarType};
+//! use relvar_core::values::Relation;
+//! use relvar_core::tuple;
 //!
 //! // Employees with dept_id
 //! let emp_heading = TupleType::new()
@@ -75,9 +75,9 @@ impl Relation {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, RelationType, ScalarType};
-    /// use relvar::values::Relation;
-    /// use relvar::tuple;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
     ///
     /// // Employees
     /// let emp_heading = TupleType::new()
@@ -197,9 +197,9 @@ impl Relation {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, RelationType, ScalarType};
-    /// use relvar::values::{Relation, ScalarValue};
-    /// use relvar::tuple;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::{Relation, ScalarValue};
+    /// use relvar_core::tuple;
     ///
     /// // Employees with salaries
     /// let emp_heading = TupleType::new()

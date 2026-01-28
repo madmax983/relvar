@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::{TupleType, ScalarType};
+//! use relvar_core::types::{TupleType, ScalarType};
 //!
 //! let employee_type = TupleType::new()
 //!     .with_attribute("emp_id", ScalarType::Int)
@@ -49,7 +49,7 @@ use std::collections::HashMap;
 /// # Example
 ///
 /// ```
-/// use relvar::types::{TupleType, ScalarType};
+/// use relvar_core::types::{TupleType, ScalarType};
 ///
 /// // Create a tuple type with the builder pattern
 /// let person_type = TupleType::new()
@@ -78,7 +78,7 @@ impl TupleType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::TupleType;
+    /// use relvar_core::types::TupleType;
     ///
     /// let empty_type = TupleType::new();
     /// assert_eq!(empty_type.degree(), 0);
@@ -103,7 +103,7 @@ impl TupleType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, ScalarType};
+    /// use relvar_core::types::{TupleType, ScalarType};
     ///
     /// let person_type = TupleType::new()
     ///     .with_attribute("name", ScalarType::String)
@@ -127,7 +127,7 @@ impl TupleType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, ScalarType};
+    /// use relvar_core::types::{TupleType, ScalarType};
     ///
     /// let tuple_type = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int);
@@ -148,7 +148,7 @@ impl TupleType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, ScalarType};
+    /// use relvar_core::types::{TupleType, ScalarType};
     ///
     /// let tuple_type = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int);
@@ -168,7 +168,7 @@ impl TupleType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, ScalarType};
+    /// use relvar_core::types::{TupleType, ScalarType};
     ///
     /// let tuple_type = TupleType::new()
     ///     .with_attribute("b", ScalarType::Int)
@@ -188,7 +188,7 @@ impl TupleType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, ScalarType};
+    /// use relvar_core::types::{TupleType, ScalarType};
     ///
     /// let tuple_type = TupleType::new()
     ///     .with_attribute("a", ScalarType::Int)
@@ -209,7 +209,7 @@ impl TupleType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, ScalarType};
+    /// use relvar_core::types::{TupleType, ScalarType};
     ///
     /// let tuple_type = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int);

@@ -14,8 +14,8 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar::storage::Catalog;
-//! use relvar::types::{RelationType, TupleType, ScalarType};
+//! use relvar_storage::storage::Catalog;
+//! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use std::path::PathBuf;
 //!
 //! let mut catalog = Catalog::new();
@@ -99,8 +99,8 @@ pub struct RelationMetadata {
 /// # Example
 ///
 /// ```no_run
-/// use relvar::storage::Catalog;
-/// use relvar::types::{RelationType, TupleType, ScalarType};
+/// use relvar_storage::storage::Catalog;
+/// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use std::path::PathBuf;
 ///
 /// // Create and populate catalog
@@ -137,7 +137,7 @@ impl Catalog {
     /// # Example
     ///
     /// ```
-    /// use relvar::storage::Catalog;
+    /// use relvar_storage::storage::Catalog;
     ///
     /// let catalog = Catalog::new();
     /// assert_eq!(catalog.relation_count(), 0);

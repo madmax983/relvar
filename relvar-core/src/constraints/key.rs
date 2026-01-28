@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::constraints::{PrimaryKey, CandidateKey, KeyConstraints};
+//! use relvar_core::constraints::{PrimaryKey, CandidateKey, KeyConstraints};
 //!
 //! // Single-attribute primary key
 //! let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
@@ -36,10 +36,10 @@
 //! Key constraints can detect when an insert would create duplicates:
 //!
 //! ```
-//! use relvar::constraints::{PrimaryKey, KeyConstraints};
-//! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::values::Relation;
-//! use relvar::tuple;
+//! use relvar_core::constraints::{PrimaryKey, KeyConstraints};
+//! use relvar_core::types::{TupleType, RelationType, ScalarType};
+//! use relvar_core::values::Relation;
+//! use relvar_core::tuple;
 //!
 //! // Create a relation with employee data
 //! let heading = TupleType::new()
@@ -96,7 +96,7 @@ pub enum KeyConstraintError {
 /// # Example
 ///
 /// ```
-/// use relvar::constraints::CandidateKey;
+/// use relvar_core::constraints::CandidateKey;
 ///
 /// // Single-attribute key
 /// let emp_key = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();

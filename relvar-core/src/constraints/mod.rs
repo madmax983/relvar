@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::constraints::{PrimaryKey, KeyConstraints, ForeignKey};
+//! use relvar_core::constraints::{PrimaryKey, KeyConstraints, ForeignKey};
 //!
 //! // Define a primary key on emp_id
 //! let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();

@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::constraints::{ForeignKey, ForeignKeyConstraints};
+//! use relvar_core::constraints::{ForeignKey, ForeignKeyConstraints};
 //!
 //! // Employees.dept_id must reference an existing Departments.dept_id
 //! let fk = ForeignKey::new(
@@ -30,10 +30,10 @@
 //! a non-existent tuple (dangling reference):
 //!
 //! ```
-//! use relvar::constraints::ForeignKey;
-//! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::values::Relation;
-//! use relvar::tuple;
+//! use relvar_core::constraints::ForeignKey;
+//! use relvar_core::types::{TupleType, RelationType, ScalarType};
+//! use relvar_core::values::Relation;
+//! use relvar_core::tuple;
 //!
 //! // Create departments relation (the referenced relation)
 //! let dept_heading = TupleType::new()
@@ -105,7 +105,7 @@ pub enum ForeignKeyError {
 /// # Example
 ///
 /// ```
-/// use relvar::constraints::ForeignKey;
+/// use relvar_core::constraints::ForeignKey;
 ///
 /// // Simple foreign key: employees.dept_id -> departments.dept_id
 /// let fk = ForeignKey::new(

@@ -16,9 +16,9 @@
 //! # Example
 //!
 //! ```
-//! use relvar::constraints::{TypeConstraint, AttributeConstraints};
-//! use relvar::types::ScalarType;
-//! use relvar::values::ScalarValue;
+//! use relvar_core::constraints::{TypeConstraint, AttributeConstraints};
+//! use relvar_core::types::ScalarType;
+//! use relvar_core::values::ScalarValue;
 //!
 //! // Age must be between 0 and 150
 //! let age_constraint = TypeConstraint::Range {
@@ -61,8 +61,8 @@ pub enum TypeConstraintError {
 /// # Example
 ///
 /// ```
-/// use relvar::constraints::TypeConstraint;
-/// use relvar::values::ScalarValue;
+/// use relvar_core::constraints::TypeConstraint;
+/// use relvar_core::values::ScalarValue;
 ///
 /// // Range constraint for percentages
 /// let percentage = TypeConstraint::Range {

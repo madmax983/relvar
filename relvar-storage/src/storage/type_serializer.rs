@@ -15,8 +15,8 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::ScalarType;
-//! use relvar::storage::type_serializer::{serialize_scalar_type, deserialize_scalar_type};
+//! use relvar_core::types::ScalarType;
+//! use relvar_storage::storage::type_serializer::{serialize_scalar_type, deserialize_scalar_type};
 //!
 //! let int_type = ScalarType::Int;
 //! let serialized = serialize_scalar_type(&int_type);
@@ -55,8 +55,8 @@ pub enum TypeSerializerError {
 /// # Examples
 ///
 /// ```
-/// use relvar::types::ScalarType;
-/// use relvar::storage::type_serializer::serialize_scalar_type;
+/// use relvar_core::types::ScalarType;
+/// use relvar_storage::storage::type_serializer::serialize_scalar_type;
 ///
 /// assert_eq!(serialize_scalar_type(&ScalarType::Int), "Int");
 /// assert_eq!(serialize_scalar_type(&ScalarType::String), "String");
@@ -107,8 +107,8 @@ pub fn serialize_scalar_type(scalar_type: &ScalarType) -> String {
 /// # Examples
 ///
 /// ```
-/// use relvar::types::ScalarType;
-/// use relvar::storage::type_serializer::deserialize_scalar_type;
+/// use relvar_core::types::ScalarType;
+/// use relvar_storage::storage::type_serializer::deserialize_scalar_type;
 ///
 /// let int_type = deserialize_scalar_type("Int").unwrap();
 /// assert_eq!(int_type, ScalarType::Int);

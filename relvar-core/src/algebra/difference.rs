@@ -12,9 +12,9 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::values::Relation;
-//! use relvar::tuple;
+//! use relvar_core::types::{TupleType, RelationType, ScalarType};
+//! use relvar_core::values::Relation;
+//! use relvar_core::tuple;
 //!
 //! let heading = TupleType::new()
 //!     .with_attribute("emp_id", ScalarType::Int)
@@ -84,9 +84,9 @@ impl Relation {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, RelationType, ScalarType};
-    /// use relvar::values::Relation;
-    /// use relvar::tuple;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("emp_id", ScalarType::Int)
@@ -132,9 +132,9 @@ impl Relation {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, RelationType, ScalarType};
-    /// use relvar::values::Relation;
-    /// use relvar::tuple;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int);

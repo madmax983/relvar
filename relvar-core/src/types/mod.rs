@@ -28,7 +28,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::{ScalarType, TupleType, RelationType};
+//! use relvar_core::types::{ScalarType, TupleType, RelationType};
 //!
 //! // Define a tuple type (heading)
 //! let employee_heading = TupleType::new()

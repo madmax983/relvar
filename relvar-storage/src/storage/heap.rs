@@ -81,9 +81,9 @@ pub enum HeapError {
 /// # Example
 ///
 /// ```no_run
-/// use relvar::storage::HeapFile;
-/// use relvar::types::{RelationType, TupleType, ScalarType};
-/// use relvar::tuple;
+/// use relvar_storage::storage::HeapFile;
+/// use relvar_core::types::{RelationType, TupleType, ScalarType};
+/// use relvar_core::tuple;
 ///
 /// // Create heap file
 /// let heading = TupleType::new()

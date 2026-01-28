@@ -3,12 +3,12 @@
 //! This module provides the [`Database`] struct, which is the main entry point
 //! for all database operations.
 
-use crate::constraints::{AttributeConstraints, ForeignKey, ForeignKeyConstraints, KeyConstraints};
+use crate::constraints::{AttributeConstraints, ForeignKeyConstraints, KeyConstraints};
 use crate::storage_engine::{StorageEngine, StorageError};
-use crate::tuple;
-use crate::types::{RelationType, ScalarType, TupleType};
+use crate::types::RelationType;
 use crate::values::relation::RelationError;
 use crate::values::{Relation, ScalarValue, Tuple};
+
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -252,9 +252,9 @@ impl<E: StorageEngine> Database<E> {
                     .would_violate_on_insert(tuple, &referenced_relation)
                     .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
                 {
-                    return Err(DatabaseError::ForeignKeyViolation(format!(
-                        "Existing tuple violates foreign key"
-                    )));
+                    return Err(DatabaseError::ForeignKeyViolation(
+                        "Existing tuple violates foreign key".to_string()
+                    ));
                 }
             }
         }
@@ -284,15 +284,14 @@ impl<E: StorageEngine> Database<E> {
         let relation = self.query(relation_name)?;
 
         for tuple in relation.tuples() {
-            if let Some(value) = tuple.get(attribute_name) {
-                if !constraints
+            if let Some(value) = tuple.get(attribute_name)
+                && !constraints
                     .is_satisfied_by(value)
                     .map_err(|e| DatabaseError::TypeConstraintViolation(e.to_string()))?
-                {
-                    return Err(DatabaseError::TypeConstraintViolation(format!(
-                        "Existing value violates constraint"
-                    )));
-                }
+            {
+                return Err(DatabaseError::TypeConstraintViolation(
+                    "Existing value violates constraint".to_string()
+                ));
             }
         }
 
@@ -330,16 +329,15 @@ impl<E: StorageEngine> Database<E> {
         // Check type constraints
         if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
             for (attr_name, constraints) in attr_constraints {
-                if let Some(value) = tuple.get(attr_name) {
-                    if !constraints
+                if let Some(value) = tuple.get(attr_name)
+                    && !constraints
                         .is_satisfied_by(value)
                         .map_err(|e| DatabaseError::TypeConstraintViolation(e.to_string()))?
-                    {
-                        return Err(DatabaseError::TypeConstraintViolation(format!(
-                            "Attribute {} violates constraint",
-                            attr_name
-                        )));
-                    }
+                {
+                    return Err(DatabaseError::TypeConstraintViolation(format!(
+                        "Attribute {} violates constraint",
+                        attr_name
+                    )));
                 }
             }
         }
@@ -349,13 +347,12 @@ impl<E: StorageEngine> Database<E> {
 
         // Check key constraints
         if let Some(key_constraints) = self.key_constraints.get(relation_name) {
-            if let Some(pk) = key_constraints.primary_key() {
-                if pk
+            if let Some(pk) = key_constraints.primary_key()
+                && pk
                     .would_violate(&current_relation, &tuple)
                     .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-                {
-                    return Err(DatabaseError::PrimaryKeyViolation);
-                }
+            {
+                return Err(DatabaseError::PrimaryKeyViolation);
             }
 
             for ck in key_constraints.candidate_keys() {
@@ -378,9 +375,9 @@ impl<E: StorageEngine> Database<E> {
                     .would_violate_on_insert(&tuple, &referenced_relation)
                     .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
                 {
-                    return Err(DatabaseError::ForeignKeyViolation(format!(
-                        "Foreign key constraint violated"
-                    )));
+                    return Err(DatabaseError::ForeignKeyViolation(
+                        "Foreign key constraint violated".to_string()
+                    ));
                 }
             }
         }
@@ -652,7 +649,7 @@ mod tests {
     use super::*;
     use crate::storage_engine::InMemoryEngine;
     use crate::tuple;
-    use crate::types::ScalarType;
+    use crate::types::{ScalarType, TupleType};
 
     fn test_rel_type() -> RelationType {
         RelationType::new(

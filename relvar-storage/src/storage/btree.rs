@@ -23,9 +23,9 @@
 //! # Example
 //!
 //! ```
-//! use relvar::storage::BTreeIndex;
-//! use relvar::values::ScalarValue;
-//! use relvar::tuple;
+//! use relvar_storage::storage::BTreeIndex;
+//! use relvar_core::values::ScalarValue;
+//! use relvar_core::tuple;
 //!
 //! let mut index = BTreeIndex::new();
 //!
@@ -100,9 +100,9 @@ pub enum BTreeIndexError {
 /// # Example
 ///
 /// ```
-/// use relvar::storage::BTreeIndex;
-/// use relvar::values::ScalarValue;
-/// use relvar::tuple;
+/// use relvar_storage::storage::BTreeIndex;
+/// use relvar_core::values::ScalarValue;
+/// use relvar_core::tuple;
 ///
 /// let mut index = BTreeIndex::new();
 ///
@@ -128,7 +128,7 @@ impl BTreeIndex {
     /// # Example
     ///
     /// ```
-    /// use relvar::storage::BTreeIndex;
+    /// use relvar_storage::storage::BTreeIndex;
     ///
     /// let index = BTreeIndex::new();
     /// assert!(index.is_empty());
@@ -164,9 +164,9 @@ impl BTreeIndex {
     /// # Example
     ///
     /// ```
-    /// use relvar::storage::BTreeIndex;
-    /// use relvar::values::ScalarValue;
-    /// use relvar::tuple;
+    /// use relvar_storage::storage::BTreeIndex;
+    /// use relvar_core::values::ScalarValue;
+    /// use relvar_core::tuple;
     ///
     /// let mut index = BTreeIndex::new();
     /// index.insert(ScalarValue::Int(42), tuple! { id: 42i64, name: "Answer" });
@@ -232,9 +232,9 @@ impl BTreeIndex {
     /// # Example
     ///
     /// ```
-    /// use relvar::storage::BTreeIndex;
-    /// use relvar::values::ScalarValue;
-    /// use relvar::tuple;
+    /// use relvar_storage::storage::BTreeIndex;
+    /// use relvar_core::values::ScalarValue;
+    /// use relvar_core::tuple;
     ///
     /// let mut index = BTreeIndex::new();
     /// index.insert(ScalarValue::Int(10), tuple! { id: 10i64 });

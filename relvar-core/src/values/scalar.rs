@@ -12,8 +12,8 @@
 //! # Example
 //!
 //! ```
-//! use relvar::values::ScalarValue;
-//! use relvar::types::ScalarType;
+//! use relvar_core::values::ScalarValue;
+//! use relvar_core::types::ScalarType;
 //!
 //! // Built-in values
 //! let age = ScalarValue::Int(42);
@@ -68,8 +68,8 @@ pub enum ScalarValueError {
 /// # Example
 ///
 /// ```
-/// use relvar::values::ScalarValue;
-/// use relvar::types::ScalarType;
+/// use relvar_core::values::ScalarValue;
+/// use relvar_core::types::ScalarType;
 ///
 /// let value = ScalarValue::Int(100);
 ///
@@ -124,8 +124,8 @@ impl ScalarValue {
     /// # Example
     ///
     /// ```
-    /// use relvar::values::ScalarValue;
-    /// use relvar::types::ScalarType;
+    /// use relvar_core::values::ScalarValue;
+    /// use relvar_core::types::ScalarType;
     ///
     /// let value = ScalarValue::Int(42);
     /// assert_eq!(value.scalar_type(), ScalarType::Int);

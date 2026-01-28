@@ -12,10 +12,10 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::values::Relation;
-//! use relvar::algebra::summarize::{SummarizeOps, Aggregation};
-//! use relvar::tuple;
+//! use relvar_core::types::{TupleType, RelationType, ScalarType};
+//! use relvar_core::values::Relation;
+//! use relvar_core::algebra::summarize::{SummarizeOps, Aggregation};
+//! use relvar_core::tuple;
 //!
 //! let heading = TupleType::new()
 //!     .with_attribute("dept_id", ScalarType::Int)
@@ -110,8 +110,8 @@ pub enum AggregationFn {
 /// # Example
 ///
 /// ```
-/// use relvar::types::ScalarType;
-/// use relvar::algebra::summarize::Aggregation;
+/// use relvar_core::types::ScalarType;
+/// use relvar_core::algebra::summarize::Aggregation;
 ///
 /// // Count all tuples, store in "total" as Int
 /// let count_agg = Aggregation::count("total");
@@ -146,7 +146,7 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::summarize::Aggregation;
     ///
     /// let agg = Aggregation::count("num_employees");
     /// ```
@@ -171,7 +171,7 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::summarize::Aggregation;
     ///
     /// let agg = Aggregation::sum("total_salary", "salary");
     /// ```
@@ -196,7 +196,7 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::summarize::Aggregation;
     ///
     /// let agg = Aggregation::avg("avg_salary", "salary");
     /// ```
@@ -222,8 +222,8 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::ScalarType;
-    /// use relvar::algebra::summarize::Aggregation;
+    /// use relvar_core::types::ScalarType;
+    /// use relvar_core::algebra::summarize::Aggregation;
     ///
     /// let agg = Aggregation::min("lowest_salary", "salary", ScalarType::Int);
     /// ```
@@ -249,8 +249,8 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::ScalarType;
-    /// use relvar::algebra::summarize::Aggregation;
+    /// use relvar_core::types::ScalarType;
+    /// use relvar_core::algebra::summarize::Aggregation;
     ///
     /// let agg = Aggregation::max("highest_salary", "salary", ScalarType::Int);
     /// ```
@@ -383,10 +383,10 @@ pub trait SummarizeOps {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, RelationType, ScalarType};
-    /// use relvar::values::Relation;
-    /// use relvar::algebra::summarize::{SummarizeOps, Aggregation};
-    /// use relvar::tuple;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::algebra::summarize::{SummarizeOps, Aggregation};
+    /// use relvar_core::tuple;
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("dept_id", ScalarType::Int)

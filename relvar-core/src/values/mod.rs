@@ -29,9 +29,9 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::values::{ScalarValue, Tuple, Relation};
-//! use relvar::tuple;
+//! use relvar_core::types::{TupleType, RelationType, ScalarType};
+//! use relvar_core::values::{ScalarValue, Tuple, Relation};
+//! use relvar_core::tuple;
 //!
 //! // Create scalar values
 //! let id = ScalarValue::Int(42);

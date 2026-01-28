@@ -40,9 +40,9 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar::storage::{HeapFile, Catalog};
-//! use relvar::types::{RelationType, TupleType, ScalarType};
-//! use relvar::tuple;
+//! use relvar_storage::storage::{HeapFile, Catalog};
+//! use relvar_core::types::{RelationType, TupleType, ScalarType};
+//! use relvar_core::tuple;
 //! use std::path::PathBuf;
 //!
 //! // Define relation type

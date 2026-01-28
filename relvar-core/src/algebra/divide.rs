@@ -1,12 +1,18 @@
 use crate::values::Relation;
 use thiserror::Error;
 
+/// Errors that can occur during relational division.
 #[derive(Debug, Error)]
 pub enum DivideError {
+    /// An attribute in the divisor is not found in the dividend.
     #[error("Divisor attribute '{0}' not found in dividend")]
     MissingAttribute(String),
+
+    /// Type mismatch for a common attribute.
     #[error("Type mismatch for attribute '{0}'")]
     TypeMismatch(String),
+
+    /// The divisor heading equals the dividend heading (no remainder attributes).
     #[error("Divisor heading cannot equal dividend heading (no remainder attributes)")]
     EmptyRemainder,
 }

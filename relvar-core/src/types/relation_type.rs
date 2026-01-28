@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::{RelationType, TupleType, ScalarType};
+//! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //!
 //! let employee_heading = TupleType::new()
 //!     .with_attribute("emp_id", ScalarType::Int)
@@ -45,7 +45,7 @@ use serde::{Deserialize, Serialize};
 /// # Example
 ///
 /// ```
-/// use relvar::types::{RelationType, TupleType, ScalarType};
+/// use relvar_core::types::{RelationType, TupleType, ScalarType};
 ///
 /// // Define a relation type for employees
 /// let heading = TupleType::new()
@@ -79,7 +79,7 @@ impl RelationType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int);
@@ -97,7 +97,7 @@ impl RelationType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int);
@@ -116,7 +116,7 @@ impl RelationType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("a", ScalarType::Int)
@@ -136,7 +136,7 @@ impl RelationType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int);
@@ -157,7 +157,7 @@ impl RelationType {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int);

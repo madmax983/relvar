@@ -103,7 +103,7 @@ impl PersistentEngine {
 
             let heap_file =
                 HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
-                    .map_err(|e| Self::convert_heap_error(e))?;
+                    .map_err(Self::convert_heap_error)?;
 
             self.heap_files.insert(name.to_string(), heap_file);
         }
@@ -146,7 +146,7 @@ impl StorageEngine for PersistentEngine {
 
         // Create the heap file
         let heap_file = HeapFile::create(&heap_file_path, relation_type.clone())
-            .map_err(|e| Self::convert_heap_error(e))?;
+            .map_err(Self::convert_heap_error)?;
 
         // Add to catalog
         self.catalog
@@ -234,11 +234,11 @@ impl StorageEngine for PersistentEngine {
 
         let mut heap_file =
             HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
-                .map_err(|e| Self::convert_heap_error(e))?;
+                .map_err(Self::convert_heap_error)?;
 
         heap_file
             .load_relation()
-            .map_err(|e| Self::convert_heap_error(e))
+            .map_err(Self::convert_heap_error)
     }
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {
@@ -269,13 +269,13 @@ impl StorageEngine for PersistentEngine {
         // Create new heap file
         let mut new_heap_file =
             HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())
-                .map_err(|e| Self::convert_heap_error(e))?;
+                .map_err(Self::convert_heap_error)?;
 
         // Insert all tuples
         for tuple in relation.tuples() {
             new_heap_file
                 .insert_tuple(tuple)
-                .map_err(|e| Self::convert_heap_error(e))?;
+                .map_err(Self::convert_heap_error)?;
         }
 
         // Cache the new heap file
@@ -288,7 +288,7 @@ impl StorageEngine for PersistentEngine {
         let heap_file = self.get_or_open_heap_file(name)?;
         heap_file
             .insert_tuple(&tuple)
-            .map_err(|e| Self::convert_heap_error(e))
+            .map_err(Self::convert_heap_error)
     }
 
     fn begin_transaction(&mut self) -> Result<TransactionSnapshot, StorageError> {
@@ -357,7 +357,7 @@ mod tests {
 
         // Reopen database and verify data persists
         {
-            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
             assert!(engine.relation_exists("TEST"));
 
             let relation = engine.load_relation("TEST").unwrap();

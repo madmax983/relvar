@@ -13,10 +13,10 @@
 //! # Example
 //!
 //! ```
-//! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::values::{Relation, ScalarValue};
-//! use relvar::algebra::group::GroupOps;
-//! use relvar::tuple;
+//! use relvar_core::types::{TupleType, RelationType, ScalarType};
+//! use relvar_core::values::{Relation, ScalarValue};
+//! use relvar_core::algebra::group::GroupOps;
+//! use relvar_core::tuple;
 //!
 //! let heading = TupleType::new()
 //!     .with_attribute("dept_id", ScalarType::Int)

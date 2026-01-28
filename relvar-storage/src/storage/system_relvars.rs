@@ -68,7 +68,7 @@ pub const SYS_CONSTRAINTS: &str = "SYS_CONSTRAINTS";
 /// # Example
 ///
 /// ```
-/// use relvar::storage::system_relvars::sys_relvars_type;
+/// use relvar_storage::storage::system_relvars::sys_relvars_type;
 ///
 /// let rel_type = sys_relvars_type();
 /// assert_eq!(rel_type.degree(), 3);
@@ -91,7 +91,7 @@ pub fn sys_relvars_type() -> RelationType {
 /// # Example
 ///
 /// ```
-/// use relvar::storage::system_relvars::sys_attributes_type;
+/// use relvar_storage::storage::system_relvars::sys_attributes_type;
 ///
 /// let rel_type = sys_attributes_type();
 /// assert_eq!(rel_type.degree(), 4);
@@ -116,7 +116,7 @@ pub fn sys_attributes_type() -> RelationType {
 /// # Example
 ///
 /// ```
-/// use relvar::storage::system_relvars::sys_constraints_type;
+/// use relvar_storage::storage::system_relvars::sys_constraints_type;
 ///
 /// let rel_type = sys_constraints_type();
 /// assert_eq!(rel_type.degree(), 4);
@@ -146,7 +146,7 @@ pub fn sys_constraints_type() -> RelationType {
 /// # Examples
 ///
 /// ```
-/// use relvar::storage::system_relvars::is_system_relvar;
+/// use relvar_storage::storage::system_relvars::is_system_relvar;
 ///
 /// assert!(is_system_relvar("SYS_RELVARS"));
 /// assert!(is_system_relvar("SYS_ATTRIBUTES"));

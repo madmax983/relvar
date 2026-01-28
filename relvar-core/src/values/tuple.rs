@@ -13,8 +13,8 @@
 //! # Example
 //!
 //! ```
-//! use relvar::tuple;
-//! use relvar::values::ScalarValue;
+//! use relvar_core::tuple;
+//! use relvar_core::values::ScalarValue;
 //!
 //! // Create a tuple using the macro
 //! let employee = tuple! {
@@ -72,8 +72,8 @@ pub enum TupleError {
 /// # Example
 ///
 /// ```
-/// use relvar::tuple;
-/// use relvar::values::ScalarValue;
+/// use relvar_core::tuple;
+/// use relvar_core::values::ScalarValue;
 ///
 /// let person = tuple! {
 ///     id: 1i64,
@@ -116,8 +116,8 @@ impl Tuple {
     /// # Example
     ///
     /// ```
-    /// use relvar::types::{TupleType, ScalarType};
-    /// use relvar::values::{Tuple, ScalarValue};
+    /// use relvar_core::types::{TupleType, ScalarType};
+    /// use relvar_core::values::{Tuple, ScalarValue};
     /// use std::collections::HashMap;
     ///
     /// let tuple_type = TupleType::new()
