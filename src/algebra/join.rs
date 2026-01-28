@@ -44,6 +44,26 @@ use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
 
+/// Helper function to combine two tuples into one.
+fn combine_tuples(tuple1: &Tuple, tuple2: &Tuple, result_heading: &TupleType) -> Tuple {
+    let mut combined_values = HashMap::new();
+
+    // Add all values from tuple1
+    for (attr_name, value) in tuple1.values() {
+        combined_values.insert(attr_name.clone(), value.clone());
+    }
+
+    // Add values from tuple2 that aren't common (common ones are already in)
+    for (attr_name, value) in tuple2.values() {
+        if !combined_values.contains_key(attr_name) {
+            combined_values.insert(attr_name.clone(), value.clone());
+        }
+    }
+
+    Tuple::new(result_heading.clone(), combined_values)
+        .expect("Combined tuple should conform to result heading")
+}
+
 impl Relation {
     /// Performs a natural join with another relation.
     ///
@@ -131,36 +151,43 @@ impl Relation {
         let mut joined_tuples = Vec::new();
 
         if common_attrs.is_empty() {
-            // No common attributes: Cartesian product (Nested Loop)
+            // Case 1: No common attributes -> Cartesian product (Nested Loop)
             for tuple1 in self.tuples() {
                 for tuple2 in other.tuples() {
-                    let mut combined_values = HashMap::new();
+                    joined_tuples.push(combine_tuples(tuple1, tuple2, &result_heading));
+                }
+            }
+        } else if common_attrs.len() == 1 {
+            // Case 2: Single common attribute -> Optimized Hash Join (ScalarValue key)
+            let attr_name = &common_attrs[0];
+            let mut build_map: HashMap<ScalarValue, Vec<&Tuple>> = HashMap::new();
 
-                    for (attr_name, value) in tuple1.values() {
-                        combined_values.insert(attr_name.clone(), value.clone());
+            // Build phase
+            for tuple in other.tuples() {
+                let key = tuple
+                    .get(attr_name)
+                    .expect("Tuple must have attribute defined in relation type")
+                    .clone();
+                build_map.entry(key).or_default().push(tuple);
+            }
+
+            // Probe phase
+            for tuple1 in self.tuples() {
+                let key = tuple1
+                    .get(attr_name)
+                    .expect("Tuple must have attribute defined in relation type");
+
+                if let Some(matching_tuples) = build_map.get(key) {
+                    for tuple2 in matching_tuples {
+                        joined_tuples.push(combine_tuples(tuple1, tuple2, &result_heading));
                     }
-
-                    for (attr_name, value) in tuple2.values() {
-                        if !combined_values.contains_key(attr_name) {
-                            combined_values.insert(attr_name.clone(), value.clone());
-                        }
-                    }
-
-                    let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
-                        .expect("Combined tuple should conform to result heading");
-
-                    joined_tuples.push(combined_tuple);
                 }
             }
         } else {
-            // Common attributes exist: Hash Join
-            // Build phase: Create hash map of the 'other' relation keyed by common attribute values
-            // Key: Vec<ScalarValue> (values of common attributes)
-            // Value: Vec<&Tuple> (tuples that have these values)
-            let mut build_map: HashMap<Vec<ScalarValue>, Vec<&Tuple>> = HashMap::new();
-
-            for tuple in other.tuples() {
-                let key: Vec<ScalarValue> = common_attrs
+            // Case 3: Multiple common attributes -> Hash Join (Vec<ScalarValue> key)
+            // Helper closure to extract composite key
+            let get_key = |tuple: &Tuple| -> Vec<ScalarValue> {
+                common_attrs
                     .iter()
                     .map(|attr| {
                         tuple
@@ -168,44 +195,21 @@ impl Relation {
                             .expect("Tuple must have attribute defined in relation type")
                             .clone()
                     })
-                    .collect();
+                    .collect()
+            };
 
-                build_map.entry(key).or_default().push(tuple);
+            let mut build_map: HashMap<Vec<ScalarValue>, Vec<&Tuple>> = HashMap::new();
+
+            // Build phase
+            for tuple in other.tuples() {
+                build_map.entry(get_key(tuple)).or_default().push(tuple);
             }
 
-            // Probe phase: Iterate through 'self' relation and look up in hash map
+            // Probe phase
             for tuple1 in self.tuples() {
-                let key: Vec<ScalarValue> = common_attrs
-                    .iter()
-                    .map(|attr| {
-                        tuple1
-                            .get(attr)
-                            .expect("Tuple must have attribute defined in relation type")
-                            .clone()
-                    })
-                    .collect();
-
-                if let Some(matching_tuples) = build_map.get(&key) {
+                if let Some(matching_tuples) = build_map.get(&get_key(tuple1)) {
                     for tuple2 in matching_tuples {
-                        // Combine tuples
-                        let mut combined_values = HashMap::new();
-
-                        // Add all values from tuple1
-                        for (attr_name, value) in tuple1.values() {
-                            combined_values.insert(attr_name.clone(), value.clone());
-                        }
-
-                        // Add values from tuple2 that aren't common (common ones are already in)
-                        for (attr_name, value) in tuple2.values() {
-                            if !combined_values.contains_key(attr_name) {
-                                combined_values.insert(attr_name.clone(), value.clone());
-                            }
-                        }
-
-                        let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
-                            .expect("Combined tuple should conform to result heading");
-
-                        joined_tuples.push(combined_tuple);
+                        joined_tuples.push(combine_tuples(tuple1, tuple2, &result_heading));
                     }
                 }
             }
@@ -520,5 +524,36 @@ mod tests {
 
         assert_eq!(result.cardinality(), 0);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_join_multi_attribute() {
+        // Test composite key join (path 3)
+        let heading1 = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int)
+            .with_attribute("c", ScalarType::Int);
+        let mut rel1 = Relation::new(RelationType::new(heading1));
+        rel1.insert(tuple! { a: 1i64, b: 1i64, c: 10i64 }).unwrap();
+        rel1.insert(tuple! { a: 1i64, b: 2i64, c: 20i64 }).unwrap();
+
+        let heading2 = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int)
+            .with_attribute("d", ScalarType::Int);
+        let mut rel2 = Relation::new(RelationType::new(heading2));
+        rel2.insert(tuple! { a: 1i64, b: 1i64, d: 100i64 }).unwrap();
+        rel2.insert(tuple! { a: 2i64, b: 1i64, d: 200i64 }).unwrap();
+
+        // Join on (a, b)
+        let result = rel1.join(&rel2);
+
+        // Should only match (1, 1)
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<i64>("a").unwrap(), 1);
+        assert_eq!(tuple.get_typed::<i64>("b").unwrap(), 1);
+        assert_eq!(tuple.get_typed::<i64>("c").unwrap(), 10);
+        assert_eq!(tuple.get_typed::<i64>("d").unwrap(), 100);
     }
 }
