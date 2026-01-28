@@ -2,9 +2,13 @@ use criterion::{
     BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
 use relvar::Database;
-use relvar::constraints::{KeyConstraints, PrimaryKey};
+use relvar::constraints::{
+    CheckConstraint, CheckConstraints, ConstraintExpression, KeyConstraints, PrimaryKey,
+    ValueOrRef,
+};
 use relvar::tuple;
 use relvar::types::{RelationType, ScalarType, TupleType};
+use relvar::values::ScalarValue;
 use tempfile::TempDir;
 
 fn create_employee_type() -> RelationType {
@@ -473,6 +477,206 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
     group.finish();
 }
 
+// CHECK constraint benchmarks (TTM RM Prescription 9)
+fn bench_insert_with_check_constraint(c: &mut Criterion) {
+    let mut group = c.benchmark_group("insert_with_check_constraint");
+
+    // Benchmark: Simple CHECK constraint (single comparison)
+    group.bench_function("simple_check", |b| {
+        b.iter_batched(
+            || {
+                // Setup: create database with CHECK constraint
+                let temp_dir = TempDir::new().unwrap();
+                let mut db = Database::open(temp_dir.path()).unwrap();
+                let emp_type = create_employee_type();
+                db.create_relvar("EMP", emp_type).unwrap();
+
+                // Add CHECK constraint: salary > 0
+                let constraints = CheckConstraints::new().with_constraint(
+                    CheckConstraint::from_expression(
+                        "positive_salary",
+                        "Salary must be positive",
+                        ConstraintExpression::Gt(
+                            "salary".to_string(),
+                            ValueOrRef::Value(ScalarValue::Float(0.0)),
+                        ),
+                    ),
+                );
+                db.set_check_constraints("EMP", constraints).unwrap();
+
+                (temp_dir, db)
+            },
+            |(_temp_dir, mut db)| {
+                // Measured: insert with CHECK constraint
+                let tuple = tuple! {
+                    emp_id: 1i64,
+                    name: "Alice",
+                    dept_id: 10i64,
+                    salary: 50000.0
+                };
+                db.insert("EMP", tuple).unwrap();
+                black_box(db);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    // Benchmark: Complex CHECK constraint (multiple conditions)
+    group.bench_function("complex_check", |b| {
+        b.iter_batched(
+            || {
+                let temp_dir = TempDir::new().unwrap();
+                let mut db = Database::open(temp_dir.path()).unwrap();
+                let emp_type = create_employee_type();
+                db.create_relvar("EMP", emp_type).unwrap();
+
+                // Add CHECK constraint: salary > 0 AND salary < 1000000
+                let constraints = CheckConstraints::new().with_constraint(
+                    CheckConstraint::from_expression(
+                        "valid_salary_range",
+                        "Salary must be between 0 and 1,000,000",
+                        ConstraintExpression::And(
+                            Box::new(ConstraintExpression::Gt(
+                                "salary".to_string(),
+                                ValueOrRef::Value(ScalarValue::Float(0.0)),
+                            )),
+                            Box::new(ConstraintExpression::Lt(
+                                "salary".to_string(),
+                                ValueOrRef::Value(ScalarValue::Float(1000000.0)),
+                            )),
+                        ),
+                    ),
+                );
+                db.set_check_constraints("EMP", constraints).unwrap();
+
+                (temp_dir, db)
+            },
+            |(_temp_dir, mut db)| {
+                let tuple = tuple! {
+                    emp_id: 1i64,
+                    name: "Alice",
+                    dept_id: 10i64,
+                    salary: 50000.0
+                };
+                db.insert("EMP", tuple).unwrap();
+                black_box(db);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    // Benchmark: Comparison baseline (no constraints)
+    group.bench_function("no_check", |b| {
+        b.iter_batched(
+            || {
+                let temp_dir = TempDir::new().unwrap();
+                let mut db = Database::open(temp_dir.path()).unwrap();
+                let emp_type = create_employee_type();
+                db.create_relvar("EMP", emp_type).unwrap();
+                (temp_dir, db)
+            },
+            |(_temp_dir, mut db)| {
+                let tuple = tuple! {
+                    emp_id: 1i64,
+                    name: "Alice",
+                    dept_id: 10i64,
+                    salary: 50000.0
+                };
+                db.insert("EMP", tuple).unwrap();
+                black_box(db);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.finish();
+}
+
+fn bench_check_constraint_evaluation(c: &mut Criterion) {
+    let mut group = c.benchmark_group("check_constraint_evaluation");
+
+    // Benchmark different expression types
+    for expr_type in ["simple", "and", "between", "in_small", "in_large"].iter() {
+        group.bench_function(*expr_type, |b| {
+            b.iter_batched(
+                || {
+                    // Setup: create constraint
+                    match *expr_type {
+                        "simple" => CheckConstraint::from_expression(
+                            "test",
+                            "test",
+                            ConstraintExpression::Gt(
+                                "salary".to_string(),
+                                ValueOrRef::Value(ScalarValue::Float(0.0)),
+                            ),
+                        ),
+                        "and" => CheckConstraint::from_expression(
+                            "test",
+                            "test",
+                            ConstraintExpression::And(
+                                Box::new(ConstraintExpression::Gt(
+                                    "salary".to_string(),
+                                    ValueOrRef::Value(ScalarValue::Float(0.0)),
+                                )),
+                                Box::new(ConstraintExpression::Lt(
+                                    "salary".to_string(),
+                                    ValueOrRef::Value(ScalarValue::Float(1000000.0)),
+                                )),
+                            ),
+                        ),
+                        "between" => CheckConstraint::from_expression(
+                            "test",
+                            "test",
+                            ConstraintExpression::Between(
+                                "salary".to_string(),
+                                ScalarValue::Float(0.0),
+                                ScalarValue::Float(1000000.0),
+                            ),
+                        ),
+                        "in_small" => CheckConstraint::from_expression(
+                            "test",
+                            "test",
+                            ConstraintExpression::In(
+                                "dept_id".to_string(),
+                                vec![
+                                    ScalarValue::Int(1),
+                                    ScalarValue::Int(2),
+                                    ScalarValue::Int(3),
+                                    ScalarValue::Int(4),
+                                    ScalarValue::Int(5),
+                                ],
+                            ),
+                        ),
+                        "in_large" => CheckConstraint::from_expression(
+                            "test",
+                            "test",
+                            ConstraintExpression::In(
+                                "dept_id".to_string(),
+                                (1..=100).map(ScalarValue::Int).collect(),
+                            ),
+                        ),
+                        _ => unreachable!(),
+                    }
+                },
+                |constraint| {
+                    // Measured: evaluate constraint
+                    let tuple = tuple! {
+                        emp_id: 1i64,
+                        name: "Alice",
+                        dept_id: 10i64,
+                        salary: 50000.0
+                    };
+                    let result = constraint.is_satisfied_by(&tuple).unwrap();
+                    black_box(result);
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_database_open,
@@ -487,6 +691,9 @@ criterion_group!(
     bench_realistic_workload,
     // Virtual relvar benchmarks (TTM RM Prescription 10)
     bench_virtual_relvar_creation,
-    bench_virtual_relvar_query
+    bench_virtual_relvar_query,
+    // CHECK constraint benchmarks (TTM RM Prescription 9)
+    bench_insert_with_check_constraint,
+    bench_check_constraint_evaluation
 );
 criterion_main!(benches);

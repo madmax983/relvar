@@ -162,46 +162,28 @@ impl ConstraintExpression {
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
         match self {
             ConstraintExpression::Eq(attr, value_or_ref) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-                let compare_value = Self::resolve_value_or_ref(tuple, value_or_ref)?;
-                Ok(tuple_value == compare_value)
+                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
+                Ok(left == right)
             }
             ConstraintExpression::Ne(attr, value_or_ref) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-                let compare_value = Self::resolve_value_or_ref(tuple, value_or_ref)?;
-                Ok(tuple_value != compare_value)
+                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
+                Ok(left != right)
             }
             ConstraintExpression::Lt(attr, value_or_ref) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-                let compare_value = Self::resolve_value_or_ref(tuple, value_or_ref)?;
-                Ok(tuple_value < compare_value)
+                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
+                Ok(left < right)
             }
             ConstraintExpression::Le(attr, value_or_ref) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-                let compare_value = Self::resolve_value_or_ref(tuple, value_or_ref)?;
-                Ok(tuple_value <= compare_value)
+                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
+                Ok(left <= right)
             }
             ConstraintExpression::Gt(attr, value_or_ref) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-                let compare_value = Self::resolve_value_or_ref(tuple, value_or_ref)?;
-                Ok(tuple_value > compare_value)
+                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
+                Ok(left > right)
             }
             ConstraintExpression::Ge(attr, value_or_ref) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-                let compare_value = Self::resolve_value_or_ref(tuple, value_or_ref)?;
-                Ok(tuple_value >= compare_value)
+                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
+                Ok(left >= right)
             }
             ConstraintExpression::And(left, right) => {
                 Ok(left.evaluate(tuple)? && right.evaluate(tuple)?)
@@ -217,6 +199,14 @@ impl ConstraintExpression {
                 let right_value = tuple
                     .get(right)
                     .ok_or_else(|| ExpressionError::AttributeNotFound(right.clone()))?;
+
+                // Validate types are compatible for comparison
+                if std::mem::discriminant(left_value) != std::mem::discriminant(right_value) {
+                    return Err(ExpressionError::TypeMismatch(
+                        format!("{:?}", left_value.scalar_type()),
+                        format!("{:?}", right_value.scalar_type()),
+                    ));
+                }
 
                 match op {
                     CmpOp::Eq => Ok(left_value == right_value),
@@ -237,7 +227,16 @@ impl ConstraintExpression {
                 let tuple_value = tuple
                     .get(attr)
                     .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-                Ok(values.contains(tuple_value))
+
+                // Use HashSet for O(1) lookup instead of Vec::contains O(N)
+                // For small lists (< 10 items), Vec is actually faster due to cache locality
+                if values.len() < 10 {
+                    Ok(values.contains(tuple_value))
+                } else {
+                    use std::collections::HashSet;
+                    let value_set: HashSet<_> = values.iter().collect();
+                    Ok(value_set.contains(tuple_value))
+                }
             }
             ConstraintExpression::Like(attr, pattern) => {
                 let tuple_value = tuple
@@ -261,51 +260,58 @@ impl ConstraintExpression {
         }
     }
 
-    /// Simple SQL LIKE pattern matching.
-    /// % matches any sequence of characters
-    /// _ matches any single character
+    /// Simple SQL LIKE pattern matching using dynamic programming.
+    ///
+    /// Uses an iterative DP approach to avoid stack overflow with patterns
+    /// containing many wildcards (% and _).
+    ///
+    /// % matches any sequence of characters (including empty)
+    /// _ matches exactly one character
+    ///
+    /// Time complexity: O(n*m) where n = text length, m = pattern length
+    /// Space complexity: O(n*m) for DP table
     fn matches_pattern(text: &str, pattern: &str) -> bool {
         let text_chars: Vec<char> = text.chars().collect();
         let pattern_chars: Vec<char> = pattern.chars().collect();
 
-        Self::matches_pattern_recursive(&text_chars, &pattern_chars, 0, 0)
-    }
+        let text_len = text_chars.len();
+        let pattern_len = pattern_chars.len();
 
-    fn matches_pattern_recursive(
-        text: &[char],
-        pattern: &[char],
-        text_idx: usize,
-        pattern_idx: usize,
-    ) -> bool {
-        // Base cases
-        if pattern_idx >= pattern.len() {
-            return text_idx >= text.len();
+        // DP table: dp[i][j] = true if text[0..i] matches pattern[0..j]
+        let mut dp = vec![vec![false; pattern_len + 1]; text_len + 1];
+
+        // Empty pattern matches empty text
+        dp[0][0] = true;
+
+        // Handle patterns that start with % (can match empty text)
+        for j in 1..=pattern_len {
+            if pattern_chars[j - 1] == '%' {
+                dp[0][j] = dp[0][j - 1];
+            }
         }
 
-        if text_idx >= text.len() {
-            // Remaining pattern must be all %
-            return pattern[pattern_idx..].iter().all(|&c| c == '%');
-        }
-
-        match pattern[pattern_idx] {
-            '%' => {
-                // Try matching zero or more characters
-                Self::matches_pattern_recursive(text, pattern, text_idx, pattern_idx + 1)
-                    || Self::matches_pattern_recursive(text, pattern, text_idx + 1, pattern_idx)
-            }
-            '_' => {
-                // Match exactly one character
-                Self::matches_pattern_recursive(text, pattern, text_idx + 1, pattern_idx + 1)
-            }
-            c => {
-                // Match literal character
-                if text[text_idx] == c {
-                    Self::matches_pattern_recursive(text, pattern, text_idx + 1, pattern_idx + 1)
-                } else {
-                    false
+        // Fill DP table
+        for i in 1..=text_len {
+            for j in 1..=pattern_len {
+                match pattern_chars[j - 1] {
+                    '%' => {
+                        // % can match zero characters (dp[i][j-1])
+                        // or match one or more characters (dp[i-1][j])
+                        dp[i][j] = dp[i][j - 1] || dp[i - 1][j];
+                    }
+                    '_' => {
+                        // _ matches exactly one character
+                        dp[i][j] = dp[i - 1][j - 1];
+                    }
+                    c => {
+                        // Literal character must match
+                        dp[i][j] = dp[i - 1][j - 1] && text_chars[i - 1] == c;
+                    }
                 }
             }
         }
+
+        dp[text_len][pattern_len]
     }
 
     /// Helper to resolve a ValueOrRef to a concrete ScalarValue from the tuple.
@@ -319,6 +325,32 @@ impl ConstraintExpression {
                 .get(attr)
                 .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone())),
         }
+    }
+
+    /// Helper to get and validate comparison operands.
+    ///
+    /// Fetches both operands and ensures they are of compatible types
+    /// before performing comparison operations.
+    fn get_comparison_operands<'a>(
+        tuple: &'a Tuple,
+        attr: &str,
+        value_or_ref: &'a ValueOrRef,
+    ) -> Result<(&'a ScalarValue, &'a ScalarValue), ExpressionError> {
+        let left = tuple
+            .get(attr)
+            .ok_or_else(|| ExpressionError::AttributeNotFound(attr.to_string()))?;
+        let right = Self::resolve_value_or_ref(tuple, value_or_ref)?;
+
+        // Validate types are compatible for comparison
+        // Using discriminant to check if they are the same enum variant
+        if std::mem::discriminant(left) != std::mem::discriminant(right) {
+            return Err(ExpressionError::TypeMismatch(
+                format!("{:?}", left.scalar_type()),
+                format!("{:?}", right.scalar_type()),
+            ));
+        }
+
+        Ok((left, right))
     }
 }
 
@@ -656,5 +688,44 @@ mod tests {
         let json = serde_json::to_string(&expr).unwrap();
         let restored: ConstraintExpression = serde_json::from_str(&json).unwrap();
         assert_eq!(expr, restored);
+    }
+
+    #[test]
+    fn test_type_mismatch_in_comparison() {
+        // Comparing Int with String should fail with TypeMismatch
+        let expr = ConstraintExpression::Gt(
+            "age".to_string(),
+            ValueOrRef::Value(ScalarValue::String("not_a_number".to_string())),
+        );
+
+        let tuple = tuple! { age: 30i64 };
+        let result = expr.evaluate(&tuple);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
+    }
+
+    #[test]
+    fn test_type_mismatch_in_lt() {
+        let expr =
+            ConstraintExpression::Lt("name".to_string(), ValueOrRef::Value(ScalarValue::Int(42)));
+
+        let tuple = tuple! { name: "Alice" };
+        let result = expr.evaluate(&tuple);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
+    }
+
+    #[test]
+    fn test_type_mismatch_attr_to_attr() {
+        let expr = ConstraintExpression::AttrCmp {
+            left: "age".to_string(),
+            op: CmpOp::Lt,
+            right: "name".to_string(),
+        };
+
+        let tuple = tuple! { age: 30i64, name: "Alice" };
+        let result = expr.evaluate(&tuple);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
     }
 }
