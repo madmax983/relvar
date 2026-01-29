@@ -24,4 +24,8 @@ pub enum WalError {
     /// Buffer is full and needs to be flushed.
     #[error("WAL buffer full ({0} bytes)")]
     BufferFull(usize),
+
+    /// General WAL error.
+    #[error("WAL error: {0}")]
+    Other(String),
 }

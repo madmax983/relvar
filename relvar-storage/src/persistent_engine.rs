@@ -105,20 +105,77 @@ impl PersistentEngine {
         };
 
         // Perform crash recovery if needed
-        // TODO: Full recovery implementation (Analysis/Redo/Undo passes)
-        // For now, this is a stub that does nothing
-        recover(&mut wal, &db_path)
-            .map_err(|e| StorageError::Other(format!("Recovery error: {}", e)))?;
+        let uncommitted_inserts =
+            recover(&mut wal).map_err(|e| StorageError::Other(format!("Recovery error: {}", e)))?;
 
-        Ok(Self {
-            db_path,
+        // Create engine instance first (we need catalog access)
+        let mut engine = Self {
+            db_path: db_path.clone(),
             catalog_path,
             catalog,
             heap_files: HashMap::new(),
             wal,
             txn_id_gen: TransactionIdGenerator::new(),
             current_txn: None,
-        })
+        };
+
+        // Undo uncommitted transactions
+        engine.undo_uncommitted_inserts(uncommitted_inserts)?;
+
+        Ok(engine)
+    }
+
+    /// Undoes uncommitted inserts identified during recovery.
+    fn undo_uncommitted_inserts(
+        &mut self,
+        uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
+    ) -> Result<(), StorageError> {
+        use std::collections::HashMap;
+
+        // Group by relation name
+        let mut by_relation: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+        for insert in uncommitted_inserts {
+            by_relation
+                .entry(insert.relation_name)
+                .or_default()
+                .push(insert.tuple_data);
+        }
+
+        // For each relation, rebuild without uncommitted tuples
+        for (relation_name, uncommitted_tuples) in by_relation {
+            // Skip if relation doesn't exist
+            if !self.catalog.relation_exists(&relation_name) {
+                continue;
+            }
+
+            // Load all tuples
+            let relation = self.load_relation(&relation_name)?;
+
+            // Filter out uncommitted tuples
+            let mut committed_tuples = Vec::new();
+            for tuple in relation.tuples() {
+                let tuple_data = bincode::serialize(&tuple)
+                    .map_err(|e| StorageError::Other(format!("Serialization error: {}", e)))?;
+
+                if !uncommitted_tuples.contains(&tuple_data) {
+                    committed_tuples.push(tuple.clone());
+                }
+            }
+
+            // Rebuild relation with only committed tuples
+            let mut new_relation =
+                relvar_core::values::Relation::new(relation.relation_type().clone());
+
+            for tuple in committed_tuples {
+                new_relation
+                    .insert(tuple)
+                    .map_err(|e| StorageError::Relation(e.to_string()))?;
+            }
+
+            self.store_relation(&relation_name, &new_relation)?;
+        }
+
+        Ok(())
     }
 
     /// Performs a checkpoint to enable WAL truncation and faster recovery.
@@ -421,6 +478,12 @@ impl StorageEngine for PersistentEngine {
                     tuple_data,
                 })
                 .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
+
+            // Flush WAL to ensure record is on disk for recovery
+            // (even if transaction doesn't commit, we need to be able to undo it)
+            self.wal
+                .flush()
+                .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
         }
 
         // Insert into heap file
@@ -946,26 +1009,30 @@ mod tests {
         let snapshot = engine.begin_transaction().unwrap();
 
         // Insert tuple - should log to WAL before writing to heap
-        // (WAL records are buffered until commit)
+        // (WAL records are flushed immediately to enable recovery undo)
         engine
             .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
             .unwrap();
 
-        // Verify WAL buffer has records (not yet flushed to disk)
+        // Verify WAL file has records (flushed immediately for recovery)
+        let wal_path = temp_dir.path().join("wal.log");
+        assert!(wal_path.exists(), "WAL file should exist");
+
+        let metadata = std::fs::metadata(&wal_path).unwrap();
         assert!(
-            !engine.wal.is_buffer_empty(),
-            "WAL buffer should contain records"
+            metadata.len() > 8,
+            "WAL should have records beyond header after insert"
         );
 
         // Commit should flush WAL and make changes durable
         engine.commit_transaction(snapshot).unwrap();
 
-        // After commit, WAL file should have content
-        let wal_path = temp_dir.path().join("wal.log");
-        assert!(wal_path.exists(), "WAL file should exist");
-
+        // After commit, WAL file should still have content
         let metadata = std::fs::metadata(&wal_path).unwrap();
-        assert!(metadata.len() > 8, "WAL should have records beyond header");
+        assert!(
+            metadata.len() > 8,
+            "WAL should have records beyond header after commit"
+        );
     }
 
     #[test]
@@ -1135,7 +1202,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // TODO: Implement full recovery with undo of uncommitted transactions
     fn test_recovery_ignores_uncommitted() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -1160,7 +1226,6 @@ mod tests {
         }
 
         // Reopen - should recover committed but not uncommitted
-        // TODO: This currently fails because recovery undo pass is not implemented
         {
             let engine = PersistentEngine::open(temp_dir.path()).unwrap();
             let relation = engine.load_relation("TEST").unwrap();

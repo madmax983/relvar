@@ -198,6 +198,74 @@ impl WalManager {
     pub fn is_buffer_empty(&self) -> bool {
         self.buffer.is_empty()
     }
+
+    /// Scans the WAL file and yields all records in order.
+    ///
+    /// This reads from the beginning of the WAL file (after the header)
+    /// and deserializes all records. Used during recovery.
+    ///
+    /// # Errors
+    ///
+    /// Returns `WalError::Io` if reading fails.
+    /// Returns `WalError::Corrupted` if a record cannot be deserialized.
+    pub fn scan(&mut self) -> Result<Vec<(Lsn, WalRecord)>, WalError> {
+        use std::io::Read;
+
+        // Flush any buffered records first
+        self.flush()?;
+
+        // Seek to start of records (after magic header)
+        self.log_file
+            .seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
+
+        let mut records = Vec::new();
+        let mut buffer = Vec::new();
+
+        // Read entire file into buffer
+        self.log_file.read_to_end(&mut buffer)?;
+
+        let mut offset = 0;
+        while offset < buffer.len() {
+            // Need at least 16 bytes for LSN + length
+            if offset + 16 > buffer.len() {
+                break;
+            }
+
+            // Read LSN (8 bytes)
+            let lsn_bytes: [u8; 8] = buffer[offset..offset + 8]
+                .try_into()
+                .map_err(|_| WalError::Corrupted(Lsn::new(0), "Invalid LSN".to_string()))?;
+            let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
+            offset += 8;
+
+            // Read record length (8 bytes)
+            let len_bytes: [u8; 8] = buffer[offset..offset + 8]
+                .try_into()
+                .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
+            let record_len = u64::from_le_bytes(len_bytes) as usize;
+            offset += 8;
+
+            // Read record data
+            if offset + record_len > buffer.len() {
+                return Err(WalError::Corrupted(
+                    lsn,
+                    "Record extends beyond file".to_string(),
+                ));
+            }
+
+            let record_bytes = &buffer[offset..offset + record_len];
+            let record = WalRecord::deserialize(record_bytes)
+                .map_err(|e| WalError::Corrupted(lsn, format!("Deserialization failed: {}", e)))?;
+
+            records.push((lsn, record));
+            offset += record_len;
+        }
+
+        // Seek back to end for future writes
+        self.log_file.seek(SeekFrom::End(0))?;
+
+        Ok(records)
+    }
 }
 
 #[cfg(test)]
@@ -318,5 +386,31 @@ mod tests {
         // Reopen
         let wal = WalManager::open(&path).unwrap();
         assert!(wal.current_lsn().value() > 0);
+    }
+
+    #[test]
+    fn test_scan_reads_all_records() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        let txn_id = TransactionId::new(1);
+
+        // Log several records
+        wal.log(WalRecord::Begin { txn_id }).unwrap();
+        wal.log(WalRecord::Insert {
+            txn_id,
+            relation_name: "test".to_string(),
+            tuple_data: vec![1, 2, 3],
+        })
+        .unwrap();
+        wal.log(WalRecord::Commit { txn_id }).unwrap();
+
+        // Scan should return all records
+        let records = wal.scan().unwrap();
+
+        assert_eq!(records.len(), 3);
+        assert!(matches!(records[0].1, WalRecord::Begin { .. }));
+        assert!(matches!(records[1].1, WalRecord::Insert { .. }));
+        assert!(matches!(records[2].1, WalRecord::Commit { .. }));
     }
 }

@@ -55,4 +55,4 @@ pub(crate) use error::WalError;
 pub(crate) use lsn::{Lsn, TransactionId, TransactionIdGenerator};
 pub(crate) use manager::{DEFAULT_BUFFER_SIZE, WalManager};
 pub(crate) use record::{MAX_RECORD_SIZE, WalRecord, WalRecordError};
-pub(crate) use recovery::{AnalysisResult, recover};
+pub(crate) use recovery::{AnalysisResult, UncommittedInsert, recover};

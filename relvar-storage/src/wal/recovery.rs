@@ -44,48 +44,101 @@ pub struct AnalysisResult {
 /// # Errors
 ///
 /// Returns `WalError` if WAL cannot be read or is corrupted.
-pub fn analyze(_wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
-    // Read all records from WAL
-    // TODO: Add WalManager::scan() method for cleaner API
-    // TODO: Implement full analysis pass
+pub fn analyze(wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
+    // Scan all records from WAL
+    let records = wal.scan()?;
 
-    // For now, return empty results
-    // Full implementation would scan the WAL file and identify committed/aborted transactions
+    let mut committed = HashSet::new();
+    let mut aborted = HashSet::new();
+    let mut last_checkpoint_lsn = None;
+
+    // Analyze each record to determine transaction states
+    for (lsn, record) in &records {
+        match record {
+            WalRecord::Commit { txn_id } => {
+                committed.insert(*txn_id);
+            }
+            WalRecord::Abort { txn_id } => {
+                aborted.insert(*txn_id);
+            }
+            WalRecord::Checkpoint { .. } => {
+                last_checkpoint_lsn = Some(*lsn);
+            }
+            _ => {
+                // Begin, Insert, Delete, PageWrite - just record them
+            }
+        }
+    }
 
     Ok(AnalysisResult {
-        committed: HashSet::new(),
-        aborted: HashSet::new(),
-        records: Vec::new(),
-        last_checkpoint_lsn: None,
+        committed,
+        aborted,
+        records,
+        last_checkpoint_lsn,
     })
 }
 
-/// Performs recovery on the database.
+/// Uncommitted insert information.
+#[derive(Debug)]
+pub struct UncommittedInsert {
+    /// Relation name.
+    pub relation_name: String,
+    /// Serialized tuple data.
+    pub tuple_data: Vec<u8>,
+}
+
+/// Performs recovery analysis and returns uncommitted operations.
 ///
-/// This is the main entry point for crash recovery. It performs:
-/// 1. Analysis pass to identify committed/aborted transactions
-/// 2. Redo pass to replay committed operations
-/// 3. Undo pass to roll back uncommitted transactions
+/// This performs the analysis pass and identifies which operations
+/// need to be undone. The actual undo is performed by the caller
+/// (PersistentEngine) which has access to the catalog.
 ///
 /// # Arguments
 ///
 /// * `wal` - The WAL manager
-/// * `db_path` - Path to the database directory
 ///
 /// # Errors
 ///
-/// Returns `WalError` if recovery fails.
-pub fn recover(wal: &mut WalManager, _db_path: &std::path::Path) -> Result<(), WalError> {
+/// Returns `WalError` if analysis fails.
+pub fn recover(wal: &mut WalManager) -> Result<Vec<UncommittedInsert>, WalError> {
     // Analysis pass
-    let _analysis = analyze(wal)?;
+    let analysis = analyze(wal)?;
 
-    // Redo pass
-    // TODO: Replay all committed operations
+    // Find uncommitted transactions (those with BEGIN but no COMMIT/ABORT)
+    let mut active_txns = HashSet::new();
+    for (_, record) in &analysis.records {
+        if let WalRecord::Begin { txn_id } = record {
+            active_txns.insert(*txn_id);
+        }
+    }
 
-    // Undo pass
-    // TODO: Roll back uncommitted transactions
+    // Remove committed and aborted transactions from active set
+    for txn_id in &analysis.committed {
+        active_txns.remove(txn_id);
+    }
+    for txn_id in &analysis.aborted {
+        active_txns.remove(txn_id);
+    }
 
-    Ok(())
+    // Collect uncommitted inserts
+    let mut uncommitted_inserts = Vec::new();
+
+    for (_, record) in &analysis.records {
+        if let WalRecord::Insert {
+            txn_id,
+            relation_name,
+            tuple_data,
+        } = record
+            && active_txns.contains(txn_id)
+        {
+            uncommitted_inserts.push(UncommittedInsert {
+                relation_name: relation_name.clone(),
+                tuple_data: tuple_data.clone(),
+            });
+        }
+    }
+
+    Ok(uncommitted_inserts)
 }
 
 #[cfg(test)]
