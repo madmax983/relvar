@@ -185,10 +185,13 @@ impl Relation {
     ///
     /// # Behavior
     ///
-    /// - All attribute pairs are combined (no automatic deduplication of common names)
-    /// - If relations have common attribute names, the first relation's values
-    ///   take precedence
-    /// - Result maintains set semantics
+    /// - Attributes from both relations are combined, subject to the collision rule below.
+    /// - **Attribute Collision Warning:** If relations have common attribute names,
+    ///   the attribute from the *second* relation is silently dropped from the result
+    ///   heading, and its values are discarded. The first relation's attribute takes
+    ///   precedence. This is a known limitation; ensure attributes are uniquely named
+    ///   before joining.
+    /// - Result maintains set semantics.
     ///
     /// # Complexity
     ///
@@ -469,5 +472,41 @@ mod tests {
 
         assert_eq!(result.cardinality(), 0);
         assert!(result.is_empty());
+    }
+
+    /// Verifies the documented behavior that theta_join drops conflicting attributes
+    /// from the second relation.
+    #[test]
+    fn test_theta_join_attribute_collision_resolution() {
+        // Relation 1: id=1
+        let heading1 = TupleType::new().with_attribute("id", ScalarType::Int);
+        let mut rel1 = Relation::new(RelationType::new(heading1));
+        rel1.insert(tuple! { id: 1i64 }).unwrap();
+
+        // Relation 2: id=2 (SAME ATTRIBUTE NAME)
+        let heading2 = TupleType::new().with_attribute("id", ScalarType::Int);
+        let mut rel2 = Relation::new(RelationType::new(heading2));
+        rel2.insert(tuple! { id: 2i64 }).unwrap();
+
+        // Theta join with a predicate that is always true
+        // If this were a proper Cartesian product (renaming aside), we'd expect
+        // something like (id_left: 1, id_right: 2).
+        //
+        // Current behavior: The second 'id' is dropped.
+        let result = rel1.theta_join(&rel2, |_, _| true);
+
+        // Assert that the result only has degree 1 (from rel1), not 2
+        assert_eq!(
+            result.degree(),
+            1,
+            "Expected colliding attribute to be dropped per current behavior"
+        );
+
+        // Assert that the value preserved is from the first relation (id=1)
+        let tuple = result.tuples().next().expect("Should have one tuple");
+        assert_eq!(
+            tuple.get_typed::<i64>("id").expect("id attribute missing"),
+            1
+        );
     }
 }
