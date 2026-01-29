@@ -30,6 +30,7 @@ use thiserror::Error;
 /// Tuple ID: (page_id, slot_number)
 /// Internal to storage layer only (TTM Proscription 6)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct TupleId {
     pub(crate) page_id: PageId,
     pub(crate) slot: u32,
@@ -313,6 +314,7 @@ impl HeapFile {
     }
 
     /// Read a tuple by its TupleId (internal use only per TTM Proscription 6)
+    #[allow(dead_code)]
     pub(crate) fn read_tuple(&mut self, tuple_id: TupleId) -> Result<Tuple, HeapError> {
         let page = self.page_file.read_page(tuple_id.page_id)?;
 
@@ -386,15 +388,14 @@ impl HeapFile {
             };
 
             // Read all tuples from this page
-            for (slot, slot_entry) in slotted_page.slots.iter().enumerate() {
-                if slot_entry.is_some() {
-                    let tuple_id = TupleId {
-                        page_id,
-                        slot: slot as u32,
-                    };
-                    // TupleId used internally, not exposed
-                    if let Ok(tuple) = self.read_tuple(tuple_id) {
-                        results.push(tuple); // Only push tuple
+            for slot_entry in slotted_page.slots.iter().flatten() {
+                let start = slot_entry.offset as usize;
+                let end = start + slot_entry.length as usize;
+
+                if end <= page.data().len() {
+                    let tuple_data = &page.data()[start..end];
+                    if let Ok(tuple) = bincode::deserialize(tuple_data) {
+                        results.push(tuple);
                     }
                 }
             }
