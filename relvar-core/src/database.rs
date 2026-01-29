@@ -135,7 +135,7 @@ pub struct Database<E: StorageEngine> {
     /// Whether a transaction is currently in progress.
     in_transaction: bool,
     /// Transaction savepoint.
-    transaction_snapshot: Option<crate::storage_engine::TransactionSnapshot>,
+    transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
     virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
 }

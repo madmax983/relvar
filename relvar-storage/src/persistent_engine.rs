@@ -1,13 +1,18 @@
 //! Persistent storage engine implementation using heap files and catalog.
 
 use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
-use relvar_core::storage_engine::{
-    RelationMetadata, StorageEngine, StorageError, TransactionSnapshot,
-};
+use relvar_core::storage_engine::{RelationMetadata, StorageEngine, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+/// Snapshot for persistent transactions.
+#[derive(Debug, Clone)]
+pub struct PersistentSnapshot {
+    /// Saved relations, keyed by name.
+    pub saved_relations: HashMap<String, Relation>,
+}
 
 /// Persistent storage engine using heap files and JSON catalog.
 ///
@@ -160,6 +165,8 @@ impl PersistentEngine {
 }
 
 impl StorageEngine for PersistentEngine {
+    type Snapshot = PersistentSnapshot;
+
     fn create_relation(
         &mut self,
         name: &str,
@@ -320,7 +327,7 @@ impl StorageEngine for PersistentEngine {
             .map_err(Self::convert_heap_error)
     }
 
-    fn begin_transaction(&mut self) -> Result<TransactionSnapshot, StorageError> {
+    fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError> {
         // Save current state of all relations
         let mut saved_relations = HashMap::new();
 
@@ -329,10 +336,10 @@ impl StorageEngine for PersistentEngine {
             saved_relations.insert(name, relation);
         }
 
-        Ok(TransactionSnapshot { saved_relations })
+        Ok(PersistentSnapshot { saved_relations })
     }
 
-    fn rollback_transaction(&mut self, snapshot: TransactionSnapshot) -> Result<(), StorageError> {
+    fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
         // Restore all relations from snapshot
         for (name, relation) in snapshot.saved_relations {
             self.store_relation(&name, &relation)?;

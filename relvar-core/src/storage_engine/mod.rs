@@ -11,7 +11,6 @@
 
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
-use std::collections::HashMap;
 use thiserror::Error;
 
 pub mod in_memory;
@@ -47,15 +46,6 @@ pub struct RelationMetadata {
     pub relation_type: RelationType,
 }
 
-/// Snapshot of storage state for transaction support.
-///
-/// This is an opaque type that storage engines use to save/restore state.
-#[derive(Debug, Clone)]
-pub struct TransactionSnapshot {
-    /// Saved relations, keyed by name.
-    pub saved_relations: HashMap<String, Relation>,
-}
-
 /// Trait for storage engine backends.
 ///
 /// This trait abstracts over different storage implementations:
@@ -78,6 +68,9 @@ pub struct TransactionSnapshot {
 /// assert!(engine.relation_exists("TEST"));
 /// ```
 pub trait StorageEngine: Send + Sync {
+    /// The snapshot type used for transactions.
+    type Snapshot: Send + Sync;
+
     /// Create a new relation.
     ///
     /// # Errors
@@ -138,7 +131,7 @@ pub trait StorageEngine: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if transaction creation fails.
-    fn begin_transaction(&mut self) -> Result<TransactionSnapshot, StorageError>;
+    fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError>;
 
     /// Commit a transaction (discard snapshot).
     ///
@@ -147,7 +140,7 @@ pub trait StorageEngine: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if commit fails.
-    fn commit_transaction(&mut self, _snapshot: TransactionSnapshot) -> Result<(), StorageError> {
+    fn commit_transaction(&mut self, _snapshot: Self::Snapshot) -> Result<(), StorageError> {
         Ok(())
     }
 
@@ -156,5 +149,5 @@ pub trait StorageEngine: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if rollback fails.
-    fn rollback_transaction(&mut self, snapshot: TransactionSnapshot) -> Result<(), StorageError>;
+    fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError>;
 }
