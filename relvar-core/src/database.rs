@@ -367,25 +367,10 @@ impl<E: StorageEngine> Database<E> {
         }
 
         // Check type constraints
-        if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
-            for (attr_name, constraints) in attr_constraints {
-                if let Some(value) = tuple.get(attr_name)
-                    && !constraints
-                        .is_satisfied_by(value)
-                        .map_err(|e| DatabaseError::TypeConstraintViolation(e.to_string()))?
-                {
-                    return Err(DatabaseError::TypeConstraintViolation(format!(
-                        "Attribute {} violates constraint",
-                        attr_name
-                    )));
-                }
-            }
-        }
+        self.validate_type_constraints(relation_name, &tuple)?;
 
         // Check CHECK constraints (tuple-level predicates)
-        if let Some(check_constraints) = self.check_constraints.get(relation_name) {
-            check_constraints.are_all_satisfied_by(&tuple)?;
-        }
+        self.validate_check_constraints(relation_name, &tuple)?;
 
         // Load current relation to check key constraints
         let current_relation = self.query(relation_name)?;
@@ -411,21 +396,7 @@ impl<E: StorageEngine> Database<E> {
         }
 
         // Check foreign key constraints
-        let fk_constraints_opt = self.foreign_key_constraints.get(relation_name).cloned();
-        if let Some(fk_constraints) = fk_constraints_opt {
-            for fk in fk_constraints.foreign_keys() {
-                let referenced_relation = self.query(fk.referenced_relation_name())?;
-
-                if fk
-                    .would_violate_on_insert(&tuple, &referenced_relation)
-                    .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
-                {
-                    return Err(DatabaseError::ForeignKeyViolation(
-                        "Foreign key constraint violated".to_string(),
-                    ));
-                }
-            }
-        }
+        self.validate_child_foreign_keys(relation_name, &tuple)?;
 
         // Insert into engine
         self.engine.insert_tuple(relation_name, tuple)?;
@@ -477,41 +448,7 @@ impl<E: StorageEngine> Database<E> {
         }
 
         // Check foreign key constraints (other relations referencing this one)
-        // TODO: Implement cascading deletes
-        let fk_constraints_clone = self.foreign_key_constraints.clone();
-        for (ref_name, fk_constraints) in &fk_constraints_clone {
-            for fk in fk_constraints.foreign_keys() {
-                if fk.referenced_relation_name() == relation_name {
-                    let referencing_relation = self.query(ref_name)?;
-
-                    // Check if any referencing tuples would be orphaned
-                    for ref_tuple in referencing_relation.tuples() {
-                        let ref_key_values: Vec<ScalarValue> = fk
-                            .foreign_key_attributes()
-                            .iter()
-                            .filter_map(|attr| ref_tuple.get(attr).cloned())
-                            .collect();
-
-                        // Check if the key exists in the new relation
-                        let exists = new_relation.tuples().any(|t| {
-                            let key_values: Vec<ScalarValue> = fk
-                                .referenced_attributes()
-                                .iter()
-                                .filter_map(|attr| t.get(attr).cloned())
-                                .collect();
-                            key_values == ref_key_values
-                        });
-
-                        if !exists {
-                            return Err(DatabaseError::ForeignKeyViolation(format!(
-                                "Deleting tuples would orphan referencing tuples in {}",
-                                ref_name
-                            )));
-                        }
-                    }
-                }
-            }
-        }
+        self.validate_referential_integrity(relation_name, &new_relation)?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -554,6 +491,15 @@ impl<E: StorageEngine> Database<E> {
                     return Err(DatabaseError::TupleMismatch);
                 }
 
+                // Validate Type constraints
+                self.validate_type_constraints(relation_name, &updated_tuple)?;
+
+                // Validate CHECK constraints
+                self.validate_check_constraints(relation_name, &updated_tuple)?;
+
+                // Validate Child Foreign Key constraints
+                self.validate_child_foreign_keys(relation_name, &updated_tuple)?;
+
                 new_relation.insert(updated_tuple)?;
                 update_count += 1;
             } else {
@@ -585,6 +531,9 @@ impl<E: StorageEngine> Database<E> {
                 }
             }
         }
+
+        // Validate referential integrity (Parent Foreign Keys)
+        self.validate_referential_integrity(relation_name, &new_relation)?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -685,6 +634,110 @@ impl<E: StorageEngine> Database<E> {
         self.virtual_relvars
             .remove(name)
             .ok_or_else(|| DatabaseError::RelationNotFound(name.to_string()))?;
+        Ok(())
+    }
+
+    /// Check type constraints for a tuple.
+    fn validate_type_constraints(
+        &self,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), DatabaseError> {
+        if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
+            for (attr_name, constraints) in attr_constraints {
+                if let Some(value) = tuple.get(attr_name)
+                    && !constraints
+                        .is_satisfied_by(value)
+                        .map_err(|e| DatabaseError::TypeConstraintViolation(e.to_string()))?
+                {
+                    return Err(DatabaseError::TypeConstraintViolation(format!(
+                        "Attribute {} violates constraint",
+                        attr_name
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Check CHECK constraints for a tuple.
+    fn validate_check_constraints(
+        &self,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), DatabaseError> {
+        if let Some(check_constraints) = self.check_constraints.get(relation_name) {
+            check_constraints.are_all_satisfied_by(tuple)?;
+        }
+        Ok(())
+    }
+
+    /// Check foreign key constraints where this tuple is the child (referencing another).
+    fn validate_child_foreign_keys(
+        &mut self,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), DatabaseError> {
+        let fk_constraints_opt = self.foreign_key_constraints.get(relation_name).cloned();
+        if let Some(fk_constraints) = fk_constraints_opt {
+            for fk in fk_constraints.foreign_keys() {
+                let referenced_relation = self.query(fk.referenced_relation_name())?;
+
+                if fk
+                    .would_violate_on_insert(tuple, &referenced_relation)
+                    .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
+                {
+                    return Err(DatabaseError::ForeignKeyViolation(
+                        "Foreign key constraint violated".to_string(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Check referential integrity: ensure no other relation references a key that is missing in `new_relation`.
+    fn validate_referential_integrity(
+        &mut self,
+        relation_name: &str,
+        new_relation: &Relation,
+    ) -> Result<(), DatabaseError> {
+        // Check foreign key constraints (other relations referencing this one)
+        // TODO: Implement cascading deletes
+        let fk_constraints_clone = self.foreign_key_constraints.clone();
+        for (ref_name, fk_constraints) in &fk_constraints_clone {
+            for fk in fk_constraints.foreign_keys() {
+                if fk.referenced_relation_name() == relation_name {
+                    let referencing_relation = self.query(ref_name)?;
+
+                    // Check if any referencing tuples would be orphaned
+                    for ref_tuple in referencing_relation.tuples() {
+                        let ref_key_values: Vec<ScalarValue> = fk
+                            .foreign_key_attributes()
+                            .iter()
+                            .filter_map(|attr| ref_tuple.get(attr).cloned())
+                            .collect();
+
+                        // Check if the key exists in the new relation
+                        let exists = new_relation.tuples().any(|t| {
+                            let key_values: Vec<ScalarValue> = fk
+                                .referenced_attributes()
+                                .iter()
+                                .filter_map(|attr| t.get(attr).cloned())
+                                .collect();
+                            key_values == ref_key_values
+                        });
+
+                        if !exists {
+                            return Err(DatabaseError::ForeignKeyViolation(format!(
+                                "Operation would orphan referencing tuples in {}",
+                                ref_name
+                            )));
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -1558,5 +1611,83 @@ mod tests {
         // Insert with invalid age (too high) should fail
         let result = db.insert("PERSONS", tuple! { id: 3i64, age: 200i64 });
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use crate::constraints::{
+        AttributeConstraints, CheckConstraint, CheckConstraints, ConstraintExpression,
+        TypeConstraint, ValueOrRef,
+    };
+    use crate::storage_engine::InMemoryEngine;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+
+    #[test]
+    fn test_update_enforces_constraints() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("age", ScalarType::Int),
+        );
+
+        db.create_relvar("VICTIM", rel_type).unwrap();
+
+        // 1. Add Type Constraint: age must be positive
+        let type_constraints = AttributeConstraints::new("age".to_string(), ScalarType::Int)
+            .with_constraint(TypeConstraint::PositiveInt);
+        db.set_type_constraints("VICTIM", "age", type_constraints)
+            .unwrap();
+
+        // 2. Add CHECK Constraint: age < 150
+        let check_constraints =
+            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
+                "valid_age",
+                "Age must be less than 150",
+                ConstraintExpression::Lt(
+                    "age".to_string(),
+                    ValueOrRef::Value(ScalarValue::Int(150)),
+                ),
+            ));
+        db.set_check_constraints("VICTIM", check_constraints)
+            .unwrap();
+
+        // 3. Insert valid data
+        db.insert("VICTIM", tuple! { id: 1i64, age: 30i64 })
+            .unwrap();
+
+        // 4. Attempt Update to invalid age (negative) - Violates Type Constraint
+        let result = db.update(
+            "VICTIM",
+            |t| t.get_typed::<i64>("id").unwrap() == 1,
+            |_| tuple! { id: 1i64, age: -50i64 },
+        );
+
+        assert!(
+            result.is_err(),
+            "Security Flaw: Update bypassed Type Constraints!"
+        );
+
+        // 5. Attempt Update to invalid age (too high) - Violates CHECK Constraint
+        // Reset data first (if update succeeded above, it might be corrupted, but we proceed)
+        let _ = db.update(
+            "VICTIM",
+            |t| t.get_typed::<i64>("id").unwrap() == 1,
+            |_| tuple! { id: 1i64, age: 30i64 },
+        );
+
+        let result = db.update(
+            "VICTIM",
+            |t| t.get_typed::<i64>("id").unwrap() == 1,
+            |_| tuple! { id: 1i64, age: 200i64 },
+        );
+
+        assert!(
+            result.is_err(),
+            "Security Flaw: Update bypassed CHECK Constraints!"
+        );
     }
 }
