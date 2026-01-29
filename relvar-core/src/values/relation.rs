@@ -398,6 +398,17 @@ impl Relation {
     pub fn is_empty(&self) -> bool {
         self.body.is_empty()
     }
+
+    /// Retains only the tuples specified by the predicate.
+    ///
+    /// In other words, remove all tuples `t` such that `f(&t)` returns `false`.
+    /// The tuples are visited in an unsorted order.
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&Tuple) -> bool,
+    {
+        self.body.retain(f);
+    }
 }
 
 #[cfg(test)]
@@ -542,5 +553,30 @@ mod tests {
 
         let count = relation.tuples().count();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_retain() {
+        let heading = emp_type();
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+        relation
+            .insert(tuple! { emp_id: 2i64, name: "Bob" })
+            .unwrap();
+        relation
+            .insert(tuple! { emp_id: 3i64, name: "Charlie" })
+            .unwrap();
+
+        // Retain only those with id > 1
+        relation.retain(|t| t.get_typed::<i64>("emp_id").unwrap() > 1);
+
+        assert_eq!(relation.cardinality(), 2);
+        assert!(!relation.contains(&tuple! { emp_id: 1i64, name: "Alice" }));
+        assert!(relation.contains(&tuple! { emp_id: 2i64, name: "Bob" }));
+        assert!(relation.contains(&tuple! { emp_id: 3i64, name: "Charlie" }));
     }
 }

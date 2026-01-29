@@ -462,19 +462,15 @@ impl<E: StorageEngine> Database<E> {
         }
 
         // Load current relation
-        let current_relation = self.query(relation_name)?;
+        let mut relation = self.query(relation_name)?;
 
-        // Filter out tuples to delete
-        let mut new_relation = Relation::new(current_relation.relation_type().clone());
-        let mut delete_count = 0;
+        let initial_len = relation.cardinality();
 
-        for tuple in current_relation.tuples() {
-            if predicate(tuple) {
-                delete_count += 1;
-            } else {
-                new_relation.insert(tuple.clone())?;
-            }
-        }
+        // Filter out tuples to delete in-place
+        // We keep tuples where the predicate returns false
+        relation.retain(|t| !predicate(t));
+
+        let delete_count = initial_len - relation.cardinality();
 
         // Check foreign key constraints (other relations referencing this one)
         // TODO: Implement cascading deletes
@@ -493,7 +489,7 @@ impl<E: StorageEngine> Database<E> {
                             .collect();
 
                         // Check if the key exists in the new relation
-                        let exists = new_relation.tuples().any(|t| {
+                        let exists = relation.tuples().any(|t| {
                             let key_values: Vec<ScalarValue> = fk
                                 .referenced_attributes()
                                 .iter()
@@ -514,7 +510,7 @@ impl<E: StorageEngine> Database<E> {
         }
 
         // Store the new relation
-        self.engine.store_relation(relation_name, &new_relation)?;
+        self.engine.store_relation(relation_name, &relation)?;
         Ok(delete_count)
     }
 
