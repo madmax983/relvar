@@ -77,7 +77,6 @@ fn bench_partial_update(c: &mut Criterion) {
                 },
                 |mut db| {
                     // Measured: update operation affecting only ~1% of tuples (dept_id == 5)
-                    // The other 99% are cloned in the current implementation
                     db.update(
                         "EMP",
                         |t| t.get_typed::<i64>("dept_id").unwrap() == 5,
