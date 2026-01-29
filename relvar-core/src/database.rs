@@ -648,13 +648,12 @@ impl<E: StorageEngine> Database<E> {
         relation: &Relation,
         constraints: &KeyConstraints,
     ) -> Result<(), DatabaseError> {
-        if let Some(pk) = constraints.primary_key() {
-            if !pk
+        if let Some(pk) = constraints.primary_key()
+            && !pk
                 .is_satisfied_by(relation)
                 .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-            {
-                return Err(DatabaseError::PrimaryKeyViolation);
-            }
+        {
+            return Err(DatabaseError::PrimaryKeyViolation);
         }
 
         for ck in constraints.candidate_keys() {
