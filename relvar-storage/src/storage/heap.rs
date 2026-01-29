@@ -444,6 +444,18 @@ impl HeapFile {
         }
         Ok(())
     }
+
+    /// Flushes all pending writes to disk.
+    ///
+    /// Ensures durability by calling `fsync` on the underlying page file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::Page`] if the sync fails.
+    pub fn sync(&mut self) -> Result<(), HeapError> {
+        self.page_file.sync()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

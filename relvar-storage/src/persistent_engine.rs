@@ -1,6 +1,7 @@
 //! Persistent storage engine implementation using heap files and catalog.
 
 use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
+use crate::wal::{TransactionId, TransactionIdGenerator, WalManager, WalRecord};
 use relvar_core::storage_engine::{RelationMetadata, StorageEngine, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
@@ -10,7 +11,10 @@ use std::path::{Path, PathBuf};
 /// Snapshot for persistent transactions.
 #[derive(Debug, Clone)]
 pub struct PersistentSnapshot {
-    /// Saved relations, keyed by name.
+    /// The transaction ID.
+    pub txn_id: TransactionId,
+    /// Saved relations (for compatibility with old rollback approach).
+    /// TODO: Remove once full WAL recovery is implemented.
     pub saved_relations: HashMap<String, Relation>,
 }
 
@@ -46,6 +50,12 @@ pub struct PersistentEngine {
     catalog: Catalog,
     /// Open heap files, keyed by relation name.
     heap_files: HashMap<String, HeapFile>,
+    /// Write-Ahead Log manager.
+    wal: WalManager,
+    /// Transaction ID generator.
+    txn_id_gen: TransactionIdGenerator,
+    /// Current active transaction (if any).
+    current_txn: Option<TransactionId>,
 }
 
 impl PersistentEngine {
@@ -61,6 +71,7 @@ impl PersistentEngine {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
         let db_path = path.as_ref().to_path_buf();
         let catalog_path = db_path.join("catalog.json");
+        let wal_path = db_path.join("wal.log");
 
         // Create directory if it doesn't exist
         if !db_path.exists() {
@@ -84,11 +95,23 @@ impl PersistentEngine {
             Catalog::new()
         };
 
+        // Open or create WAL
+        let wal = if wal_path.exists() {
+            WalManager::open(&wal_path)
+                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?
+        } else {
+            WalManager::create(&wal_path)
+                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?
+        };
+
         Ok(Self {
             db_path,
             catalog_path,
             catalog,
             heap_files: HashMap::new(),
+            wal,
+            txn_id_gen: TransactionIdGenerator::new(),
+            current_txn: None,
         })
     }
 
@@ -321,6 +344,23 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn insert_tuple(&mut self, name: &str, tuple: Tuple) -> Result<(), StorageError> {
+        // If in a transaction, log WAL record before modifying data
+        if let Some(txn_id) = self.current_txn {
+            // Serialize tuple for WAL
+            let tuple_data = bincode::serialize(&tuple)
+                .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
+
+            // Log INSERT record to WAL (before data modification)
+            self.wal
+                .log(WalRecord::Insert {
+                    txn_id,
+                    relation_name: name.to_string(),
+                    tuple_data,
+                })
+                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
+        }
+
+        // Insert into heap file
         let heap_file = self.get_or_open_heap_file(name)?;
         heap_file
             .insert_tuple(&tuple)
@@ -328,7 +368,17 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError> {
-        // Save current state of all relations
+        // Generate transaction ID
+        let txn_id = self.txn_id_gen.generate();
+        self.current_txn = Some(txn_id);
+
+        // Log BEGIN record to WAL
+        self.wal
+            .log(WalRecord::Begin { txn_id })
+            .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
+
+        // Save current state of all relations (for compatibility)
+        // TODO: Remove once full WAL recovery is implemented
         let mut saved_relations = HashMap::new();
 
         for name in self.catalog.list_relations() {
@@ -336,14 +386,55 @@ impl StorageEngine for PersistentEngine {
             saved_relations.insert(name, relation);
         }
 
-        Ok(PersistentSnapshot { saved_relations })
+        Ok(PersistentSnapshot {
+            txn_id,
+            saved_relations,
+        })
+    }
+
+    fn commit_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
+        // Log COMMIT record to WAL
+        self.wal
+            .log(WalRecord::Commit {
+                txn_id: snapshot.txn_id,
+            })
+            .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
+
+        // Flush WAL to ensure durability
+        self.wal
+            .flush()
+            .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
+
+        // Flush all open heap files to disk
+        for heap_file in self.heap_files.values_mut() {
+            heap_file
+                .sync()
+                .map_err(|e| StorageError::Other(format!("Heap sync error: {}", e)))?;
+        }
+
+        // Clear current transaction
+        self.current_txn = None;
+
+        Ok(())
     }
 
     fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
+        // Log ABORT record to WAL
+        self.wal
+            .log(WalRecord::Abort {
+                txn_id: snapshot.txn_id,
+            })
+            .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
+
+        // Do NOT flush WAL - aborted transactions are not durable
+
         // Restore all relations from snapshot
         for (name, relation) in snapshot.saved_relations {
             self.store_relation(&name, &relation)?;
         }
+
+        // Clear current transaction
+        self.current_txn = None;
 
         Ok(())
     }
@@ -777,5 +868,88 @@ mod tests {
 
         let relation = engine.load_relation("TEST").unwrap();
         assert_eq!(relation.cardinality(), 2);
+    }
+
+    // WAL Integration Tests (Step 5)
+
+    #[test]
+    fn test_insert_logs_before_write() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        // Begin transaction
+        let snapshot = engine.begin_transaction().unwrap();
+
+        // Insert tuple - should log to WAL before writing to heap
+        // (WAL records are buffered until commit)
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Verify WAL buffer has records (not yet flushed to disk)
+        assert!(
+            !engine.wal.is_buffer_empty(),
+            "WAL buffer should contain records"
+        );
+
+        // Commit should flush WAL and make changes durable
+        engine.commit_transaction(snapshot).unwrap();
+
+        // After commit, WAL file should have content
+        let wal_path = temp_dir.path().join("wal.log");
+        assert!(wal_path.exists(), "WAL file should exist");
+
+        let metadata = std::fs::metadata(&wal_path).unwrap();
+        assert!(metadata.len() > 8, "WAL should have records beyond header");
+    }
+
+    #[test]
+    fn test_commit_flushes_wal() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        let snapshot = engine.begin_transaction().unwrap();
+
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Commit should flush WAL to ensure durability
+        engine.commit_transaction(snapshot).unwrap();
+
+        // After commit, WAL should be flushed (we can verify by reopening)
+        // Data should survive even if we "crash" (close without explicit flush)
+        drop(engine);
+
+        // Reopen and verify data persists
+        let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+        let relation = engine.load_relation("TEST").unwrap();
+        assert_eq!(relation.cardinality(), 1);
+    }
+
+    #[test]
+    fn test_abort_does_not_flush() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        let snapshot = engine.begin_transaction().unwrap();
+
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Rollback should NOT flush WAL
+        // (transaction is aborted, changes should not be durable)
+        engine.rollback_transaction(snapshot).unwrap();
+
+        // After rollback, data should not persist
+        let relation = engine.load_relation("TEST").unwrap();
+        assert_eq!(relation.cardinality(), 0);
     }
 }
