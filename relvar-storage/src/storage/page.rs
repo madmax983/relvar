@@ -312,8 +312,9 @@ impl PageFile {
             )));
         }
 
-        let actual_data = buffer[8..8 + data_len].to_vec();
-        Page::from_data(page_id, actual_data)
+        buffer.copy_within(8..8 + data_len, 0);
+        buffer.truncate(data_len);
+        Page::from_data(page_id, buffer)
     }
 
     /// Writes a page to disk.
