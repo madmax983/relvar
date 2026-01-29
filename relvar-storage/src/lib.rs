@@ -16,6 +16,9 @@
 pub mod persistent_engine;
 pub mod storage;
 
+// WAL module is pub(crate) - not exposed to logical layer (TTM compliance)
+pub(crate) mod wal;
+
 pub use persistent_engine::PersistentEngine;
 
 // Re-export key storage types

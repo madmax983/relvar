@@ -346,6 +346,56 @@ impl PageFile {
         Ok(())
     }
 
+    /// Writes a page to disk without syncing (buffered write).
+    ///
+    /// This method writes the page to the OS buffer but does not guarantee
+    /// durability until `sync()` is explicitly called. This enables
+    /// Write-Ahead Logging to coordinate when data is flushed to disk.
+    ///
+    /// # Safety
+    ///
+    /// Data written with this method may be lost in a crash unless `sync()`
+    /// is called. When using WAL, the WAL must be flushed first before
+    /// calling `sync()` on the page file.
+    ///
+    /// # Arguments
+    ///
+    /// * `page` - The page to write
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PageError::Io`] if the write fails.
+    pub fn write_page_buffered(&mut self, page: &Page) -> Result<(), PageError> {
+        // Seek to the page offset
+        let offset = page.id() * PAGE_SIZE as u64;
+        self.file.seek(SeekFrom::Start(offset))?;
+
+        // Prepare buffer with length prefix and data
+        let mut buffer = Vec::with_capacity(PAGE_SIZE);
+
+        // Write data length (8 bytes)
+        let data_len = page.data().len() as u64;
+        buffer.extend_from_slice(&data_len.to_le_bytes());
+
+        // Write actual data
+        buffer.extend_from_slice(page.data());
+
+        // Ensure buffer doesn't exceed PAGE_SIZE (would corrupt page alignment)
+        if buffer.len() > PAGE_SIZE {
+            return Err(PageError::PageTooLarge);
+        }
+
+        // Pad to PAGE_SIZE
+        if buffer.len() < PAGE_SIZE {
+            buffer.resize(PAGE_SIZE, 0);
+        }
+
+        // Write to file WITHOUT sync (buffered)
+        self.file.write_all(&buffer)?;
+
+        Ok(())
+    }
+
     /// Flushes all pending writes to disk.
     ///
     /// Ensures durability by calling `fsync` on the underlying file.
@@ -488,5 +538,80 @@ mod tests {
         // Read it back
         let read_page = page_file.read_page(0).unwrap();
         assert_eq!(read_page.data(), &[4, 5, 6, 7]);
+    }
+
+    #[test]
+    fn test_write_buffered_no_immediate_sync() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_path_buf();
+
+        {
+            let mut page_file = PageFile::create(&path).unwrap();
+            let page = Page::from_data(0, vec![1, 2, 3, 4, 5]).unwrap();
+
+            // Write buffered - data may not be on disk yet
+            page_file.write_page_buffered(&page).unwrap();
+
+            // Note: We can't reliably test that data ISN'T on disk because
+            // the OS may flush buffers at any time. This test just verifies
+            // the method succeeds.
+        }
+
+        // After closing and reopening, data should be there (OS flushes on close)
+        {
+            let mut page_file = PageFile::open(&path).unwrap();
+            let read_page = page_file.read_page(0).unwrap();
+            assert_eq!(read_page.data(), &[1, 2, 3, 4, 5]);
+        }
+    }
+
+    #[test]
+    fn test_explicit_sync_persists_data() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_path_buf();
+
+        {
+            let mut page_file = PageFile::create(&path).unwrap();
+            let page = Page::from_data(0, vec![42, 43, 44]).unwrap();
+
+            // Write buffered then explicitly sync
+            page_file.write_page_buffered(&page).unwrap();
+            page_file.sync().unwrap();
+        }
+
+        // Data should survive reopen
+        {
+            let mut page_file = PageFile::open(&path).unwrap();
+            let read_page = page_file.read_page(0).unwrap();
+            assert_eq!(read_page.data(), &[42, 43, 44]);
+        }
+    }
+
+    #[test]
+    fn test_write_then_crash_simulation() {
+        // This test demonstrates that without sync, data MIGHT be lost
+        // (though in practice, OS buffering makes this hard to test reliably)
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_path_buf();
+
+        {
+            let mut page_file = PageFile::create(&path).unwrap();
+            let page = Page::from_data(0, vec![99, 98, 97]).unwrap();
+
+            // Write buffered without sync
+            page_file.write_page_buffered(&page).unwrap();
+
+            // Simulate crash by dropping file handle without calling sync
+            // (Note: The OS may still flush on drop, so this is not a perfect test)
+            drop(page_file);
+        }
+
+        // In a real crash scenario, this data might be lost. But for testing
+        // purposes, we just verify the API works correctly. A true crash
+        // recovery test would require actual power-off simulation.
+        // For now, we just verify the file can be opened and read.
+        let mut page_file = PageFile::open(&path).unwrap();
+        let _read_page = page_file.read_page(0);
+        // Don't assert on data content - might or might not be there
     }
 }
