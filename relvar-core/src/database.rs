@@ -213,28 +213,7 @@ impl<E: StorageEngine> Database<E> {
 
         // Validate constraints against existing data
         let relation = self.query(relation_name)?;
-
-        if let Some(pk) = constraints.primary_key() {
-            for tuple in relation.tuples() {
-                if pk
-                    .would_violate(&relation, tuple)
-                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-                {
-                    return Err(DatabaseError::PrimaryKeyViolation);
-                }
-            }
-        }
-
-        for ck in constraints.candidate_keys() {
-            for tuple in relation.tuples() {
-                if ck
-                    .would_violate(&relation, tuple)
-                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-                {
-                    return Err(DatabaseError::CandidateKeyViolation);
-                }
-            }
-        }
+        self.validate_key_constraints_bulk(&relation, &constraints)?;
 
         self.key_constraints
             .insert(relation_name.to_string(), constraints);
@@ -351,81 +330,15 @@ impl<E: StorageEngine> Database<E> {
     /// - The tuple type doesn't match
     /// - A constraint is violated
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
-        // Check if trying to insert into a virtual relvar
-        if self.virtual_relvars.contains_key(relation_name) {
-            return Err(DatabaseError::CannotModifyVirtualRelvar(
-                relation_name.to_string(),
-            ));
-        }
-
-        // Get relation metadata
-        let metadata = self.engine.get_relation_metadata(relation_name)?;
-
-        // Check tuple type matches
-        if !tuple.conforms_to(metadata.relation_type.tuple_type()) {
-            return Err(DatabaseError::TupleMismatch);
-        }
-
-        // Check type constraints
-        if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
-            for (attr_name, constraints) in attr_constraints {
-                if let Some(value) = tuple.get(attr_name)
-                    && !constraints
-                        .is_satisfied_by(value)
-                        .map_err(|e| DatabaseError::TypeConstraintViolation(e.to_string()))?
-                {
-                    return Err(DatabaseError::TypeConstraintViolation(format!(
-                        "Attribute {} violates constraint",
-                        attr_name
-                    )));
-                }
-            }
-        }
-
-        // Check CHECK constraints (tuple-level predicates)
-        if let Some(check_constraints) = self.check_constraints.get(relation_name) {
-            check_constraints.are_all_satisfied_by(&tuple)?;
-        }
+        self.ensure_not_virtual(relation_name)?;
+        self.validate_tuple_type(relation_name, &tuple)?;
+        self.validate_type_constraints(relation_name, &tuple)?;
+        self.validate_check_constraints(relation_name, &tuple)?;
 
         // Load current relation to check key constraints
         let current_relation = self.query(relation_name)?;
-
-        // Check key constraints
-        if let Some(key_constraints) = self.key_constraints.get(relation_name) {
-            if let Some(pk) = key_constraints.primary_key()
-                && pk
-                    .would_violate(&current_relation, &tuple)
-                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-            {
-                return Err(DatabaseError::PrimaryKeyViolation);
-            }
-
-            for ck in key_constraints.candidate_keys() {
-                if ck
-                    .would_violate(&current_relation, &tuple)
-                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-                {
-                    return Err(DatabaseError::CandidateKeyViolation);
-                }
-            }
-        }
-
-        // Check foreign key constraints
-        let fk_constraints_opt = self.foreign_key_constraints.get(relation_name).cloned();
-        if let Some(fk_constraints) = fk_constraints_opt {
-            for fk in fk_constraints.foreign_keys() {
-                let referenced_relation = self.query(fk.referenced_relation_name())?;
-
-                if fk
-                    .would_violate_on_insert(&tuple, &referenced_relation)
-                    .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
-                {
-                    return Err(DatabaseError::ForeignKeyViolation(
-                        "Foreign key constraint violated".to_string(),
-                    ));
-                }
-            }
-        }
+        self.validate_key_constraints_single_tuple(relation_name, &tuple, &current_relation)?;
+        self.validate_foreign_keys_single_tuple(relation_name, &tuple)?;
 
         // Insert into engine
         self.engine.insert_tuple(relation_name, tuple)?;
@@ -454,12 +367,7 @@ impl<E: StorageEngine> Database<E> {
     where
         F: Fn(&Tuple) -> bool,
     {
-        // Check if trying to delete from a virtual relvar
-        if self.virtual_relvars.contains_key(relation_name) {
-            return Err(DatabaseError::CannotModifyVirtualRelvar(
-                relation_name.to_string(),
-            ));
-        }
+        self.ensure_not_virtual(relation_name)?;
 
         // Load current relation
         let current_relation = self.query(relation_name)?;
@@ -476,42 +384,7 @@ impl<E: StorageEngine> Database<E> {
             }
         }
 
-        // Check foreign key constraints (other relations referencing this one)
-        // TODO: Implement cascading deletes
-        let fk_constraints_clone = self.foreign_key_constraints.clone();
-        for (ref_name, fk_constraints) in &fk_constraints_clone {
-            for fk in fk_constraints.foreign_keys() {
-                if fk.referenced_relation_name() == relation_name {
-                    let referencing_relation = self.query(ref_name)?;
-
-                    // Check if any referencing tuples would be orphaned
-                    for ref_tuple in referencing_relation.tuples() {
-                        let ref_key_values: Vec<ScalarValue> = fk
-                            .foreign_key_attributes()
-                            .iter()
-                            .filter_map(|attr| ref_tuple.get(attr).cloned())
-                            .collect();
-
-                        // Check if the key exists in the new relation
-                        let exists = new_relation.tuples().any(|t| {
-                            let key_values: Vec<ScalarValue> = fk
-                                .referenced_attributes()
-                                .iter()
-                                .filter_map(|attr| t.get(attr).cloned())
-                                .collect();
-                            key_values == ref_key_values
-                        });
-
-                        if !exists {
-                            return Err(DatabaseError::ForeignKeyViolation(format!(
-                                "Deleting tuples would orphan referencing tuples in {}",
-                                ref_name
-                            )));
-                        }
-                    }
-                }
-            }
-        }
+        self.validate_referencing_foreign_keys(relation_name, &new_relation)?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -531,12 +404,7 @@ impl<E: StorageEngine> Database<E> {
         F: Fn(&Tuple) -> bool,
         U: Fn(&Tuple) -> Tuple,
     {
-        // Check if trying to update a virtual relvar
-        if self.virtual_relvars.contains_key(relation_name) {
-            return Err(DatabaseError::CannotModifyVirtualRelvar(
-                relation_name.to_string(),
-            ));
-        }
+        self.ensure_not_virtual(relation_name)?;
 
         // Load current relation
         let current_relation = self.query(relation_name)?;
@@ -563,27 +431,7 @@ impl<E: StorageEngine> Database<E> {
 
         // Validate key constraints on new relation
         if let Some(key_constraints) = self.key_constraints.get(relation_name) {
-            if let Some(pk) = key_constraints.primary_key() {
-                for tuple in new_relation.tuples() {
-                    if pk
-                        .would_violate(&new_relation, tuple)
-                        .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-                    {
-                        return Err(DatabaseError::PrimaryKeyViolation);
-                    }
-                }
-            }
-
-            for ck in key_constraints.candidate_keys() {
-                for tuple in new_relation.tuples() {
-                    if ck
-                        .would_violate(&new_relation, tuple)
-                        .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-                    {
-                        return Err(DatabaseError::CandidateKeyViolation);
-                    }
-                }
-            }
+            self.validate_key_constraints_bulk(&new_relation, key_constraints)?;
         }
 
         // Store the new relation
@@ -685,6 +533,182 @@ impl<E: StorageEngine> Database<E> {
         self.virtual_relvars
             .remove(name)
             .ok_or_else(|| DatabaseError::RelationNotFound(name.to_string()))?;
+        Ok(())
+    }
+
+    // --- Helper Methods ---
+
+    fn ensure_not_virtual(&self, relation_name: &str) -> Result<(), DatabaseError> {
+        if self.virtual_relvars.contains_key(relation_name) {
+            Err(DatabaseError::CannotModifyVirtualRelvar(
+                relation_name.to_string(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn validate_tuple_type(&self, relation_name: &str, tuple: &Tuple) -> Result<(), DatabaseError> {
+        let metadata = self.engine.get_relation_metadata(relation_name)?;
+        if !tuple.conforms_to(metadata.relation_type.tuple_type()) {
+            Err(DatabaseError::TupleMismatch)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn validate_type_constraints(
+        &self,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), DatabaseError> {
+        if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
+            for (attr_name, constraints) in attr_constraints {
+                if let Some(value) = tuple.get(attr_name)
+                    && !constraints
+                        .is_satisfied_by(value)
+                        .map_err(|e| DatabaseError::TypeConstraintViolation(e.to_string()))?
+                {
+                    return Err(DatabaseError::TypeConstraintViolation(format!(
+                        "Attribute {} violates constraint",
+                        attr_name
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_check_constraints(
+        &self,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), DatabaseError> {
+        if let Some(check_constraints) = self.check_constraints.get(relation_name) {
+            check_constraints.are_all_satisfied_by(tuple)?;
+        }
+        Ok(())
+    }
+
+    fn validate_key_constraints_single_tuple(
+        &self,
+        relation_name: &str,
+        tuple: &Tuple,
+        current_relation: &Relation,
+    ) -> Result<(), DatabaseError> {
+        if let Some(key_constraints) = self.key_constraints.get(relation_name) {
+            if let Some(pk) = key_constraints.primary_key()
+                && pk
+                    .would_violate(current_relation, tuple)
+                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
+            {
+                return Err(DatabaseError::PrimaryKeyViolation);
+            }
+
+            for ck in key_constraints.candidate_keys() {
+                if ck
+                    .would_violate(current_relation, tuple)
+                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
+                {
+                    return Err(DatabaseError::CandidateKeyViolation);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_foreign_keys_single_tuple(
+        &mut self,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), DatabaseError> {
+        let fk_constraints_opt = self.foreign_key_constraints.get(relation_name).cloned();
+        if let Some(fk_constraints) = fk_constraints_opt {
+            for fk in fk_constraints.foreign_keys() {
+                let referenced_relation = self.query(fk.referenced_relation_name())?;
+
+                if fk
+                    .would_violate_on_insert(tuple, &referenced_relation)
+                    .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
+                {
+                    return Err(DatabaseError::ForeignKeyViolation(
+                        "Foreign key constraint violated".to_string(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_key_constraints_bulk(
+        &self,
+        relation: &Relation,
+        constraints: &KeyConstraints,
+    ) -> Result<(), DatabaseError> {
+        if let Some(pk) = constraints.primary_key() {
+            for tuple in relation.tuples() {
+                if pk
+                    .would_violate(relation, tuple)
+                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
+                {
+                    return Err(DatabaseError::PrimaryKeyViolation);
+                }
+            }
+        }
+
+        for ck in constraints.candidate_keys() {
+            for tuple in relation.tuples() {
+                if ck
+                    .would_violate(relation, tuple)
+                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
+                {
+                    return Err(DatabaseError::CandidateKeyViolation);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_referencing_foreign_keys(
+        &mut self,
+        relation_name: &str,
+        relation_after_delete: &Relation,
+    ) -> Result<(), DatabaseError> {
+        // Check foreign key constraints (other relations referencing this one)
+        let fk_constraints_clone = self.foreign_key_constraints.clone();
+        for (ref_name, fk_constraints) in &fk_constraints_clone {
+            for fk in fk_constraints.foreign_keys() {
+                if fk.referenced_relation_name() == relation_name {
+                    let referencing_relation = self.query(ref_name)?;
+
+                    // Check if any referencing tuples would be orphaned
+                    for ref_tuple in referencing_relation.tuples() {
+                        let ref_key_values: Vec<ScalarValue> = fk
+                            .foreign_key_attributes()
+                            .iter()
+                            .filter_map(|attr| ref_tuple.get(attr).cloned())
+                            .collect();
+
+                        // Check if the key exists in the new relation
+                        let exists = relation_after_delete.tuples().any(|t| {
+                            let key_values: Vec<ScalarValue> = fk
+                                .referenced_attributes()
+                                .iter()
+                                .filter_map(|attr| t.get(attr).cloned())
+                                .collect();
+                            key_values == ref_key_values
+                        });
+
+                        if !exists {
+                            return Err(DatabaseError::ForeignKeyViolation(format!(
+                                "Deleting tuples would orphan referencing tuples in {}",
+                                ref_name
+                            )));
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
