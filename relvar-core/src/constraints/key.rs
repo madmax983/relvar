@@ -82,6 +82,10 @@ pub enum KeyConstraintError {
     #[error("Key attributes {0:?} do not exist in relation")]
     InvalidKeyAttributes(Vec<String>),
 
+    /// The tuple is missing a required key attribute.
+    #[error("Tuple is missing key attribute: {0}")]
+    TupleMissingAttribute(String),
+
     /// A key must have at least one attribute.
     #[error("Key cannot be empty")]
     EmptyKey,
@@ -143,7 +147,7 @@ impl CandidateKey {
         let mut key_values = HashSet::new();
 
         for tuple in relation.tuples() {
-            let key_value = self.extract_key_value(tuple);
+            let key_value = self.extract_key_value(tuple)?;
             if !key_values.insert(key_value) {
                 // Duplicate found
                 return Ok(false);
@@ -159,10 +163,10 @@ impl CandidateKey {
         relation: &Relation,
         new_tuple: &Tuple,
     ) -> Result<bool, KeyConstraintError> {
-        let new_key_value = self.extract_key_value(new_tuple);
+        let new_key_value = self.extract_key_value(new_tuple)?;
 
         for existing_tuple in relation.tuples() {
-            let existing_key_value = self.extract_key_value(existing_tuple);
+            let existing_key_value = self.extract_key_value(existing_tuple)?;
             if new_key_value == existing_key_value {
                 return Ok(true);
             }
@@ -172,11 +176,19 @@ impl CandidateKey {
     }
 
     /// Extract key value from a tuple
-    fn extract_key_value(&self, tuple: &Tuple) -> Vec<crate::values::ScalarValue> {
-        self.attributes
-            .iter()
-            .map(|attr| tuple.get(attr).unwrap().clone())
-            .collect()
+    fn extract_key_value(
+        &self,
+        tuple: &Tuple,
+    ) -> Result<Vec<crate::values::ScalarValue>, KeyConstraintError> {
+        let mut values = Vec::with_capacity(self.attributes.len());
+        for attr in &self.attributes {
+            if let Some(val) = tuple.get(attr) {
+                values.push(val.clone());
+            } else {
+                return Err(KeyConstraintError::TupleMissingAttribute(attr.clone()));
+            }
+        }
+        Ok(values)
     }
 }
 
@@ -486,5 +498,24 @@ mod tests {
             result.unwrap_err(),
             KeyConstraintError::InvalidKeyAttributes(_)
         ));
+    }
+
+    #[test]
+    fn test_extract_key_value_missing_attribute() {
+        let heading = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
+        let relation = Relation::new(RelationType::new(heading));
+
+        let key = CandidateKey::new(vec!["id".to_string()]).unwrap();
+
+        // Tuple missing "id"
+        let bad_tuple = tuple! { name: "Alice" };
+
+        // This should returns Err instead of panicking
+        let result = key.would_violate(&relation, &bad_tuple);
+
+        assert!(result.is_err());
+        assert!(
+            matches!(result.unwrap_err(), KeyConstraintError::TupleMissingAttribute(attr) if attr == "id")
+        );
     }
 }
