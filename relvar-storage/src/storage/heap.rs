@@ -30,6 +30,7 @@ use thiserror::Error;
 /// Tuple ID: (page_id, slot_number)
 /// Internal to storage layer only (TTM Proscription 6)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct TupleId {
     pub(crate) page_id: PageId,
     pub(crate) slot: u32,
@@ -313,6 +314,7 @@ impl HeapFile {
     }
 
     /// Read a tuple by its TupleId (internal use only per TTM Proscription 6)
+    #[allow(dead_code)]
     pub(crate) fn read_tuple(&mut self, tuple_id: TupleId) -> Result<Tuple, HeapError> {
         let page = self.page_file.read_page(tuple_id.page_id)?;
 
@@ -386,17 +388,21 @@ impl HeapFile {
             };
 
             // Read all tuples from this page
-            for (slot, slot_entry) in slotted_page.slots.iter().enumerate() {
-                if slot_entry.is_some() {
-                    let tuple_id = TupleId {
-                        page_id,
-                        slot: slot as u32,
-                    };
-                    // TupleId used internally, not exposed
-                    if let Ok(tuple) = self.read_tuple(tuple_id) {
-                        results.push(tuple); // Only push tuple
-                    }
+            for slot_entry in slotted_page.slots.iter().flatten() {
+                let start = slot_entry.offset as usize;
+                let end = start + slot_entry.length as usize;
+
+                if end > page.data().len() {
+                    return Err(HeapError::Serialization(format!(
+                        "Corrupted slot on page {} points outside page data",
+                        page_id
+                    )));
                 }
+
+                let tuple_data = &page.data()[start..end];
+                let tuple: Tuple = bincode::deserialize(tuple_data)
+                    .map_err(|e| HeapError::Serialization(e.to_string()))?;
+                results.push(tuple);
             }
 
             page_id += 1;
@@ -711,5 +717,41 @@ mod tests {
 
         let tuples = heap.scan().unwrap();
         assert_eq!(tuples.len(), 2);
+    }
+
+    #[test]
+    fn test_heap_scan_corrupted_slot() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Create a manually corrupted page
+        // Slot points to offset > PAGE_SIZE
+        let slotted_page = SlottedPage {
+            slot_count: 1,
+            slots: vec![Some(SlotEntry {
+                offset: (PAGE_SIZE + 100) as u32, // Invalid offset
+                length: 10,
+            })],
+        };
+
+        // Serialize just the header (no tuple data needed as offset is invalid)
+        let slot_dir = bincode::serialize(&slotted_page).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE - 8];
+        page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
+
+        let page = Page::from_data(0, page_data).unwrap();
+        heap.page_file.write_page(&page).unwrap();
+
+        // Scan should fail
+        let result = heap.scan();
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::Serialization(msg)) => {
+                assert!(msg.contains("Corrupted slot"));
+            }
+            _ => panic!("Expected Serialization error for corrupted slot"),
+        }
     }
 }
