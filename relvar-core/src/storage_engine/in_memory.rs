@@ -6,7 +6,7 @@
 //! - Benchmarking pure relational operations
 //! - Temporary databases that don't need persistence
 
-use super::{RelationMetadata, StorageEngine, StorageError, TransactionSnapshot};
+use super::{RelationMetadata, StorageEngine, StorageError};
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 use std::collections::HashMap;
@@ -16,6 +16,13 @@ use std::collections::HashMap;
 struct StoredRelation {
     metadata: RelationMetadata,
     relation: Relation,
+}
+
+/// Snapshot for in-memory transactions.
+#[derive(Debug, Clone)]
+pub struct InMemorySnapshot {
+    /// Saved relations, keyed by name.
+    pub saved_relations: HashMap<String, Relation>,
 }
 
 /// Pure in-memory storage engine.
@@ -62,6 +69,8 @@ impl InMemoryEngine {
 }
 
 impl StorageEngine for InMemoryEngine {
+    type Snapshot = InMemorySnapshot;
+
     fn create_relation(
         &mut self,
         name: &str,
@@ -145,7 +154,7 @@ impl StorageEngine for InMemoryEngine {
         Ok(())
     }
 
-    fn begin_transaction(&mut self) -> Result<TransactionSnapshot, StorageError> {
+    fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError> {
         // Save current state
         let saved_relations: HashMap<String, Relation> = self
             .relations
@@ -153,10 +162,10 @@ impl StorageEngine for InMemoryEngine {
             .map(|(name, stored)| (name.clone(), stored.relation.clone()))
             .collect();
 
-        Ok(TransactionSnapshot { saved_relations })
+        Ok(InMemorySnapshot { saved_relations })
     }
 
-    fn rollback_transaction(&mut self, snapshot: TransactionSnapshot) -> Result<(), StorageError> {
+    fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
         // Restore saved state
         for (name, relation) in snapshot.saved_relations {
             if let Some(stored) = self.relations.get_mut(&name) {
