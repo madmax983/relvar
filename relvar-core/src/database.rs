@@ -622,19 +622,22 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         tuple: &Tuple,
     ) -> Result<(), DatabaseError> {
-        let fk_constraints_opt = self.foreign_key_constraints.get(relation_name).cloned();
-        if let Some(fk_constraints) = fk_constraints_opt {
-            for fk in fk_constraints.foreign_keys() {
-                let referenced_relation = self.query(fk.referenced_relation_name())?;
+        let fks_to_check = self
+            .foreign_key_constraints
+            .get(relation_name)
+            .map(|c| c.foreign_keys().to_vec())
+            .unwrap_or_default();
 
-                if fk
-                    .would_violate_on_insert(tuple, &referenced_relation)
-                    .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
-                {
-                    return Err(DatabaseError::ForeignKeyViolation(
-                        "Foreign key constraint violated".to_string(),
-                    ));
-                }
+        for fk in fks_to_check {
+            let referenced_relation = self.query(fk.referenced_relation_name())?;
+
+            if fk
+                .would_violate_on_insert(tuple, &referenced_relation)
+                .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
+            {
+                return Err(DatabaseError::ForeignKeyViolation(
+                    "Foreign key constraint violated".to_string(),
+                ));
             }
         }
         Ok(())
@@ -646,19 +649,19 @@ impl<E: StorageEngine> Database<E> {
         constraints: &KeyConstraints,
     ) -> Result<(), DatabaseError> {
         if let Some(pk) = constraints.primary_key() {
-            let pk_satisfied = pk
+            if !pk
                 .is_satisfied_by(relation)
-                .map_err(|e| DatabaseError::TransactionError(e.to_string()))?;
-            if !pk_satisfied {
+                .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
+            {
                 return Err(DatabaseError::PrimaryKeyViolation);
             }
         }
 
         for ck in constraints.candidate_keys() {
-            let ck_satisfied = ck
+            if !ck
                 .is_satisfied_by(relation)
-                .map_err(|e| DatabaseError::TransactionError(e.to_string()))?;
-            if !ck_satisfied {
+                .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
+            {
                 return Err(DatabaseError::CandidateKeyViolation);
             }
         }
@@ -670,38 +673,45 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         relation_after_delete: &Relation,
     ) -> Result<(), DatabaseError> {
-        // Check foreign key constraints (other relations referencing this one)
-        let fk_constraints_clone = self.foreign_key_constraints.clone();
-        for (ref_name, fk_constraints) in &fk_constraints_clone {
-            for fk in fk_constraints.foreign_keys() {
-                if fk.referenced_relation_name() == relation_name {
-                    let referencing_relation = self.query(ref_name)?;
+        // Collect referencing foreign keys to avoid borrowing issues with self.query
+        let referencing_fks: Vec<(String, crate::constraints::ForeignKey)> = self
+            .foreign_key_constraints
+            .iter()
+            .flat_map(|(ref_name, fk_constraints)| {
+                fk_constraints
+                    .foreign_keys()
+                    .iter()
+                    .filter(|fk| fk.referenced_relation_name() == relation_name)
+                    .map(move |fk| (ref_name.clone(), fk.clone()))
+            })
+            .collect();
 
-                    // Check if any referencing tuples would be orphaned
-                    for ref_tuple in referencing_relation.tuples() {
-                        let ref_key_values: Vec<ScalarValue> = fk
-                            .foreign_key_attributes()
-                            .iter()
-                            .filter_map(|attr| ref_tuple.get(attr).cloned())
-                            .collect();
+        for (ref_name, fk) in referencing_fks {
+            let referencing_relation = self.query(&ref_name)?;
 
-                        // Check if the key exists in the new relation
-                        let exists = relation_after_delete.tuples().any(|t| {
-                            let key_values: Vec<ScalarValue> = fk
-                                .referenced_attributes()
-                                .iter()
-                                .filter_map(|attr| t.get(attr).cloned())
-                                .collect();
-                            key_values == ref_key_values
-                        });
+            // Check if any referencing tuples would be orphaned
+            for ref_tuple in referencing_relation.tuples() {
+                let ref_key_values: Vec<ScalarValue> = fk
+                    .foreign_key_attributes()
+                    .iter()
+                    .filter_map(|attr| ref_tuple.get(attr).cloned())
+                    .collect();
 
-                        if !exists {
-                            return Err(DatabaseError::ForeignKeyViolation(format!(
-                                "Deleting tuples would orphan referencing tuples in {}",
-                                ref_name
-                            )));
-                        }
-                    }
+                // Check if the key exists in the new relation
+                let exists = relation_after_delete.tuples().any(|t| {
+                    let key_values: Vec<ScalarValue> = fk
+                        .referenced_attributes()
+                        .iter()
+                        .filter_map(|attr| t.get(attr).cloned())
+                        .collect();
+                    key_values == ref_key_values
+                });
+
+                if !exists {
+                    return Err(DatabaseError::ForeignKeyViolation(format!(
+                        "Deleting tuples would orphan referencing tuples in {}",
+                        ref_name
+                    )));
                 }
             }
         }
