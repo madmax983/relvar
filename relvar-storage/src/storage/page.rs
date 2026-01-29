@@ -285,21 +285,35 @@ impl PageFile {
         let mut buffer = vec![0u8; PAGE_SIZE];
         let bytes_read = self.file.read(&mut buffer)?;
 
+        // If we read nothing, it's a new/empty page
+        if bytes_read == 0 {
+            return Ok(Page::new(page_id));
+        }
+
         // Truncate to actual bytes read
         buffer.truncate(bytes_read);
 
-        // Find the end of actual data (before padding)
-        // We store the actual data length in the first 8 bytes
-        if buffer.len() >= 8 {
-            let data_len = u64::from_le_bytes(buffer[0..8].try_into().unwrap()) as usize;
-            if data_len + 8 <= buffer.len() {
-                let actual_data = buffer[8..8 + data_len].to_vec();
-                return Page::from_data(page_id, actual_data);
-            }
+        // We need at least 8 bytes for the length prefix
+        if buffer.len() < 8 {
+            return Err(PageError::Serialization(format!(
+                "Page too short: {} bytes",
+                buffer.len()
+            )));
         }
 
-        // If we can't read the length, assume empty page
-        Ok(Page::new(page_id))
+        let data_len = u64::from_le_bytes(buffer[0..8].try_into().unwrap()) as usize;
+
+        // Check if declared length fits in the buffer
+        if data_len + 8 > buffer.len() {
+            return Err(PageError::Serialization(format!(
+                "Corrupted page: length prefix says {}, but only {} bytes available",
+                data_len,
+                buffer.len() - 8
+            )));
+        }
+
+        let actual_data = buffer[8..8 + data_len].to_vec();
+        Page::from_data(page_id, actual_data)
     }
 
     /// Writes a page to disk.
@@ -488,5 +502,65 @@ mod tests {
         // Read it back
         let read_page = page_file.read_page(0).unwrap();
         assert_eq!(read_page.data(), &[4, 5, 6, 7]);
+    }
+
+    #[test]
+    fn test_page_file_corrupted_length() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let mut page_file = PageFile::create(path).unwrap();
+
+        // manually write a page with corrupted length
+        // Length 9999 (larger than PAGE_SIZE)
+        let bad_len: u64 = 9999;
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(&bad_len.to_le_bytes());
+        buffer.resize(PAGE_SIZE, 0); // Fill rest with zeros
+
+        // Write manually to file
+        {
+            let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+            use std::io::Write;
+            file.write_all(&buffer).unwrap();
+        }
+
+        // Now read it back - should error
+        let result = page_file.read_page(0);
+        assert!(result.is_err());
+        match result {
+            Err(PageError::Serialization(msg)) => {
+                assert!(msg.contains("Corrupted page"));
+            }
+            _ => panic!("Expected Serialization error"),
+        }
+    }
+
+    #[test]
+    fn test_page_file_too_short() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let mut page_file = PageFile::create(path).unwrap();
+
+        // manually write a partial page (less than 8 bytes)
+        let data = vec![1u8, 2, 3];
+
+        // Write manually to file
+        {
+            let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+            use std::io::Write;
+            file.write_all(&data).unwrap();
+        }
+
+        // Now read it back - should error
+        let result = page_file.read_page(0);
+        assert!(result.is_err());
+        match result {
+            Err(PageError::Serialization(msg)) => {
+                assert!(msg.contains("Page too short"));
+            }
+            _ => panic!("Expected Serialization error"),
+        }
     }
 }
