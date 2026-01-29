@@ -82,15 +82,13 @@ fn bench_partial_update(c: &mut Criterion) {
                         "EMP",
                         |t| t.get_typed::<i64>("dept_id").unwrap() == 5,
                         |t| {
-                            let mut new_tuple = t.clone();
                             let current_salary = t.get_typed::<f64>("salary").unwrap();
-                            new_tuple
-                                .set(
-                                    "salary".to_string(),
-                                    relvar::values::ScalarValue::Float(current_salary * 1.1),
-                                )
-                                .unwrap();
-                            new_tuple
+                            relvar::tuple! {
+                                emp_id: t.get_typed::<i64>("emp_id").unwrap(),
+                                name: t.get_typed::<String>("name").unwrap(),
+                                dept_id: t.get_typed::<i64>("dept_id").unwrap(),
+                                salary: current_salary * 1.1
+                            }
                         },
                     )
                     .unwrap();
