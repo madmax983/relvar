@@ -185,7 +185,7 @@ impl Relation {
     ///
     /// # Behavior
     ///
-    /// - All attribute pairs are combined.
+    /// - Attributes from both relations are combined, subject to the collision rule below.
     /// - **Attribute Collision Warning:** If relations have common attribute names,
     ///   the attribute from the *second* relation is silently dropped from the result
     ///   heading, and its values are discarded. The first relation's attribute takes
