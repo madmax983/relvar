@@ -32,7 +32,7 @@ impl Relation {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```text
     /// // SUPPLIES(supplier_id, part_id):
     /// // S1 supplies: P1, P2
     /// // S2 supplies: P1
