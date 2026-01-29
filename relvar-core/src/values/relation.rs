@@ -400,6 +400,15 @@ impl Relation {
     }
 }
 
+impl IntoIterator for Relation {
+    type Item = Tuple;
+    type IntoIter = std::collections::hash_set::IntoIter<Tuple>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.body.into_iter()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -541,6 +550,29 @@ mod tests {
             .unwrap();
 
         let count = relation.tuples().count();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_into_iter() {
+        let heading = emp_type();
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+        relation
+            .insert(tuple! { emp_id: 2i64, name: "Bob" })
+            .unwrap();
+
+        let mut count = 0;
+        // This line should fail to compile if IntoIterator is not implemented
+        for tuple in relation {
+            assert!(tuple.degree() == 2);
+            count += 1;
+        }
+
         assert_eq!(count, 2);
     }
 }

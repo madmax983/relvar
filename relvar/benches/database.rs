@@ -50,6 +50,59 @@ fn bench_database_open(c: &mut Criterion) {
     group.finish();
 }
 
+// Partial Update benchmark
+fn bench_partial_update(c: &mut Criterion) {
+    let mut group = c.benchmark_group("partial_update");
+
+    // Use larger counts to make the copy overhead of non-updated tuples significant
+    for count in [100, 500].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
+            b.iter_batched(
+                || {
+                    // Setup: create IN-MEMORY database and pre-populate
+                    let mut db = relvar::in_memory();
+                    let emp_type = create_employee_type();
+                    db.create_relvar("EMP", emp_type).unwrap();
+                    for i in 0..count {
+                        let tuple = tuple! {
+                            emp_id: i as i64,
+                            name: format!("Employee_{}", i),
+                            dept_id: (i % 10) as i64,
+                            salary: 50000.0 + (i as f64 * 100.0)
+                        };
+                        db.insert("EMP", tuple).unwrap();
+                    }
+                    db
+                },
+                |mut db| {
+                    // Measured: update operation affecting only ~1% of tuples (dept_id == 5)
+                    // The other 99% are cloned in the current implementation
+                    db.update(
+                        "EMP",
+                        |t| t.get_typed::<i64>("dept_id").unwrap() == 5,
+                        |t| {
+                            let mut new_tuple = t.clone();
+                            let current_salary = t.get_typed::<f64>("salary").unwrap();
+                            new_tuple
+                                .set(
+                                    "salary".to_string(),
+                                    relvar::values::ScalarValue::Float(current_salary * 1.1),
+                                )
+                                .unwrap();
+                            new_tuple
+                        },
+                    )
+                    .unwrap();
+                    black_box(db);
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}
+
 // Relvar creation benchmark
 fn bench_create_relvar(c: &mut Criterion) {
     let mut group = c.benchmark_group("create_relvar");
@@ -501,6 +554,7 @@ criterion_group!(
     bench_query_with_operations,
     bench_delete,
     bench_update,
+    bench_partial_update,
     bench_transaction,
     bench_realistic_workload,
     // Virtual relvar benchmarks (TTM RM Prescription 10)

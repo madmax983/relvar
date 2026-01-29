@@ -545,19 +545,19 @@ impl<E: StorageEngine> Database<E> {
         let mut new_relation = Relation::new(current_relation.relation_type().clone());
         let mut update_count = 0;
 
-        for tuple in current_relation.tuples() {
-            if predicate(tuple) {
-                let updated_tuple = updater(tuple);
+        for tuple in current_relation {
+            if predicate(&tuple) {
+                let updated_tuple = updater(&tuple);
 
                 // Validate updated tuple
-                if !updated_tuple.conforms_to(current_relation.relation_type().tuple_type()) {
+                if !updated_tuple.conforms_to(new_relation.relation_type().tuple_type()) {
                     return Err(DatabaseError::TupleMismatch);
                 }
 
                 new_relation.insert(updated_tuple)?;
                 update_count += 1;
             } else {
-                new_relation.insert(tuple.clone())?;
+                new_relation.insert(tuple)?;
             }
         }
 
