@@ -718,4 +718,40 @@ mod tests {
         let tuples = heap.scan().unwrap();
         assert_eq!(tuples.len(), 2);
     }
+
+    #[test]
+    fn test_heap_scan_corrupted_slot() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Create a manually corrupted page
+        // Slot points to offset > PAGE_SIZE
+        let slotted_page = SlottedPage {
+            slot_count: 1,
+            slots: vec![Some(SlotEntry {
+                offset: (PAGE_SIZE + 100) as u32, // Invalid offset
+                length: 10,
+            })],
+        };
+
+        // Serialize just the header (no tuple data needed as offset is invalid)
+        let slot_dir = bincode::serialize(&slotted_page).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE - 8];
+        page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
+
+        let page = Page::from_data(0, page_data).unwrap();
+        heap.page_file.write_page(&page).unwrap();
+
+        // Scan should fail
+        let result = heap.scan();
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::Serialization(msg)) => {
+                assert!(msg.contains("Corrupted slot"));
+            }
+            _ => panic!("Expected Serialization error for corrupted slot"),
+        }
+    }
 }
