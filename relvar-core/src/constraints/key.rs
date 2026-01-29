@@ -502,8 +502,7 @@ mod tests {
 
     #[test]
     fn test_extract_key_value_missing_attribute() {
-        let heading = TupleType::new()
-            .with_attribute("id".to_string(), ScalarType::Int);
+        let heading = TupleType::new().with_attribute("id".to_string(), ScalarType::Int);
         let relation = Relation::new(RelationType::new(heading));
 
         let key = CandidateKey::new(vec!["id".to_string()]).unwrap();
@@ -515,6 +514,8 @@ mod tests {
         let result = key.would_violate(&relation, &bad_tuple);
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), KeyConstraintError::TupleMissingAttribute(attr) if attr == "id"));
+        assert!(
+            matches!(result.unwrap_err(), KeyConstraintError::TupleMissingAttribute(attr) if attr == "id")
+        );
     }
 }

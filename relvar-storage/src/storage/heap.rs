@@ -681,8 +681,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
 
-        let heading = TupleType::new()
-            .with_attribute("data".to_string(), ScalarType::Bytes);
+        let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
         let rel_type = RelationType::new(heading);
 
         let mut heap = HeapFile::create(path, rel_type).unwrap();
