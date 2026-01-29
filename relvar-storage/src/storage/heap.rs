@@ -392,12 +392,17 @@ impl HeapFile {
                 let start = slot_entry.offset as usize;
                 let end = start + slot_entry.length as usize;
 
-                if end <= page.data().len() {
-                    let tuple_data = &page.data()[start..end];
-                    if let Ok(tuple) = bincode::deserialize(tuple_data) {
-                        results.push(tuple);
-                    }
+                if end > page.data().len() {
+                    return Err(HeapError::Serialization(format!(
+                        "Corrupted slot on page {} points outside page data",
+                        page_id
+                    )));
                 }
+
+                let tuple_data = &page.data()[start..end];
+                let tuple: Tuple = bincode::deserialize(tuple_data)
+                    .map_err(|e| HeapError::Serialization(e.to_string()))?;
+                results.push(tuple);
             }
 
             page_id += 1;
