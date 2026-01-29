@@ -646,24 +646,20 @@ impl<E: StorageEngine> Database<E> {
         constraints: &KeyConstraints,
     ) -> Result<(), DatabaseError> {
         if let Some(pk) = constraints.primary_key() {
-            for tuple in relation.tuples() {
-                if pk
-                    .would_violate(relation, tuple)
-                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-                {
-                    return Err(DatabaseError::PrimaryKeyViolation);
-                }
+            let pk_satisfied = pk
+                .is_satisfied_by(relation)
+                .map_err(|e| DatabaseError::TransactionError(e.to_string()))?;
+            if !pk_satisfied {
+                return Err(DatabaseError::PrimaryKeyViolation);
             }
         }
 
         for ck in constraints.candidate_keys() {
-            for tuple in relation.tuples() {
-                if ck
-                    .would_violate(relation, tuple)
-                    .map_err(|e| DatabaseError::TransactionError(e.to_string()))?
-                {
-                    return Err(DatabaseError::CandidateKeyViolation);
-                }
+            let ck_satisfied = ck
+                .is_satisfied_by(relation)
+                .map_err(|e| DatabaseError::TransactionError(e.to_string()))?;
+            if !ck_satisfied {
+                return Err(DatabaseError::CandidateKeyViolation);
             }
         }
         Ok(())
