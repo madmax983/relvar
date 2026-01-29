@@ -104,6 +104,73 @@ fn bench_insert(c: &mut Criterion) {
     group.finish();
 }
 
+// Update benchmark with constraints
+fn bench_update_with_constraints(c: &mut Criterion) {
+    let mut group = c.benchmark_group("update_with_constraints");
+
+    for count in [10, 50, 100].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
+            b.iter_batched(
+                || {
+                    // Setup: create database, add constraints, and pre-populate
+                    let (_temp_dir, mut db) = create_database_with_relvar();
+
+                    // 1. Add CHECK constraint: salary > 0
+                    let check_constraints = CheckConstraints::new().with_constraint(
+                        CheckConstraint::from_expression(
+                            "positive_salary",
+                            "Salary must be positive",
+                            ConstraintExpression::Gt(
+                                "salary".to_string(),
+                                ValueOrRef::Value(ScalarValue::Float(0.0)),
+                            ),
+                        ),
+                    );
+                    db.set_check_constraints("EMP", check_constraints).unwrap();
+
+                    // 2. Add Key Constraint (Primary Key)
+                    let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+                    db.set_key_constraints("EMP", KeyConstraints::new().with_primary_key(pk))
+                        .unwrap();
+
+                    for i in 0..count {
+                        let tuple = tuple! {
+                            emp_id: i as i64,
+                            name: format!("Employee_{}", i),
+                            dept_id: (i % 10) as i64,
+                            salary: 50000.0 + (i as f64 * 100.0)
+                        };
+                        db.insert("EMP", tuple).unwrap();
+                    }
+                    (_temp_dir, db)
+                },
+                |(_temp_dir, mut db)| {
+                    // Measured: just the update operation (valid updates)
+                    db.update(
+                        "EMP",
+                        |_| true,
+                        |t| {
+                            let mut t = t.clone();
+                            let current_salary = t.get_typed::<f64>("salary").unwrap();
+                            t.set(
+                                "salary".to_string(),
+                                relvar::values::ScalarValue::Float(current_salary * 1.1),
+                            )
+                            .unwrap();
+                            t
+                        },
+                    )
+                    .unwrap();
+                    black_box(db);
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}
+
 // Insert with key constraint benchmark
 fn bench_insert_with_key_constraint(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_with_key_constraint");
@@ -267,12 +334,14 @@ fn bench_update(c: &mut Criterion) {
                         "EMP",
                         |_| true,
                         |t| {
+                            let mut t = t.clone();
                             let current_salary = t.get_typed::<f64>("salary").unwrap();
                             t.set(
                                 "salary".to_string(),
                                 relvar::values::ScalarValue::Float(current_salary * 1.1),
                             )
                             .unwrap();
+                            t
                         },
                     )
                     .unwrap();
@@ -377,11 +446,13 @@ fn bench_realistic_workload(c: &mut Criterion) {
                     "EMP",
                     |t| t.get_typed::<i64>("dept_id").unwrap() == 5,
                     |t| {
+                        let mut t = t.clone();
                         t.set(
                             "salary".to_string(),
                             relvar::values::ScalarValue::Float(60000.0),
                         )
                         .unwrap();
+                        t
                     },
                 )
                 .unwrap();
@@ -687,6 +758,7 @@ criterion_group!(
     bench_query_with_operations,
     bench_delete,
     bench_update,
+    bench_update_with_constraints,
     bench_transaction,
     bench_realistic_workload,
     // Virtual relvar benchmarks (TTM RM Prescription 10)
