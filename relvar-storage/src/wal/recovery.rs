@@ -1,19 +1,29 @@
-//! WAL recovery using Analysis/Redo/Undo passes.
+//! WAL analysis and recovery helpers.
 //!
-//! This module implements crash recovery using a simplified ARIES-style
-//! algorithm with three passes:
+//! This module provides a simplified ARIES-style **analysis pass** over the
+//! write-ahead log (WAL). It scans the WAL to determine which transactions
+//! have committed or aborted and exposes information about uncommitted work
+//! so that higher layers can perform any necessary redo/undo logic.
 //!
-//! 1. **Analysis Pass**: Scan WAL to identify committed/aborted transactions
-//! 2. **Redo Pass**: Replay all operations to restore state (idempotent)
-//! 3. **Undo Pass**: Roll back uncommitted transactions
+//! # Current Implementation
 //!
-//! # Recovery Algorithm
+//! The module performs the **Analysis Pass** only:
+//! - Scans the WAL from beginning to end
+//! - Identifies committed and aborted transactions
+//! - Tracks the maximum transaction ID seen
+//! - Returns all log records in order
+//! - Tracks the last checkpoint LSN (if any)
+//! - Exposes information about uncommitted inserts for caller-side undo
 //!
-//! ```text
-//! Analysis: Scan WAL → Build committed/aborted sets
-//! Redo: Replay all operations → Restore database state
-//! Undo: Roll back uncommitted → Remove partial work
-//! ```
+//! # Redo and Undo
+//!
+//! **Redo:** Currently handled implicitly - all data modifications are already
+//! on disk because we sync after each transaction commit. Future versions may
+//! implement explicit redo for better performance.
+//!
+//! **Undo:** Performed by the caller (PersistentEngine) which receives the list
+//! of uncommitted inserts and removes them from relations. This design allows
+//! undo to access the catalog and relation types.
 
 use super::error::WalError;
 use super::lsn::{Lsn, TransactionId};
