@@ -42,7 +42,7 @@ pub struct Lsn(u64);
 ///
 /// assert_ne!(txn1, txn2);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TransactionId(u64);
 
 /// Generates unique transaction IDs using atomic operations.
