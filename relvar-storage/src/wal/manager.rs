@@ -108,16 +108,16 @@ impl WalManager {
             ));
         }
 
-        // Scan to end to find current LSN
-        let file_len = log_file.seek(SeekFrom::End(0))?;
-        let current_lsn = Lsn::new((file_len - WAL_MAGIC.len() as u64) / 8); // Rough estimate, will be fixed during recovery
+        // Scan WAL to find the actual last LSN
+        // CRITICAL: Can't use file_len heuristic - records are variable length!
+        let (current_lsn, flush_lsn) = Self::scan_for_last_lsn(&mut log_file)?;
 
         Ok(Self {
             log_file,
             current_lsn,
             buffer: Vec::with_capacity(DEFAULT_BUFFER_SIZE),
             buffer_capacity: DEFAULT_BUFFER_SIZE,
-            flush_lsn: Lsn::new(0),
+            flush_lsn,
         })
     }
 
@@ -134,7 +134,8 @@ impl WalManager {
         let serialized = record.serialize()?;
 
         // Auto-flush if buffer would overflow
-        if self.buffer.len() + serialized.len() + 8 > self.buffer_capacity {
+        // Each record writes: 8 bytes (LSN) + 8 bytes (length) + data
+        if self.buffer.len() + serialized.len() + 16 > self.buffer_capacity {
             self.flush()?;
         }
 
@@ -265,6 +266,60 @@ impl WalManager {
         self.log_file.seek(SeekFrom::End(0))?;
 
         Ok(records)
+    }
+
+    /// Scans the WAL file to find the last LSN.
+    ///
+    /// Returns (next_lsn, last_flushed_lsn) by parsing the entire WAL.
+    /// This is necessary because WAL records are variable-length.
+    fn scan_for_last_lsn(log_file: &mut File) -> Result<(Lsn, Lsn), WalError> {
+        use std::io::Read;
+
+        // Seek to start of records (after magic header)
+        log_file.seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
+
+        let mut buffer = Vec::new();
+        log_file.read_to_end(&mut buffer)?;
+
+        let mut last_lsn = Lsn::new(0);
+        let mut offset = 0;
+
+        while offset < buffer.len() {
+            // Need at least 16 bytes for LSN + length
+            if offset + 16 > buffer.len() {
+                break;
+            }
+
+            // Read LSN (8 bytes)
+            let lsn_bytes: [u8; 8] = buffer[offset..offset + 8]
+                .try_into()
+                .map_err(|_| WalError::Corrupted(Lsn::new(0), "Invalid LSN".to_string()))?;
+            let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
+            last_lsn = lsn;
+            offset += 8;
+
+            // Read record length (8 bytes)
+            let len_bytes: [u8; 8] = buffer[offset..offset + 8]
+                .try_into()
+                .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
+            let record_len = u64::from_le_bytes(len_bytes) as usize;
+            offset += 8;
+
+            // Skip record data
+            if offset + record_len > buffer.len() {
+                // Partial record at end - ignore it
+                break;
+            }
+            offset += record_len;
+        }
+
+        // Next LSN is last_lsn + 1
+        let next_lsn = last_lsn.next();
+
+        // All scanned records are flushed (they're on disk)
+        let flush_lsn = last_lsn;
+
+        Ok((next_lsn, flush_lsn))
     }
 }
 

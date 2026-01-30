@@ -94,6 +94,9 @@ pub struct RecoveryResult {
     pub committed_txns: HashSet<TransactionId>,
     /// List of uncommitted inserts that need to be undone.
     pub uncommitted_inserts: Vec<UncommittedInsert>,
+    /// Maximum transaction ID seen in the WAL.
+    /// Used to seed the transaction ID generator to avoid reusing IDs.
+    pub max_txn_id: TransactionId,
 }
 
 /// Performs recovery analysis and returns uncommitted operations.
@@ -114,8 +117,19 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     let analysis = analyze(wal)?;
 
     // Find uncommitted transactions (those with BEGIN but no COMMIT/ABORT)
+    // Also track maximum transaction ID seen
     let mut active_txns = HashSet::new();
+    let mut max_txn_id = TransactionId::new(0);
+
     for (_, record) in &analysis.records {
+        // Extract transaction ID from record
+        let txn_id = record.txn_id();
+        if let Some(tid) = txn_id {
+            if tid.value() > max_txn_id.value() {
+                max_txn_id = tid;
+            }
+        }
+
         if let WalRecord::Begin { txn_id } = record {
             active_txns.insert(*txn_id);
         }
@@ -124,9 +138,15 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     // Remove committed and aborted transactions from active set
     for txn_id in &analysis.committed {
         active_txns.remove(txn_id);
+        if txn_id.value() > max_txn_id.value() {
+            max_txn_id = *txn_id;
+        }
     }
     for txn_id in &analysis.aborted {
         active_txns.remove(txn_id);
+        if txn_id.value() > max_txn_id.value() {
+            max_txn_id = *txn_id;
+        }
     }
 
     // Collect uncommitted inserts
@@ -150,6 +170,7 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     Ok(RecoveryResult {
         committed_txns: analysis.committed,
         uncommitted_inserts,
+        max_txn_id,
     })
 }
 

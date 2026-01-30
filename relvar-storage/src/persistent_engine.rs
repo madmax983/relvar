@@ -118,7 +118,10 @@ impl PersistentEngine {
             catalog,
             heap_files: HashMap::new(),
             wal,
-            txn_id_gen: TransactionIdGenerator::new(),
+            // Seed transaction ID generator with max ID from WAL + 1 to avoid reuse
+            txn_id_gen: TransactionIdGenerator::from_start(TransactionId::new(
+                recovery_result.max_txn_id.value() + 1,
+            )),
             active_txns: ActiveTransactionTable::new(),
             committed_txns: recovery_result.committed_txns, // Populate from recovery
         };
@@ -146,16 +149,21 @@ impl PersistentEngine {
         }
 
         // For each relation, rebuild without uncommitted tuples
-        for (relation_name, uncommitted_tuples) in by_relation {
+        for (relation_name, uncommitted_tuples_vec) in by_relation {
             // Skip if relation doesn't exist
             if !self.catalog.relation_exists(&relation_name) {
                 continue;
             }
 
+            // Convert to HashSet for O(1) lookup instead of O(n) Vec::contains
+            // This makes recovery O(n) instead of O(n²)
+            let uncommitted_tuples: std::collections::HashSet<Vec<u8>> =
+                uncommitted_tuples_vec.into_iter().collect();
+
             // Load all tuples
             let relation = self.load_relation(&relation_name)?;
 
-            // Filter out uncommitted tuples
+            // Filter out uncommitted tuples (now O(n) with HashSet)
             let mut committed_tuples = Vec::new();
             for tuple in relation.tuples() {
                 let tuple_data = bincode::serialize(&tuple)
@@ -194,7 +202,13 @@ impl PersistentEngine {
     ///
     /// Returns an error if flushing or WAL operations fail.
     pub fn checkpoint(&mut self) -> Result<(), StorageError> {
-        // Flush all open heap files (dirty pages to disk)
+        // CRITICAL: Flush WAL first to ensure all prior modifications are logged
+        // This upholds the WAL protocol: log must be on disk before data pages
+        self.wal
+            .flush()
+            .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
+
+        // Now safe to flush heap files (dirty pages to disk)
         for heap_file in self.heap_files.values_mut() {
             heap_file
                 .sync()

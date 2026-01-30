@@ -99,6 +99,16 @@ impl TransactionIdGenerator {
         }
     }
 
+    /// Creates a new transaction ID generator starting from a specific ID.
+    ///
+    /// Used during recovery to continue from the maximum transaction ID
+    /// seen in the WAL, preventing ID reuse.
+    pub fn from_start(start_id: TransactionId) -> Self {
+        Self {
+            next_id: AtomicU64::new(start_id.value()),
+        }
+    }
+
     /// Generates the next unique transaction ID.
     ///
     /// This method is thread-safe and guarantees uniqueness.
