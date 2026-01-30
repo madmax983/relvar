@@ -94,8 +94,10 @@ pub enum WalRecord {
         txn_id: TransactionId,
         /// The name of the relation.
         relation_name: String,
-        /// The TupleId of the old version (to set its xmax).
-        old_tuple_id: TupleId,
+        /// The serialized key values identifying the old version.
+        /// Used during recovery to locate the old tuple and set its xmax.
+        /// TTM Compliant: Uses logical key values, not physical TupleId.
+        old_key_values: Vec<u8>,
         /// The serialized tuple data for the new version.
         new_tuple_data: Vec<u8>,
     },
@@ -370,16 +372,14 @@ mod tests {
     #[test]
     fn test_update_record_roundtrip() {
         let txn_id = TransactionId::new(5);
-        let old_tuple_id = crate::storage::heap::TupleId {
-            page_id: 1,
-            slot: 3,
-        };
+        // Use serialized key values instead of physical TupleId (TTM compliant)
+        let old_key_values = vec![99, 98, 97];
         let new_tuple_data = vec![10, 20, 30];
 
         let record = WalRecord::Update {
             txn_id,
             relation_name: "employees".to_string(),
-            old_tuple_id,
+            old_key_values,
             new_tuple_data: new_tuple_data.clone(),
         };
 
@@ -392,26 +392,22 @@ mod tests {
     #[test]
     fn test_update_record_links_versions() {
         let txn_id = TransactionId::new(10);
-        let old_tuple_id = crate::storage::heap::TupleId {
-            page_id: 2,
-            slot: 5,
-        };
+        let old_key_values = vec![55, 66, 77];
 
         let record = WalRecord::Update {
             txn_id,
             relation_name: "test".to_string(),
-            old_tuple_id,
+            old_key_values: old_key_values.clone(),
             new_tuple_data: vec![1, 2, 3],
         };
 
         // Verify the record preserves version chain information
         if let WalRecord::Update {
-            old_tuple_id: recovered_old,
+            old_key_values: recovered_keys,
             ..
         } = record
         {
-            assert_eq!(recovered_old.page_id, 2);
-            assert_eq!(recovered_old.slot, 5);
+            assert_eq!(recovered_keys, old_key_values);
         } else {
             panic!("Expected Update record");
         }
@@ -423,10 +419,7 @@ mod tests {
         let record = WalRecord::Update {
             txn_id,
             relation_name: "test".to_string(),
-            old_tuple_id: crate::storage::heap::TupleId {
-                page_id: 0,
-                slot: 0,
-            },
+            old_key_values: vec![1, 2, 3],
             new_tuple_data: vec![],
         };
 
@@ -439,10 +432,7 @@ mod tests {
         let record = WalRecord::Update {
             txn_id,
             relation_name: "test".to_string(),
-            old_tuple_id: crate::storage::heap::TupleId {
-                page_id: 0,
-                slot: 0,
-            },
+            old_key_values: vec![4, 5, 6],
             new_tuple_data: vec![],
         };
 
