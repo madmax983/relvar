@@ -341,6 +341,9 @@ impl HeapFile {
     }
 
     /// Read a tuple by its TupleId (internal use only per TTM Proscription 6)
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub(crate) fn read_tuple(&mut self, tuple_id: TupleId) -> Result<Tuple, HeapError> {
         let page = self.page_file.read_page(tuple_id.page_id)?;
 
@@ -375,6 +378,9 @@ impl HeapFile {
     /// Reads a tuple from a versioned page.
     ///
     /// Used internally by MVCC operations.
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub(crate) fn read_tuple_versioned(&mut self, tuple_id: TupleId) -> Result<Tuple, HeapError> {
         let page = self.page_file.read_page(tuple_id.page_id)?;
 
@@ -773,6 +779,9 @@ impl HeapFile {
     /// Returns [`HeapError::TupleNotFound`] if old_tuple_id doesn't exist.
     /// Returns [`HeapError::Serialization`] if tuple cannot be serialized.
     /// Returns [`HeapError::Page`] if page I/O error occurs.
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub(crate) fn update_tuple_versioned(
         &mut self,
         old_tuple_id: TupleId,
@@ -956,6 +965,9 @@ impl HeapFile {
     /// Returns [`HeapError::TupleNotFound`] if tuple_id doesn't exist.
     /// Returns [`HeapError::Serialization`] if page cannot be serialized.
     /// Returns [`HeapError::Page`] if page I/O error occurs.
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub(crate) fn delete_tuple_versioned(
         &mut self,
         tuple_id: TupleId,
@@ -1132,6 +1144,9 @@ impl HeapFile {
     /// # Errors
     /// Returns [`HeapError::Serialization`] if tuples cannot be deserialized.
     /// Returns [`HeapError::Page`] if page I/O error occurs.
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub(crate) fn scan_visible(
         &mut self,
         snapshot: &crate::mvcc::TransactionSnapshot,
@@ -1519,26 +1534,23 @@ mod tests {
 
     #[test]
     fn test_versioned_page_layout() {
-        let mut slots = Vec::new();
-
-        // Add three versioned slots
-        slots.push(Some(VersionedSlotEntry {
-            offset: 4000,
-            length: 50,
-            xmin: test_txn(1),
-            xmax: None,
-            prev_version: None,
-        }));
-
-        slots.push(Some(VersionedSlotEntry {
-            offset: 3900,
-            length: 80,
-            xmin: test_txn(2),
-            xmax: Some(test_txn(3)),
-            prev_version: None,
-        }));
-
-        slots.push(None); // Empty slot (deleted tuple)
+        let slots = vec![
+            Some(VersionedSlotEntry {
+                offset: 4000,
+                length: 50,
+                xmin: test_txn(1),
+                xmax: None,
+                prev_version: None,
+            }),
+            Some(VersionedSlotEntry {
+                offset: 3900,
+                length: 80,
+                xmin: test_txn(2),
+                xmax: Some(test_txn(3)),
+                prev_version: None,
+            }),
+            None, // Empty slot (deleted tuple)
+        ];
 
         let page = VersionedSlottedPage {
             magic: VERSIONED_PAGE_MAGIC,

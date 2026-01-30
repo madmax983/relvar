@@ -626,6 +626,9 @@ impl PersistentEngine {
     ///
     /// # Errors
     /// Returns error if relation doesn't exist or visibility check fails.
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub(crate) fn load_relation_for_txn(
         &mut self,
         name: &str,
@@ -672,6 +675,9 @@ impl PersistentEngine {
     ///
     /// # Errors
     /// Returns error if relation doesn't exist or insert fails.
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub(crate) fn insert_tuple_in_txn(
         &mut self,
         name: &str,

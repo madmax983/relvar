@@ -45,7 +45,7 @@ fn bench_load_relation(c: &mut Criterion) {
 
                 (engine, temp_dir)
             },
-            |(mut engine, _temp_dir)| {
+            |(engine, _temp_dir)| {
                 // Benchmark: Load relation (exercises MVCC visibility checks)
                 let _relation = black_box(engine.load_relation("TEST").unwrap());
             },
@@ -83,7 +83,8 @@ fn bench_store_relation(c: &mut Criterion) {
                     },
                     |(mut engine, relation, _temp_dir)| {
                         // Benchmark: Store relation
-                        black_box(engine.store_relation("TEST", &relation).unwrap());
+                        engine.store_relation("TEST", &relation).unwrap();
+                        black_box(());
                     },
                     BatchSize::SmallInput,
                 );
@@ -119,7 +120,8 @@ fn bench_checkpoint(c: &mut Criterion) {
             },
             |(mut engine, _temp_dir)| {
                 // Benchmark: Checkpoint (includes GC)
-                black_box(engine.checkpoint().unwrap());
+                engine.checkpoint().unwrap();
+                black_box(());
             },
             BatchSize::SmallInput,
         );
@@ -137,7 +139,8 @@ fn bench_create_relation(c: &mut Criterion) {
             },
             |(mut engine, _temp_dir)| {
                 let rel_type = create_test_relation_type();
-                black_box(engine.create_relation("TEST", rel_type).unwrap());
+                engine.create_relation("TEST", rel_type).unwrap();
+                black_box(());
             },
             BatchSize::SmallInput,
         );

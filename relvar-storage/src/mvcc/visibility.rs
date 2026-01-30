@@ -23,6 +23,9 @@ impl VersionMetadata {
     ///
     /// # Arguments
     /// * `xmin` - Transaction that created this version
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub fn new(xmin: TransactionId) -> Self {
         Self { xmin, xmax: None }
     }
@@ -32,6 +35,9 @@ impl VersionMetadata {
     /// # Arguments
     /// * `xmin` - Transaction that created this version
     /// * `xmax` - Transaction that deleted/updated this version
+    ///
+    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
+    #[allow(dead_code)]
     pub fn new_with_xmax(xmin: TransactionId, xmax: TransactionId) -> Self {
         Self {
             xmin,

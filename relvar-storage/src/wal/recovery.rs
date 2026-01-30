@@ -134,10 +134,10 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     for (_, record) in &analysis.records {
         // Extract transaction ID from record
         let txn_id = record.txn_id();
-        if let Some(tid) = txn_id {
-            if tid.value() > max_txn_id.value() {
-                max_txn_id = tid;
-            }
+        if let Some(tid) = txn_id
+            && tid.value() > max_txn_id.value()
+        {
+            max_txn_id = tid;
         }
 
         if let WalRecord::Begin { txn_id } = record {
