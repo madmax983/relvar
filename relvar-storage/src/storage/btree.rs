@@ -66,6 +66,8 @@ pub enum BTreeIndexError {
     KeyNotFound,
 }
 
+const MAX_INDEX_SIZE: u64 = 1024 * 1024 * 1024; // 1 GB
+
 /// A B-tree index mapping scalar key values to tuples.
 ///
 /// This index provides O(log n) lookup, insertion, and deletion. Multiple
@@ -309,9 +311,20 @@ impl BTreeIndex {
     /// Returns [`BTreeIndexError::Io`] if the file cannot be read.
     /// Returns [`BTreeIndexError::Serialization`] if deserialization fails.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, BTreeIndexError> {
-        let mut file = File::open(path)?;
+        Self::load_with_limit(path, MAX_INDEX_SIZE)
+    }
+
+    fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, BTreeIndexError> {
+        let file = File::open(path)?;
+        let mut reader = file.take(limit + 1);
         let mut contents = Vec::new();
-        file.read_to_end(&mut contents)?;
+        reader.read_to_end(&mut contents)?;
+
+        if contents.len() as u64 > limit {
+            return Err(BTreeIndexError::Serialization(
+                "Index file too large".to_string(),
+            ));
+        }
 
         if contents.is_empty() {
             return Ok(Self::new());
@@ -516,5 +529,27 @@ mod tests {
         // Type check: search returns &[Tuple] not &[TupleId]
         let results = index.search(&key).unwrap();
         assert_eq!(results[0], tuple);
+    }
+
+    #[test]
+    fn test_btree_load_limit() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Write 20 bytes
+        {
+            let mut file = File::create(path).unwrap();
+            file.write_all(&[b'a'; 20]).unwrap();
+        }
+
+        // Try to load with limit 10
+        let result = BTreeIndex::load_with_limit(path, 10);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            BTreeIndexError::Serialization(msg) => {
+                assert_eq!(msg, "Index file too large");
+            }
+            err => panic!("Expected Serialization error, got {:?}", err),
+        }
     }
 }

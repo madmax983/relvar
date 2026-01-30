@@ -66,6 +66,8 @@ pub enum CatalogError {
     RelationExists(String),
 }
 
+const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+
 /// Metadata for a stored relation (relvar).
 ///
 /// Contains all the information needed to locate and interpret a relation's
@@ -157,9 +159,20 @@ impl Catalog {
     /// Returns [`CatalogError::Io`] if the file cannot be read.
     /// Returns [`CatalogError::Serialization`] if the JSON is invalid.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, CatalogError> {
-        let mut file = File::open(path)?;
+        Self::load_with_limit(path, MAX_CATALOG_SIZE)
+    }
+
+    fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, CatalogError> {
+        let file = File::open(path)?;
+        let mut reader = file.take(limit + 1);
         let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        reader.read_to_string(&mut contents)?;
+
+        if contents.len() as u64 > limit {
+            return Err(CatalogError::Serialization(
+                "Catalog file too large".to_string(),
+            ));
+        }
 
         if contents.is_empty() {
             return Ok(Self::new());
@@ -479,5 +492,27 @@ mod tests {
             result.unwrap_err(),
             CatalogError::RelationNotFound(_)
         ));
+    }
+
+    #[test]
+    fn test_catalog_load_limit() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Write 20 bytes
+        {
+            let mut file = File::create(path).unwrap();
+            file.write_all(&[b'a'; 20]).unwrap();
+        }
+
+        // Try to load with limit 10
+        let result = Catalog::load_with_limit(path, 10);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            CatalogError::Serialization(msg) => {
+                assert_eq!(msg, "Catalog file too large");
+            }
+            err => panic!("Expected Serialization error, got {:?}", err),
+        }
     }
 }
