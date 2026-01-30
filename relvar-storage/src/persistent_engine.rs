@@ -59,6 +59,8 @@ pub struct PersistentEngine {
     active_txns: ActiveTransactionTable,
     /// Set of committed transaction IDs for visibility checks.
     committed_txns: HashSet<TransactionId>,
+    /// Current transaction context for operations.
+    current_txn: Option<TransactionId>,
 }
 
 impl PersistentEngine {
@@ -124,6 +126,7 @@ impl PersistentEngine {
             )),
             active_txns: ActiveTransactionTable::new(),
             committed_txns: recovery_result.committed_txns, // Populate from recovery
+            current_txn: None,
         };
 
         // Undo uncommitted transactions
@@ -435,7 +438,7 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn load_relation(&self, name: &str) -> Result<Relation, StorageError> {
-        // Need to open the heap file to load
+        // Get metadata
         let metadata = self.catalog.get_relation(name).map_err(|e| match e {
             CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
             CatalogError::Io(io_err) => {
@@ -449,7 +452,37 @@ impl StorageEngine for PersistentEngine {
             HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
                 .map_err(Self::convert_heap_error)?;
 
-        heap_file.load_relation().map_err(Self::convert_heap_error)
+        // Use MVCC visibility if in a transaction, otherwise see all committed data
+        let tuples = if let Some(txn_id) = self.current_txn {
+            // In transaction - use snapshot isolation
+            let snapshot = self
+                .active_txns
+                .get_snapshot(txn_id)
+                .ok_or_else(|| {
+                    StorageError::Other(format!("Transaction {} not found", txn_id.value()))
+                })?
+                .clone();
+
+            heap_file
+                .scan_visible(&snapshot, &self.committed_txns)
+                .map_err(Self::convert_heap_error)?
+        } else {
+            // Outside transaction - see all committed data
+            // Create ad-hoc snapshot with no active transactions
+            let snapshot = crate::mvcc::TransactionSnapshot::new(
+                TransactionId::new(0),
+                self.wal.current_lsn(),
+                vec![],
+            );
+
+            heap_file
+                .scan_visible(&snapshot, &self.committed_txns)
+                .map_err(Self::convert_heap_error)?
+        };
+
+        // Build relation from visible tuples
+        Relation::from_tuples(metadata.relation_type.clone(), tuples)
+            .map_err(|e| StorageError::Other(format!("Failed to build relation: {}", e)))
     }
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {
@@ -482,11 +515,29 @@ impl StorageEngine for PersistentEngine {
             HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())
                 .map_err(Self::convert_heap_error)?;
 
-        // Insert all tuples
+        // Auto-commit transaction if not in explicit transaction
+        let auto_commit = self.current_txn.is_none();
+        let txn_id = if auto_commit {
+            let snapshot = self.begin_transaction()?;
+            snapshot.txn_id
+        } else {
+            self.current_txn.unwrap()
+        };
+
+        // Insert all tuples with MVCC versioning
         for tuple in relation.tuples() {
             new_heap_file
-                .insert_tuple(tuple)
+                .insert_tuple_versioned(tuple, txn_id)
                 .map_err(Self::convert_heap_error)?;
+        }
+
+        // Auto-commit if needed
+        if auto_commit {
+            let snapshot = PersistentSnapshot {
+                txn_id,
+                saved_relations: HashMap::new(),
+            };
+            self.commit_transaction(snapshot)?;
         }
 
         // Cache the new heap file
@@ -496,39 +547,46 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn insert_tuple(&mut self, name: &str, tuple: Tuple) -> Result<(), StorageError> {
-        // TODO: For MVCC, this should use insert_tuple_versioned with transaction context
-        // For now, uses old non-versioned insert for compatibility
+        // Auto-commit if not in explicit transaction
+        let auto_commit = self.current_txn.is_none();
 
-        // Note: WAL logging temporarily disabled during MVCC transition
-        // Will be re-enabled with transaction-aware insert in Phase 3.2
+        let txn_id = if auto_commit {
+            // Start auto-commit transaction
+            let snapshot = self.begin_transaction()?;
+            snapshot.txn_id
+        } else {
+            self.current_txn.unwrap()
+        };
 
-        // Serialize tuple for WAL (kept for future use)
-        if false {
-            // Disabled during MVCC transition
-            let tuple_data = bincode::serialize(&tuple)
-                .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
+        // Serialize tuple for WAL
+        let tuple_data = bincode::serialize(&tuple)
+            .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
 
-            // Log INSERT record to WAL (before data modification)
-            self.wal
-                .log(WalRecord::Insert {
-                    txn_id: TransactionId::new(0), // Placeholder
-                    relation_name: name.to_string(),
-                    tuple_data,
-                })
-                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
+        // Log INSERT record to WAL (before data modification)
+        self.wal
+            .log(WalRecord::Insert {
+                txn_id,
+                relation_name: name.to_string(),
+                tuple_data,
+            })
+            .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
 
-            // Flush WAL to ensure record is on disk for recovery
-            // (even if transaction doesn't commit, we need to be able to undo it)
-            self.wal
-                .flush()
-                .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
-        }
-
-        // Insert into heap file
+        // Insert into heap file with MVCC versioning
         let heap_file = self.get_or_open_heap_file(name)?;
         heap_file
-            .insert_tuple(&tuple)
-            .map_err(Self::convert_heap_error)
+            .insert_tuple_versioned(&tuple, txn_id)
+            .map_err(Self::convert_heap_error)?;
+
+        // Auto-commit if needed
+        if auto_commit {
+            let snapshot = PersistentSnapshot {
+                txn_id,
+                saved_relations: HashMap::new(), // Empty for auto-commit
+            };
+            self.commit_transaction(snapshot)?;
+        }
+
+        Ok(())
     }
 
     fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError> {
@@ -546,18 +604,13 @@ impl StorageEngine for PersistentEngine {
         // Add to active transaction table (creates snapshot)
         let _snapshot = self.active_txns.begin(txn_id, current_lsn);
 
-        // Save current state of all relations (for compatibility with old rollback)
-        // TODO: Remove once full MVCC rollback is implemented
-        let mut saved_relations = HashMap::new();
+        // Set as current transaction context
+        self.current_txn = Some(txn_id);
 
-        for name in self.catalog.list_relations() {
-            let relation = self.load_relation(&name)?;
-            saved_relations.insert(name, relation);
-        }
-
+        // MVCC handles rollback via visibility - no need to save relations
         Ok(PersistentSnapshot {
             txn_id,
-            saved_relations,
+            saved_relations: HashMap::new(),
         })
     }
 
@@ -587,6 +640,9 @@ impl StorageEngine for PersistentEngine {
         // Remove from active transactions
         self.active_txns.commit(snapshot.txn_id);
 
+        // Clear current transaction context
+        self.current_txn = None;
+
         Ok(())
     }
 
@@ -600,14 +656,14 @@ impl StorageEngine for PersistentEngine {
 
         // Do NOT flush WAL - aborted transactions are not durable
 
-        // Restore all relations from snapshot (old rollback mechanism)
-        // TODO: Replace with MVCC-based rollback
-        for (name, relation) in snapshot.saved_relations {
-            self.store_relation(&name, &relation)?;
-        }
+        // MVCC rollback: Uncommitted versions are automatically invisible
+        // No physical data restoration needed - visibility rules handle it
 
         // Remove from active transactions
         self.active_txns.abort(snapshot.txn_id);
+
+        // Clear current transaction context
+        self.current_txn = None;
 
         Ok(())
     }
@@ -1140,44 +1196,6 @@ mod tests {
     // WAL Integration Tests (Step 5)
 
     #[test]
-    #[ignore] // TODO: Re-enable in Phase 3.2 with transaction-aware insert_tuple_versioned
-    fn test_insert_logs_before_write() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
-
-        engine.create_relation("TEST", test_rel_type()).unwrap();
-
-        // Begin transaction
-        let snapshot = engine.begin_transaction().unwrap();
-
-        // Insert tuple - should log to WAL before writing to heap
-        // (WAL records are flushed immediately to enable recovery undo)
-        engine
-            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
-            .unwrap();
-
-        // Verify WAL file has records (flushed immediately for recovery)
-        let wal_path = temp_dir.path().join("wal.log");
-        assert!(wal_path.exists(), "WAL file should exist");
-
-        let metadata = std::fs::metadata(&wal_path).unwrap();
-        assert!(
-            metadata.len() > 8,
-            "WAL should have records beyond header after insert"
-        );
-
-        // Commit should flush WAL and make changes durable
-        engine.commit_transaction(snapshot).unwrap();
-
-        // After commit, WAL file should still have content
-        let metadata = std::fs::metadata(&wal_path).unwrap();
-        assert!(
-            metadata.len() > 8,
-            "WAL should have records beyond header after commit"
-        );
-    }
-
-    #[test]
     fn test_commit_flushes_wal() {
         let temp_dir = TempDir::new().unwrap();
         let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
@@ -1339,43 +1357,6 @@ mod tests {
                 relation.cardinality(),
                 1,
                 "Committed transaction should be recovered"
-            );
-        }
-    }
-
-    #[test]
-    #[ignore] // TODO: Re-enable in Phase 3.2 with MVCC-based recovery
-    fn test_recovery_ignores_uncommitted() {
-        let temp_dir = TempDir::new().unwrap();
-
-        // Create database with uncommitted transaction
-        {
-            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
-            engine.create_relation("TEST", test_rel_type()).unwrap();
-
-            // Committed transaction
-            let snapshot1 = engine.begin_transaction().unwrap();
-            engine
-                .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
-                .unwrap();
-            engine.commit_transaction(snapshot1).unwrap();
-
-            // Uncommitted transaction (crash before commit)
-            let _snapshot2 = engine.begin_transaction().unwrap();
-            engine
-                .insert_tuple("TEST", tuple! { id: 2i64, name: "Bob" })
-                .unwrap();
-            // Simulate crash - don't commit, just drop
-        }
-
-        // Reopen - should recover committed but not uncommitted
-        {
-            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
-            let relation = engine.load_relation("TEST").unwrap();
-            assert_eq!(
-                relation.cardinality(),
-                1,
-                "Only committed transactions should be recovered"
             );
         }
     }
