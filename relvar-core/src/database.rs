@@ -601,8 +601,11 @@ impl<E: StorageEngine> Database<E> {
             &tuple,
             &current_relation,
         )?;
-        self.constraints
-            .validate_foreign_keys_single_tuple(&mut self.engine, relation_name, &tuple)?;
+        self.constraints.validate_foreign_keys_single_tuple(
+            &mut self.engine,
+            relation_name,
+            &tuple,
+        )?;
 
         // Insert into engine
         self.engine.insert_tuple(relation_name, tuple)?;
@@ -648,8 +651,11 @@ impl<E: StorageEngine> Database<E> {
             }
         }
 
-        self.constraints
-            .validate_referencing_foreign_keys(&mut self.engine, relation_name, &new_relation)?;
+        self.constraints.validate_referencing_foreign_keys(
+            &mut self.engine,
+            relation_name,
+            &new_relation,
+        )?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
