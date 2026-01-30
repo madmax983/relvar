@@ -588,20 +588,8 @@ impl HeapFile {
             vp
         };
 
-        // Calculate required space
-        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
-        let slot_entry_size = std::mem::size_of::<VersionedSlotEntry>();
-        let header_size =
-            std::mem::size_of::<u32>() + (versioned_page.slots.len() + 1) * slot_entry_size;
-        let total_tuple_data_size: usize =
-            existing_tuples.iter().map(|t| t.len()).sum::<usize>() + tuple_data.len();
-        let required_space = header_size + total_tuple_data_size;
-
-        if required_space > USABLE_PAGE_SIZE {
-            return Err(HeapError::PageFull);
-        }
-
         // Find free slot or add new one
+        // NOTE: We do this BEFORE space calculation so we know the final slot count
         let slot_number = if let Some(pos) = versioned_page.slots.iter().position(|s| s.is_none()) {
             pos as u32
         } else {
@@ -613,6 +601,23 @@ impl HeapFile {
 
         // Add new tuple to the list
         existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
+
+        // Calculate required space using ACTUAL serialized size
+        // CRITICAL: Must use bincode size, not sizeof, as they differ!
+        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
+
+        // Serialize the slot directory to get actual size
+        let slot_dir = bincode::serialize(&versioned_page)
+            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let header_size = slot_dir.len();
+
+        let total_tuple_data_size: usize =
+            existing_tuples.iter().map(|t| t.len()).sum::<usize>();
+        let required_space = header_size + total_tuple_data_size;
+
+        if required_space > USABLE_PAGE_SIZE {
+            return Err(HeapError::PageFull);
+        }
 
         // Calculate offsets for all tuples (grow from end backward)
         // IMPORTANT: Preserve existing version metadata, only update offsets
@@ -666,8 +671,18 @@ impl HeapFile {
         let slot_dir = bincode::serialize(versioned_page)
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
 
+        // Ensure the serialized slot directory fits into the usable page size
+        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
+        if slot_dir.len() > USABLE_PAGE_SIZE {
+            return Err(HeapError::Serialization(format!(
+                "slot directory too large for page: {} > {}",
+                slot_dir.len(),
+                USABLE_PAGE_SIZE
+            )));
+        }
+
         // Create page buffer
-        let mut data = vec![0u8; PAGE_SIZE - 8]; // USABLE_PAGE_SIZE
+        let mut data = vec![0u8; USABLE_PAGE_SIZE];
 
         // Copy slot directory at beginning
         data[..slot_dir.len()].copy_from_slice(&slot_dir);
@@ -976,13 +991,20 @@ impl HeapFile {
             };
 
             // Extract existing tuple data
+            // IMPORTANT: Maintain 1:1 correspondence with slots vector
+            // Push empty Vec for None slots to preserve indexing
             let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-            for slot_entry in versioned_page.slots.iter().flatten() {
-                let start = slot_entry.offset as usize;
-                let end = start + slot_entry.length as usize;
-                if end <= page.data().len() {
-                    existing_tuples.push(page.data()[start..end].to_vec());
+            for slot_option in versioned_page.slots.iter() {
+                if let Some(slot_entry) = slot_option {
+                    let start = slot_entry.offset as usize;
+                    let end = start + slot_entry.length as usize;
+                    if end <= page.data().len() {
+                        existing_tuples.push(page.data()[start..end].to_vec());
+                    } else {
+                        existing_tuples.push(Vec::new());
+                    }
                 } else {
+                    // None slot - push empty to maintain index alignment
                     existing_tuples.push(Vec::new());
                 }
             }
