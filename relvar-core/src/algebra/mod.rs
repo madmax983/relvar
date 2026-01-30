@@ -83,9 +83,11 @@ pub mod divide;
 
 /// Extend operator for adding computed attributes.
 pub mod extend;
+pub use extend::ExtendOps;
 
 /// Group and ungroup operators for relation-valued attributes.
 pub mod group;
+pub use group::GroupOps;
 
 /// Set intersection operator.
 pub mod intersect;
@@ -107,6 +109,7 @@ pub mod semijoin;
 
 /// Summarize operator for aggregation with grouping.
 pub mod summarize;
+pub use summarize::{Aggregation, AggregationFn, SummarizeOps};
 
 /// Set union operator.
 pub mod union;
