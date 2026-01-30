@@ -655,8 +655,7 @@ impl HeapFile {
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
         let header_size = slot_dir.len();
 
-        let total_tuple_data_size: usize =
-            existing_tuples.iter().map(|t| t.len()).sum::<usize>();
+        let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
         let required_space = header_size + total_tuple_data_size;
 
         if required_space > USABLE_PAGE_SIZE {
@@ -741,7 +740,10 @@ impl HeapFile {
                     if offset + length > data.len() {
                         return Err(HeapError::Serialization(format!(
                             "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
-                            idx, offset, length, data.len()
+                            idx,
+                            offset,
+                            length,
+                            data.len()
                         )));
                     }
                     data[offset..offset + length].copy_from_slice(&tuples[idx]);
@@ -816,8 +818,8 @@ impl HeapFile {
         self.page_file.write_page(&updated_page)?;
 
         // Step 2: Insert new version
-        let new_tuple_data = bincode::serialize(new_tuple)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let new_tuple_data =
+            bincode::serialize(new_tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
 
         // Find a page with space for new version
         let mut page_id = 0;
@@ -886,8 +888,7 @@ impl HeapFile {
         }
 
         // Find free slot or add new one
-        let slot_number = if let Some(pos) = versioned_page.slots.iter().position(|s| s.is_none())
-        {
+        let slot_number = if let Some(pos) = versioned_page.slots.iter().position(|s| s.is_none()) {
             pos as u32
         } else {
             let new_slot = versioned_page.slots.len() as u32;
@@ -1105,10 +1106,8 @@ impl HeapFile {
                     }
                 }
 
-                let page_data = self.serialize_versioned_page_with_tuples(
-                    &versioned_page,
-                    &existing_tuples,
-                )?;
+                let page_data =
+                    self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
                 let updated_page = Page::from_data(page_id, page_data)?;
                 self.page_file.write_page(&updated_page)?;
             }
@@ -2097,9 +2096,7 @@ mod tests {
 
         // Insert original version
         let original = tuple! { id: 1i64, name: "Original" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // Update to new version
         let updated = tuple! { id: 1i64, name: "Updated" };
@@ -2125,9 +2122,7 @@ mod tests {
 
         // Insert original version
         let original = tuple! { id: 1i64, name: "Original" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // Update sets xmax on old version
         let updated = tuple! { id: 1i64, name: "Updated" };
@@ -2136,8 +2131,7 @@ mod tests {
 
         // Old version should have xmax set
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage =
-            bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2155,9 +2149,7 @@ mod tests {
 
         // Insert original version
         let original = tuple! { id: 1i64, name: "Original" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // Update creates new version with updating transaction's ID
         let updated = tuple! { id: 1i64, name: "Updated" };
@@ -2167,8 +2159,7 @@ mod tests {
 
         // New version should have xmin = test_txn(2)
         let page = heap.page_file.read_page(new_tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage =
-            bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
         let slot = versioned_page.slots[new_tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2187,9 +2178,7 @@ mod tests {
 
         // Insert original version
         let original = tuple! { id: 1i64, name: "Original" };
-        let old_tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let old_tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // Update creates version chain
         let updated = tuple! { id: 1i64, name: "Updated" };
@@ -2199,8 +2188,7 @@ mod tests {
 
         // New version should point back to old version
         let page = heap.page_file.read_page(new_tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage =
-            bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
         let new_slot = versioned_page.slots[new_tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2218,9 +2206,7 @@ mod tests {
 
         // T1: Insert original version
         let original = tuple! { id: 1i64, name: "Original" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // T1 commits
         let mut committed = HashSet::new();
@@ -2256,9 +2242,7 @@ mod tests {
 
         // T1: Insert and commit
         let original = tuple! { id: 1i64, name: "Original" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
@@ -2290,15 +2274,11 @@ mod tests {
 
         // Update to V2
         let v2 = tuple! { id: 1i64, name: "V2" };
-        let tid2 = heap
-            .update_tuple_versioned(tid1, &v2, test_txn(2))
-            .unwrap();
+        let tid2 = heap.update_tuple_versioned(tid1, &v2, test_txn(2)).unwrap();
 
         // Update to V3
         let v3 = tuple! { id: 1i64, name: "V3" };
-        let tid3 = heap
-            .update_tuple_versioned(tid2, &v3, test_txn(3))
-            .unwrap();
+        let tid3 = heap.update_tuple_versioned(tid2, &v3, test_txn(3)).unwrap();
 
         // Verify chain: tid3 -> tid2 -> tid1
         let page3 = heap.page_file.read_page(tid3.page_id).unwrap();
@@ -2341,9 +2321,7 @@ mod tests {
 
         // Insert original
         let original = tuple! { id: 42i64, name: "OriginalData" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // Update with different data
         let updated = tuple! { id: 42i64, name: "UpdatedData" };
@@ -2369,9 +2347,7 @@ mod tests {
 
         // T1: Insert
         let original = tuple! { id: 1i64, name: "Original" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // T2: Update
         let updated = tuple! { id: 1i64, name: "Updated" };
@@ -2380,8 +2356,7 @@ mod tests {
 
         // Old version should still have xmin = test_txn(1)
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage =
-            bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2399,9 +2374,7 @@ mod tests {
 
         // Insert original
         let original = tuple! { id: 1i64, name: "Original" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // Update might go to different page if original page is full
         let updated = tuple! { id: 1i64, name: "Updated" };
@@ -2427,9 +2400,7 @@ mod tests {
 
         // T1: Insert and commit
         let original = tuple! { id: 1i64, name: "Original" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
@@ -2460,18 +2431,14 @@ mod tests {
 
         // Insert tuple
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         // Delete tuple
-        heap.delete_tuple_versioned(tuple_id, test_txn(2))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
 
         // Verify xmax is set
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage =
-            bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2489,16 +2456,13 @@ mod tests {
 
         // T1: Insert and commit
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
 
         // T2: Delete and commit
-        heap.delete_tuple_versioned(tuple_id, test_txn(2))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
         committed.insert(test_txn(2));
 
         // T3: Should not see deleted tuple
@@ -2518,9 +2482,7 @@ mod tests {
 
         // T1: Insert and commit
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
@@ -2529,8 +2491,7 @@ mod tests {
         let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
 
         // T3: Delete and commit
-        heap.delete_tuple_versioned(tuple_id, test_txn(3))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(3)).unwrap();
         committed.insert(test_txn(3));
 
         // NOTE: With Read Committed, T2 sees the deletion
@@ -2550,16 +2511,13 @@ mod tests {
 
         // T1: Insert and commit
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
 
         // T2: Delete
-        heap.delete_tuple_versioned(tuple_id, test_txn(2))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
 
         // T2 should not see the tuple it deleted
         let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
@@ -2596,18 +2554,14 @@ mod tests {
 
         // T1: Insert
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         // T2: Delete
-        heap.delete_tuple_versioned(tuple_id, test_txn(2))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
 
         // Verify xmin unchanged
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage =
-            bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2626,13 +2580,10 @@ mod tests {
 
         // Insert tuple
         let original = tuple! { id: 42i64, name: "DataToPreserve" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         // Delete tuple
-        heap.delete_tuple_versioned(tuple_id, test_txn(2))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
 
         // Tuple data should still be readable (though invisible)
         let tuple = heap.read_tuple_versioned(tuple_id).unwrap();
@@ -2649,22 +2600,17 @@ mod tests {
 
         // Insert tuple
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         // Delete by T2
-        heap.delete_tuple_versioned(tuple_id, test_txn(2))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
 
         // Delete again by T3 (should succeed and update xmax)
-        heap.delete_tuple_versioned(tuple_id, test_txn(3))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(3)).unwrap();
 
         // Verify xmax is now T3
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage =
-            bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2716,9 +2662,7 @@ mod tests {
 
         // Insert original
         let original = tuple! { id: 1i64, name: "Original" };
-        let tid1 = heap
-            .insert_tuple_versioned(&original, test_txn(1))
-            .unwrap();
+        let tid1 = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
@@ -2729,8 +2673,7 @@ mod tests {
 
         // Insert new version with same logical key
         let new_ver = tuple! { id: 1i64, name: "Reinserted" };
-        heap.insert_tuple_versioned(&new_ver, test_txn(3))
-            .unwrap();
+        heap.insert_tuple_versioned(&new_ver, test_txn(3)).unwrap();
         committed.insert(test_txn(3));
 
         // Should see only the new version

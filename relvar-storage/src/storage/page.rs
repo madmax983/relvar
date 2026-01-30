@@ -307,7 +307,8 @@ impl PageFile {
         if data_len + 8 > buffer.len() {
             return Err(PageError::Serialization(format!(
                 "Corrupted page: length prefix says {}, but only {} bytes available",
-                data_len, buffer.len()
+                data_len,
+                buffer.len()
             )));
         }
 

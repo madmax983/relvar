@@ -4,11 +4,11 @@
 //! Internal MVCC mechanisms are tested but not directly benchmarked to maintain
 //! TTM compliance (no exposure of physical implementation details).
 
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, black_box, criterion_group, criterion_main};
+use relvar_core::StorageEngine;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Relation;
-use relvar_core::StorageEngine;
 use relvar_storage::persistent_engine::PersistentEngine;
 use tempfile::TempDir;
 
@@ -57,35 +57,38 @@ fn bench_load_relation(c: &mut Criterion) {
 /// Benchmark relation store performance (exercises MVCC versioning)
 fn bench_store_relation(c: &mut Criterion) {
     for tuple_count in [10, 100, 1000].iter() {
-        c.bench_function(&format!("mvcc_store_relation_{}_tuples", tuple_count), |b| {
-            b.iter_batched(
-                || {
-                    // Setup
-                    let temp_dir = TempDir::new().unwrap();
-                    let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
-                    let rel_type = create_test_relation_type();
-                    engine.create_relation("TEST", rel_type.clone()).unwrap();
+        c.bench_function(
+            &format!("mvcc_store_relation_{}_tuples", tuple_count),
+            |b| {
+                b.iter_batched(
+                    || {
+                        // Setup
+                        let temp_dir = TempDir::new().unwrap();
+                        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+                        let rel_type = create_test_relation_type();
+                        engine.create_relation("TEST", rel_type.clone()).unwrap();
 
-                    // Create relation with N tuples
-                    let mut tuples = Vec::new();
-                    for i in 1..=*tuple_count {
-                        tuples.push(tuple! {
-                            id: i,
-                            name: format!("Test{}", i),
-                            value: i * 10
-                        });
-                    }
-                    let relation = Relation::from_tuples(rel_type, tuples).unwrap();
+                        // Create relation with N tuples
+                        let mut tuples = Vec::new();
+                        for i in 1..=*tuple_count {
+                            tuples.push(tuple! {
+                                id: i,
+                                name: format!("Test{}", i),
+                                value: i * 10
+                            });
+                        }
+                        let relation = Relation::from_tuples(rel_type, tuples).unwrap();
 
-                    (engine, relation, temp_dir)
-                },
-                |(mut engine, relation, _temp_dir)| {
-                    // Benchmark: Store relation
-                    black_box(engine.store_relation("TEST", &relation).unwrap());
-                },
-                BatchSize::SmallInput,
-            );
-        });
+                        (engine, relation, temp_dir)
+                    },
+                    |(mut engine, relation, _temp_dir)| {
+                        // Benchmark: Store relation
+                        black_box(engine.store_relation("TEST", &relation).unwrap());
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+        );
     }
 }
 

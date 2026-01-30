@@ -81,16 +81,13 @@ mod tests {
 
         // T1: Insert and commit
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
 
         // T2: Delete and commit
-        heap.delete_tuple_versioned(tuple_id, test_txn(2))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
         committed.insert(test_txn(2));
 
         // No active transactions (oldest_active_lsn after T2)
@@ -112,8 +109,7 @@ mod tests {
 
         // T1: Insert and commit
         let tuple = tuple! { id: 1i64, name: "Active" };
-        heap.insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
@@ -136,9 +132,7 @@ mod tests {
 
         // T1: Insert and commit
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
@@ -172,15 +166,11 @@ mod tests {
 
         // T2: Update to V2
         let v2 = tuple! { id: 1i64, name: "V2" };
-        let tid2 = heap
-            .update_tuple_versioned(tid1, &v2, test_txn(2))
-            .unwrap();
+        let tid2 = heap.update_tuple_versioned(tid1, &v2, test_txn(2)).unwrap();
 
         // T3: Update to V3
         let v3 = tuple! { id: 1i64, name: "V3" };
-        let _tid3 = heap
-            .update_tuple_versioned(tid2, &v3, test_txn(3))
-            .unwrap();
+        let _tid3 = heap.update_tuple_versioned(tid2, &v3, test_txn(3)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
@@ -206,16 +196,13 @@ mod tests {
 
         // T1: Insert and commit
         let tuple = tuple! { id: 1i64, name: "ToDelete" };
-        let tuple_id = heap
-            .insert_tuple_versioned(&tuple, test_txn(1))
-            .unwrap();
+        let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
 
         let mut committed = HashSet::new();
         committed.insert(test_txn(1));
 
         // T2: Delete but NOT committed
-        heap.delete_tuple_versioned(tuple_id, test_txn(2))
-            .unwrap();
+        heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
         // T2 not in committed set
 
         let oldest_active = test_lsn(300);
@@ -320,9 +307,7 @@ mod tests {
         // Create multiple dead versions
         for i in 1..=5 {
             let tuple = tuple! { id: i, name: "Test" };
-            let tid = heap
-                .insert_tuple_versioned(&tuple, test_txn(1))
-                .unwrap();
+            let tid = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
             heap.delete_tuple_versioned(tid, test_txn(2)).unwrap();
         }
 
