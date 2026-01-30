@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
 
-use crate::storage::PageId;
+use crate::storage::{PageId, heap::TupleId};
 
 /// Errors that can occur during WAL record operations.
 #[derive(Debug, Error)]
@@ -75,13 +75,29 @@ pub enum WalRecord {
     /// Insert a tuple into a relation.
     ///
     /// Records the serialized tuple data for redo recovery.
+    /// The txn_id serves as xmin (creating transaction) for the version.
     Insert {
-        /// The transaction ID.
+        /// The transaction ID (also serves as xmin for MVCC).
         txn_id: TransactionId,
         /// The name of the relation.
         relation_name: String,
         /// The serialized tuple data.
         tuple_data: Vec<u8>,
+    },
+
+    /// Update a tuple in a relation (MVCC version chain).
+    ///
+    /// Creates a new version and marks the old version as deleted.
+    /// For MVCC recovery: old version gets xmax=txn_id, new version gets xmin=txn_id.
+    Update {
+        /// The transaction ID (xmin for new version, xmax for old version).
+        txn_id: TransactionId,
+        /// The name of the relation.
+        relation_name: String,
+        /// The TupleId of the old version (to set its xmax).
+        old_tuple_id: TupleId,
+        /// The serialized tuple data for the new version.
+        new_tuple_data: Vec<u8>,
     },
 
     /// Delete a tuple from a relation.
@@ -144,6 +160,7 @@ impl WalRecord {
             | WalRecord::Abort { txn_id }
             | WalRecord::PageWrite { txn_id, .. }
             | WalRecord::Insert { txn_id, .. }
+            | WalRecord::Update { txn_id, .. }
             | WalRecord::Delete { txn_id, .. } => Some(*txn_id),
             WalRecord::Checkpoint { .. } => None,
         }
@@ -333,5 +350,130 @@ mod tests {
             }
             .is_txn_end()
         );
+    }
+
+    // Phase 4.1: WAL records with version metadata tests
+
+    #[test]
+    fn test_insert_record_txn_id_is_xmin() {
+        let txn_id = TransactionId::new(42);
+        let record = WalRecord::Insert {
+            txn_id,
+            relation_name: "test".to_string(),
+            tuple_data: vec![1, 2, 3],
+        };
+
+        // txn_id serves as xmin for the created version
+        assert_eq!(record.txn_id(), Some(txn_id));
+    }
+
+    #[test]
+    fn test_update_record_roundtrip() {
+        let txn_id = TransactionId::new(5);
+        let old_tuple_id = crate::storage::heap::TupleId {
+            page_id: 1,
+            slot: 3,
+        };
+        let new_tuple_data = vec![10, 20, 30];
+
+        let record = WalRecord::Update {
+            txn_id,
+            relation_name: "employees".to_string(),
+            old_tuple_id,
+            new_tuple_data: new_tuple_data.clone(),
+        };
+
+        let bytes = record.serialize().expect("serialization failed");
+        let deserialized = WalRecord::deserialize(&bytes).expect("deserialization failed");
+
+        assert_eq!(record, deserialized);
+    }
+
+    #[test]
+    fn test_update_record_links_versions() {
+        let txn_id = TransactionId::new(10);
+        let old_tuple_id = crate::storage::heap::TupleId {
+            page_id: 2,
+            slot: 5,
+        };
+
+        let record = WalRecord::Update {
+            txn_id,
+            relation_name: "test".to_string(),
+            old_tuple_id,
+            new_tuple_data: vec![1, 2, 3],
+        };
+
+        // Verify the record preserves version chain information
+        if let WalRecord::Update {
+            old_tuple_id: recovered_old,
+            ..
+        } = record
+        {
+            assert_eq!(recovered_old.page_id, 2);
+            assert_eq!(recovered_old.slot, 5);
+        } else {
+            panic!("Expected Update record");
+        }
+    }
+
+    #[test]
+    fn test_update_txn_id_extraction() {
+        let txn_id = TransactionId::new(99);
+        let record = WalRecord::Update {
+            txn_id,
+            relation_name: "test".to_string(),
+            old_tuple_id: crate::storage::heap::TupleId {
+                page_id: 0,
+                slot: 0,
+            },
+            new_tuple_data: vec![],
+        };
+
+        assert_eq!(record.txn_id(), Some(txn_id));
+    }
+
+    #[test]
+    fn test_update_not_txn_end() {
+        let txn_id = TransactionId::new(1);
+        let record = WalRecord::Update {
+            txn_id,
+            relation_name: "test".to_string(),
+            old_tuple_id: crate::storage::heap::TupleId {
+                page_id: 0,
+                slot: 0,
+            },
+            new_tuple_data: vec![],
+        };
+
+        assert!(!record.is_txn_end());
+    }
+
+    #[test]
+    fn test_wal_preserves_version_metadata() {
+        // Verify that serialization roundtrip preserves all version metadata
+        let txn_id = TransactionId::new(123);
+        let tuple_data = vec![1, 2, 3, 4, 5];
+
+        let insert_record = WalRecord::Insert {
+            txn_id,
+            relation_name: "test".to_string(),
+            tuple_data: tuple_data.clone(),
+        };
+
+        let bytes = insert_record.serialize().unwrap();
+        let recovered = WalRecord::deserialize(&bytes).unwrap();
+
+        // txn_id (which is xmin) should be preserved
+        assert_eq!(recovered.txn_id(), Some(txn_id));
+
+        // tuple data should be preserved
+        if let WalRecord::Insert {
+            tuple_data: recovered_data,
+            ..
+        } = recovered
+        {
+            assert_eq!(tuple_data, recovered_data);
+        }
     }
 }

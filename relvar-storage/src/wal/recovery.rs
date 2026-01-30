@@ -87,6 +87,15 @@ pub struct UncommittedInsert {
     pub tuple_data: Vec<u8>,
 }
 
+/// Result of recovery process.
+#[derive(Debug)]
+pub struct RecoveryResult {
+    /// Set of committed transaction IDs (for MVCC visibility).
+    pub committed_txns: HashSet<TransactionId>,
+    /// List of uncommitted inserts that need to be undone.
+    pub uncommitted_inserts: Vec<UncommittedInsert>,
+}
+
 /// Performs recovery analysis and returns uncommitted operations.
 ///
 /// This performs the analysis pass and identifies which operations
@@ -100,7 +109,7 @@ pub struct UncommittedInsert {
 /// # Errors
 ///
 /// Returns `WalError` if analysis fails.
-pub fn recover(wal: &mut WalManager) -> Result<Vec<UncommittedInsert>, WalError> {
+pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     // Analysis pass
     let analysis = analyze(wal)?;
 
@@ -138,7 +147,10 @@ pub fn recover(wal: &mut WalManager) -> Result<Vec<UncommittedInsert>, WalError>
         }
     }
 
-    Ok(uncommitted_inserts)
+    Ok(RecoveryResult {
+        committed_txns: analysis.committed,
+        uncommitted_inserts,
+    })
 }
 
 #[cfg(test)]
@@ -156,5 +168,213 @@ mod tests {
         assert!(result.committed.is_empty());
         assert!(result.aborted.is_empty());
         assert!(result.records.is_empty());
+    }
+
+    // Phase 4.2: Recovery with Versions tests
+
+    #[test]
+    fn test_recovery_populates_committed_set() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        let txn1 = TransactionId::new(1);
+        let txn2 = TransactionId::new(2);
+
+        // T1 commits
+        wal.log(WalRecord::Begin { txn_id: txn1 }).unwrap();
+        wal.log(WalRecord::Insert {
+            txn_id: txn1,
+            relation_name: "test".to_string(),
+            tuple_data: vec![1, 2, 3],
+        })
+        .unwrap();
+        wal.log(WalRecord::Commit { txn_id: txn1 }).unwrap();
+
+        // T2 aborts
+        wal.log(WalRecord::Begin { txn_id: txn2 }).unwrap();
+        wal.log(WalRecord::Insert {
+            txn_id: txn2,
+            relation_name: "test".to_string(),
+            tuple_data: vec![4, 5, 6],
+        })
+        .unwrap();
+        wal.log(WalRecord::Abort { txn_id: txn2 }).unwrap();
+
+        let result = recover(&mut wal).unwrap();
+
+        // T1 should be in committed set
+        assert!(result.committed_txns.contains(&txn1));
+        // T2 should NOT be in committed set (aborted)
+        assert!(!result.committed_txns.contains(&txn2));
+    }
+
+    #[test]
+    fn test_recovery_removes_uncommitted_versions() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        let txn1 = TransactionId::new(1);
+        let txn2 = TransactionId::new(2);
+
+        // T1 commits
+        wal.log(WalRecord::Begin { txn_id: txn1 }).unwrap();
+        wal.log(WalRecord::Insert {
+            txn_id: txn1,
+            relation_name: "test".to_string(),
+            tuple_data: vec![1, 2, 3],
+        })
+        .unwrap();
+        wal.log(WalRecord::Commit { txn_id: txn1 }).unwrap();
+
+        // T2 doesn't commit (crash)
+        wal.log(WalRecord::Begin { txn_id: txn2 }).unwrap();
+        wal.log(WalRecord::Insert {
+            txn_id: txn2,
+            relation_name: "test".to_string(),
+            tuple_data: vec![4, 5, 6],
+        })
+        .unwrap();
+
+        let result = recover(&mut wal).unwrap();
+
+        // T1's insert should NOT be in uncommitted list
+        assert!(
+            result
+                .uncommitted_inserts
+                .iter()
+                .all(|ui| ui.tuple_data != vec![1, 2, 3])
+        );
+
+        // T2's insert should be in uncommitted list
+        assert!(
+            result
+                .uncommitted_inserts
+                .iter()
+                .any(|ui| ui.tuple_data == vec![4, 5, 6])
+        );
+    }
+
+    #[test]
+    fn test_recovery_committed_versions_survive() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        let txn1 = TransactionId::new(10);
+        let txn2 = TransactionId::new(20);
+        let txn3 = TransactionId::new(30);
+
+        // Multiple committed transactions
+        for txn_id in [txn1, txn2, txn3] {
+            wal.log(WalRecord::Begin { txn_id }).unwrap();
+            wal.log(WalRecord::Insert {
+                txn_id,
+                relation_name: "test".to_string(),
+                tuple_data: vec![txn_id.value() as u8],
+            })
+            .unwrap();
+            wal.log(WalRecord::Commit { txn_id }).unwrap();
+        }
+
+        let result = recover(&mut wal).unwrap();
+
+        // All should be in committed set
+        assert_eq!(result.committed_txns.len(), 3);
+        assert!(result.committed_txns.contains(&txn1));
+        assert!(result.committed_txns.contains(&txn2));
+        assert!(result.committed_txns.contains(&txn3));
+
+        // None should be in uncommitted
+        assert!(result.uncommitted_inserts.is_empty());
+    }
+
+    #[test]
+    fn test_recovery_mixed_committed_uncommitted() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        let t1 = TransactionId::new(1);
+        let t2 = TransactionId::new(2);
+        let t3 = TransactionId::new(3);
+
+        // T1 commits
+        wal.log(WalRecord::Begin { txn_id: t1 }).unwrap();
+        wal.log(WalRecord::Commit { txn_id: t1 }).unwrap();
+
+        // T2 uncommitted
+        wal.log(WalRecord::Begin { txn_id: t2 }).unwrap();
+        wal.log(WalRecord::Insert {
+            txn_id: t2,
+            relation_name: "test".to_string(),
+            tuple_data: vec![2],
+        })
+        .unwrap();
+
+        // T3 commits
+        wal.log(WalRecord::Begin { txn_id: t3 }).unwrap();
+        wal.log(WalRecord::Commit { txn_id: t3 }).unwrap();
+
+        let result = recover(&mut wal).unwrap();
+
+        assert!(result.committed_txns.contains(&t1));
+        assert!(!result.committed_txns.contains(&t2));
+        assert!(result.committed_txns.contains(&t3));
+
+        assert_eq!(result.uncommitted_inserts.len(), 1);
+    }
+
+    #[test]
+    fn test_recovery_result_structure() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        let txn1 = TransactionId::new(1);
+
+        wal.log(WalRecord::Begin { txn_id: txn1 }).unwrap();
+        wal.log(WalRecord::Insert {
+            txn_id: txn1,
+            relation_name: "employees".to_string(),
+            tuple_data: vec![1, 2, 3],
+        })
+        .unwrap();
+        wal.log(WalRecord::Commit { txn_id: txn1 }).unwrap();
+
+        let result = recover(&mut wal).unwrap();
+
+        // Verify RecoveryResult has both fields
+        assert!(!result.committed_txns.is_empty());
+        assert!(result.uncommitted_inserts.is_empty());
+    }
+
+    #[test]
+    fn test_recovery_empty_wal_returns_empty_committed() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        let result = recover(&mut wal).unwrap();
+
+        assert!(result.committed_txns.is_empty());
+        assert!(result.uncommitted_inserts.is_empty());
+    }
+
+    #[test]
+    fn test_recovery_aborted_not_in_committed() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        let txn1 = TransactionId::new(1);
+
+        wal.log(WalRecord::Begin { txn_id: txn1 }).unwrap();
+        wal.log(WalRecord::Insert {
+            txn_id: txn1,
+            relation_name: "test".to_string(),
+            tuple_data: vec![1],
+        })
+        .unwrap();
+        wal.log(WalRecord::Abort { txn_id: txn1 }).unwrap();
+
+        let result = recover(&mut wal).unwrap();
+
+        // Aborted transaction should NOT be in committed set
+        assert!(!result.committed_txns.contains(&txn1));
     }
 }

@@ -108,7 +108,7 @@ impl PersistentEngine {
         };
 
         // Perform crash recovery if needed
-        let uncommitted_inserts =
+        let recovery_result =
             recover(&mut wal).map_err(|e| StorageError::Other(format!("Recovery error: {}", e)))?;
 
         // Create engine instance first (we need catalog access)
@@ -120,11 +120,11 @@ impl PersistentEngine {
             wal,
             txn_id_gen: TransactionIdGenerator::new(),
             active_txns: ActiveTransactionTable::new(),
-            committed_txns: HashSet::new(),
+            committed_txns: recovery_result.committed_txns, // Populate from recovery
         };
 
         // Undo uncommitted transactions
-        engine.undo_uncommitted_inserts(uncommitted_inserts)?;
+        engine.undo_uncommitted_inserts(recovery_result.uncommitted_inserts)?;
 
         Ok(engine)
     }
