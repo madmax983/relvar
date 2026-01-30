@@ -934,6 +934,100 @@ impl HeapFile {
         Ok(())
     }
 
+    /// Removes dead tuple versions for garbage collection.
+    ///
+    /// A version is dead if:
+    /// - It has xmax set (deleted or updated)
+    /// - The xmax transaction is committed
+    /// - The xmax transaction LSN < oldest_active_lsn (no active txn can see it)
+    ///
+    /// # Arguments
+    /// * `oldest_active_lsn` - LSN of the oldest active transaction
+    /// * `committed` - Set of committed transaction IDs
+    ///
+    /// # Returns
+    /// Number of versions removed
+    ///
+    /// # Errors
+    /// Returns `HeapError` if page I/O fails
+    pub(crate) fn gc_remove_dead_versions(
+        &mut self,
+        oldest_active_lsn: crate::wal::Lsn,
+        committed: &std::collections::HashSet<crate::wal::TransactionId>,
+    ) -> Result<usize, HeapError> {
+        let mut removed_count = 0;
+        let mut page_id = 0;
+
+        loop {
+            let page = self.page_file.read_page(page_id)?;
+
+            if page.is_empty() {
+                break;
+            }
+
+            // Try to deserialize as versioned page
+            let mut versioned_page: VersionedSlottedPage = match bincode::deserialize(page.data()) {
+                Ok(vp) => vp,
+                Err(_) => {
+                    // Not a versioned page, skip
+                    page_id += 1;
+                    continue;
+                }
+            };
+
+            // Extract existing tuple data
+            let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
+            for slot_entry in versioned_page.slots.iter().flatten() {
+                let start = slot_entry.offset as usize;
+                let end = start + slot_entry.length as usize;
+                if end <= page.data().len() {
+                    existing_tuples.push(page.data()[start..end].to_vec());
+                } else {
+                    existing_tuples.push(Vec::new());
+                }
+            }
+
+            let mut page_modified = false;
+
+            // Check each slot for dead versions
+            for (idx, slot_option) in versioned_page.slots.iter_mut().enumerate() {
+                if let Some(slot) = slot_option {
+                    // Check if this version is dead
+                    if let Some(xmax) = slot.xmax {
+                        // Has xmax - was deleted or updated
+                        if committed.contains(&xmax) {
+                            // xmax transaction committed
+                            // Check if it's old enough (before oldest active)
+                            // Note: We need to compare transaction IDs as proxy for LSN
+                            // since we don't track commit LSNs yet
+                            if xmax.value() < oldest_active_lsn.value() {
+                                // This version is dead - remove it
+                                *slot_option = None;
+                                existing_tuples[idx] = Vec::new();
+                                removed_count += 1;
+                                page_modified = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Write page back if modified
+            if page_modified {
+                let page_data = self.serialize_versioned_page_with_tuples(
+                    &versioned_page,
+                    &existing_tuples,
+                )?;
+                let updated_page = Page::from_data(page_id, page_data)?;
+                self.page_file.write_page(&updated_page)?;
+            }
+
+            page_id += 1;
+        }
+
+        Ok(removed_count)
+    }
+
     /// Scans all visible tuples for a given transaction snapshot.
     ///
     /// Only returns tuples that are visible according to MVCC visibility rules.

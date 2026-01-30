@@ -4,6 +4,7 @@
 // All MVCC logic is internal to the storage layer (TTM compliant - physical independence).
 
 pub mod active_txn_table;
+pub mod gc;
 pub mod snapshot;
 pub mod visibility;
 
