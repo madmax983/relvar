@@ -55,6 +55,69 @@
 //! db.insert("EMPLOYEES", tuple! { id: 1i64, name: "Alice" }).unwrap();
 //! # }
 //! ```
+//!
+//! ### Advanced Relational Algebra
+//!
+//! Advanced operators like `extend`, `summarize`, and `group` require importing
+//! their corresponding traits. These are re-exported in `relvar::algebra`.
+//!
+//! ```
+//! use relvar::{Database, InMemoryEngine, tuple};
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::values::ScalarValue;
+//! // Import traits for advanced operators!
+//! use relvar::algebra::{ExtendOps, SummarizeOps, Aggregation};
+//!
+//! let mut db = Database::new(InMemoryEngine::new());
+//! // ... setup relvar ...
+//! # let rel_type = RelationType::new(
+//! #     TupleType::new()
+//! #         .with_attribute("id", ScalarType::Int)
+//! #         .with_attribute("salary", ScalarType::Int)
+//! # );
+//! # db.create_relvar("EMPLOYEES", rel_type).unwrap();
+//! # db.insert("EMPLOYEES", tuple! { id: 1i64, salary: 50000i64 }).unwrap();
+//!
+//! let employees = db.query("EMPLOYEES").unwrap();
+//!
+//! // Compute annual bonus (10%)
+//! let with_bonus = employees.extend("bonus", ScalarType::Int, |t| {
+//!     let salary = t.get_typed::<i64>("salary").unwrap();
+//!     ScalarValue::Int(salary / 10)
+//! }).unwrap();
+//!
+//! // Summarize total salary
+//! let stats = employees.summarize(&[], &[
+//!     Aggregation::sum("total_salary", "salary")
+//! ]).unwrap();
+//! ```
+//!
+//! ### Transactions
+//!
+//! Transactions allow grouping multiple operations into an atomic unit.
+//!
+//! ```
+//! use relvar::{Database, InMemoryEngine, tuple};
+//! # use relvar::types::{TupleType, RelationType, ScalarType};
+//!
+//! let mut db = Database::new(InMemoryEngine::new());
+//! # let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+//! # db.create_relvar("TEST", rel_type).unwrap();
+//!
+//! db.begin().unwrap();
+//!
+//! // These changes are tentative
+//! db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+//! db.insert("TEST", tuple! { id: 2i64 }).unwrap();
+//!
+//! // Commit makes them permanent
+//! db.commit().unwrap();
+//!
+//! // Or use rollback to discard changes
+//! db.begin().unwrap();
+//! db.insert("TEST", tuple! { id: 3i64 }).unwrap();
+//! db.rollback().unwrap();
+//! ```
 
 #![warn(missing_docs)]
 

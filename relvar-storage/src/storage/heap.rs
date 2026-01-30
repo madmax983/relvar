@@ -143,9 +143,12 @@ struct SlottedPage {
 /// Versioned page layout for MVCC
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VersionedSlottedPage {
+    magic: u32, // Magic number to distinguish from SlottedPage: 0x4D564343 ("MVCC")
     slot_count: u32,
     slots: Vec<Option<VersionedSlotEntry>>,
 }
+
+const VERSIONED_PAGE_MAGIC: u32 = 0x4D564343; // "MVCC" in ASCII
 
 impl HeapFile {
     /// Creates a new heap file, truncating any existing file.
@@ -435,26 +438,66 @@ impl HeapFile {
                 break;
             }
 
-            // Try to deserialize as slotted page
-            let slotted_page: SlottedPage = match bincode::deserialize(page.data()) {
-                Ok(sp) => sp,
-                Err(_) => {
-                    page_id += 1;
-                    continue;
-                }
+            // Check if this is a versioned page by reading the magic number
+            // Versioned pages start with magic: u32, SlottedPage starts with slot_count: u32
+            let is_versioned = if page.data().len() >= 4 {
+                let first_u32 = u32::from_le_bytes([
+                    page.data()[0],
+                    page.data()[1],
+                    page.data()[2],
+                    page.data()[3],
+                ]);
+                first_u32 == VERSIONED_PAGE_MAGIC
+            } else {
+                false
             };
 
-            // Read all tuples from this page
-            for (slot, slot_entry) in slotted_page.slots.iter().enumerate() {
-                if slot_entry.is_some() {
-                    let tuple_id = TupleId {
-                        page_id,
-                        slot: slot as u32,
-                    };
-                    // TupleId used internally, not exposed
-                    if let Ok(tuple) = self.read_tuple(tuple_id) {
-                        results.push(tuple); // Only push tuple
+            if is_versioned {
+                // Versioned page format (MVCC)
+                let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data())
+                    .map_err(|e| HeapError::Serialization(e.to_string()))?;
+
+                for slot_entry in versioned_page.slots.iter().flatten() {
+                    let start = slot_entry.offset as usize;
+                    let end = start + slot_entry.length as usize;
+
+                    if end > page.data().len() {
+                        return Err(HeapError::Serialization(format!(
+                            "Corrupted slot on page {} points outside page data",
+                            page_id
+                        )));
                     }
+
+                    let tuple_data = &page.data()[start..end];
+                    let tuple: Tuple = bincode::deserialize(tuple_data)
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?;
+                    results.push(tuple);
+                }
+            } else {
+                // Old slotted page format (non-MVCC)
+                let slotted_page: SlottedPage = match bincode::deserialize(page.data()) {
+                    Ok(sp) => sp,
+                    Err(_) => {
+                        page_id += 1;
+                        continue;
+                    }
+                };
+
+                for slot_entry in slotted_page.slots.iter().flatten() {
+                    let start = slot_entry.offset as usize;
+                    let end = start + slot_entry.length as usize;
+
+                    if end > page.data().len() {
+                        return Err(HeapError::Serialization(format!(
+                            "Corrupted slot on page {} points outside page data",
+                            page_id
+                        )));
+                    }
+
+                    let tuple_data = &page.data()[start..end];
+                    let tuple: Tuple = bincode::deserialize(tuple_data)
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?;
+                    results.push(tuple);
                 }
             }
 
@@ -567,6 +610,7 @@ impl HeapFile {
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
         let mut versioned_page = if page.is_empty() {
             VersionedSlottedPage {
+                magic: VERSIONED_PAGE_MAGIC,
                 slot_count: 0,
                 slots: Vec::new(),
             }
@@ -693,6 +737,13 @@ impl HeapFile {
                 let offset = entry.offset as usize;
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
+                    // Validate that offset + length doesn't exceed buffer
+                    if offset + length > data.len() {
+                        return Err(HeapError::Serialization(format!(
+                            "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
+                            idx, offset, length, data.len()
+                        )));
+                    }
                     data[offset..offset + length].copy_from_slice(&tuples[idx]);
                 }
             }
@@ -799,6 +850,7 @@ impl HeapFile {
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
         let mut versioned_page = if page.is_empty() {
             VersionedSlottedPage {
+                magic: VERSIONED_PAGE_MAGIC,
                 slot_count: 0,
                 slots: Vec::new(),
             }
@@ -1036,6 +1088,23 @@ impl HeapFile {
 
             // Write page back if modified
             if page_modified {
+                // CRITICAL: Recompute offsets after GC removed tuples
+                // The old offsets are invalid now that some tuples are gone
+                const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
+                let mut current_offset = USABLE_PAGE_SIZE;
+
+                // Iterate backward to pack tuples from end of page
+                for (idx, tuple) in existing_tuples.iter().enumerate().rev() {
+                    if !tuple.is_empty() && versioned_page.slots[idx].is_some() {
+                        current_offset -= tuple.len();
+                        // Update offset while preserving version metadata
+                        if let Some(ref mut entry) = versioned_page.slots[idx] {
+                            entry.offset = current_offset as u32;
+                            entry.length = tuple.len() as u32;
+                        }
+                    }
+                }
+
                 let page_data = self.serialize_versioned_page_with_tuples(
                     &versioned_page,
                     &existing_tuples,
@@ -1473,6 +1542,7 @@ mod tests {
         slots.push(None); // Empty slot (deleted tuple)
 
         let page = VersionedSlottedPage {
+            magic: VERSIONED_PAGE_MAGIC,
             slot_count: 3,
             slots,
         };
@@ -1540,6 +1610,7 @@ mod tests {
     #[test]
     fn test_versioned_page_empty_slots() {
         let page = VersionedSlottedPage {
+            magic: VERSIONED_PAGE_MAGIC,
             slot_count: 0,
             slots: Vec::new(),
         };
@@ -2668,5 +2739,41 @@ mod tests {
 
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0], new_ver);
+    }
+
+    #[test]
+    fn test_heap_scan_corrupted_slot() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Create a manually corrupted page
+        // Slot points to offset > PAGE_SIZE
+        let slotted_page = SlottedPage {
+            slot_count: 1,
+            slots: vec![Some(SlotEntry {
+                offset: (PAGE_SIZE + 100) as u32, // Invalid offset
+                length: 10,
+            })],
+        };
+
+        // Serialize just the header (no tuple data needed as offset is invalid)
+        let slot_dir = bincode::serialize(&slotted_page).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE - 8];
+        page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
+
+        let page = Page::from_data(0, page_data).unwrap();
+        heap.page_file.write_page(&page).unwrap();
+
+        // Scan should fail
+        let result = heap.scan();
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::Serialization(msg)) => {
+                assert!(msg.contains("Corrupted slot"));
+            }
+            _ => panic!("Expected Serialization error for corrupted slot"),
+        }
     }
 }
