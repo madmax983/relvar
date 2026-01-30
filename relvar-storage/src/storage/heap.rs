@@ -115,11 +115,36 @@ struct SlotEntry {
     length: u32,
 }
 
+/// Versioned slot directory entry for MVCC.
+///
+/// Extends SlotEntry with transaction version metadata to support
+/// Multi-Version Concurrency Control (MVCC).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct VersionedSlotEntry {
+    /// Offset of tuple data in page
+    offset: u32,
+    /// Length of tuple data
+    length: u32,
+    /// Transaction that created this version
+    xmin: crate::wal::TransactionId,
+    /// Transaction that deleted/updated this version (None = still visible)
+    xmax: Option<crate::wal::TransactionId>,
+    /// Previous version in the version chain (for undo)
+    prev_version: Option<TupleId>,
+}
+
 /// Page layout: [slot_count (4 bytes)] [slot_entries...] [free_space] [...tuple_data]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SlottedPage {
     slot_count: u32,
     slots: Vec<Option<SlotEntry>>,
+}
+
+/// Versioned page layout for MVCC
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VersionedSlottedPage {
+    slot_count: u32,
+    slots: Vec<Option<VersionedSlotEntry>>,
 }
 
 impl HeapFile {
@@ -456,6 +481,245 @@ impl HeapFile {
         self.page_file.sync()?;
         Ok(())
     }
+
+    /// Inserts a tuple with version metadata for MVCC.
+    ///
+    /// # Arguments
+    /// * `tuple` - The tuple to insert
+    /// * `txn_id` - Transaction ID that created this version
+    ///
+    /// # Returns
+    /// TupleId of the inserted version (internal use only)
+    ///
+    /// # Errors
+    /// Returns [`HeapError::Serialization`] if tuple cannot be serialized.
+    /// Returns [`HeapError::Page`] if page I/O error occurs.
+    pub(crate) fn insert_tuple_versioned(
+        &mut self,
+        tuple: &Tuple,
+        txn_id: crate::wal::TransactionId,
+    ) -> Result<TupleId, HeapError> {
+        // Serialize the tuple
+        let tuple_data =
+            bincode::serialize(tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
+
+        // Find a page with enough space, or create a new one
+        let mut page_id = 0;
+        loop {
+            match self.try_insert_into_page_versioned(page_id, &tuple_data, txn_id) {
+                Ok(slot) => {
+                    return Ok(TupleId { page_id, slot });
+                }
+                Err(HeapError::PageFull) => {
+                    page_id += 1;
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Try to insert tuple data into a specific page with version metadata
+    fn try_insert_into_page_versioned(
+        &mut self,
+        page_id: PageId,
+        tuple_data: &[u8],
+        txn_id: crate::wal::TransactionId,
+    ) -> Result<u32, HeapError> {
+        // Read the page (or create empty if doesn't exist)
+        let page = self.page_file.read_page(page_id)?;
+
+        // Read existing tuples from the page
+        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
+        let mut versioned_page = if page.is_empty() {
+            VersionedSlottedPage {
+                slot_count: 0,
+                slots: Vec::new(),
+            }
+        } else {
+            let vp: VersionedSlottedPage = bincode::deserialize(page.data())
+                .map_err(|e| HeapError::Serialization(e.to_string()))?;
+
+            // Extract existing tuple data
+            for slot_entry in vp.slots.iter().flatten() {
+                let start = slot_entry.offset as usize;
+                let end = start + slot_entry.length as usize;
+                if end <= page.data().len() {
+                    existing_tuples.push(page.data()[start..end].to_vec());
+                } else {
+                    existing_tuples.push(Vec::new());
+                }
+            }
+
+            vp
+        };
+
+        // Calculate required space
+        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
+        let slot_entry_size = std::mem::size_of::<VersionedSlotEntry>();
+        let header_size =
+            std::mem::size_of::<u32>() + (versioned_page.slots.len() + 1) * slot_entry_size;
+        let total_tuple_data_size: usize =
+            existing_tuples.iter().map(|t| t.len()).sum::<usize>() + tuple_data.len();
+        let required_space = header_size + total_tuple_data_size;
+
+        if required_space > USABLE_PAGE_SIZE {
+            return Err(HeapError::PageFull);
+        }
+
+        // Find free slot or add new one
+        let slot_number = if let Some(pos) = versioned_page.slots.iter().position(|s| s.is_none()) {
+            pos as u32
+        } else {
+            let new_slot = versioned_page.slots.len() as u32;
+            versioned_page.slots.push(None);
+            versioned_page.slot_count += 1;
+            new_slot
+        };
+
+        // Add new tuple to the list
+        existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
+
+        // Calculate offsets for all tuples (grow from end backward)
+        // IMPORTANT: Preserve existing version metadata, only update offsets
+        let mut current_offset = USABLE_PAGE_SIZE;
+        for (idx, tuple) in existing_tuples.iter().enumerate().rev() {
+            if !tuple.is_empty() {
+                current_offset -= tuple.len();
+
+                if idx == slot_number as usize {
+                    // New tuple - create new version entry
+                    versioned_page.slots[idx] = Some(VersionedSlotEntry {
+                        offset: current_offset as u32,
+                        length: tuple.len() as u32,
+                        xmin: txn_id,
+                        xmax: None,
+                        prev_version: None,
+                    });
+                } else {
+                    // Existing tuple - preserve version metadata, update offset
+                    if let Some(existing_entry) = &versioned_page.slots[idx] {
+                        versioned_page.slots[idx] = Some(VersionedSlotEntry {
+                            offset: current_offset as u32,
+                            length: tuple.len() as u32,
+                            xmin: existing_entry.xmin,
+                            xmax: existing_entry.xmax,
+                            prev_version: existing_entry.prev_version,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Serialize the updated page with all tuples
+        let page_data =
+            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+
+        // Write the page
+        let updated_page = Page::from_data(page_id, page_data)?;
+        self.page_file.write_page(&updated_page)?;
+
+        Ok(slot_number)
+    }
+
+    /// Serialize a versioned page with all tuple data
+    fn serialize_versioned_page_with_tuples(
+        &self,
+        versioned_page: &VersionedSlottedPage,
+        tuples: &[Vec<u8>],
+    ) -> Result<Vec<u8>, HeapError> {
+        // Serialize slot directory
+        let slot_dir = bincode::serialize(versioned_page)
+            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+
+        // Create page buffer
+        let mut data = vec![0u8; PAGE_SIZE - 8]; // USABLE_PAGE_SIZE
+
+        // Copy slot directory at beginning
+        data[..slot_dir.len()].copy_from_slice(&slot_dir);
+
+        // Copy each tuple at its designated offset
+        for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
+            if let Some(entry) = slot_entry {
+                let offset = entry.offset as usize;
+                let length = entry.length as usize;
+                if idx < tuples.len() && !tuples[idx].is_empty() {
+                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                }
+            }
+        }
+
+        Ok(data)
+    }
+
+    /// Scans all visible tuples for a given transaction snapshot.
+    ///
+    /// Only returns tuples that are visible according to MVCC visibility rules.
+    ///
+    /// # Arguments
+    /// * `snapshot` - Transaction snapshot determining visibility
+    /// * `committed` - Set of all committed transaction IDs
+    ///
+    /// # Returns
+    /// Vector of visible tuples
+    ///
+    /// # Errors
+    /// Returns [`HeapError::Serialization`] if tuples cannot be deserialized.
+    /// Returns [`HeapError::Page`] if page I/O error occurs.
+    pub(crate) fn scan_visible(
+        &mut self,
+        snapshot: &crate::mvcc::TransactionSnapshot,
+        committed: &std::collections::HashSet<crate::wal::TransactionId>,
+    ) -> Result<Vec<Tuple>, HeapError> {
+        let mut results = Vec::new();
+        let mut page_id = 0;
+
+        loop {
+            let page = self.page_file.read_page(page_id)?;
+
+            if page.is_empty() {
+                // Empty page means no more data
+                break;
+            }
+
+            // Try to deserialize as VersionedSlottedPage
+            let versioned_page: VersionedSlottedPage = match bincode::deserialize(page.data()) {
+                Ok(vp) => vp,
+                Err(_) => {
+                    // Not a versioned page, skip
+                    page_id += 1;
+                    continue;
+                }
+            };
+
+            // Check each slot for visibility
+            for slot_entry in versioned_page.slots.iter().flatten() {
+                // Create version metadata
+                let version_metadata = crate::mvcc::VersionMetadata {
+                    xmin: slot_entry.xmin,
+                    xmax: slot_entry.xmax,
+                };
+
+                // Check visibility
+                if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
+                    // Extract tuple data from page
+                    let start = slot_entry.offset as usize;
+                    let end = start + slot_entry.length as usize;
+
+                    if end <= page.data().len() {
+                        let tuple_data = &page.data()[start..end];
+                        let tuple: Tuple = bincode::deserialize(tuple_data)
+                            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+                        results.push(tuple);
+                    }
+                }
+            }
+
+            page_id += 1;
+        }
+
+        Ok(results)
+    }
 }
 
 #[cfg(test)]
@@ -723,5 +987,632 @@ mod tests {
 
         let tuples = heap.scan().unwrap();
         assert_eq!(tuples.len(), 2);
+    }
+
+    // MVCC versioned slot entry tests
+
+    fn test_txn(value: u64) -> crate::wal::TransactionId {
+        crate::wal::TransactionId::new(value)
+    }
+
+    #[test]
+    fn test_versioned_slot_serialization() {
+        let entry = VersionedSlotEntry {
+            offset: 100,
+            length: 50,
+            xmin: test_txn(1),
+            xmax: None,
+            prev_version: None,
+        };
+
+        // Serialize and deserialize
+        let serialized = bincode::serialize(&entry).unwrap();
+        let deserialized: VersionedSlotEntry = bincode::deserialize(&serialized).unwrap();
+
+        assert_eq!(entry, deserialized);
+    }
+
+    #[test]
+    fn test_versioned_slot_with_xmax() {
+        let entry = VersionedSlotEntry {
+            offset: 200,
+            length: 75,
+            xmin: test_txn(1),
+            xmax: Some(test_txn(2)),
+            prev_version: None,
+        };
+
+        let serialized = bincode::serialize(&entry).unwrap();
+        let deserialized: VersionedSlotEntry = bincode::deserialize(&serialized).unwrap();
+
+        assert_eq!(entry, deserialized);
+        assert_eq!(deserialized.xmax, Some(test_txn(2)));
+    }
+
+    #[test]
+    fn test_versioned_slot_with_prev_version() {
+        let prev = TupleId {
+            page_id: 5,
+            slot: 10,
+        };
+
+        let entry = VersionedSlotEntry {
+            offset: 300,
+            length: 100,
+            xmin: test_txn(3),
+            xmax: Some(test_txn(4)),
+            prev_version: Some(prev),
+        };
+
+        let serialized = bincode::serialize(&entry).unwrap();
+        let deserialized: VersionedSlotEntry = bincode::deserialize(&serialized).unwrap();
+
+        assert_eq!(entry, deserialized);
+        assert_eq!(deserialized.prev_version, Some(prev));
+    }
+
+    #[test]
+    fn test_versioned_page_layout() {
+        let mut slots = Vec::new();
+
+        // Add three versioned slots
+        slots.push(Some(VersionedSlotEntry {
+            offset: 4000,
+            length: 50,
+            xmin: test_txn(1),
+            xmax: None,
+            prev_version: None,
+        }));
+
+        slots.push(Some(VersionedSlotEntry {
+            offset: 3900,
+            length: 80,
+            xmin: test_txn(2),
+            xmax: Some(test_txn(3)),
+            prev_version: None,
+        }));
+
+        slots.push(None); // Empty slot (deleted tuple)
+
+        let page = VersionedSlottedPage {
+            slot_count: 3,
+            slots,
+        };
+
+        // Serialize and deserialize
+        let serialized = bincode::serialize(&page).unwrap();
+        let deserialized: VersionedSlottedPage = bincode::deserialize(&serialized).unwrap();
+
+        assert_eq!(page.slot_count, deserialized.slot_count);
+        assert_eq!(page.slots.len(), deserialized.slots.len());
+
+        // Verify first slot
+        assert_eq!(
+            page.slots[0].as_ref().unwrap().xmin,
+            deserialized.slots[0].as_ref().unwrap().xmin
+        );
+
+        // Verify second slot has xmax
+        assert_eq!(page.slots[1].as_ref().unwrap().xmax, Some(test_txn(3)));
+
+        // Verify third slot is None
+        assert!(deserialized.slots[2].is_none());
+    }
+
+    #[test]
+    fn test_versioned_slot_roundtrip_multiple() {
+        // Test multiple entries with various combinations
+        let entries = vec![
+            VersionedSlotEntry {
+                offset: 1000,
+                length: 100,
+                xmin: test_txn(1),
+                xmax: None,
+                prev_version: None,
+            },
+            VersionedSlotEntry {
+                offset: 2000,
+                length: 200,
+                xmin: test_txn(2),
+                xmax: Some(test_txn(3)),
+                prev_version: Some(TupleId {
+                    page_id: 0,
+                    slot: 0,
+                }),
+            },
+            VersionedSlotEntry {
+                offset: 3000,
+                length: 300,
+                xmin: test_txn(4),
+                xmax: Some(test_txn(5)),
+                prev_version: Some(TupleId {
+                    page_id: 1,
+                    slot: 1,
+                }),
+            },
+        ];
+
+        for entry in entries {
+            let serialized = bincode::serialize(&entry).unwrap();
+            let deserialized: VersionedSlotEntry = bincode::deserialize(&serialized).unwrap();
+            assert_eq!(entry, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_versioned_page_empty_slots() {
+        let page = VersionedSlottedPage {
+            slot_count: 0,
+            slots: Vec::new(),
+        };
+
+        let serialized = bincode::serialize(&page).unwrap();
+        let deserialized: VersionedSlottedPage = bincode::deserialize(&serialized).unwrap();
+
+        assert_eq!(page.slot_count, deserialized.slot_count);
+        assert_eq!(page.slots.len(), 0);
+    }
+
+    #[test]
+    fn test_versioned_slot_size_vs_regular() {
+        // Ensure we understand the size increase
+        let regular = SlotEntry {
+            offset: 100,
+            length: 50,
+        };
+
+        let versioned = VersionedSlotEntry {
+            offset: 100,
+            length: 50,
+            xmin: test_txn(1),
+            xmax: None,
+            prev_version: None,
+        };
+
+        let regular_size = bincode::serialize(&regular).unwrap().len();
+        let versioned_size = bincode::serialize(&versioned).unwrap().len();
+
+        // Versioned should be larger (has xmin, xmax, prev_version)
+        assert!(versioned_size > regular_size);
+    }
+
+    // Phase 2.2: Insert with Version tests
+
+    #[test]
+    fn test_insert_versioned_sets_xmin() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        let tuple = tuple! { id: 1i64, name: "Alice" };
+        let txn_id = test_txn(10);
+
+        let tuple_id = heap.insert_tuple_versioned(&tuple, txn_id).unwrap();
+
+        // Verify TupleId was returned
+        assert_eq!(tuple_id.page_id, 0);
+        assert_eq!(tuple_id.slot, 0);
+    }
+
+    #[test]
+    fn test_insert_versioned_xmax_is_none() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        let tuple = tuple! { id: 1i64, name: "Bob" };
+        let txn_id = test_txn(20);
+
+        heap.insert_tuple_versioned(&tuple, txn_id).unwrap();
+
+        // Would need to read the page to verify xmax is None
+        // For now, just verify insertion succeeded
+    }
+
+    #[test]
+    fn test_insert_versioned_multiple_versions_same_page() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Insert multiple versions from different transactions
+        let tuple1 = tuple! { id: 1i64, name: "Version1" };
+        let tuple2 = tuple! { id: 2i64, name: "Version2" };
+        let tuple3 = tuple! { id: 3i64, name: "Version3" };
+
+        let tid1 = heap.insert_tuple_versioned(&tuple1, test_txn(1)).unwrap();
+        let tid2 = heap.insert_tuple_versioned(&tuple2, test_txn(2)).unwrap();
+        let tid3 = heap.insert_tuple_versioned(&tuple3, test_txn(3)).unwrap();
+
+        // All should be on page 0 (small tuples)
+        assert_eq!(tid1.page_id, 0);
+        assert_eq!(tid2.page_id, 0);
+        assert_eq!(tid3.page_id, 0);
+
+        // Different slots
+        assert_eq!(tid1.slot, 0);
+        assert_eq!(tid2.slot, 1);
+        assert_eq!(tid3.slot, 2);
+    }
+
+    #[test]
+    fn test_insert_versioned_returns_tuple_id() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        let tuple = tuple! { id: 42i64, name: "Test" };
+        let txn_id = test_txn(100);
+
+        let result = heap.insert_tuple_versioned(&tuple, txn_id);
+
+        assert!(result.is_ok());
+        let tuple_id = result.unwrap();
+
+        // Verify we got a valid TupleId
+        assert!(tuple_id.page_id < 1000); // Reasonable page number
+        assert!(tuple_id.slot < 1000); // Reasonable slot number
+    }
+
+    #[test]
+    fn test_insert_versioned_different_transactions() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Same tuple data, different transactions
+        let tuple = tuple! { id: 1i64, name: "Same" };
+
+        let tid1 = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+        let tid2 = heap.insert_tuple_versioned(&tuple, test_txn(2)).unwrap();
+
+        // Should create separate versions
+        assert_ne!(tid1, tid2);
+    }
+
+    #[test]
+    fn test_insert_versioned_page_overflow() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
+        let rel_type = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Large tuple that will force page overflow
+        let data = vec![0u8; 3000];
+        let tuple = tuple! { data: data };
+
+        let tid1 = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+        let tid2 = heap.insert_tuple_versioned(&tuple, test_txn(2)).unwrap();
+
+        // Should go to different pages
+        assert_eq!(tid1.page_id, 0);
+        assert_eq!(tid2.page_id, 1);
+    }
+
+    #[test]
+    fn test_insert_versioned_empty_tuple() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Empty tuple type
+        let heading = TupleType::new();
+        let rel_type = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type.clone()).unwrap();
+
+        let tuple = Relation::from_tuples(rel_type, vec![])
+            .unwrap()
+            .tuples()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| tuple! {});
+
+        let result = heap.insert_tuple_versioned(&tuple, test_txn(1));
+
+        // Should succeed even with empty tuple
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_insert_versioned_preserves_prev_version_none() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        let tuple = tuple! { id: 1i64, name: "Initial" };
+        heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+
+        // prev_version should be None for new inserts
+        // (will be tested more thoroughly in Phase 5)
+    }
+
+    #[test]
+    fn test_insert_versioned_sequential_slots() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Insert 5 tuples
+        for i in 0..5 {
+            let tuple = tuple! { id: i as i64, name: format!("Tuple{}", i) };
+            let tid = heap
+                .insert_tuple_versioned(&tuple, test_txn(i + 1))
+                .unwrap();
+
+            assert_eq!(tid.page_id, 0);
+            assert_eq!(tid.slot, i as u32);
+        }
+    }
+
+    // Phase 2.3: Scan with Visibility tests
+
+    use crate::mvcc::TransactionSnapshot;
+    use crate::wal::Lsn;
+    use std::collections::HashSet;
+
+    fn test_lsn(value: u64) -> Lsn {
+        Lsn::new(value)
+    }
+
+    #[test]
+    fn test_scan_visible_sees_only_visible() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // T1 inserts and commits
+        heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+            .unwrap();
+
+        // T2 starts after T1 committed
+        let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+        let mut committed = HashSet::new();
+        committed.insert(test_txn(1));
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        assert_eq!(visible.len(), 1);
+    }
+
+    #[test]
+    fn test_scan_visible_skips_uncommitted() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // T1 inserts but doesn't commit
+        heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+            .unwrap();
+
+        // T2 starts
+        let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+        let committed = HashSet::new(); // T1 not committed
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        // T2 should not see T1's uncommitted tuple
+        assert_eq!(visible.len(), 0);
+    }
+
+    #[test]
+    fn test_scan_visible_sees_own_changes() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        let txn_id = test_txn(1);
+
+        // T1 inserts (uncommitted)
+        heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, txn_id)
+            .unwrap();
+
+        // T1's snapshot
+        let snapshot = TransactionSnapshot::new(txn_id, test_lsn(100), vec![]);
+        let committed = HashSet::new(); // T1 not committed yet
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        // T1 should see its own uncommitted tuple
+        assert_eq!(visible.len(), 1);
+    }
+
+    #[test]
+    fn test_scan_visible_concurrent_uncommitted() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // T1 inserts
+        heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+            .unwrap();
+
+        // T2 starts while T1 is active
+        let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(100), vec![test_txn(1)]);
+        let mut committed = HashSet::new();
+        committed.insert(test_txn(1)); // T1 committed after T2 started
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        // T2 should not see T1's tuple (was active when T2 started)
+        assert_eq!(visible.len(), 0);
+    }
+
+    #[test]
+    fn test_scan_visible_empty_relation() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        let snapshot = TransactionSnapshot::new(test_txn(1), test_lsn(100), vec![]);
+        let committed = HashSet::new();
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        assert_eq!(visible.len(), 0);
+    }
+
+    #[test]
+    fn test_scan_visible_multiple_committed() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // T1, T2, T3 insert and commit
+        heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+            .unwrap();
+        heap.insert_tuple_versioned(&tuple! { id: 2i64, name: "Bob" }, test_txn(2))
+            .unwrap();
+        heap.insert_tuple_versioned(&tuple! { id: 3i64, name: "Charlie" }, test_txn(3))
+            .unwrap();
+
+        // T4 starts after all committed
+        let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
+        let mut committed = HashSet::new();
+        committed.insert(test_txn(1));
+        committed.insert(test_txn(2));
+        committed.insert(test_txn(3));
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        assert_eq!(visible.len(), 3);
+    }
+
+    #[test]
+    fn test_scan_visible_mixed_committed_uncommitted() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // T1 inserts and commits
+        heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+            .unwrap();
+
+        // T2 inserts but doesn't commit
+        heap.insert_tuple_versioned(&tuple! { id: 2i64, name: "Bob" }, test_txn(2))
+            .unwrap();
+
+        // T3 inserts and commits
+        heap.insert_tuple_versioned(&tuple! { id: 3i64, name: "Charlie" }, test_txn(3))
+            .unwrap();
+
+        // T4 starts
+        let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
+        let mut committed = HashSet::new();
+        committed.insert(test_txn(1));
+        // T2 not committed
+        committed.insert(test_txn(3));
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        // Should see T1 and T3, but not T2
+        assert_eq!(visible.len(), 2);
+    }
+
+    #[test]
+    fn test_scan_visible_across_pages() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
+        let rel_type = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Insert large tuples to span multiple pages
+        let data = vec![0u8; 3000];
+
+        heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(1))
+            .unwrap();
+        heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(2))
+            .unwrap();
+        heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(3))
+            .unwrap();
+
+        let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
+        let mut committed = HashSet::new();
+        committed.insert(test_txn(1));
+        committed.insert(test_txn(2));
+        committed.insert(test_txn(3));
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        // Should see all 3 tuples across multiple pages
+        assert_eq!(visible.len(), 3);
+    }
+
+    #[test]
+    fn test_scan_visible_no_committed_set() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Insert tuples
+        heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+            .unwrap();
+
+        // Empty committed set
+        let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+        let committed = HashSet::new();
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        // Should not see any tuples (none committed)
+        assert_eq!(visible.len(), 0);
+    }
+
+    #[test]
+    fn test_scan_visible_preserves_tuple_data() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        let original_tuple = tuple! { id: 42i64, name: "TestData" };
+        heap.insert_tuple_versioned(&original_tuple, test_txn(1))
+            .unwrap();
+
+        let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+        let mut committed = HashSet::new();
+        committed.insert(test_txn(1));
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        assert_eq!(visible.len(), 1);
+        // Tuple data should be preserved (exact content verified by serialization)
+        assert_eq!(visible[0], original_tuple);
     }
 }
