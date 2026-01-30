@@ -43,8 +43,12 @@ impl<E: StorageEngine> QueryContext for Database<E> {
     fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Check if this is a virtual relvar
         if self.catalog.is_virtual(relation_name) {
-             let def = self.catalog.get_virtual_relvar(relation_name).unwrap().clone();
-             return (def.evaluator)(self);
+            let def = self
+                .catalog
+                .get_virtual_relvar(relation_name)
+                .unwrap()
+                .clone();
+            return (def.evaluator)(self);
         }
 
         // Otherwise, load from engine
@@ -55,7 +59,10 @@ impl<E: StorageEngine> QueryContext for Database<E> {
         if let Some(def) = self.catalog.get_virtual_relvar(relation_name) {
             Ok(def.relation_type.clone())
         } else {
-            Ok(self.engine.get_relation_metadata(relation_name)?.relation_type)
+            Ok(self
+                .engine
+                .get_relation_metadata(relation_name)?
+                .relation_type)
         }
     }
 }
@@ -116,7 +123,8 @@ impl<E: StorageEngine> Database<E> {
         if !self.engine.relation_exists(relation_name) {
             return Err(DatabaseError::RelationNotFound(relation_name.to_string()));
         }
-        self.catalog.set_key_constraints(&self.engine, relation_name, constraints)
+        self.catalog
+            .set_key_constraints(&self.engine, relation_name, constraints)
     }
 
     /// Set foreign key constraints for a relation.
@@ -128,7 +136,8 @@ impl<E: StorageEngine> Database<E> {
         if !self.engine.relation_exists(relation_name) {
             return Err(DatabaseError::RelationNotFound(relation_name.to_string()));
         }
-        self.catalog.set_foreign_key_constraints(&self.engine, relation_name, constraints)
+        self.catalog
+            .set_foreign_key_constraints(&self.engine, relation_name, constraints)
     }
 
     /// Set type constraints for an attribute.
@@ -138,7 +147,8 @@ impl<E: StorageEngine> Database<E> {
         attribute_name: &str,
         constraints: AttributeConstraints,
     ) -> Result<(), DatabaseError> {
-        self.catalog.set_type_constraints(&self.engine, relation_name, attribute_name, constraints)
+        self.catalog
+            .set_type_constraints(&self.engine, relation_name, attribute_name, constraints)
     }
 
     /// Set CHECK constraints for a relation.
@@ -150,7 +160,8 @@ impl<E: StorageEngine> Database<E> {
         if !self.engine.relation_exists(relation_name) {
             return Err(DatabaseError::RelationNotFound(relation_name.to_string()));
         }
-        self.catalog.set_check_constraints(&self.engine, relation_name, constraints)
+        self.catalog
+            .set_check_constraints(&self.engine, relation_name, constraints)
     }
 
     /// Insert a tuple into a relation.
@@ -187,7 +198,8 @@ impl<E: StorageEngine> Database<E> {
             }
         }
 
-        self.catalog.validate_delete(self, relation_name, &new_relation)?;
+        self.catalog
+            .validate_delete(self, relation_name, &new_relation)?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -294,7 +306,8 @@ impl<E: StorageEngine> Database<E> {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
         }
 
-        self.catalog.define_virtual_relvar(name, relation_type, evaluator)
+        self.catalog
+            .define_virtual_relvar(name, relation_type, evaluator)
     }
 
     /// Drop a virtual relvar.

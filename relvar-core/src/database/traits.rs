@@ -1,6 +1,6 @@
-use crate::values::Relation;
-use crate::types::RelationType;
 use crate::database::DatabaseError;
+use crate::types::RelationType;
+use crate::values::Relation;
 
 /// Trait for querying relations.
 ///

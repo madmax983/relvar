@@ -236,7 +236,7 @@ impl SystemCatalog {
         relation_name: &str,
         new_relation: &Relation,
     ) -> Result<(), DatabaseError> {
-         if let Some(key_constraints) = self.key_constraints.get(relation_name) {
+        if let Some(key_constraints) = self.key_constraints.get(relation_name) {
             self.validate_key_constraints_bulk(new_relation, key_constraints)?;
         }
         Ok(())
