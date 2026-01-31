@@ -32,16 +32,41 @@ impl Relation {
     ///
     /// # Examples
     ///
-    /// ```text
-    /// // SUPPLIES(supplier_id, part_id):
-    /// // S1 supplies: P1, P2
-    /// // S2 supplies: P1
-    /// // S3 supplies: P1, P2
-    /// //
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// // SUPPLIES(supplier_id, part_id)
+    /// let supplies_heading = TupleType::new()
+    ///     .with_attribute("supplier_id", ScalarType::String)
+    ///     .with_attribute("part_id", ScalarType::String);
+    /// let mut supplies = Relation::new(RelationType::new(supplies_heading));
+    ///
+    /// // S1 supplies P1, P2
+    /// supplies.insert(tuple! { supplier_id: "S1", part_id: "P1" }).unwrap();
+    /// supplies.insert(tuple! { supplier_id: "S1", part_id: "P2" }).unwrap();
+    /// // S2 supplies only P1
+    /// supplies.insert(tuple! { supplier_id: "S2", part_id: "P1" }).unwrap();
+    /// // S3 supplies P1, P2
+    /// supplies.insert(tuple! { supplier_id: "S3", part_id: "P1" }).unwrap();
+    /// supplies.insert(tuple! { supplier_id: "S3", part_id: "P2" }).unwrap();
+    ///
     /// // PARTS(part_id): P1, P2
-    /// //
-    /// // SUPPLIES.divide(&PARTS) = {supplier_id}
-    /// // Result: {S1, S3} - suppliers who supply ALL parts
+    /// let parts_heading = TupleType::new()
+    ///     .with_attribute("part_id", ScalarType::String);
+    /// let mut parts = Relation::new(RelationType::new(parts_heading));
+    /// parts.insert(tuple! { part_id: "P1" }).unwrap();
+    /// parts.insert(tuple! { part_id: "P2" }).unwrap();
+    ///
+    /// // Find suppliers who supply ALL parts
+    /// let result = supplies.divide(&parts).unwrap();
+    ///
+    /// // Result: {S1, S3}
+    /// assert_eq!(result.cardinality(), 2);
+    /// assert!(result.contains(&tuple! { supplier_id: "S1" }));
+    /// assert!(result.contains(&tuple! { supplier_id: "S3" }));
+    /// assert!(!result.contains(&tuple! { supplier_id: "S2" }));
     /// ```
     ///
     /// # Errors

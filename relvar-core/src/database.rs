@@ -545,6 +545,26 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Set key constraints for a relation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::constraints::{KeyConstraints, PrimaryKey};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new().with_attribute("id", ScalarType::Int)
+    /// );
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    ///
+    /// let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    /// let constraints = KeyConstraints::new().with_primary_key(pk);
+    ///
+    /// db.set_key_constraints("TEST", constraints).unwrap();
+    /// ```
     pub fn set_key_constraints(
         &mut self,
         relation_name: &str,
@@ -555,6 +575,38 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Set foreign key constraints for a relation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::constraints::{ForeignKeyConstraints, ForeignKey};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    ///
+    /// // Create referenced relvar
+    /// let dept_type = RelationType::new(
+    ///     TupleType::new().with_attribute("dept_id", ScalarType::Int)
+    /// );
+    /// db.create_relvar("DEPT", dept_type).unwrap();
+    ///
+    /// // Create referencing relvar
+    /// let emp_type = RelationType::new(
+    ///     TupleType::new().with_attribute("dept_id", ScalarType::Int)
+    /// );
+    /// db.create_relvar("EMP", emp_type).unwrap();
+    ///
+    /// let fk = ForeignKey::new(
+    ///     vec!["dept_id".to_string()],
+    ///     "DEPT".to_string(),
+    ///     vec!["dept_id".to_string()]
+    /// ).unwrap();
+    /// let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    ///
+    /// db.set_foreign_key_constraints("EMP", constraints).unwrap();
+    /// ```
     pub fn set_foreign_key_constraints(
         &mut self,
         relation_name: &str,
@@ -565,6 +617,27 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Set type constraints for an attribute.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::constraints::AttributeConstraints;
+    /// use relvar_core::constraints::TypeConstraint;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new().with_attribute("count", ScalarType::Int)
+    /// );
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    ///
+    /// let attr_constraints = AttributeConstraints::new("count".to_string(), ScalarType::Int)
+    ///     .with_constraint(TypeConstraint::PositiveInt);
+    ///
+    /// db.set_type_constraints("TEST", "count", attr_constraints).unwrap();
+    /// ```
     pub fn set_type_constraints(
         &mut self,
         relation_name: &str,
