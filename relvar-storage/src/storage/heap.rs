@@ -270,13 +270,6 @@ impl HeapFile {
         let slot_entry_size = std::mem::size_of::<SlotEntry>();
         let header_size =
             std::mem::size_of::<u32>() + (slotted_page.slots.len() + 1) * slot_entry_size;
-        let total_tuple_data_size: usize =
-            existing_tuples.iter().map(|t| t.len()).sum::<usize>() + tuple_data.len();
-        let required_space = header_size + total_tuple_data_size;
-
-        if required_space > USABLE_PAGE_SIZE {
-            return Err(HeapError::PageFull);
-        }
 
         // Find free slot or add new one
         let slot_number = if let Some(pos) = slotted_page.slots.iter().position(|s| s.is_none()) {
@@ -290,6 +283,14 @@ impl HeapFile {
 
         // Add new tuple to the list
         existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
+
+        // Calculate total size correctly - existing_tuples already includes the new tuple
+        let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
+        let required_space = header_size + total_tuple_data_size;
+
+        if required_space > USABLE_PAGE_SIZE {
+            return Err(HeapError::PageFull);
+        }
 
         // Calculate offsets for all tuples (grow from end backward)
         let mut current_offset = USABLE_PAGE_SIZE;
@@ -520,13 +521,8 @@ impl HeapFile {
                 }
             } else {
                 // Old slotted page format (non-MVCC)
-                let slotted_page: SlottedPage = match bincode::deserialize(page.data()) {
-                    Ok(sp) => sp,
-                    Err(_) => {
-                        page_id += 1;
-                        continue;
-                    }
-                };
+                let slotted_page: SlottedPage = bincode::deserialize(page.data())
+                    .map_err(|e| HeapError::Serialization(e.to_string()))?;
 
                 for slot_entry in slotted_page.slots.iter().flatten() {
                     let start = slot_entry.offset as usize;
@@ -712,6 +708,7 @@ impl HeapFile {
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
         let header_size = FORMAT_HEADER_SIZE + slot_dir.len();
 
+        // existing_tuples already includes tuple_data, so we just sum existing_tuples
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
         let required_space = header_size + total_tuple_data_size;
 
@@ -727,7 +724,7 @@ impl HeapFile {
                 current_offset -= tuple.len();
 
                 if idx == slot_number as usize {
-                    // New tuple - create new version entry
+                    // New version entry (no previous version)
                     versioned_page.slots[idx] = Some(VersionedSlotEntry {
                         offset: current_offset as u32,
                         length: tuple.len() as u32,
@@ -2882,5 +2879,60 @@ mod tests {
             }
             _ => panic!("Expected Serialization error for corrupted slot"),
         }
+    }
+
+    #[test]
+    fn test_heap_scan_mid_stream_corruption() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_file = NamedTempFile::new()?;
+        let path = temp_file.path();
+
+        // 1. Create a large enough tuple to fill most of a page
+        let large_data = vec![0u8; 3000];
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("data", ScalarType::Bytes);
+        let rel_type_large = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type_large)?;
+
+        // 2. Insert 3 tuples, each should land on a separate page
+        for i in 0..3 {
+            let tuple = tuple! {
+                id: i as i64,
+                data: large_data.clone(),
+            };
+            heap.insert_tuple(&tuple)?;
+        }
+
+        // Verify initial scan works
+        let results = heap.scan()?;
+        assert_eq!(results.len(), 3);
+
+        // 3. Corrupt the middle page (Page 1)
+        {
+            use std::io::{Seek, SeekFrom, Write};
+            let mut file = std::fs::OpenOptions::new().write(true).open(path)?;
+
+            // Seek to start of Page 1
+            file.seek(SeekFrom::Start(PAGE_SIZE as u64))?;
+
+            // Skip page length prefix (8 bytes) to corrupt the actual content
+            file.seek(SeekFrom::Current(8))?;
+
+            // Write garbage
+            file.write_all(&[0xFF; 100])?;
+            file.sync_all()?;
+        }
+
+        // 4. Verify scan fails gracefully
+        let result = heap.scan();
+        assert!(result.is_err());
+        // Should be a serialization error because bincode will fail to deserialize garbage
+        match result {
+            Err(HeapError::Serialization(_)) => {}
+            _ => panic!("Expected Serialization error, got {:?}", result),
+        }
+
+        Ok(())
     }
 }
