@@ -46,7 +46,7 @@ use relvar_core::values::{ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::Path;
 use thiserror::Error;
 
@@ -65,6 +65,8 @@ pub enum BTreeIndexError {
     #[error("Key not found")]
     KeyNotFound,
 }
+
+const MAX_INDEX_SIZE: u64 = 1024 * 1024 * 1024; // 1 GB
 
 /// A B-tree index mapping scalar key values to tuples.
 ///
@@ -309,15 +311,26 @@ impl BTreeIndex {
     /// Returns [`BTreeIndexError::Io`] if the file cannot be read.
     /// Returns [`BTreeIndexError::Serialization`] if deserialization fails.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, BTreeIndexError> {
-        let mut file = File::open(path)?;
-        let mut contents = Vec::new();
-        file.read_to_end(&mut contents)?;
+        Self::load_with_limit(path, MAX_INDEX_SIZE)
+    }
 
-        if contents.is_empty() {
+    fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, BTreeIndexError> {
+        let file = File::open(path)?;
+        let len = file.metadata()?.len();
+
+        if len > limit {
+            return Err(BTreeIndexError::Serialization(
+                "Index file too large".to_string(),
+            ));
+        }
+
+        if len == 0 {
             return Ok(Self::new());
         }
 
-        bincode::deserialize(&contents).map_err(|e| BTreeIndexError::Serialization(e.to_string()))
+        let reader = BufReader::new(file);
+        bincode::deserialize_from(reader.take(limit))
+            .map_err(|e| BTreeIndexError::Serialization(e.to_string()))
     }
 }
 
@@ -516,5 +529,27 @@ mod tests {
         // Type check: search returns &[Tuple] not &[TupleId]
         let results = index.search(&key).unwrap();
         assert_eq!(results[0], tuple);
+    }
+
+    #[test]
+    fn test_btree_load_limit() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Write 20 bytes
+        {
+            let mut file = File::create(path).unwrap();
+            file.write_all(&[b'a'; 20]).unwrap();
+        }
+
+        // Try to load with limit 10
+        let result = BTreeIndex::load_with_limit(path, 10);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            BTreeIndexError::Serialization(msg) => {
+                assert_eq!(msg, "Index file too large");
+            }
+            err => panic!("Expected Serialization error, got {:?}", err),
+        }
     }
 }

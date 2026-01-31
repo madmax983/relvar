@@ -42,7 +42,7 @@ use relvar_core::types::RelationType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -65,6 +65,8 @@ pub enum CatalogError {
     #[error("Relation '{0}' already exists")]
     RelationExists(String),
 }
+
+const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 
 /// Metadata for a stored relation (relvar).
 ///
@@ -157,15 +159,26 @@ impl Catalog {
     /// Returns [`CatalogError::Io`] if the file cannot be read.
     /// Returns [`CatalogError::Serialization`] if the JSON is invalid.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, CatalogError> {
-        let mut file = File::open(path)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        Self::load_with_limit(path, MAX_CATALOG_SIZE)
+    }
 
-        if contents.is_empty() {
+    fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, CatalogError> {
+        let file = File::open(path)?;
+        let len = file.metadata()?.len();
+
+        if len > limit {
+            return Err(CatalogError::Serialization(
+                "Catalog file too large".to_string(),
+            ));
+        }
+
+        if len == 0 {
             return Ok(Self::new());
         }
 
-        serde_json::from_str(&contents).map_err(|e| CatalogError::Serialization(e.to_string()))
+        let reader = BufReader::new(file);
+        serde_json::from_reader(reader.take(limit))
+            .map_err(|e| CatalogError::Serialization(e.to_string()))
     }
 
     /// Saves the catalog to a JSON file.
@@ -479,5 +492,27 @@ mod tests {
             result.unwrap_err(),
             CatalogError::RelationNotFound(_)
         ));
+    }
+
+    #[test]
+    fn test_catalog_load_limit() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Write 20 bytes
+        {
+            let mut file = File::create(path).unwrap();
+            file.write_all(&[b'a'; 20]).unwrap();
+        }
+
+        // Try to load with limit 10
+        let result = Catalog::load_with_limit(path, 10);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            CatalogError::Serialization(msg) => {
+                assert_eq!(msg, "Catalog file too large");
+            }
+            err => panic!("Expected Serialization error, got {:?}", err),
+        }
     }
 }
