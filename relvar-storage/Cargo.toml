@@ -24,3 +24,7 @@ criterion.workspace = true
 [[bench]]
 name = "storage"
 harness = false
+
+[[bench]]
+name = "mvcc"
+harness = false
