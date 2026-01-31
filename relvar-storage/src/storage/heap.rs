@@ -285,8 +285,7 @@ impl HeapFile {
         existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
 
         // Calculate total size correctly - existing_tuples already includes the new tuple
-        let total_tuple_data_size: usize =
-            existing_tuples.iter().map(|t| t.len()).sum::<usize>();
+        let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
         let required_space = header_size + total_tuple_data_size;
 
         if required_space > USABLE_PAGE_SIZE {
