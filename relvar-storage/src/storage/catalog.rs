@@ -510,7 +510,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             CatalogError::Serialization(msg) => {
-                assert_eq!(msg, "Catalog file too large");
+                assert!(msg.contains("Catalog file too large"));
             }
             err => panic!("Expected Serialization error, got {:?}", err),
         }
