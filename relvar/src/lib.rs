@@ -128,6 +128,8 @@ pub use relvar_core::*;
 #[cfg(feature = "storage")]
 pub use relvar_storage::PersistentEngine;
 
+pub mod visualizer;
+
 /// Create an in-memory database.
 ///
 /// This is a convenience function for creating a database with an in-memory storage engine.
