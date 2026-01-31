@@ -154,6 +154,23 @@ const VERSIONED_PAGE_MAGIC: u32 = 0x4D564343; // "MVCC" in ASCII
 const PAGE_FORMAT_VERSION: u8 = 2; // Version 2: length-prefixed slot directory
 
 impl HeapFile {
+    /// Helper to safely extract a slice for a slot.
+    fn get_slot_slice(data: &[u8], offset: u32, length: u32) -> Result<&[u8], HeapError> {
+        let start = offset as usize;
+        let end = start
+            .checked_add(length as usize)
+            .ok_or_else(|| HeapError::Serialization("Slot length overflow".to_string()))?;
+
+        data.get(start..end).ok_or_else(|| {
+            HeapError::Serialization(format!(
+                "Slot points outside buffer: offset={}, length={}, buffer_len={}",
+                offset,
+                length,
+                data.len()
+            ))
+        })
+    }
+
     /// Creates a new heap file, truncating any existing file.
     ///
     /// # Arguments
@@ -253,12 +270,9 @@ impl HeapFile {
 
             // Extract existing tuple data
             for slot_entry in sp.slots.iter().flatten() {
-                let start = slot_entry.offset as usize;
-                let end = start + slot_entry.length as usize;
-                if end <= page.data().len() {
-                    existing_tuples.push(page.data()[start..end].to_vec());
-                } else {
-                    existing_tuples.push(Vec::new());
+                match Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length) {
+                    Ok(slice) => existing_tuples.push(slice.to_vec()),
+                    Err(_) => existing_tuples.push(Vec::new()),
                 }
             }
 
@@ -364,14 +378,9 @@ impl HeapFile {
             .ok_or(HeapError::TupleNotFound)?;
 
         // Extract tuple data from page
-        let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
+        let tuple_data = Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)
+            .map_err(|_| HeapError::TupleNotFound)?;
 
-        if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let tuple_data = &page.data()[start..end];
         let tuple: Tuple = bincode::deserialize(tuple_data)
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
 
@@ -397,7 +406,14 @@ impl HeapFile {
         {
             // New format: [version:1][length:4][slot_dir][tuples]
             let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-            bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+            let end_header = 5usize
+                .checked_add(slot_dir_len)
+                .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
+            let header_data = page
+                .data()
+                .get(5..end_header)
+                .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+            bincode::deserialize(header_data)
                 .map_err(|e| HeapError::Serialization(e.to_string()))?
         } else {
             // Old format: [slot_dir][tuples] (for backward compatibility)
@@ -412,14 +428,9 @@ impl HeapFile {
             .ok_or(HeapError::TupleNotFound)?;
 
         // Extract tuple data from page
-        let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
+        let tuple_data = Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)
+            .map_err(|_| HeapError::TupleNotFound)?;
 
-        if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let tuple_data = &page.data()[start..end];
         let tuple: Tuple = bincode::deserialize(tuple_data)
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
 
@@ -494,7 +505,14 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                    let end_header = 5usize
+                        .checked_add(slot_dir_len)
+                        .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
+                    let header_data = page
+                        .data()
+                        .get(5..end_header)
+                        .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+                    bincode::deserialize(header_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?
                 } else {
                     // Old format: [slot_dir][tuples]
@@ -503,17 +521,11 @@ impl HeapFile {
                 };
 
                 for slot_entry in versioned_page.slots.iter().flatten() {
-                    let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
-
-                    if end > page.data().len() {
-                        return Err(HeapError::Serialization(format!(
-                            "Corrupted slot on page {} points outside page data",
-                            page_id
-                        )));
-                    }
-
-                    let tuple_data = &page.data()[start..end];
+                    let tuple_data = Self::get_slot_slice(
+                        page.data(),
+                        slot_entry.offset,
+                        slot_entry.length,
+                    )?;
                     let tuple: Tuple = bincode::deserialize(tuple_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?;
                     results.push(tuple);
@@ -529,17 +541,11 @@ impl HeapFile {
                 };
 
                 for slot_entry in slotted_page.slots.iter().flatten() {
-                    let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
-
-                    if end > page.data().len() {
-                        return Err(HeapError::Serialization(format!(
-                            "Corrupted slot on page {} points outside page data",
-                            page_id
-                        )));
-                    }
-
-                    let tuple_data = &page.data()[start..end];
+                    let tuple_data = Self::get_slot_slice(
+                        page.data(),
+                        slot_entry.offset,
+                        slot_entry.length,
+                    )?;
                     let tuple: Tuple = bincode::deserialize(tuple_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?;
                     results.push(tuple);
@@ -666,7 +672,14 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                    let end_header = 5usize
+                        .checked_add(slot_dir_len)
+                        .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
+                    let header_data = page
+                        .data()
+                        .get(5..end_header)
+                        .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+                    bincode::deserialize(header_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?
                 } else {
                     // Old format: [slot_dir][tuples] (for backward compatibility)
@@ -676,12 +689,9 @@ impl HeapFile {
 
             // Extract existing tuple data
             for slot_entry in vp.slots.iter().flatten() {
-                let start = slot_entry.offset as usize;
-                let end = start + slot_entry.length as usize;
-                if end <= page.data().len() {
-                    existing_tuples.push(page.data()[start..end].to_vec());
-                } else {
-                    existing_tuples.push(Vec::new());
+                match Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length) {
+                    Ok(slice) => existing_tuples.push(slice.to_vec()),
+                    Err(_) => existing_tuples.push(Vec::new()),
                 }
             }
 
@@ -861,7 +871,14 @@ impl HeapFile {
         {
             // New format: [version:1][length:4][slot_dir][tuples]
             let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-            bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+            let end_header = 5usize
+                .checked_add(slot_dir_len)
+                .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
+            let header_data = page
+                .data()
+                .get(5..end_header)
+                .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+            bincode::deserialize(header_data)
                 .map_err(|e| HeapError::Serialization(e.to_string()))?
         } else {
             // Old format: [slot_dir][tuples] (for backward compatibility)
@@ -882,12 +899,9 @@ impl HeapFile {
         // Extract all existing tuple data
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
         for slot_entry in versioned_page.slots.iter().flatten() {
-            let start = slot_entry.offset as usize;
-            let end = start + slot_entry.length as usize;
-            if end <= page.data().len() {
-                existing_tuples.push(page.data()[start..end].to_vec());
-            } else {
-                existing_tuples.push(Vec::new());
+            match Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length) {
+                Ok(slice) => existing_tuples.push(slice.to_vec()),
+                Err(_) => existing_tuples.push(Vec::new()),
             }
         }
 
@@ -943,7 +957,14 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                    let end_header = 5usize
+                        .checked_add(slot_dir_len)
+                        .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
+                    let header_data = page
+                        .data()
+                        .get(5..end_header)
+                        .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+                    bincode::deserialize(header_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?
                 } else {
                     // Old format: [slot_dir][tuples] (for backward compatibility)
@@ -953,12 +974,9 @@ impl HeapFile {
 
             // Extract existing tuple data
             for slot_entry in vp.slots.iter().flatten() {
-                let start = slot_entry.offset as usize;
-                let end = start + slot_entry.length as usize;
-                if end <= page.data().len() {
-                    existing_tuples.push(page.data()[start..end].to_vec());
-                } else {
-                    existing_tuples.push(Vec::new());
+                match Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length) {
+                    Ok(slice) => existing_tuples.push(slice.to_vec()),
+                    Err(_) => existing_tuples.push(Vec::new()),
                 }
             }
 
@@ -1072,7 +1090,14 @@ impl HeapFile {
         {
             // New format: [version:1][length:4][slot_dir][tuples]
             let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-            bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+            let end_header = 5usize
+                .checked_add(slot_dir_len)
+                .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
+            let header_data = page
+                .data()
+                .get(5..end_header)
+                .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+            bincode::deserialize(header_data)
                 .map_err(|e| HeapError::Serialization(e.to_string()))?
         } else {
             // Old format: [slot_dir][tuples] (for backward compatibility)
@@ -1093,12 +1118,9 @@ impl HeapFile {
         // Extract all existing tuple data
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
         for slot_entry in versioned_page.slots.iter().flatten() {
-            let start = slot_entry.offset as usize;
-            let end = start + slot_entry.length as usize;
-            if end <= page.data().len() {
-                existing_tuples.push(page.data()[start..end].to_vec());
-            } else {
-                existing_tuples.push(Vec::new());
+            match Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length) {
+                Ok(slice) => existing_tuples.push(slice.to_vec()),
+                Err(_) => existing_tuples.push(Vec::new()),
             }
         }
 
@@ -1148,13 +1170,23 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    match bincode::deserialize(&page.data()[5..5 + slot_dir_len]) {
-                        Ok(vp) => vp,
-                        Err(_) => {
-                            // Not a versioned page, skip
-                            page_id += 1;
-                            continue;
+                    let end_header = 5usize
+                        .checked_add(slot_dir_len)
+                        .and_then(|e| if e <= page.data().len() { Some(e) } else { None });
+
+                    if let Some(end) = end_header {
+                        match bincode::deserialize(&page.data()[5..end]) {
+                            Ok(vp) => vp,
+                            Err(_) => {
+                                // Not a versioned page or corrupted, skip
+                                page_id += 1;
+                                continue;
+                            }
                         }
+                    } else {
+                        // Header length invalid
+                        page_id += 1;
+                        continue;
                     }
                 } else {
                     // Old format: [slot_dir][tuples] (for backward compatibility)
@@ -1174,12 +1206,9 @@ impl HeapFile {
             let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
             for slot_option in versioned_page.slots.iter() {
                 if let Some(slot_entry) = slot_option {
-                    let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
-                    if end <= page.data().len() {
-                        existing_tuples.push(page.data()[start..end].to_vec());
-                    } else {
-                        existing_tuples.push(Vec::new());
+                    match Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length) {
+                        Ok(slice) => existing_tuples.push(slice.to_vec()),
+                        Err(_) => existing_tuples.push(Vec::new()),
                     }
                 } else {
                     // None slot - push empty to maintain index alignment
@@ -1282,13 +1311,23 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    match bincode::deserialize(&page.data()[5..5 + slot_dir_len]) {
-                        Ok(vp) => vp,
-                        Err(_) => {
-                            // Not a versioned page, skip
-                            page_id += 1;
-                            continue;
+                    let end_header = 5usize
+                        .checked_add(slot_dir_len)
+                        .and_then(|e| if e <= page.data().len() { Some(e) } else { None });
+
+                    if let Some(end) = end_header {
+                        match bincode::deserialize(&page.data()[5..end]) {
+                            Ok(vp) => vp,
+                            Err(_) => {
+                                // Not a versioned page, skip
+                                page_id += 1;
+                                continue;
+                            }
                         }
+                    } else {
+                        // Header length invalid
+                        page_id += 1;
+                        continue;
                     }
                 } else {
                     // Old format: [slot_dir][tuples] (for backward compatibility)
@@ -1313,11 +1352,11 @@ impl HeapFile {
                 // Check visibility
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
-                    let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
-
-                    if end <= page.data().len() {
-                        let tuple_data = &page.data()[start..end];
+                    if let Ok(tuple_data) = Self::get_slot_slice(
+                        page.data(),
+                        slot_entry.offset,
+                        slot_entry.length,
+                    ) {
                         let tuple: Tuple = bincode::deserialize(tuple_data)
                             .map_err(|e| HeapError::Serialization(e.to_string()))?;
                         results.push(tuple);
@@ -2878,7 +2917,8 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(HeapError::Serialization(msg)) => {
-                assert!(msg.contains("Corrupted slot"));
+                // Warden: Updated error message check to include new helper's output
+                assert!(msg.contains("Slot points outside buffer") || msg.contains("Corrupted slot"));
             }
             _ => panic!("Expected Serialization error for corrupted slot"),
         }
