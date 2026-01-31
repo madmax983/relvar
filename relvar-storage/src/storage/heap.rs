@@ -270,13 +270,6 @@ impl HeapFile {
         let slot_entry_size = std::mem::size_of::<SlotEntry>();
         let header_size =
             std::mem::size_of::<u32>() + (slotted_page.slots.len() + 1) * slot_entry_size;
-        let total_tuple_data_size: usize =
-            existing_tuples.iter().map(|t| t.len()).sum::<usize>() + tuple_data.len();
-        let required_space = header_size + total_tuple_data_size;
-
-        if required_space > USABLE_PAGE_SIZE {
-            return Err(HeapError::PageFull);
-        }
 
         // Find free slot or add new one
         let slot_number = if let Some(pos) = slotted_page.slots.iter().position(|s| s.is_none()) {
@@ -290,6 +283,15 @@ impl HeapFile {
 
         // Add new tuple to the list
         existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
+
+        // Calculate total size correctly - existing_tuples already includes the new tuple
+        let total_tuple_data_size: usize =
+            existing_tuples.iter().map(|t| t.len()).sum::<usize>();
+        let required_space = header_size + total_tuple_data_size;
+
+        if required_space > USABLE_PAGE_SIZE {
+            return Err(HeapError::PageFull);
+        }
 
         // Calculate offsets for all tuples (grow from end backward)
         let mut current_offset = USABLE_PAGE_SIZE;
@@ -707,8 +709,8 @@ impl HeapFile {
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
         let header_size = FORMAT_HEADER_SIZE + slot_dir.len();
 
-        let total_tuple_data_size: usize =
-            existing_tuples.iter().map(|t| t.len()).sum::<usize>() + tuple_data.len();
+        // existing_tuples already includes tuple_data, so we just sum existing_tuples
+        let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
         let required_space = header_size + total_tuple_data_size;
 
         if required_space > USABLE_PAGE_SIZE {
@@ -2913,7 +2915,7 @@ mod tests {
             let mut file = std::fs::OpenOptions::new().write(true).open(path)?;
 
             // Seek to start of Page 1
-            file.seek(SeekFrom::Start(PAGE_SIZE as u64 * 1))?;
+            file.seek(SeekFrom::Start(PAGE_SIZE as u64))?;
 
             // Skip page length prefix (8 bytes) to corrupt the actual content
             file.seek(SeekFrom::Current(8))?;
