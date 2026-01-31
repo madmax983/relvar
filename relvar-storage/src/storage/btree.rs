@@ -309,7 +309,8 @@ impl BTreeIndex {
     /// # Errors
     ///
     /// Returns [`BTreeIndexError::Io`] if the file cannot be read.
-    /// Returns [`BTreeIndexError::Serialization`] if deserialization fails.
+    /// Returns [`BTreeIndexError::Serialization`] if deserialization fails or if the
+    /// index file exceeds the configured size limit (e.g., [`MAX_INDEX_SIZE`]).
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, BTreeIndexError> {
         Self::load_with_limit(path, MAX_INDEX_SIZE)
     }
