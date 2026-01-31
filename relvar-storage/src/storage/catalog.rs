@@ -42,7 +42,7 @@ use relvar_core::types::RelationType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -66,7 +66,7 @@ pub enum CatalogError {
     RelationExists(String),
 }
 
-const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MiB
+const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 
 /// Metadata for a stored relation (relvar).
 ///
@@ -157,29 +157,28 @@ impl Catalog {
     /// # Errors
     ///
     /// Returns [`CatalogError::Io`] if the file cannot be read.
-    /// Returns [`CatalogError::Serialization`] if the JSON is invalid or the
-    /// catalog file exceeds the maximum allowed size.
+    /// Returns [`CatalogError::Serialization`] if the JSON is invalid.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, CatalogError> {
         Self::load_with_limit(path, MAX_CATALOG_SIZE)
     }
 
     fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, CatalogError> {
         let file = File::open(path)?;
-        let mut reader = file.take(limit.saturating_add(1));
-        let mut contents = String::new();
-        reader.read_to_string(&mut contents)?;
+        let len = file.metadata()?.len();
 
-        if contents.len() as u64 > limit {
+        if len > limit {
             return Err(CatalogError::Serialization(
                 "Catalog file too large".to_string(),
             ));
         }
 
-        if contents.is_empty() {
+        if len == 0 {
             return Ok(Self::new());
         }
 
-        serde_json::from_str(&contents).map_err(|e| CatalogError::Serialization(e.to_string()))
+        let reader = BufReader::new(file);
+        serde_json::from_reader(reader.take(limit))
+            .map_err(|e| CatalogError::Serialization(e.to_string()))
     }
 
     /// Saves the catalog to a JSON file.
@@ -511,7 +510,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             CatalogError::Serialization(msg) => {
-                assert!(msg.contains("Catalog file too large"));
+                assert_eq!(msg, "Catalog file too large");
             }
             err => panic!("Expected Serialization error, got {:?}", err),
         }

@@ -46,7 +46,7 @@ use relvar_core::values::{ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::Path;
 use thiserror::Error;
 
@@ -66,7 +66,7 @@ pub enum BTreeIndexError {
     KeyNotFound,
 }
 
-const MAX_INDEX_SIZE: u64 = 1024 * 1024 * 1024; // 1 GiB
+const MAX_INDEX_SIZE: u64 = 1024 * 1024 * 1024; // 1 GB
 
 /// A B-tree index mapping scalar key values to tuples.
 ///
@@ -309,29 +309,28 @@ impl BTreeIndex {
     /// # Errors
     ///
     /// Returns [`BTreeIndexError::Io`] if the file cannot be read.
-    /// Returns [`BTreeIndexError::Serialization`] if deserialization fails or if the
-    /// index file exceeds the configured size limit (e.g., [`MAX_INDEX_SIZE`]).
+    /// Returns [`BTreeIndexError::Serialization`] if deserialization fails.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, BTreeIndexError> {
         Self::load_with_limit(path, MAX_INDEX_SIZE)
     }
 
     fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, BTreeIndexError> {
         let file = File::open(path)?;
-        let mut reader = file.take(limit.saturating_add(1));
-        let mut contents = Vec::new();
-        reader.read_to_end(&mut contents)?;
+        let len = file.metadata()?.len();
 
-        if contents.len() as u64 > limit {
+        if len > limit {
             return Err(BTreeIndexError::Serialization(
                 "Index file too large".to_string(),
             ));
         }
 
-        if contents.is_empty() {
+        if len == 0 {
             return Ok(Self::new());
         }
 
-        bincode::deserialize(&contents).map_err(|e| BTreeIndexError::Serialization(e.to_string()))
+        let reader = BufReader::new(file);
+        bincode::deserialize_from(reader.take(limit))
+            .map_err(|e| BTreeIndexError::Serialization(e.to_string()))
     }
 }
 
@@ -548,7 +547,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             BTreeIndexError::Serialization(msg) => {
-                assert!(msg.contains("Index file too large"));
+                assert_eq!(msg, "Index file too large");
             }
             err => panic!("Expected Serialization error, got {:?}", err),
         }
