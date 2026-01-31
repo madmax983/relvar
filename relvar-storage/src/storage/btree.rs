@@ -317,7 +317,7 @@ impl BTreeIndex {
 
     fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, BTreeIndexError> {
         let file = File::open(path)?;
-        let mut reader = file.take(limit + 1);
+        let mut reader = file.take(limit.saturating_add(1));
         let mut contents = Vec::new();
         reader.read_to_end(&mut contents)?;
 
