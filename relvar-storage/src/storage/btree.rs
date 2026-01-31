@@ -66,7 +66,7 @@ pub enum BTreeIndexError {
     KeyNotFound,
 }
 
-const MAX_INDEX_SIZE: u64 = 1024 * 1024 * 1024; // 1 GB
+const MAX_INDEX_SIZE: u64 = 1024 * 1024 * 1024; // 1 GiB
 
 /// A B-tree index mapping scalar key values to tuples.
 ///
