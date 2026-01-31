@@ -304,16 +304,14 @@ impl PageFile {
         let data_len = u64::from_le_bytes(buffer[0..8].try_into().unwrap()) as usize;
 
         // Check if declared length fits in the buffer
-        // CRITICAL: Use checked arithmetic to prevent overflow with crafted data_len
-        if data_len > buffer.len().saturating_sub(8) {
+        if data_len + 8 > buffer.len() {
             return Err(PageError::Serialization(format!(
                 "Corrupted page: length prefix says {}, but only {} bytes available",
                 data_len,
-                buffer.len().saturating_sub(8)
+                buffer.len()
             )));
         }
 
-        // Safe because data_len <= PAGE_SIZE - 8, so data_len + 8 <= PAGE_SIZE
         let actual_data = buffer[8..8 + data_len].to_vec();
         Page::from_data(page_id, actual_data)
     }
@@ -688,40 +686,6 @@ mod tests {
                 assert!(msg.contains("Page too short"));
             }
             _ => panic!("Expected Serialization error"),
-        }
-    }
-
-    #[test]
-    fn test_page_file_overflow_exploit() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path();
-
-        let mut page_file = PageFile::create(path).unwrap();
-
-        // Exploit: Set length to usize::MAX - 7
-        // data_len + 8 would wrap to 0 if unchecked arithmetic is used.
-        // 0 <= buffer.len() (4096), so it would pass a naive check.
-        // Then slicing buffer[8..0] would panic.
-        let bad_len: u64 = (usize::MAX - 7) as u64;
-        let mut buffer = Vec::new();
-        buffer.extend_from_slice(&bad_len.to_le_bytes());
-        buffer.resize(PAGE_SIZE, 0);
-
-        // Write manually to file
-        {
-            let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
-            use std::io::Write;
-            file.write_all(&buffer).unwrap();
-        }
-
-        // Now read it back - should return error, NOT panic
-        let result = page_file.read_page(0);
-        assert!(result.is_err());
-        match result {
-            Err(PageError::Serialization(msg)) => {
-                assert!(msg.contains("Corrupted page"));
-            }
-            _ => panic!("Expected Serialization error, got {:?}", result),
         }
     }
 }

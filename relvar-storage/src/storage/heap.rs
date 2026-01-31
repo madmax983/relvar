@@ -157,18 +157,40 @@ impl HeapFile {
     /// Helper to safely extract a slice for a slot.
     fn get_slot_slice(data: &[u8], offset: u32, length: u32) -> Result<&[u8], HeapError> {
         let start = offset as usize;
-        let end = start
-            .checked_add(length as usize)
-            .ok_or_else(|| HeapError::Serialization("Slot length overflow".to_string()))?;
-
-        data.get(start..end).ok_or_else(|| {
-            HeapError::Serialization(format!(
-                "Slot points outside buffer: offset={}, length={}, buffer_len={}",
+        // Use a single condition to check for overflow and bounds to ensure coverage
+        // checked_add returns None on overflow, which will fail the first condition match
+        match start.checked_add(length as usize) {
+            Some(end) if end <= data.len() => Ok(&data[start..end]),
+            _ => Err(HeapError::Serialization(format!(
+                "Slot points outside buffer or overflow: offset={}, length={}, buffer_len={}",
                 offset,
                 length,
                 data.len()
-            ))
-        })
+            ))),
+        }
+    }
+
+    /// Helper to deserialize a versioned page, handling different formats and length checks.
+    fn deserialize_versioned_page(page: &Page) -> Result<VersionedSlottedPage, HeapError> {
+        if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
+            // New format: [version:1][length:4][slot_dir][tuples]
+            let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+
+            // Safe header range check
+            match 5usize.checked_add(slot_dir_len) {
+                Some(end) if end <= page.data().len() => {
+                    bincode::deserialize(&page.data()[5..end])
+                        .map_err(|e| HeapError::Serialization(e.to_string()))
+                }
+                _ => Err(HeapError::Serialization(
+                    "Header length overflow or out of bounds".to_string(),
+                )),
+            }
+        } else {
+            // Old format: [slot_dir][tuples] (for backward compatibility)
+            bincode::deserialize(page.data())
+                .map_err(|e| HeapError::Serialization(e.to_string()))
+        }
     }
 
     /// Creates a new heap file, truncating any existing file.
@@ -400,26 +422,7 @@ impl HeapFile {
             return Err(HeapError::TupleNotFound);
         }
 
-        // Check if page uses new format (version byte at start)
-        let versioned_page: VersionedSlottedPage = if page.data().len() >= 5
-            && page.data()[0] == PAGE_FORMAT_VERSION
-        {
-            // New format: [version:1][length:4][slot_dir][tuples]
-            let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-            let end_header = 5usize
-                .checked_add(slot_dir_len)
-                .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
-            let header_data = page
-                .data()
-                .get(5..end_header)
-                .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
-            bincode::deserialize(header_data)
-                .map_err(|e| HeapError::Serialization(e.to_string()))?
-        } else {
-            // Old format: [slot_dir][tuples] (for backward compatibility)
-            bincode::deserialize(page.data())
-                .map_err(|e| HeapError::Serialization(e.to_string()))?
-        };
+        let versioned_page = Self::deserialize_versioned_page(&page)?;
 
         let slot_entry = versioned_page
             .slots
@@ -501,27 +504,14 @@ impl HeapFile {
 
             if is_versioned {
                 // Versioned page format (MVCC)
-                let versioned_page: VersionedSlottedPage = if is_new_format {
-                    // New format: [version:1][length:4][slot_dir][tuples]
-                    let slot_dir_len =
-                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
-                        HeapError::Serialization("Header length overflow".to_string())
-                    })?;
-                    let header_data = page.data().get(5..end_header).ok_or_else(|| {
-                        HeapError::Serialization("Invalid header range".to_string())
-                    })?;
-                    bincode::deserialize(header_data)
-                        .map_err(|e| HeapError::Serialization(e.to_string()))?
-                } else {
-                    // Old format: [slot_dir][tuples]
-                    bincode::deserialize(page.data())
-                        .map_err(|e| HeapError::Serialization(e.to_string()))?
-                };
+                let versioned_page = Self::deserialize_versioned_page(&page)?;
 
                 for slot_entry in versioned_page.slots.iter().flatten() {
-                    let tuple_data =
-                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)?;
+                    let tuple_data = Self::get_slot_slice(
+                        page.data(),
+                        slot_entry.offset,
+                        slot_entry.length,
+                    )?;
                     let tuple: Tuple = bincode::deserialize(tuple_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?;
                     results.push(tuple);
@@ -537,8 +527,11 @@ impl HeapFile {
                 };
 
                 for slot_entry in slotted_page.slots.iter().flatten() {
-                    let tuple_data =
-                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)?;
+                    let tuple_data = Self::get_slot_slice(
+                        page.data(),
+                        slot_entry.offset,
+                        slot_entry.length,
+                    )?;
                     let tuple: Tuple = bincode::deserialize(tuple_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?;
                     results.push(tuple);
@@ -659,25 +652,7 @@ impl HeapFile {
                 slots: Vec::new(),
             }
         } else {
-            // Check if page uses new format (version byte at start)
-            let vp: VersionedSlottedPage =
-                if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
-                    // New format: [version:1][length:4][slot_dir][tuples]
-                    let slot_dir_len =
-                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
-                        HeapError::Serialization("Header length overflow".to_string())
-                    })?;
-                    let header_data = page.data().get(5..end_header).ok_or_else(|| {
-                        HeapError::Serialization("Invalid header range".to_string())
-                    })?;
-                    bincode::deserialize(header_data)
-                        .map_err(|e| HeapError::Serialization(e.to_string()))?
-                } else {
-                    // Old format: [slot_dir][tuples] (for backward compatibility)
-                    bincode::deserialize(page.data())
-                        .map_err(|e| HeapError::Serialization(e.to_string()))?
-                };
+            let vp = Self::deserialize_versioned_page(&page)?;
 
             // Extract existing tuple data
             for slot_entry in vp.slots.iter().flatten() {
@@ -857,26 +832,7 @@ impl HeapFile {
             return Err(HeapError::TupleNotFound);
         }
 
-        // Check if page uses new format (version byte at start)
-        let mut versioned_page: VersionedSlottedPage = if page.data().len() >= 5
-            && page.data()[0] == PAGE_FORMAT_VERSION
-        {
-            // New format: [version:1][length:4][slot_dir][tuples]
-            let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-            let end_header = 5usize
-                .checked_add(slot_dir_len)
-                .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
-            let header_data = page
-                .data()
-                .get(5..end_header)
-                .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
-            bincode::deserialize(header_data)
-                .map_err(|e| HeapError::Serialization(e.to_string()))?
-        } else {
-            // Old format: [slot_dir][tuples] (for backward compatibility)
-            bincode::deserialize(page.data())
-                .map_err(|e| HeapError::Serialization(e.to_string()))?
-        };
+        let mut versioned_page = Self::deserialize_versioned_page(&page)?;
 
         // Find the old slot
         let old_slot = versioned_page
@@ -943,25 +899,7 @@ impl HeapFile {
                 slots: Vec::new(),
             }
         } else {
-            // Check if page uses new format (version byte at start)
-            let vp: VersionedSlottedPage =
-                if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
-                    // New format: [version:1][length:4][slot_dir][tuples]
-                    let slot_dir_len =
-                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
-                        HeapError::Serialization("Header length overflow".to_string())
-                    })?;
-                    let header_data = page.data().get(5..end_header).ok_or_else(|| {
-                        HeapError::Serialization("Invalid header range".to_string())
-                    })?;
-                    bincode::deserialize(header_data)
-                        .map_err(|e| HeapError::Serialization(e.to_string()))?
-                } else {
-                    // Old format: [slot_dir][tuples] (for backward compatibility)
-                    bincode::deserialize(page.data())
-                        .map_err(|e| HeapError::Serialization(e.to_string()))?
-                };
+            let vp = Self::deserialize_versioned_page(&page)?;
 
             // Extract existing tuple data
             for slot_entry in vp.slots.iter().flatten() {
@@ -1075,26 +1013,7 @@ impl HeapFile {
             return Err(HeapError::TupleNotFound);
         }
 
-        // Check if page uses new format (version byte at start)
-        let mut versioned_page: VersionedSlottedPage = if page.data().len() >= 5
-            && page.data()[0] == PAGE_FORMAT_VERSION
-        {
-            // New format: [version:1][length:4][slot_dir][tuples]
-            let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-            let end_header = 5usize
-                .checked_add(slot_dir_len)
-                .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
-            let header_data = page
-                .data()
-                .get(5..end_header)
-                .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
-            bincode::deserialize(header_data)
-                .map_err(|e| HeapError::Serialization(e.to_string()))?
-        } else {
-            // Old format: [slot_dir][tuples] (for backward compatibility)
-            bincode::deserialize(page.data())
-                .map_err(|e| HeapError::Serialization(e.to_string()))?
-        };
+        let mut versioned_page = Self::deserialize_versioned_page(&page)?;
 
         // Find and mark the tuple
         let slot = versioned_page
@@ -1156,44 +1075,14 @@ impl HeapFile {
             }
 
             // Try to deserialize as versioned page
-            let mut versioned_page: VersionedSlottedPage =
-                if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
-                    // New format: [version:1][length:4][slot_dir][tuples]
-                    let slot_dir_len =
-                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize.checked_add(slot_dir_len).and_then(|e| {
-                        if e <= page.data().len() {
-                            Some(e)
-                        } else {
-                            None
-                        }
-                    });
-
-                    if let Some(end) = end_header {
-                        match bincode::deserialize(&page.data()[5..end]) {
-                            Ok(vp) => vp,
-                            Err(_) => {
-                                // Not a versioned page or corrupted, skip
-                                page_id += 1;
-                                continue;
-                            }
-                        }
-                    } else {
-                        // Header length invalid
-                        page_id += 1;
-                        continue;
-                    }
-                } else {
-                    // Old format: [slot_dir][tuples] (for backward compatibility)
-                    match bincode::deserialize(page.data()) {
-                        Ok(vp) => vp,
-                        Err(_) => {
-                            // Not a versioned page, skip
-                            page_id += 1;
-                            continue;
-                        }
-                    }
-                };
+            let mut versioned_page = match Self::deserialize_versioned_page(&page) {
+                Ok(vp) => vp,
+                Err(_) => {
+                    // Not a versioned page or corrupted, skip
+                    page_id += 1;
+                    continue;
+                }
+            };
 
             // Extract existing tuple data
             // IMPORTANT: Maintain 1:1 correspondence with slots vector
@@ -1301,44 +1190,22 @@ impl HeapFile {
             }
 
             // Try to deserialize as VersionedSlottedPage
-            let versioned_page: VersionedSlottedPage =
-                if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
-                    // New format: [version:1][length:4][slot_dir][tuples]
-                    let slot_dir_len =
-                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize.checked_add(slot_dir_len).and_then(|e| {
-                        if e <= page.data().len() {
-                            Some(e)
-                        } else {
-                            None
-                        }
-                    });
-
-                    if let Some(end) = end_header {
-                        match bincode::deserialize(&page.data()[5..end]) {
-                            Ok(vp) => vp,
-                            Err(_) => {
-                                // Not a versioned page, skip
-                                page_id += 1;
-                                continue;
-                            }
-                        }
-                    } else {
-                        // Header length invalid
+            let versioned_page = if !page.data().is_empty() && page.data()[0] == PAGE_FORMAT_VERSION
+            {
+                // If it looks like a versioned page, we expect it to be valid.
+                // Corruption here should be reported as an error.
+                Self::deserialize_versioned_page(&page)?
+            } else {
+                // Otherwise, it might be an old format page or garbage.
+                // If deserialization fails, we assume it's not a valid page and skip it.
+                match Self::deserialize_versioned_page(&page) {
+                    Ok(vp) => vp,
+                    Err(_) => {
                         page_id += 1;
                         continue;
                     }
-                } else {
-                    // Old format: [slot_dir][tuples] (for backward compatibility)
-                    match bincode::deserialize(page.data()) {
-                        Ok(vp) => vp,
-                        Err(_) => {
-                            // Not a versioned page, skip
-                            page_id += 1;
-                            continue;
-                        }
-                    }
-                };
+                }
+            };
 
             // Check each slot for visibility
             for slot_entry in versioned_page.slots.iter().flatten() {
@@ -1351,9 +1218,11 @@ impl HeapFile {
                 // Check visibility
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
-                    if let Ok(tuple_data) =
-                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)
-                    {
+                    if let Ok(tuple_data) = Self::get_slot_slice(
+                        page.data(),
+                        slot_entry.offset,
+                        slot_entry.length,
+                    ) {
                         let tuple: Tuple = bincode::deserialize(tuple_data)
                             .map_err(|e| HeapError::Serialization(e.to_string()))?;
                         results.push(tuple);
@@ -2914,12 +2783,40 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(HeapError::Serialization(msg)) => {
-                // Warden: Updated error message check to include new helper's output
-                assert!(
-                    msg.contains("Slot points outside buffer") || msg.contains("Corrupted slot")
-                );
+                assert!(msg.contains("Slot points outside buffer") || msg.contains("Corrupted slot"));
             }
             _ => panic!("Expected Serialization error for corrupted slot"),
+        }
+    }
+
+    #[test]
+    fn test_heap_scan_corrupted_header() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Create a manually corrupted page
+        // Format version 2 (new), but length says MAX (overflow)
+        let mut page_data = vec![0u8; PAGE_SIZE - 8];
+        page_data[0] = PAGE_FORMAT_VERSION;
+
+        // Write usize::MAX as length (little endian)
+        // Since we check checked_add(5 + len), MAX will definitely overflow
+        let bad_len = u32::MAX;
+        page_data[1..5].copy_from_slice(&bad_len.to_le_bytes());
+
+        let page = Page::from_data(0, page_data).unwrap();
+        heap.page_file.write_page(&page).unwrap();
+
+        // Scan should fail with serialization error due to header length
+        let result = heap.scan();
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::Serialization(msg)) => {
+                assert!(msg.contains("Header length overflow") || msg.contains("out of bounds"));
+            }
+            _ => panic!("Expected Serialization error for corrupted header, got {:?}", result),
         }
     }
 }
