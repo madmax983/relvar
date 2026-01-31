@@ -314,7 +314,7 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
     /// use relvar_core::constraints::AttributeConstraints;
-    /// use relvar_core::constraints::type_constraint::TypeConstraint;
+    /// use relvar_core::constraints::TypeConstraint;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let rel_type = RelationType::new(
