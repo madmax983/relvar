@@ -58,15 +58,13 @@
 //!
 //! ### Advanced Relational Algebra
 //!
-//! Advanced operators like `extend`, `summarize`, and `group` require importing
-//! their corresponding traits. These are re-exported in `relvar::algebra`.
+//! Advanced operators like `extend`, `summarize`, and `group` are available directly on the `Relation` type.
 //!
 //! ```
 //! use relvar::{Database, InMemoryEngine, tuple};
 //! use relvar::types::{TupleType, RelationType, ScalarType};
 //! use relvar::values::ScalarValue;
-//! // Import traits for advanced operators!
-//! use relvar::algebra::{ExtendOps, SummarizeOps, Aggregation};
+//! use relvar::algebra::Aggregation;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
 //! // ... setup relvar ...

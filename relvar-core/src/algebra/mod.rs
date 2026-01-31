@@ -35,10 +35,10 @@
 //!
 //! | Operator | Method | Description |
 //! |----------|--------|-------------|
-//! | Extend | [`extend()`](crate::algebra::extend::ExtendOps::extend) | Adds computed attributes |
-//! | Group | [`group()`](crate::algebra::group::GroupOps::group) | Creates relation-valued attributes |
-//! | Ungroup | [`ungroup()`](crate::algebra::group::GroupOps::ungroup) | Flattens relation-valued attributes |
-//! | Summarize | [`summarize()`](crate::algebra::summarize::SummarizeOps::summarize) | Aggregation with grouping |
+//! | Extend | [`extend()`](crate::values::Relation::extend) | Adds computed attributes |
+//! | Group | [`group()`](crate::values::Relation::group) | Creates relation-valued attributes |
+//! | Ungroup | [`ungroup()`](crate::values::Relation::ungroup) | Flattens relation-valued attributes |
+//! | Summarize | [`summarize()`](crate::values::Relation::summarize) | Aggregation with grouping |
 //!
 //! # Example
 //!
@@ -83,11 +83,9 @@ pub mod divide;
 
 /// Extend operator for adding computed attributes.
 pub mod extend;
-pub use extend::ExtendOps;
 
 /// Group and ungroup operators for relation-valued attributes.
 pub mod group;
-pub use group::GroupOps;
 
 /// Set intersection operator.
 pub mod intersect;
@@ -109,7 +107,7 @@ pub mod semijoin;
 
 /// Summarize operator for aggregation with grouping.
 pub mod summarize;
-pub use summarize::{Aggregation, AggregationFn, SummarizeOps};
+pub use summarize::{Aggregation, AggregationFn};
 
 /// Set union operator.
 pub mod union;

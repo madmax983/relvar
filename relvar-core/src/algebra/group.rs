@@ -15,7 +15,6 @@
 //! ```
 //! use relvar_core::types::{TupleType, RelationType, ScalarType};
 //! use relvar_core::values::{Relation, ScalarValue};
-//! use relvar_core::algebra::group::GroupOps;
 //! use relvar_core::tuple;
 //!
 //! let heading = TupleType::new()
@@ -46,7 +45,7 @@ pub enum GroupError {
     #[error("Grouping attribute '{0}' does not exist in relation")]
     AttributeNotFound(String),
 
-    /// No attributes were specified to group into the RVA.
+    /// No attributes were specified for grouping.
     #[error("No attributes specified for grouping")]
     NoAttributesSpecified,
 
@@ -79,11 +78,7 @@ pub enum UngroupError {
     TupleCreation(String),
 }
 
-/// Trait providing group and ungroup operations for relations.
-///
-/// This trait defines methods for creating and flattening relation-valued
-/// attributes (RVAs), which allow nested relations within tuples.
-pub trait GroupOps {
+impl Relation {
     /// Groups specified attributes into a relation-valued attribute.
     ///
     /// This operator collects tuples with matching values on the non-grouped
@@ -106,31 +101,7 @@ pub trait GroupOps {
     /// - [`GroupError::NoAttributesSpecified`] - Empty attributes list
     /// - [`GroupError::AllAttributesGrouped`] - No grouping key attributes remain
     /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts
-    fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError>;
-
-    /// Ungroups a relation-valued attribute back into regular attributes.
-    ///
-    /// This is the inverse of [`group`](Self::group). It flattens a nested
-    /// relation by combining each inner tuple with its parent tuple's
-    /// non-RVA attributes.
-    ///
-    /// # Arguments
-    ///
-    /// * `rva_name` - The name of the relation-valued attribute to flatten
-    ///
-    /// # Returns
-    ///
-    /// A new relation with the RVA replaced by its constituent attributes.
-    ///
-    /// # Errors
-    ///
-    /// - [`UngroupError::AttributeNotFound`] - The attribute doesn't exist
-    /// - [`UngroupError::NotRelationValued`] - The attribute is not an RVA
-    fn ungroup(&self, rva_name: &str) -> Result<Relation, UngroupError>;
-}
-
-impl GroupOps for Relation {
-    fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError> {
+    pub fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError> {
         if attrs_to_group.is_empty() {
             return Err(GroupError::NoAttributesSpecified);
         }
@@ -244,7 +215,25 @@ impl GroupOps for Relation {
         )
     }
 
-    fn ungroup(&self, rva_name: &str) -> Result<Relation, UngroupError> {
+    /// Ungroups a relation-valued attribute back into regular attributes.
+    ///
+    /// This is the inverse of [`group`](Self::group). It flattens a nested
+    /// relation by combining each inner tuple with its parent tuple's
+    /// non-RVA attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `rva_name` - The name of the relation-valued attribute to flatten
+    ///
+    /// # Returns
+    ///
+    /// A new relation with the RVA replaced by its constituent attributes.
+    ///
+    /// # Errors
+    ///
+    /// - [`UngroupError::AttributeNotFound`] - The attribute doesn't exist
+    /// - [`UngroupError::NotRelationValued`] - The attribute is not an RVA
+    pub fn ungroup(&self, rva_name: &str) -> Result<Relation, UngroupError> {
         // Check attribute exists
         if !self.relation_type().has_attribute(rva_name) {
             return Err(UngroupError::AttributeNotFound(rva_name.to_string()));
