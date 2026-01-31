@@ -164,12 +164,25 @@ impl ConstraintManager {
 
         for fk in constraints.foreign_keys() {
             let referenced_relation = engine.load_relation(fk.referenced_relation_name())?;
+            // Build a HashSet of referenced keys for efficient O(1) lookups.
+            let referenced_keys: std::collections::HashSet<Vec<_>> = referenced_relation
+                .tuples()
+                .map(|ref_tuple| {
+                    fk.referenced_attributes()
+                        .iter()
+                        .map(|attr| ref_tuple.get(attr).cloned().unwrap())
+                        .collect()
+                })
+                .collect();
 
             for tuple in relation.tuples() {
-                if fk
-                    .would_violate_on_insert(tuple, &referenced_relation)
-                    .map_err(|e| DatabaseError::ForeignKeyViolation(e.to_string()))?
-                {
+                let fk_values: Vec<_> = fk
+                    .foreign_key_attributes()
+                    .iter()
+                    .map(|attr| tuple.get(attr).cloned().unwrap())
+                    .collect();
+
+                if !referenced_keys.contains(&fk_values) {
                     return Err(DatabaseError::ForeignKeyViolation(
                         "Existing tuple violates foreign key".to_string(),
                     ));
@@ -405,7 +418,18 @@ impl ConstraintManager {
         for (ref_name, fk) in referencing_fks {
             let referencing_relation = engine.load_relation(&ref_name)?;
 
-            // Check if any referencing tuples would be orphaned
+            // Build a HashSet of keys from the relation after deletion for efficient lookups.
+            let existing_keys: std::collections::HashSet<Vec<_>> = relation_after_delete
+                .tuples()
+                .map(|t| {
+                    fk.referenced_attributes()
+                        .iter()
+                        .filter_map(|attr| t.get(attr).cloned())
+                        .collect()
+                })
+                .collect();
+
+            // Check if any referencing tuples would be orphaned by looking up in the HashSet.
             for ref_tuple in referencing_relation.tuples() {
                 let ref_key_values: Vec<ScalarValue> = fk
                     .foreign_key_attributes()
@@ -413,17 +437,7 @@ impl ConstraintManager {
                     .filter_map(|attr| ref_tuple.get(attr).cloned())
                     .collect();
 
-                // Check if the key exists in the new relation
-                let exists = relation_after_delete.tuples().any(|t| {
-                    let key_values: Vec<ScalarValue> = fk
-                        .referenced_attributes()
-                        .iter()
-                        .filter_map(|attr| t.get(attr).cloned())
-                        .collect();
-                    key_values == ref_key_values
-                });
-
-                if !exists {
+                if !existing_keys.contains(&ref_key_values) {
                     return Err(DatabaseError::ForeignKeyViolation(format!(
                         "Deleting tuples would orphan referencing tuples in {}",
                         ref_name
