@@ -66,7 +66,7 @@ pub enum CatalogError {
     RelationExists(String),
 }
 
-const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MiB
 
 /// Metadata for a stored relation (relvar).
 ///
