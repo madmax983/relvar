@@ -6,7 +6,7 @@
 //! - Benchmarking pure relational operations
 //! - Temporary databases that don't need persistence
 
-use super::{RelationMetadata, StorageEngine, StorageError};
+use super::{ConstraintMetadata, RelationMetadata, StorageEngine, StorageError};
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 use std::collections::HashMap;
@@ -16,13 +16,14 @@ use std::collections::HashMap;
 struct StoredRelation {
     metadata: RelationMetadata,
     relation: Relation,
+    constraints: ConstraintMetadata,
 }
 
 /// Snapshot for in-memory transactions.
 #[derive(Debug, Clone)]
 pub struct InMemorySnapshot {
     /// Saved relations, keyed by name.
-    pub saved_relations: HashMap<String, Relation>,
+    saved_relations: HashMap<String, StoredRelation>,
 }
 
 /// Pure in-memory storage engine.
@@ -86,9 +87,16 @@ impl StorageEngine for InMemoryEngine {
         };
 
         let relation = Relation::new(relation_type);
+        let constraints = ConstraintMetadata::default();
 
-        self.relations
-            .insert(name.to_string(), StoredRelation { metadata, relation });
+        self.relations.insert(
+            name.to_string(),
+            StoredRelation {
+                metadata,
+                relation,
+                constraints,
+            },
+        );
 
         Ok(())
     }
@@ -154,12 +162,33 @@ impl StorageEngine for InMemoryEngine {
         Ok(())
     }
 
+    fn save_constraints(
+        &mut self,
+        relation_name: &str,
+        constraints: ConstraintMetadata,
+    ) -> Result<(), StorageError> {
+        let stored = self
+            .relations
+            .get_mut(relation_name)
+            .ok_or_else(|| StorageError::RelationNotFound(relation_name.to_string()))?;
+
+        stored.constraints = constraints;
+        Ok(())
+    }
+
+    fn load_constraints(&self, relation_name: &str) -> Result<ConstraintMetadata, StorageError> {
+        self.relations
+            .get(relation_name)
+            .map(|stored| stored.constraints.clone())
+            .ok_or_else(|| StorageError::RelationNotFound(relation_name.to_string()))
+    }
+
     fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError> {
         // Save current state
-        let saved_relations: HashMap<String, Relation> = self
+        let saved_relations: HashMap<String, StoredRelation> = self
             .relations
             .iter()
-            .map(|(name, stored)| (name.clone(), stored.relation.clone()))
+            .map(|(name, stored)| (name.clone(), stored.clone()))
             .collect();
 
         Ok(InMemorySnapshot { saved_relations })
@@ -167,12 +196,7 @@ impl StorageEngine for InMemoryEngine {
 
     fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
         // Restore saved state
-        for (name, relation) in snapshot.saved_relations {
-            if let Some(stored) = self.relations.get_mut(&name) {
-                stored.relation = relation;
-            }
-        }
-
+        self.relations = snapshot.saved_relations;
         Ok(())
     }
 }

@@ -37,10 +37,12 @@
 
 use crate::constraints::expression::ConstraintExpression;
 use crate::values::Tuple;
+use serde::{Deserialize, Serialize, Serializer};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Errors that can occur during CHECK constraint evaluation.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum CheckConstraintError {
     /// The constraint was violated.
     #[error("CHECK constraint '{constraint_name}' violated: {description}")]
@@ -60,12 +62,18 @@ pub enum CheckConstraintError {
 ///
 /// Supports both closure-based (flexible, not serializable) and
 /// expression-based (serializable, persistent) predicates.
+#[derive(Clone, Serialize, Deserialize)]
 pub enum CheckPredicate {
     /// Closure-based predicate (not serializable).
     ///
     /// Use for complex business logic that can't be expressed in the DSL.
     /// Must be re-registered on database restart.
-    Dynamic(Box<dyn Fn(&Tuple) -> bool + Send + Sync>),
+    #[serde(skip)]
+    Dynamic(
+        #[serde(skip)]
+        #[allow(clippy::type_complexity)]
+        Arc<dyn Fn(&Tuple) -> bool + Send + Sync>,
+    ),
 
     /// Expression-based predicate (serializable).
     ///
@@ -106,7 +114,7 @@ impl std::fmt::Debug for CheckPredicate {
 /// let valid = tuple! { name: "Alice", salary: 50000i64 };
 /// assert!(constraint.is_satisfied_by(&valid).unwrap());
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckConstraint {
     /// Constraint name (unique identifier).
     name: String,
@@ -141,7 +149,7 @@ impl CheckConstraint {
     {
         Self {
             name: name.into(),
-            predicate: CheckPredicate::Dynamic(Box::new(f)),
+            predicate: CheckPredicate::Dynamic(Arc::new(f)),
             description: description.into(),
         }
     }
@@ -211,9 +219,29 @@ impl CheckConstraint {
 ///
 /// This manages multiple CHECK constraints and provides methods to check
 /// if all constraints are satisfied by a tuple.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct CheckConstraints {
     constraints: Vec<CheckConstraint>,
+}
+
+impl Serialize for CheckConstraints {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        // Filter out non-serializable constraints (Dynamic predicates)
+        // We only persist constraints defined via expressions
+        let serializable: Vec<&CheckConstraint> = self
+            .constraints
+            .iter()
+            .filter(|c| c.is_serializable())
+            .collect();
+
+        let mut state = serializer.serialize_struct("CheckConstraints", 1)?;
+        state.serialize_field("constraints", &serializable)?;
+        state.end()
+    }
 }
 
 impl CheckConstraints {

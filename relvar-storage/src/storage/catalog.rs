@@ -38,6 +38,7 @@
 //! assert_eq!(metadata.name, "employees");
 //! ```
 
+use relvar_core::storage_engine::ConstraintMetadata;
 use relvar_core::types::RelationType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -84,6 +85,9 @@ pub struct RelationMetadata {
     pub relation_type: RelationType,
     /// Path to the heap file storing the relation's data.
     pub heap_file_path: PathBuf,
+    /// Constraints defined on the relation.
+    #[serde(default)]
+    pub constraints: ConstraintMetadata,
 }
 
 /// The system catalog storing metadata for all relations in the database.
@@ -218,9 +222,30 @@ impl Catalog {
             name: name.clone(),
             relation_type,
             heap_file_path,
+            constraints: ConstraintMetadata::default(),
         };
 
         self.relations.insert(name, metadata);
+        Ok(())
+    }
+
+    /// Updates constraints for a relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CatalogError::RelationNotFound`] if no relation with
+    /// this name exists.
+    pub fn update_constraints(
+        &mut self,
+        name: &str,
+        constraints: ConstraintMetadata,
+    ) -> Result<(), CatalogError> {
+        let metadata = self
+            .relations
+            .get_mut(name)
+            .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))?;
+
+        metadata.constraints = constraints;
         Ok(())
     }
 

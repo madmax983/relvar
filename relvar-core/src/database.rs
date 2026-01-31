@@ -7,7 +7,7 @@ use crate::constraints::{
     AttributeConstraints, CheckConstraintError, CheckConstraints, ForeignKeyConstraints,
     KeyConstraints,
 };
-use crate::storage_engine::{StorageEngine, StorageError};
+use crate::storage_engine::{ConstraintMetadata, StorageEngine, StorageError};
 use crate::types::RelationType;
 use crate::values::relation::RelationError;
 use crate::values::{Relation, ScalarValue, Tuple};
@@ -141,9 +141,9 @@ pub struct Database<E: StorageEngine> {
 }
 
 impl<E: StorageEngine> Database<E> {
-    /// Create a new database with the given storage engine.
-    pub fn new(engine: E) -> Self {
-        Self {
+    /// Open a database with the given storage engine, loading any existing metadata.
+    pub fn open(engine: E) -> Result<Self, DatabaseError> {
+        let mut db = Self {
             engine,
             key_constraints: HashMap::new(),
             foreign_key_constraints: HashMap::new(),
@@ -152,7 +152,44 @@ impl<E: StorageEngine> Database<E> {
             in_transaction: false,
             transaction_snapshot: None,
             virtual_relvars: HashMap::new(),
+        };
+
+        // Load metadata for all relations
+        for relation_name in db.engine.list_relations() {
+            match db.engine.load_constraints(&relation_name) {
+                Ok(metadata) => {
+                    if let Some(kc) = metadata.key_constraints {
+                        db.key_constraints.insert(relation_name.clone(), kc);
+                    }
+                    if let Some(fkc) = metadata.foreign_key_constraints {
+                        db.foreign_key_constraints
+                            .insert(relation_name.clone(), fkc);
+                    }
+                    if !metadata.type_constraints.is_empty() {
+                        db.type_constraints
+                            .insert(relation_name.clone(), metadata.type_constraints);
+                    }
+                    if let Some(cc) = metadata.check_constraints {
+                        db.check_constraints.insert(relation_name.clone(), cc);
+                    }
+                }
+                Err(StorageError::RelationNotFound(_)) => {
+                    // Relation might have been dropped concurrently, ignore.
+                }
+                Err(e) => return Err(DatabaseError::Storage(e)),
+            }
         }
+
+        Ok(db)
+    }
+
+    /// Create a new database with the given storage engine.
+    ///
+    /// # Panics
+    ///
+    /// Panics if loading metadata fails. Use `open` for safe initialization.
+    pub fn new(engine: E) -> Self {
+        Self::open(engine).expect("Failed to open database")
     }
 
     /// Create a new base relvar (stored relation).
@@ -217,6 +254,7 @@ impl<E: StorageEngine> Database<E> {
 
         self.key_constraints
             .insert(relation_name.to_string(), constraints);
+        self.persist_constraints(relation_name)?;
         Ok(())
     }
 
@@ -250,6 +288,7 @@ impl<E: StorageEngine> Database<E> {
 
         self.foreign_key_constraints
             .insert(relation_name.to_string(), constraints);
+        self.persist_constraints(relation_name)?;
         Ok(())
     }
 
@@ -288,6 +327,7 @@ impl<E: StorageEngine> Database<E> {
             .entry(relation_name.to_string())
             .or_default()
             .insert(attribute_name.to_string(), constraints);
+        self.persist_constraints(relation_name)?;
         Ok(())
     }
 
@@ -318,6 +358,7 @@ impl<E: StorageEngine> Database<E> {
 
         self.check_constraints
             .insert(relation_name.to_string(), constraints);
+        self.persist_constraints(relation_name)?;
         Ok(())
     }
 
@@ -664,6 +705,21 @@ impl<E: StorageEngine> Database<E> {
                 return Err(DatabaseError::CandidateKeyViolation);
             }
         }
+        Ok(())
+    }
+
+    fn persist_constraints(&mut self, relation_name: &str) -> Result<(), DatabaseError> {
+        let metadata = ConstraintMetadata {
+            key_constraints: self.key_constraints.get(relation_name).cloned(),
+            foreign_key_constraints: self.foreign_key_constraints.get(relation_name).cloned(),
+            type_constraints: self
+                .type_constraints
+                .get(relation_name)
+                .cloned()
+                .unwrap_or_default(),
+            check_constraints: self.check_constraints.get(relation_name).cloned(),
+        };
+        self.engine.save_constraints(relation_name, metadata)?;
         Ok(())
     }
 

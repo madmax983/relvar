@@ -1,7 +1,9 @@
 //! Persistent storage engine implementation using heap files and catalog.
 
 use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
-use relvar_core::storage_engine::{RelationMetadata, StorageEngine, StorageError};
+use relvar_core::storage_engine::{
+    ConstraintMetadata, RelationMetadata, StorageEngine, StorageError,
+};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
 use std::collections::HashMap;
@@ -325,6 +327,46 @@ impl StorageEngine for PersistentEngine {
         heap_file
             .insert_tuple(&tuple)
             .map_err(Self::convert_heap_error)
+    }
+
+    fn save_constraints(
+        &mut self,
+        relation_name: &str,
+        constraints: ConstraintMetadata,
+    ) -> Result<(), StorageError> {
+        self.catalog
+            .update_constraints(relation_name, constraints)
+            .map_err(|e| match e {
+                CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
+                CatalogError::Io(io_err) => {
+                    StorageError::Other(format!("Catalog I/O error: {}", io_err))
+                }
+                CatalogError::Serialization(s) => {
+                    StorageError::Other(format!("Catalog error: {}", s))
+                }
+                CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
+            })?;
+
+        self.save_catalog()?;
+        Ok(())
+    }
+
+    fn load_constraints(&self, relation_name: &str) -> Result<ConstraintMetadata, StorageError> {
+        let metadata = self
+            .catalog
+            .get_relation(relation_name)
+            .map_err(|e| match e {
+                CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
+                CatalogError::Io(io_err) => {
+                    StorageError::Other(format!("Catalog I/O error: {}", io_err))
+                }
+                CatalogError::Serialization(s) => {
+                    StorageError::Other(format!("Catalog error: {}", s))
+                }
+                CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
+            })?;
+
+        Ok(metadata.constraints.clone())
     }
 
     fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError> {
@@ -777,5 +819,106 @@ mod tests {
 
         let relation = engine.load_relation("TEST").unwrap();
         assert_eq!(relation.cardinality(), 2);
+    }
+
+    #[test]
+    fn test_constraint_persistence() {
+        use relvar_core::constraints::{KeyConstraints, PrimaryKey};
+        use relvar_core::database::{Database, DatabaseError};
+
+        let temp_dir = TempDir::new().unwrap();
+
+        // 1. Create DB, add relation and constraint
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            let mut db = Database::open(engine).unwrap();
+
+            db.create_relvar("USERS", test_rel_type()).unwrap();
+
+            let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+            let constraints = KeyConstraints::new().with_primary_key(pk);
+            db.set_key_constraints("USERS", constraints).unwrap();
+
+            db.insert("USERS", tuple! { id: 1i64, name: "Alice" })
+                .unwrap();
+        }
+
+        // 2. Re-open DB and verify constraint
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            let mut db = Database::open(engine).unwrap();
+
+            // Insert duplicate PK
+            let result = db.insert("USERS", tuple! { id: 1i64, name: "Bob" });
+            assert!(result.is_err());
+            assert!(matches!(result, Err(DatabaseError::PrimaryKeyViolation)));
+        }
+    }
+
+    #[test]
+    fn test_dynamic_constraint_persistence() {
+        use relvar_core::constraints::expression::{ConstraintExpression, ValueOrRef};
+        use relvar_core::constraints::{CheckConstraint, CheckConstraints};
+        use relvar_core::database::{Database, DatabaseError};
+        use relvar_core::values::ScalarValue;
+
+        let temp_dir = TempDir::new().unwrap();
+
+        // 1. Create DB with dynamic and expression constraints
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            let mut db = Database::open(engine).unwrap();
+
+            db.create_relvar("TEST", test_rel_type()).unwrap();
+
+            // Dynamic constraint: fail if id == 100 (should be dropped on save)
+            let dynamic = CheckConstraint::from_closure("dynamic", "desc", |t| {
+                if let Some(ScalarValue::Int(id)) = t.get("id") {
+                    *id != 100
+                } else {
+                    true
+                }
+            });
+
+            // Expression constraint: fail if id < 0 (should be persisted)
+            let expr = CheckConstraint::from_expression(
+                "expr",
+                "desc",
+                ConstraintExpression::Ge("id".to_string(), ValueOrRef::Value(ScalarValue::Int(0))),
+            );
+
+            let constraints = CheckConstraints::new()
+                .with_constraint(dynamic)
+                .with_constraint(expr);
+
+            db.set_check_constraints("TEST", constraints).unwrap();
+
+            // Verify constraints active in memory
+            assert!(
+                db.insert("TEST", tuple! { id: 100i64, name: "Bad" })
+                    .is_err()
+            );
+            assert!(
+                db.insert("TEST", tuple! { id: -1i64, name: "Bad" })
+                    .is_err()
+            );
+        }
+
+        // 2. Re-open and verify
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            let mut db = Database::open(engine).unwrap();
+
+            // Dynamic constraint should be gone: id=100 should succeed
+            assert!(db.insert("TEST", tuple! { id: 100i64, name: "Ok" }).is_ok());
+
+            // Expression constraint should persist: id=-1 should fail
+            let result = db.insert("TEST", tuple! { id: -1i64, name: "Bad" });
+            assert!(result.is_err());
+            assert!(matches!(
+                result,
+                Err(DatabaseError::CheckConstraintViolation(_))
+            ));
+        }
     }
 }

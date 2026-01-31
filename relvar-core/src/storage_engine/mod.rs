@@ -9,8 +9,13 @@
 //! The storage engine is purely an implementation detail (RM Proscription 3).
 //! The logical relational model is independent of how data is physically stored.
 
+use crate::constraints::{
+    AttributeConstraints, CheckConstraints, ForeignKeyConstraints, KeyConstraints,
+};
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use thiserror::Error;
 
 pub mod in_memory;
@@ -44,6 +49,19 @@ pub struct RelationMetadata {
     pub name: String,
     /// The type (heading) of the relation.
     pub relation_type: RelationType,
+}
+
+/// Metadata about constraints on a relation.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConstraintMetadata {
+    /// Key constraints (primary and candidate keys).
+    pub key_constraints: Option<KeyConstraints>,
+    /// Foreign key constraints.
+    pub foreign_key_constraints: Option<ForeignKeyConstraints>,
+    /// Type constraints (per attribute).
+    pub type_constraints: HashMap<String, AttributeConstraints>,
+    /// CHECK constraints.
+    pub check_constraints: Option<CheckConstraints>,
 }
 
 /// Trait for storage engine backends.
@@ -125,6 +143,24 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// Returns `StorageError::RelationNotFound` if the relation doesn't exist.
     fn insert_tuple(&mut self, name: &str, tuple: Tuple) -> Result<(), StorageError>;
+
+    /// Save constraints for a relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageError::RelationNotFound` if the relation doesn't exist.
+    fn save_constraints(
+        &mut self,
+        relation_name: &str,
+        constraints: ConstraintMetadata,
+    ) -> Result<(), StorageError>;
+
+    /// Load constraints for a relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageError::RelationNotFound` if the relation doesn't exist.
+    fn load_constraints(&self, relation_name: &str) -> Result<ConstraintMetadata, StorageError>;
 
     /// Begin a transaction (save current state).
     ///
