@@ -678,7 +678,7 @@ mod tests {
         let fk = ForeignKey::new(
             vec!["dept_id".to_string()],
             "DEPT".to_string(),
-            vec!["dept_id".to_string()]
+            vec!["dept_id".to_string()],
         )
         .unwrap();
         let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
