@@ -157,7 +157,8 @@ impl Catalog {
     /// # Errors
     ///
     /// Returns [`CatalogError::Io`] if the file cannot be read.
-    /// Returns [`CatalogError::Serialization`] if the JSON is invalid.
+    /// Returns [`CatalogError::Serialization`] if the JSON is invalid or the
+    /// catalog file exceeds the maximum allowed size.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, CatalogError> {
         Self::load_with_limit(path, MAX_CATALOG_SIZE)
     }
