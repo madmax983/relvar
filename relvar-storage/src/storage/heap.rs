@@ -505,13 +505,12 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize
-                        .checked_add(slot_dir_len)
-                        .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
-                    let header_data = page
-                        .data()
-                        .get(5..end_header)
-                        .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+                    let end_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
+                        HeapError::Serialization("Header length overflow".to_string())
+                    })?;
+                    let header_data = page.data().get(5..end_header).ok_or_else(|| {
+                        HeapError::Serialization("Invalid header range".to_string())
+                    })?;
                     bincode::deserialize(header_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?
                 } else {
@@ -521,11 +520,8 @@ impl HeapFile {
                 };
 
                 for slot_entry in versioned_page.slots.iter().flatten() {
-                    let tuple_data = Self::get_slot_slice(
-                        page.data(),
-                        slot_entry.offset,
-                        slot_entry.length,
-                    )?;
+                    let tuple_data =
+                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)?;
                     let tuple: Tuple = bincode::deserialize(tuple_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?;
                     results.push(tuple);
@@ -541,11 +537,8 @@ impl HeapFile {
                 };
 
                 for slot_entry in slotted_page.slots.iter().flatten() {
-                    let tuple_data = Self::get_slot_slice(
-                        page.data(),
-                        slot_entry.offset,
-                        slot_entry.length,
-                    )?;
+                    let tuple_data =
+                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)?;
                     let tuple: Tuple = bincode::deserialize(tuple_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?;
                     results.push(tuple);
@@ -672,13 +665,12 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize
-                        .checked_add(slot_dir_len)
-                        .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
-                    let header_data = page
-                        .data()
-                        .get(5..end_header)
-                        .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+                    let end_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
+                        HeapError::Serialization("Header length overflow".to_string())
+                    })?;
+                    let header_data = page.data().get(5..end_header).ok_or_else(|| {
+                        HeapError::Serialization("Invalid header range".to_string())
+                    })?;
                     bincode::deserialize(header_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?
                 } else {
@@ -957,13 +949,12 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize
-                        .checked_add(slot_dir_len)
-                        .ok_or_else(|| HeapError::Serialization("Header length overflow".to_string()))?;
-                    let header_data = page
-                        .data()
-                        .get(5..end_header)
-                        .ok_or_else(|| HeapError::Serialization("Invalid header range".to_string()))?;
+                    let end_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
+                        HeapError::Serialization("Header length overflow".to_string())
+                    })?;
+                    let header_data = page.data().get(5..end_header).ok_or_else(|| {
+                        HeapError::Serialization("Invalid header range".to_string())
+                    })?;
                     bincode::deserialize(header_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?
                 } else {
@@ -1170,9 +1161,13 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize
-                        .checked_add(slot_dir_len)
-                        .and_then(|e| if e <= page.data().len() { Some(e) } else { None });
+                    let end_header = 5usize.checked_add(slot_dir_len).and_then(|e| {
+                        if e <= page.data().len() {
+                            Some(e)
+                        } else {
+                            None
+                        }
+                    });
 
                     if let Some(end) = end_header {
                         match bincode::deserialize(&page.data()[5..end]) {
@@ -1311,9 +1306,13 @@ impl HeapFile {
                     // New format: [version:1][length:4][slot_dir][tuples]
                     let slot_dir_len =
                         u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
-                    let end_header = 5usize
-                        .checked_add(slot_dir_len)
-                        .and_then(|e| if e <= page.data().len() { Some(e) } else { None });
+                    let end_header = 5usize.checked_add(slot_dir_len).and_then(|e| {
+                        if e <= page.data().len() {
+                            Some(e)
+                        } else {
+                            None
+                        }
+                    });
 
                     if let Some(end) = end_header {
                         match bincode::deserialize(&page.data()[5..end]) {
@@ -1352,11 +1351,9 @@ impl HeapFile {
                 // Check visibility
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
-                    if let Ok(tuple_data) = Self::get_slot_slice(
-                        page.data(),
-                        slot_entry.offset,
-                        slot_entry.length,
-                    ) {
+                    if let Ok(tuple_data) =
+                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)
+                    {
                         let tuple: Tuple = bincode::deserialize(tuple_data)
                             .map_err(|e| HeapError::Serialization(e.to_string()))?;
                         results.push(tuple);
@@ -2918,7 +2915,9 @@ mod tests {
         match result {
             Err(HeapError::Serialization(msg)) => {
                 // Warden: Updated error message check to include new helper's output
-                assert!(msg.contains("Slot points outside buffer") || msg.contains("Corrupted slot"));
+                assert!(
+                    msg.contains("Slot points outside buffer") || msg.contains("Corrupted slot")
+                );
             }
             _ => panic!("Expected Serialization error for corrupted slot"),
         }
