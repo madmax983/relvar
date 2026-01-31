@@ -395,6 +395,14 @@ impl ConstraintManager {
         self.key_constraints.get(relation_name)
     }
 
+    /// Get the foreign key constraints for a relation.
+    pub fn get_foreign_key_constraints(
+        &self,
+        relation_name: &str,
+    ) -> Option<&ForeignKeyConstraints> {
+        self.foreign_key_constraints.get(relation_name)
+    }
+
     /// Validate that deleting tuples won't violate foreign keys in other relations.
     pub fn validate_referencing_foreign_keys<E: StorageEngine>(
         &self,
@@ -542,6 +550,19 @@ impl<E: StorageEngine> Database<E> {
         let mut names = self.engine.list_relations();
         names.extend(self.virtual_relvars.keys().cloned());
         names
+    }
+
+    /// Get the key constraints for a relation.
+    pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
+        self.constraints.get_key_constraints(relation_name)
+    }
+
+    /// Get the foreign key constraints for a relation.
+    pub fn get_foreign_key_constraints(
+        &self,
+        relation_name: &str,
+    ) -> Option<&ForeignKeyConstraints> {
+        self.constraints.get_foreign_key_constraints(relation_name)
     }
 
     /// Set key constraints for a relation.
