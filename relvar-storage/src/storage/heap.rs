@@ -178,18 +178,15 @@ impl HeapFile {
 
             // Safe header range check
             match 5usize.checked_add(slot_dir_len) {
-                Some(end) if end <= page.data().len() => {
-                    bincode::deserialize(&page.data()[5..end])
-                        .map_err(|e| HeapError::Serialization(e.to_string()))
-                }
+                Some(end) if end <= page.data().len() => bincode::deserialize(&page.data()[5..end])
+                    .map_err(|e| HeapError::Serialization(e.to_string())),
                 _ => Err(HeapError::Serialization(
                     "Header length overflow or out of bounds".to_string(),
                 )),
             }
         } else {
             // Old format: [slot_dir][tuples] (for backward compatibility)
-            bincode::deserialize(page.data())
-                .map_err(|e| HeapError::Serialization(e.to_string()))
+            bincode::deserialize(page.data()).map_err(|e| HeapError::Serialization(e.to_string()))
         }
     }
 
@@ -507,11 +504,8 @@ impl HeapFile {
                 let versioned_page = Self::deserialize_versioned_page(&page)?;
 
                 for slot_entry in versioned_page.slots.iter().flatten() {
-                    let tuple_data = Self::get_slot_slice(
-                        page.data(),
-                        slot_entry.offset,
-                        slot_entry.length,
-                    )?;
+                    let tuple_data =
+                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)?;
                     let tuple: Tuple = bincode::deserialize(tuple_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?;
                     results.push(tuple);
@@ -527,11 +521,8 @@ impl HeapFile {
                 };
 
                 for slot_entry in slotted_page.slots.iter().flatten() {
-                    let tuple_data = Self::get_slot_slice(
-                        page.data(),
-                        slot_entry.offset,
-                        slot_entry.length,
-                    )?;
+                    let tuple_data =
+                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)?;
                     let tuple: Tuple = bincode::deserialize(tuple_data)
                         .map_err(|e| HeapError::Serialization(e.to_string()))?;
                     results.push(tuple);
@@ -1218,11 +1209,9 @@ impl HeapFile {
                 // Check visibility
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
-                    if let Ok(tuple_data) = Self::get_slot_slice(
-                        page.data(),
-                        slot_entry.offset,
-                        slot_entry.length,
-                    ) {
+                    if let Ok(tuple_data) =
+                        Self::get_slot_slice(page.data(), slot_entry.offset, slot_entry.length)
+                    {
                         let tuple: Tuple = bincode::deserialize(tuple_data)
                             .map_err(|e| HeapError::Serialization(e.to_string()))?;
                         results.push(tuple);
@@ -2783,7 +2772,9 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(HeapError::Serialization(msg)) => {
-                assert!(msg.contains("Slot points outside buffer") || msg.contains("Corrupted slot"));
+                assert!(
+                    msg.contains("Slot points outside buffer") || msg.contains("Corrupted slot")
+                );
             }
             _ => panic!("Expected Serialization error for corrupted slot"),
         }
@@ -2806,6 +2797,11 @@ mod tests {
         let bad_len = u32::MAX;
         page_data[1..5].copy_from_slice(&bad_len.to_le_bytes());
 
+        // Write magic at offset 5 to be recognized as new format versioned page
+        // If we don't do this, it falls back to "old format", fails deserialization, and skips the page
+        let magic = VERSIONED_PAGE_MAGIC;
+        page_data[5..9].copy_from_slice(&magic.to_le_bytes());
+
         let page = Page::from_data(0, page_data).unwrap();
         heap.page_file.write_page(&page).unwrap();
 
@@ -2816,7 +2812,10 @@ mod tests {
             Err(HeapError::Serialization(msg)) => {
                 assert!(msg.contains("Header length overflow") || msg.contains("out of bounds"));
             }
-            _ => panic!("Expected Serialization error for corrupted header, got {:?}", result),
+            _ => panic!(
+                "Expected Serialization error for corrupted header, got {:?}",
+                result
+            ),
         }
     }
 }
