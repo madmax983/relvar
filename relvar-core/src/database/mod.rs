@@ -13,8 +13,7 @@ pub use constraint_manager::ConstraintManager;
 pub use error::DatabaseError;
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraints, ForeignKeyConstraints,
-    KeyConstraints,
+    AttributeConstraints, CheckConstraints, ForeignKeyConstraints, KeyConstraints,
 };
 use crate::storage_engine::StorageEngine;
 use crate::types::RelationType;
@@ -37,7 +36,6 @@ pub struct VirtualRelvarDefinition<E: StorageEngine> {
     /// Takes a mutable reference to the database and returns the computed relation.
     pub evaluator: fn(&mut Database<E>) -> Result<Relation, DatabaseError>,
 }
-
 
 /// A relational database instance.
 ///
@@ -680,7 +678,7 @@ mod tests {
         let fk = ForeignKey::new(
             vec!["dept_id".to_string()],
             "DEPT".to_string(),
-            vec!["dept_id".to_string()],
+            vec!["dept_id".to_string()]
         )
         .unwrap();
         let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);

@@ -1,10 +1,9 @@
+use super::error::DatabaseError;
 use crate::constraints::{
-    AttributeConstraints, CheckConstraints, ForeignKeyConstraints,
-    KeyConstraints,
+    AttributeConstraints, CheckConstraints, ForeignKeyConstraints, KeyConstraints,
 };
 use crate::storage_engine::StorageEngine;
 use crate::values::{Relation, ScalarValue, Tuple};
-use super::error::DatabaseError;
 use std::collections::HashMap;
 
 /// Manages integrity constraints for the database.
