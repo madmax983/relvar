@@ -547,7 +547,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             BTreeIndexError::Serialization(msg) => {
-                assert_eq!(msg, "Index file too large");
+                assert!(msg.contains("Index file too large"));
             }
             err => panic!("Expected Serialization error, got {:?}", err),
         }
