@@ -724,7 +724,7 @@ impl HeapFile {
                 current_offset -= tuple.len();
 
                 if idx == slot_number as usize {
-                    // New version with link to previous version
+                    // New tuple - create new version entry
                     versioned_page.slots[idx] = Some(VersionedSlotEntry {
                         offset: current_offset as u32,
                         length: tuple.len() as u32,
@@ -2926,12 +2926,8 @@ mod tests {
 
         // 4. Verify scan fails gracefully
         let result = heap.scan();
-        assert!(result.is_err());
         // Should be a serialization error because bincode will fail to deserialize garbage
-        match result {
-            Err(HeapError::Serialization(_)) => {}
-            _ => panic!("Expected Serialization error, got {:?}", result),
-        }
+        assert!(matches!(result, Err(HeapError::Serialization(_))), "Expected Serialization error, got {:?}", result);
 
         Ok(())
     }
