@@ -150,6 +150,9 @@ struct VersionedSlottedPage {
 
 const VERSIONED_PAGE_MAGIC: u32 = 0x4D564343; // "MVCC" in ASCII
 
+// Page format version to handle serialization changes
+const PAGE_FORMAT_VERSION: u8 = 2; // Version 2: length-prefixed slot directory
+
 impl HeapFile {
     /// Creates a new heap file, truncating any existing file.
     ///
@@ -388,8 +391,19 @@ impl HeapFile {
             return Err(HeapError::TupleNotFound);
         }
 
-        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data())
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        // Check if page uses new format (version byte at start)
+        let versioned_page: VersionedSlottedPage = if page.data().len() >= 5
+            && page.data()[0] == PAGE_FORMAT_VERSION
+        {
+            // New format: [version:1][length:4][slot_dir][tuples]
+            let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+            bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                .map_err(|e| HeapError::Serialization(e.to_string()))?
+        } else {
+            // Old format: [slot_dir][tuples] (for backward compatibility)
+            bincode::deserialize(page.data())
+                .map_err(|e| HeapError::Serialization(e.to_string()))?
+        };
 
         let slot_entry = versioned_page
             .slots
@@ -444,9 +458,25 @@ impl HeapFile {
                 break;
             }
 
-            // Check if this is a versioned page by reading the magic number
-            // Versioned pages start with magic: u32, SlottedPage starts with slot_count: u32
-            let is_versioned = if page.data().len() >= 4 {
+            // Check if this is a versioned page
+            // New format: [version:1][length:4][VersionedSlottedPage with magic at offset 5]
+            // Old format versioned: [VersionedSlottedPage with magic at offset 0]
+            // Old format non-versioned: [SlottedPage with slot_count at offset 0]
+
+            // Check for new format: version byte + magic at offset 5
+            let is_new_format =
+                page.data().len() >= 9 && page.data()[0] == PAGE_FORMAT_VERSION && {
+                    let magic_at_5 = u32::from_le_bytes([
+                        page.data()[5],
+                        page.data()[6],
+                        page.data()[7],
+                        page.data()[8],
+                    ]);
+                    magic_at_5 == VERSIONED_PAGE_MAGIC
+                };
+
+            // Check for old format versioned: magic at offset 0
+            let is_old_versioned = !is_new_format && page.data().len() >= 4 && {
                 let first_u32 = u32::from_le_bytes([
                     page.data()[0],
                     page.data()[1],
@@ -454,14 +484,23 @@ impl HeapFile {
                     page.data()[3],
                 ]);
                 first_u32 == VERSIONED_PAGE_MAGIC
-            } else {
-                false
             };
+
+            let is_versioned = is_new_format || is_old_versioned;
 
             if is_versioned {
                 // Versioned page format (MVCC)
-                let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data())
-                    .map_err(|e| HeapError::Serialization(e.to_string()))?;
+                let versioned_page: VersionedSlottedPage = if is_new_format {
+                    // New format: [version:1][length:4][slot_dir][tuples]
+                    let slot_dir_len =
+                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+                    bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?
+                } else {
+                    // Old format: [slot_dir][tuples]
+                    bincode::deserialize(page.data())
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?
+                };
 
                 for slot_entry in versioned_page.slots.iter().flatten() {
                     let start = slot_entry.offset as usize;
@@ -621,8 +660,19 @@ impl HeapFile {
                 slots: Vec::new(),
             }
         } else {
-            let vp: VersionedSlottedPage = bincode::deserialize(page.data())
-                .map_err(|e| HeapError::Serialization(e.to_string()))?;
+            // Check if page uses new format (version byte at start)
+            let vp: VersionedSlottedPage =
+                if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
+                    // New format: [version:1][length:4][slot_dir][tuples]
+                    let slot_dir_len =
+                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+                    bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?
+                } else {
+                    // Old format: [slot_dir][tuples] (for backward compatibility)
+                    bincode::deserialize(page.data())
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?
+                };
 
             // Extract existing tuple data
             for slot_entry in vp.slots.iter().flatten() {
@@ -655,11 +705,12 @@ impl HeapFile {
         // Calculate required space using ACTUAL serialized size
         // CRITICAL: Must use bincode size, not sizeof, as they differ!
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
+        const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
 
         // Serialize the slot directory to get actual size
         let slot_dir = bincode::serialize(&versioned_page)
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
-        let header_size = slot_dir.len();
+        let header_size = FORMAT_HEADER_SIZE + slot_dir.len();
 
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
         let required_space = header_size + total_tuple_data_size;
@@ -720,12 +771,14 @@ impl HeapFile {
         let slot_dir = bincode::serialize(versioned_page)
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
 
-        // Ensure the serialized slot directory fits into the usable page size
+        // Format: [version:1 byte][slot_dir_length:4 bytes][slot_dir][tuple_data]
+        const HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
-        if slot_dir.len() > USABLE_PAGE_SIZE {
+
+        if slot_dir.len() + HEADER_SIZE > USABLE_PAGE_SIZE {
             return Err(HeapError::Serialization(format!(
                 "slot directory too large for page: {} > {}",
-                slot_dir.len(),
+                slot_dir.len() + HEADER_SIZE,
                 USABLE_PAGE_SIZE
             )));
         }
@@ -733,8 +786,15 @@ impl HeapFile {
         // Create page buffer
         let mut data = vec![0u8; USABLE_PAGE_SIZE];
 
-        // Copy slot directory at beginning
-        data[..slot_dir.len()].copy_from_slice(&slot_dir);
+        // Write format version
+        data[0] = PAGE_FORMAT_VERSION;
+
+        // Write slot directory length
+        let slot_dir_len = slot_dir.len() as u32;
+        data[1..5].copy_from_slice(&slot_dir_len.to_le_bytes());
+
+        // Copy slot directory after header
+        data[HEADER_SIZE..HEADER_SIZE + slot_dir.len()].copy_from_slice(&slot_dir);
 
         // Copy each tuple at its designated offset
         for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
@@ -795,8 +855,19 @@ impl HeapFile {
             return Err(HeapError::TupleNotFound);
         }
 
-        let mut versioned_page: VersionedSlottedPage = bincode::deserialize(page.data())
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        // Check if page uses new format (version byte at start)
+        let mut versioned_page: VersionedSlottedPage = if page.data().len() >= 5
+            && page.data()[0] == PAGE_FORMAT_VERSION
+        {
+            // New format: [version:1][length:4][slot_dir][tuples]
+            let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+            bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                .map_err(|e| HeapError::Serialization(e.to_string()))?
+        } else {
+            // Old format: [slot_dir][tuples] (for backward compatibility)
+            bincode::deserialize(page.data())
+                .map_err(|e| HeapError::Serialization(e.to_string()))?
+        };
 
         // Find the old slot
         let old_slot = versioned_page
@@ -866,8 +937,19 @@ impl HeapFile {
                 slots: Vec::new(),
             }
         } else {
-            let vp: VersionedSlottedPage = bincode::deserialize(page.data())
-                .map_err(|e| HeapError::Serialization(e.to_string()))?;
+            // Check if page uses new format (version byte at start)
+            let vp: VersionedSlottedPage =
+                if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
+                    // New format: [version:1][length:4][slot_dir][tuples]
+                    let slot_dir_len =
+                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+                    bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?
+                } else {
+                    // Old format: [slot_dir][tuples] (for backward compatibility)
+                    bincode::deserialize(page.data())
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?
+                };
 
             // Extract existing tuple data
             for slot_entry in vp.slots.iter().flatten() {
@@ -883,11 +965,15 @@ impl HeapFile {
             vp
         };
 
-        // Calculate required space
+        // Calculate required space using ACTUAL serialized size
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
-        let slot_entry_size = std::mem::size_of::<VersionedSlotEntry>();
-        let header_size =
-            std::mem::size_of::<u32>() + (versioned_page.slots.len() + 1) * slot_entry_size;
+        const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
+
+        // Serialize the slot directory to get actual size
+        let slot_dir = bincode::serialize(&versioned_page)
+            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let header_size = FORMAT_HEADER_SIZE + slot_dir.len();
+
         let total_tuple_data_size: usize =
             existing_tuples.iter().map(|t| t.len()).sum::<usize>() + tuple_data.len();
         let required_space = header_size + total_tuple_data_size;
@@ -980,8 +1066,19 @@ impl HeapFile {
             return Err(HeapError::TupleNotFound);
         }
 
-        let mut versioned_page: VersionedSlottedPage = bincode::deserialize(page.data())
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        // Check if page uses new format (version byte at start)
+        let mut versioned_page: VersionedSlottedPage = if page.data().len() >= 5
+            && page.data()[0] == PAGE_FORMAT_VERSION
+        {
+            // New format: [version:1][length:4][slot_dir][tuples]
+            let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+            bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+                .map_err(|e| HeapError::Serialization(e.to_string()))?
+        } else {
+            // Old format: [slot_dir][tuples] (for backward compatibility)
+            bincode::deserialize(page.data())
+                .map_err(|e| HeapError::Serialization(e.to_string()))?
+        };
 
         // Find and mark the tuple
         let slot = versioned_page
@@ -1046,14 +1143,30 @@ impl HeapFile {
             }
 
             // Try to deserialize as versioned page
-            let mut versioned_page: VersionedSlottedPage = match bincode::deserialize(page.data()) {
-                Ok(vp) => vp,
-                Err(_) => {
-                    // Not a versioned page, skip
-                    page_id += 1;
-                    continue;
-                }
-            };
+            let mut versioned_page: VersionedSlottedPage =
+                if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
+                    // New format: [version:1][length:4][slot_dir][tuples]
+                    let slot_dir_len =
+                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+                    match bincode::deserialize(&page.data()[5..5 + slot_dir_len]) {
+                        Ok(vp) => vp,
+                        Err(_) => {
+                            // Not a versioned page, skip
+                            page_id += 1;
+                            continue;
+                        }
+                    }
+                } else {
+                    // Old format: [slot_dir][tuples] (for backward compatibility)
+                    match bincode::deserialize(page.data()) {
+                        Ok(vp) => vp,
+                        Err(_) => {
+                            // Not a versioned page, skip
+                            page_id += 1;
+                            continue;
+                        }
+                    }
+                };
 
             // Extract existing tuple data
             // IMPORTANT: Maintain 1:1 correspondence with slots vector
@@ -1164,14 +1277,30 @@ impl HeapFile {
             }
 
             // Try to deserialize as VersionedSlottedPage
-            let versioned_page: VersionedSlottedPage = match bincode::deserialize(page.data()) {
-                Ok(vp) => vp,
-                Err(_) => {
-                    // Not a versioned page, skip
-                    page_id += 1;
-                    continue;
-                }
-            };
+            let versioned_page: VersionedSlottedPage =
+                if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
+                    // New format: [version:1][length:4][slot_dir][tuples]
+                    let slot_dir_len =
+                        u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+                    match bincode::deserialize(&page.data()[5..5 + slot_dir_len]) {
+                        Ok(vp) => vp,
+                        Err(_) => {
+                            // Not a versioned page, skip
+                            page_id += 1;
+                            continue;
+                        }
+                    }
+                } else {
+                    // Old format: [slot_dir][tuples] (for backward compatibility)
+                    match bincode::deserialize(page.data()) {
+                        Ok(vp) => vp,
+                        Err(_) => {
+                            // Not a versioned page, skip
+                            page_id += 1;
+                            continue;
+                        }
+                    }
+                };
 
             // Check each slot for visibility
             for slot_entry in versioned_page.slots.iter().flatten() {
@@ -1215,6 +1344,20 @@ mod tests {
             .with_attribute("id".to_string(), ScalarType::Int)
             .with_attribute("name".to_string(), ScalarType::String);
         RelationType::new(heading)
+    }
+
+    /// Helper function for tests to deserialize versioned pages (handles both old and new formats)
+    fn deserialize_versioned_page_for_test(
+        page_data: &[u8],
+    ) -> Result<VersionedSlottedPage, bincode::Error> {
+        if page_data.len() >= 5 && page_data[0] == PAGE_FORMAT_VERSION {
+            // New format: [version:1][length:4][slot_dir][tuples]
+            let slot_dir_len = u32::from_le_bytes(page_data[1..5].try_into().unwrap()) as usize;
+            bincode::deserialize(&page_data[5..5 + slot_dir_len])
+        } else {
+            // Old format: [slot_dir][tuples]
+            bincode::deserialize(page_data)
+        }
     }
 
     #[test]
@@ -2143,7 +2286,8 @@ mod tests {
 
         // Old version should have xmax set
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2171,7 +2315,8 @@ mod tests {
 
         // New version should have xmin = test_txn(2)
         let page = heap.page_file.read_page(new_tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page.data()).unwrap();
         let slot = versioned_page.slots[new_tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2200,7 +2345,8 @@ mod tests {
 
         // New version should point back to old version
         let page = heap.page_file.read_page(new_tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page.data()).unwrap();
         let new_slot = versioned_page.slots[new_tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2294,12 +2440,14 @@ mod tests {
 
         // Verify chain: tid3 -> tid2 -> tid1
         let page3 = heap.page_file.read_page(tid3.page_id).unwrap();
-        let vpage3: VersionedSlottedPage = bincode::deserialize(page3.data()).unwrap();
+        let vpage3: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page3.data()).unwrap();
         let slot3 = vpage3.slots[tid3.slot as usize].as_ref().unwrap();
         assert_eq!(slot3.prev_version, Some(tid2));
 
         let page2 = heap.page_file.read_page(tid2.page_id).unwrap();
-        let vpage2: VersionedSlottedPage = bincode::deserialize(page2.data()).unwrap();
+        let vpage2: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page2.data()).unwrap();
         let slot2 = vpage2.slots[tid2.slot as usize].as_ref().unwrap();
         assert_eq!(slot2.prev_version, Some(tid1));
     }
@@ -2368,7 +2516,8 @@ mod tests {
 
         // Old version should still have xmin = test_txn(1)
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2450,7 +2599,8 @@ mod tests {
 
         // Verify xmax is set
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2573,7 +2723,8 @@ mod tests {
 
         // Verify xmin unchanged
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();
@@ -2622,7 +2773,8 @@ mod tests {
 
         // Verify xmax is now T3
         let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
-        let versioned_page: VersionedSlottedPage = bincode::deserialize(page.data()).unwrap();
+        let versioned_page: VersionedSlottedPage =
+            deserialize_versioned_page_for_test(page.data()).unwrap();
         let slot = versioned_page.slots[tuple_id.slot as usize]
             .as_ref()
             .unwrap();

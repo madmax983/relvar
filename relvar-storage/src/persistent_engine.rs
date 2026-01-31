@@ -920,7 +920,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // FIXME: Edge case bug in versioned page deserialization with large datasets
     fn test_store_relation_large() {
         let temp_dir = TempDir::new().unwrap();
         let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
