@@ -138,6 +138,15 @@ impl std::hash::Hash for Relation {
     }
 }
 
+impl IntoIterator for Relation {
+    type Item = Tuple;
+    type IntoIter = std::collections::hash_set::IntoIter<Tuple>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.body.into_iter()
+    }
+}
+
 impl Relation {
     /// Creates a new empty relation with the given type.
     ///
@@ -541,6 +550,26 @@ mod tests {
             .unwrap();
 
         let count = relation.tuples().count();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_into_iterator() {
+        let heading = emp_type();
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+        relation
+            .insert(tuple! { emp_id: 2i64, name: "Bob" })
+            .unwrap();
+
+        let mut count = 0;
+        for _tuple in relation {
+            count += 1;
+        }
         assert_eq!(count, 2);
     }
 }
