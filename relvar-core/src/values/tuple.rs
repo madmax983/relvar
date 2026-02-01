@@ -142,6 +142,31 @@ impl Tuple {
     /// Creates a new tuple from a type and a BTreeMap of values.
     ///
     /// This avoids re-collecting the values if they are already in a BTreeMap.
+    /// Useful when working with sorted data or when converting from other sorted structures.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    /// use relvar_core::values::{Tuple, ScalarValue};
+    /// use std::collections::BTreeMap;
+    ///
+    /// let tuple_type = TupleType::new()
+    ///     .with_attribute("name", ScalarType::String);
+    ///
+    /// let mut values = BTreeMap::new();
+    /// values.insert("name".to_string(), ScalarValue::String("Alice".to_string()));
+    ///
+    /// let tuple = Tuple::from_map(tuple_type, values).unwrap();
+    /// assert_eq!(tuple.degree(), 1);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// - A required attribute is missing from the values map ([`TupleError::MissingValue`])
+    /// - An attribute in the values map is not in the tuple type ([`TupleError::AttributeNotFound`])
+    /// - A value's type doesn't match the expected attribute type ([`TupleError::TypeMismatch`])
     pub fn from_map(
         tuple_type: TupleType,
         values: BTreeMap<String, ScalarValue>,
