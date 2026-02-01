@@ -1,6 +1,5 @@
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use relvar::algebra::extend::ExtendOps;
-use relvar::algebra::summarize::{Aggregation, AggregationFn, SummarizeOps};
+use relvar::algebra::summarize::{Aggregation, AggregationFn};
 use relvar::tuple;
 use relvar::types::{RelationType, ScalarType, TupleType};
 use relvar::values::{Relation, ScalarValue};
