@@ -2986,10 +2986,17 @@ mod tests {
 
         // 3. Assert failure
         // Currently this fails (returns Ok) because of the bug
-        assert!(result.is_err(), "Insert should fail on corrupted page, but succeeded");
+        assert!(
+            result.is_err(),
+            "Insert should fail on corrupted page, but succeeded"
+        );
         match result {
             Err(HeapError::Serialization(msg)) => {
-                assert!(msg.contains("Corrupted slot") || msg.contains("outside page data"), "Unexpected error message: {}", msg);
+                assert!(
+                    msg.contains("Corrupted slot") || msg.contains("outside page data"),
+                    "Unexpected error message: {}",
+                    msg
+                );
             }
             _ => panic!("Expected Serialization error, got {:?}", result),
         }
