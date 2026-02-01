@@ -136,33 +136,69 @@ impl Tuple {
         M: IntoIterator<Item = (String, ScalarValue)>,
     {
         let values_map: BTreeMap<String, ScalarValue> = values.into_iter().collect();
+        Self::from_map(tuple_type, values_map)
+    }
 
-        // Verify all attributes have values
-        for attr_name in tuple_type.attribute_names() {
-            if !values_map.contains_key(attr_name) {
-                return Err(TupleError::MissingValue(attr_name.clone()));
-            }
-        }
+    /// Creates a new tuple from a type and a BTreeMap of values.
+    ///
+    /// This avoids re-collecting the values if they are already in a BTreeMap.
+    pub fn from_map(
+        tuple_type: TupleType,
+        values: BTreeMap<String, ScalarValue>,
+    ) -> Result<Self, TupleError> {
+        // Perform simultaneous validation (merge join) of sorted maps.
+        // This validates:
+        // 1. All attributes in tuple_type are present in values_map (MissingValue)
+        // 2. All attributes in values_map are present in tuple_type (AttributeNotFound)
+        // 3. Types match (TypeMismatch)
+        // Complexity: O(N) instead of O(N log N)
+        let mut type_iter = tuple_type.attributes().iter();
+        let mut val_iter = values.iter();
 
-        // Verify all values match their types
-        for (attr_name, value) in &values_map {
-            if let Some(expected_type) = tuple_type.get_attribute_type(attr_name) {
-                if !value.is_type(expected_type) {
-                    return Err(TupleError::TypeMismatch(
-                        attr_name.clone(),
-                        expected_type.name().to_string(),
-                        value.scalar_type().name().to_string(),
-                    ));
+        let mut type_curr = type_iter.next();
+        let mut val_curr = val_iter.next();
+
+        loop {
+            match (type_curr, val_curr) {
+                (Some((t_name, t_type)), Some((v_name, v_val))) => {
+                    use std::cmp::Ordering;
+                    match t_name.cmp(v_name) {
+                        Ordering::Equal => {
+                            // Check type
+                            if !v_val.is_type(t_type) {
+                                return Err(TupleError::TypeMismatch(
+                                    t_name.clone(),
+                                    t_type.name().to_string(),
+                                    v_val.scalar_type().name().to_string(),
+                                ));
+                            }
+                            type_curr = type_iter.next();
+                            val_curr = val_iter.next();
+                        }
+                        Ordering::Less => {
+                            // t_name < v_name. t_name is missing in values.
+                            return Err(TupleError::MissingValue(t_name.clone()));
+                        }
+                        Ordering::Greater => {
+                            // t_name > v_name. v_name is extra in values.
+                            // v_name does not exist in tuple_type.
+                            return Err(TupleError::AttributeNotFound(v_name.clone()));
+                        }
+                    }
                 }
-            } else {
-                return Err(TupleError::AttributeNotFound(attr_name.clone()));
+                (Some((t_name, _)), None) => {
+                    // Remaining attributes in type are missing in values
+                    return Err(TupleError::MissingValue(t_name.clone()));
+                }
+                (None, Some((v_name, _))) => {
+                    // Remaining attributes in values are extra
+                    return Err(TupleError::AttributeNotFound(v_name.clone()));
+                }
+                (None, None) => break,
             }
         }
 
-        Ok(Self {
-            tuple_type,
-            values: values_map,
-        })
+        Ok(Self { tuple_type, values })
     }
 
     /// Get the tuple type
@@ -265,14 +301,13 @@ impl std::hash::Hash for Tuple {
 #[macro_export]
 macro_rules! tuple {
     ($($name:ident: $value:expr),* $(,)?) => {{
-        use std::collections::HashMap;
         let mut type_builder = $crate::types::TupleType::new();
-        let mut values = HashMap::new();
+        let mut values = std::vec::Vec::new();
 
         $(
             let value = $crate::values::ScalarValue::from($value);
             type_builder = type_builder.with_attribute(stringify!($name), value.scalar_type());
-            values.insert(stringify!($name).to_string(), value);
+            values.push((stringify!($name).to_string(), value));
         )*
 
         $crate::values::Tuple::new(type_builder, values).unwrap()
