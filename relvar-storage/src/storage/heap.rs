@@ -54,6 +54,10 @@ pub enum HeapError {
     /// The page has insufficient space for the tuple.
     #[error("Page full")]
     PageFull,
+
+    /// The tuple is too large to fit in a page.
+    #[error("Tuple too large: {0} bytes")]
+    TupleTooLarge(usize),
 }
 
 /// Stores tuples in an unordered collection of slotted pages.
@@ -215,6 +219,9 @@ impl HeapFile {
         let tuple_data =
             bincode::serialize(tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
 
+        // Check if tuple is too large to ever fit
+        self.check_tuple_size_limit(tuple_data.len())?;
+
         // Find a page with enough space, or create a new one
         let mut page_id = 0;
         loop {
@@ -229,6 +236,28 @@ impl HeapFile {
                 Err(e) => return Err(e),
             }
         }
+    }
+
+    /// Check if a tuple can theoretically fit in an empty page
+    fn check_tuple_size_limit(&self, tuple_data_len: usize) -> Result<(), HeapError> {
+        // Create a dummy page with one slot to calculate exact header size
+        let dummy_page = SlottedPage {
+            slot_count: 1,
+            slots: vec![Some(SlotEntry {
+                offset: 0,
+                length: tuple_data_len as u32,
+            })],
+        };
+
+        let header_size = bincode::serialized_size(&dummy_page)
+            .map_err(|e| HeapError::Serialization(e.to_string()))? as usize;
+
+        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
+
+        if header_size + tuple_data_len > USABLE_PAGE_SIZE {
+            return Err(HeapError::TupleTooLarge(tuple_data_len));
+        }
+        Ok(())
     }
 
     /// Try to insert tuple data into a specific page
@@ -624,6 +653,9 @@ impl HeapFile {
         let tuple_data =
             bincode::serialize(tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
 
+        // Check if tuple is too large to ever fit
+        self.check_versioned_tuple_size_limit(tuple_data.len())?;
+
         // Find a page with enough space, or create a new one
         let mut page_id = 0;
         loop {
@@ -638,6 +670,33 @@ impl HeapFile {
                 Err(e) => return Err(e),
             }
         }
+    }
+
+    /// Check if a versioned tuple can theoretically fit in an empty page
+    fn check_versioned_tuple_size_limit(&self, tuple_data_len: usize) -> Result<(), HeapError> {
+        // Create a dummy versioned page with one slot
+        let dummy_page = VersionedSlottedPage {
+            magic: VERSIONED_PAGE_MAGIC,
+            slot_count: 1,
+            slots: vec![Some(VersionedSlotEntry {
+                offset: 0,
+                length: tuple_data_len as u32,
+                xmin: crate::wal::TransactionId::new(0),
+                xmax: None,
+                prev_version: None,
+            })],
+        };
+
+        let header_size = bincode::serialized_size(&dummy_page)
+            .map_err(|e| HeapError::Serialization(e.to_string()))? as usize;
+
+        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
+        const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
+
+        if FORMAT_HEADER_SIZE + header_size + tuple_data_len > USABLE_PAGE_SIZE {
+            return Err(HeapError::TupleTooLarge(tuple_data_len));
+        }
+        Ok(())
     }
 
     /// Try to insert tuple data into a specific page with version metadata
@@ -906,6 +965,9 @@ impl HeapFile {
         // Step 2: Insert new version
         let new_tuple_data =
             bincode::serialize(new_tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
+
+        // Check if new tuple is too large
+        self.check_versioned_tuple_size_limit(new_tuple_data.len())?;
 
         // Find a page with space for new version
         let mut page_id = 0;
@@ -3231,6 +3293,56 @@ mod tests {
                 );
             }
             _ => panic!("Expected Serialization error, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_heap_insert_too_large_fails() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
+        let rel_type = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Create a tuple that is definitely too large (> 4096)
+        let data = vec![0u8; 5000];
+        let tuple = tuple! { data: data };
+
+        let result = heap.insert_tuple(&tuple);
+
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::TupleTooLarge(size)) => {
+                assert!(size >= 5000);
+            }
+            _ => panic!("Expected TupleTooLarge error, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_heap_insert_versioned_too_large_fails() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
+        let rel_type = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Create a tuple that is definitely too large (> 4096)
+        let data = vec![0u8; 5000];
+        let tuple = tuple! { data: data };
+
+        let result = heap.insert_tuple_versioned(&tuple, test_txn(1));
+
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::TupleTooLarge(size)) => {
+                assert!(size >= 5000);
+            }
+            _ => panic!("Expected TupleTooLarge error, got {:?}", result),
         }
     }
 }
