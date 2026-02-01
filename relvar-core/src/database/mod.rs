@@ -12,11 +12,11 @@ use crate::values::{Relation, Tuple};
 
 use std::collections::HashMap;
 
-pub mod error;
 pub(crate) mod constraint_manager;
+pub mod error;
 
-pub use error::DatabaseError;
 use constraint_manager::ConstraintManager;
+pub use error::DatabaseError;
 
 /// Definition of a virtual relvar (view).
 ///
