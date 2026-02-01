@@ -251,10 +251,15 @@ impl HeapFile {
             let sp = self.deserialize_slotted_page(&page)?;
 
             // Extract existing tuple data
-            for slot_entry in sp.slots.iter().flatten() {
-                let raw_data =
-                    self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                existing_tuples.push(raw_data);
+            // Maintain alignment with slots: push empty Vec for None slots
+            for slot_option in sp.slots.iter() {
+                if let Some(slot_entry) = slot_option {
+                    let raw_data =
+                        self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
+                    existing_tuples.push(raw_data);
+                } else {
+                    existing_tuples.push(Vec::new());
+                }
             }
 
             sp
@@ -579,10 +584,15 @@ impl HeapFile {
             let vp = self.deserialize_versioned_page(&page)?;
 
             // Extract existing tuple data
-            for slot_entry in vp.slots.iter().flatten() {
-                let raw_data =
-                    self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                existing_tuples.push(raw_data);
+            // Maintain alignment with slots: push empty Vec for None slots
+            for slot_option in vp.slots.iter() {
+                if let Some(slot_entry) = slot_option {
+                    let raw_data =
+                        self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
+                    existing_tuples.push(raw_data);
+                } else {
+                    existing_tuples.push(Vec::new());
+                }
             }
 
             vp
@@ -752,21 +762,22 @@ impl HeapFile {
     fn deserialize_versioned_page(&self, page: &Page) -> Result<VersionedSlottedPage, HeapError> {
         if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
             // New format: [version:1][length:4][slot_dir][tuples]
-            let len_bytes: [u8; 4] = page.data()[1..5]
-                .try_into()
-                .map_err(|_| {
-                    HeapError::Serialization(
-                        "Invalid slot directory length prefix in versioned page header".to_string(),
-                    )
-                })?;
+            let len_bytes: [u8; 4] = page.data()[1..5].try_into().map_err(|_| {
+                HeapError::Serialization(
+                    "Invalid slot directory length prefix in versioned page header".to_string(),
+                )
+            })?;
             let slot_dir_len = u32::from_le_bytes(len_bytes) as usize;
 
             // Ensure the declared slot directory length fits within the page data
+            // Header is 5 bytes (1 byte version + 4 bytes length)
             if 5 + slot_dir_len > page.data().len() {
-                return Err(HeapError::Serialization(
-                    "Slot directory length exceeds page size in versioned page header".to_string(),
-                ));
+                return Err(HeapError::Serialization(format!(
+                    "Slot directory length ({}) exceeds page size",
+                    slot_dir_len
+                )));
             }
+
             bincode::deserialize(&page.data()[5..5 + slot_dir_len])
                 .map_err(|e| HeapError::Serialization(e.to_string()))
         } else {
@@ -869,11 +880,16 @@ impl HeapFile {
         old_slot.xmax = Some(txn_id);
 
         // Extract all existing tuple data
+        // Maintain alignment with slots: push empty Vec for None slots
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-        for slot_entry in versioned_page.slots.iter().flatten() {
-            let raw_data =
-                self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-            existing_tuples.push(raw_data);
+        for slot_option in versioned_page.slots.iter() {
+            if let Some(slot_entry) = slot_option {
+                let raw_data =
+                    self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
+                existing_tuples.push(raw_data);
+            } else {
+                existing_tuples.push(Vec::new());
+            }
         }
 
         // Serialize and write updated page with old version marked
@@ -925,10 +941,15 @@ impl HeapFile {
             let vp = self.deserialize_versioned_page(&page)?;
 
             // Extract existing tuple data
-            for slot_entry in vp.slots.iter().flatten() {
-                let raw_data =
-                    self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                existing_tuples.push(raw_data);
+            // Maintain alignment with slots: push empty Vec for None slots
+            for slot_option in vp.slots.iter() {
+                if let Some(slot_entry) = slot_option {
+                    let raw_data =
+                        self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
+                    existing_tuples.push(raw_data);
+                } else {
+                    existing_tuples.push(Vec::new());
+                }
             }
 
             vp
@@ -1048,11 +1069,16 @@ impl HeapFile {
         slot.xmax = Some(txn_id);
 
         // Extract all existing tuple data
+        // Maintain alignment with slots: push empty Vec for None slots
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-        for slot_entry in versioned_page.slots.iter().flatten() {
-            let raw_data =
-                self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-            existing_tuples.push(raw_data);
+        for slot_option in versioned_page.slots.iter() {
+            if let Some(slot_entry) = slot_option {
+                let raw_data =
+                    self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
+                existing_tuples.push(raw_data);
+            } else {
+                existing_tuples.push(Vec::new());
+            }
         }
 
         // Serialize and write updated page
