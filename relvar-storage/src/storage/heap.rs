@@ -752,7 +752,21 @@ impl HeapFile {
     fn deserialize_versioned_page(&self, page: &Page) -> Result<VersionedSlottedPage, HeapError> {
         if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
             // New format: [version:1][length:4][slot_dir][tuples]
-            let slot_dir_len = u32::from_le_bytes(page.data()[1..5].try_into().unwrap()) as usize;
+            let len_bytes: [u8; 4] = page.data()[1..5]
+                .try_into()
+                .map_err(|_| {
+                    HeapError::Serialization(
+                        "Invalid slot directory length prefix in versioned page header".to_string(),
+                    )
+                })?;
+            let slot_dir_len = u32::from_le_bytes(len_bytes) as usize;
+
+            // Ensure the declared slot directory length fits within the page data
+            if 5 + slot_dir_len > page.data().len() {
+                return Err(HeapError::Serialization(
+                    "Slot directory length exceeds page size in versioned page header".to_string(),
+                ));
+            }
             bincode::deserialize(&page.data()[5..5 + slot_dir_len])
                 .map_err(|e| HeapError::Serialization(e.to_string()))
         } else {
