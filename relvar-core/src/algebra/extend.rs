@@ -15,7 +15,6 @@
 //! ```
 //! use relvar_core::types::{TupleType, RelationType, ScalarType};
 //! use relvar_core::values::{Relation, ScalarValue};
-//! use relvar_core::algebra::extend::ExtendOps;
 //! use relvar_core::tuple;
 //!
 //! let heading = TupleType::new()
@@ -56,11 +55,7 @@ pub enum ExtendError {
     TupleCreation(String),
 }
 
-/// Trait providing the extend operation for relations.
-///
-/// This trait defines the `extend` method which adds computed attributes
-/// to relations. It is implemented for [`Relation`].
-pub trait ExtendOps {
+impl Relation {
     /// Extends the relation with a new computed attribute.
     ///
     /// This operator adds a new attribute to each tuple, where the value
@@ -82,18 +77,7 @@ pub trait ExtendOps {
     ///
     /// Returns [`ExtendError::AttributeExists`] if an attribute with the
     /// given name already exists in the relation.
-    fn extend<F>(
-        &self,
-        attr_name: &str,
-        attr_type: crate::types::ScalarType,
-        compute: F,
-    ) -> Result<Relation, ExtendError>
-    where
-        F: Fn(&Tuple) -> ScalarValue;
-}
-
-impl ExtendOps for Relation {
-    fn extend<F>(
+    pub fn extend<F>(
         &self,
         attr_name: &str,
         attr_type: crate::types::ScalarType,

@@ -13,8 +13,8 @@
 //!
 //! ```
 //! use relvar_core::types::{TupleType, RelationType, ScalarType};
-//! use relvar_core::values::Relation;
-//! use relvar_core::algebra::summarize::{SummarizeOps, Aggregation};
+//! use relvar_core::values::{Relation, ScalarValue};
+//! use relvar_core::algebra::summarize::Aggregation;
 //! use relvar_core::tuple;
 //!
 //! let heading = TupleType::new()
@@ -348,11 +348,7 @@ impl Aggregation {
     }
 }
 
-/// Trait providing the summarize operation for relations.
-///
-/// This trait defines the `summarize` method which computes aggregate
-/// values over groups of tuples. It is implemented for [`Relation`].
-pub trait SummarizeOps {
+impl Relation {
     /// Summarizes the relation by computing aggregations over groups.
     ///
     /// This operator groups tuples by the specified attributes and computes
@@ -379,44 +375,7 @@ pub trait SummarizeOps {
     ///   conflicts with a grouping attribute
     /// - [`SummarizeError::AggregationError`] - An aggregation failed (e.g.,
     ///   MIN/MAX on empty set)
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::values::Relation;
-    /// use relvar_core::algebra::summarize::{SummarizeOps, Aggregation};
-    /// use relvar_core::tuple;
-    ///
-    /// let heading = TupleType::new()
-    ///     .with_attribute("dept_id", ScalarType::Int)
-    ///     .with_attribute("salary", ScalarType::Int);
-    ///
-    /// let mut relation = Relation::new(RelationType::new(heading));
-    /// relation.insert(tuple! { dept_id: 10i64, salary: 50000i64 }).unwrap();
-    /// relation.insert(tuple! { dept_id: 10i64, salary: 60000i64 }).unwrap();
-    /// relation.insert(tuple! { dept_id: 20i64, salary: 70000i64 }).unwrap();
-    ///
-    /// // Compute aggregates per department
-    /// let result = relation.summarize(
-    ///     &["dept_id"],
-    ///     &[
-    ///         Aggregation::count("emp_count"),
-    ///         Aggregation::avg("avg_salary", "salary"),
-    ///     ],
-    /// ).unwrap();
-    ///
-    /// assert_eq!(result.cardinality(), 2);  // One row per department
-    /// ```
-    fn summarize(
-        &self,
-        group_by: &[&str],
-        aggregations: &[Aggregation],
-    ) -> Result<Relation, SummarizeError>;
-}
-
-impl SummarizeOps for Relation {
-    fn summarize(
+    pub fn summarize(
         &self,
         group_by: &[&str],
         aggregations: &[Aggregation],
