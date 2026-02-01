@@ -84,17 +84,28 @@ impl ConstraintManager {
                 .map(|ref_tuple| {
                     fk.referenced_attributes()
                         .iter()
-                        .map(|attr| ref_tuple.get(attr).cloned().unwrap())
-                        .collect()
+                        .map(|attr| {
+                            ref_tuple.get(attr).cloned().ok_or_else(|| {
+                                DatabaseError::AttributeNotFound(
+                                    attr.clone(),
+                                    fk.referenced_relation_name().to_string(),
+                                )
+                            })
+                        })
+                        .collect::<Result<Vec<_>, DatabaseError>>()
                 })
-                .collect();
+                .collect::<Result<_, _>>()?;
 
             for tuple in relation.tuples() {
                 let fk_values: Vec<_> = fk
                     .foreign_key_attributes()
                     .iter()
-                    .map(|attr| tuple.get(attr).cloned().unwrap())
-                    .collect();
+                    .map(|attr| {
+                        tuple.get(attr).cloned().ok_or_else(|| {
+                            DatabaseError::AttributeNotFound(attr.clone(), relation_name.to_string())
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 if !referenced_keys.contains(&fk_values) {
                     return Err(DatabaseError::ForeignKeyViolation(
