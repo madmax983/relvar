@@ -15,3 +15,7 @@
 ## The Case of the Undocumented Constraints
 **Confusion:** The critical database constraint methods (`set_key_constraints`, `set_foreign_key_constraints`, `set_type_constraints`) had no examples, leaving users to guess how to construct the complex constraint objects.
 **Clarification:** Added comprehensive `## Example` sections to each method, demonstrating the full workflow of creating relation types, instantiating constraint objects, and applying them to the database.
+
+## The Case of the Missing Operator
+**Confusion:** The `divide` operator was implemented and re-exported, but missing from the "Operators" summary table in the `relvar-core/src/algebra/mod.rs` documentation, making it undiscoverable via the module index.
+**Clarification:** Added `Division` to the "Join Operators" table in the module-level documentation with a link to the `divide()` method.

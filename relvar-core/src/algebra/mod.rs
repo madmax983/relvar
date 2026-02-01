@@ -30,6 +30,7 @@
 //! | Theta Join | [`theta_join()`](crate::values::Relation::theta_join) | Joins with arbitrary predicate |
 //! | Semijoin | [`semijoin()`](crate::values::Relation::semijoin) | Tuples from A matching B |
 //! | Semidifference | [`semidifference()`](crate::values::Relation::semidifference) | Tuples from A not matching B |
+//! | Division | [`divide()`](crate::values::Relation::divide) | Relational division (A ÷ B) |
 //!
 //! ## Extended Operators
 //!
