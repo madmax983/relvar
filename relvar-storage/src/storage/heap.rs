@@ -724,16 +724,15 @@ impl HeapFile {
     /// Checks if a page is a versioned page (MVCC).
     fn is_versioned_page(&self, page: &Page) -> bool {
         // Check for new format: version byte + magic at offset 5
-        let is_new_format =
-            page.data().len() >= 9 && page.data()[0] == PAGE_FORMAT_VERSION && {
-                let magic_at_5 = u32::from_le_bytes([
-                    page.data()[5],
-                    page.data()[6],
-                    page.data()[7],
-                    page.data()[8],
-                ]);
-                magic_at_5 == VERSIONED_PAGE_MAGIC
-            };
+        let is_new_format = page.data().len() >= 9 && page.data()[0] == PAGE_FORMAT_VERSION && {
+            let magic_at_5 = u32::from_le_bytes([
+                page.data()[5],
+                page.data()[6],
+                page.data()[7],
+                page.data()[8],
+            ]);
+            magic_at_5 == VERSIONED_PAGE_MAGIC
+        };
 
         // Check for old format versioned: magic at offset 0
         let is_old_versioned = !is_new_format && page.data().len() >= 4 && {
