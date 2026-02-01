@@ -258,7 +258,10 @@ impl HeapFile {
                 if end <= page.data().len() {
                     existing_tuples.push(page.data()[start..end].to_vec());
                 } else {
-                    existing_tuples.push(Vec::new());
+                    return Err(HeapError::Serialization(format!(
+                        "Corrupted slot on page {} points outside page data",
+                        page_id
+                    )));
                 }
             }
 
@@ -677,7 +680,10 @@ impl HeapFile {
                 if end <= page.data().len() {
                     existing_tuples.push(page.data()[start..end].to_vec());
                 } else {
-                    existing_tuples.push(Vec::new());
+                    return Err(HeapError::Serialization(format!(
+                        "Corrupted slot on page {} points outside page data",
+                        page_id
+                    )));
                 }
             }
 
@@ -884,7 +890,10 @@ impl HeapFile {
             if end <= page.data().len() {
                 existing_tuples.push(page.data()[start..end].to_vec());
             } else {
-                existing_tuples.push(Vec::new());
+                return Err(HeapError::Serialization(format!(
+                    "Corrupted slot on page {} points outside page data",
+                    old_tuple_id.page_id
+                )));
             }
         }
 
@@ -955,7 +964,10 @@ impl HeapFile {
                 if end <= page.data().len() {
                     existing_tuples.push(page.data()[start..end].to_vec());
                 } else {
-                    existing_tuples.push(Vec::new());
+                    return Err(HeapError::Serialization(format!(
+                        "Corrupted slot on page {} points outside page data",
+                        page_id
+                    )));
                 }
             }
 
@@ -1095,7 +1107,10 @@ impl HeapFile {
             if end <= page.data().len() {
                 existing_tuples.push(page.data()[start..end].to_vec());
             } else {
-                existing_tuples.push(Vec::new());
+                return Err(HeapError::Serialization(format!(
+                    "Corrupted slot on page {} points outside page data",
+                    tuple_id.page_id
+                )));
             }
         }
 
@@ -1176,7 +1191,10 @@ impl HeapFile {
                     if end <= page.data().len() {
                         existing_tuples.push(page.data()[start..end].to_vec());
                     } else {
-                        existing_tuples.push(Vec::new());
+                        return Err(HeapError::Serialization(format!(
+                            "Corrupted slot on page {} points outside page data",
+                            page_id
+                        )));
                     }
                 } else {
                     // None slot - push empty to maintain index alignment
@@ -2934,5 +2952,46 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_heap_insert_on_corrupted_page_fails() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // 1. Create a corrupted page
+        // Slot points to offset > PAGE_SIZE
+        let slotted_page = SlottedPage {
+            slot_count: 1,
+            slots: vec![Some(SlotEntry {
+                offset: (PAGE_SIZE + 100) as u32, // Invalid offset
+                length: 10,
+            })],
+        };
+
+        // Serialize header
+        let slot_dir = bincode::serialize(&slotted_page).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE - 8];
+        page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
+
+        let page = Page::from_data(0, page_data).unwrap();
+        heap.page_file.write_page(&page).unwrap();
+
+        // 2. Try to insert a new tuple
+        // This should fail because it needs to read existing tuples to shift them
+        let tuple = tuple! { id: 1i64, name: "NewTuple" };
+        let result = heap.insert_tuple(&tuple);
+
+        // 3. Assert failure
+        // Currently this fails (returns Ok) because of the bug
+        assert!(result.is_err(), "Insert should fail on corrupted page, but succeeded");
+        match result {
+            Err(HeapError::Serialization(msg)) => {
+                assert!(msg.contains("Corrupted slot") || msg.contains("outside page data"), "Unexpected error message: {}", msg);
+            }
+            _ => panic!("Expected Serialization error, got {:?}", result),
+        }
     }
 }
