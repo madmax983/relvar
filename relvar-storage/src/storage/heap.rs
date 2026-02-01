@@ -250,7 +250,8 @@ impl HeapFile {
         };
 
         let header_size = bincode::serialized_size(&dummy_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))? as usize;
+            .map_err(|e| HeapError::Serialization(e.to_string()))?
+            as usize;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
 
@@ -688,7 +689,8 @@ impl HeapFile {
         };
 
         let header_size = bincode::serialized_size(&dummy_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))? as usize;
+            .map_err(|e| HeapError::Serialization(e.to_string()))?
+            as usize;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
         const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
