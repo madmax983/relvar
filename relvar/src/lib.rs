@@ -126,6 +126,8 @@ pub use relvar_core::*;
 #[cfg(feature = "storage")]
 pub use relvar_storage::PersistentEngine;
 
+/// Experimental features that may be unstable or subject to change.
+pub mod experimental;
 pub mod visualizer;
 
 /// Create an in-memory database.

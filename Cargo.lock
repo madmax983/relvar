@@ -509,7 +509,10 @@ dependencies = [
  "proptest",
  "relvar-core",
  "relvar-storage",
+ "serde",
+ "serde_json",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
