@@ -448,6 +448,7 @@ impl ConstraintManager {
     /// Extract a set of attribute values from a relation.
     ///
     /// Used for efficient constraint validation (e.g. Foreign Keys).
+    /// Optimizes lookups by collecting values into a HashSet.
     ///
     /// # Panics
     ///
