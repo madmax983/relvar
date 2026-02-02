@@ -3,6 +3,51 @@
 //! This module provides the [`SchemaVisualizer`] struct, which can generate
 //! Graphviz DOT code representing the database schema, including relations
 //! and foreign key constraints.
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::{Database, InMemoryEngine};
+//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+//! use relvar::visualizer::SchemaVisualizer;
+//!
+//! let mut db = Database::new(InMemoryEngine::new());
+//!
+//! // Define Departments
+//! let dept_type = RelationType::new(
+//!     TupleType::new()
+//!         .with_attribute("dept_id", ScalarType::Int)
+//!         .with_attribute("name", ScalarType::String)
+//! );
+//! db.create_relvar("DEPT", dept_type).unwrap();
+//!
+//! let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
+//! db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(pk)).unwrap();
+//!
+//! // Define Employees
+//! let emp_type = RelationType::new(
+//!     TupleType::new()
+//!         .with_attribute("emp_id", ScalarType::Int)
+//!         .with_attribute("name", ScalarType::String)
+//!         .with_attribute("dept_id", ScalarType::Int)
+//! );
+//! db.create_relvar("EMP", emp_type).unwrap();
+//!
+//! let fk = ForeignKey::new(
+//!     vec!["dept_id".to_string()],
+//!     "DEPT".to_string(),
+//!     vec!["dept_id".to_string()]
+//! ).unwrap();
+//! db.set_foreign_key_constraints("EMP", ForeignKeyConstraints::new().with_foreign_key(fk)).unwrap();
+//!
+//! // Generate DOT
+//! let mut visualizer = SchemaVisualizer::new(&mut db);
+//! let dot = visualizer.to_dot();
+//!
+//! assert!(dot.contains("digraph DatabaseSchema"));
+//! assert!(dot.contains("EMP -> DEPT"));
+//! ```
 
 use relvar_core::database::Database;
 use relvar_core::storage_engine::StorageEngine;
@@ -19,6 +64,22 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
     }
 
     /// Generate a Graphviz DOT string representation of the schema.
+    ///
+    /// The output is a valid DOT file that can be rendered using Graphviz tools
+    /// (e.g. `dot -Tpng schema.dot -o schema.png`).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine, visualizer::SchemaVisualizer};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// // ... setup schema ...
+    ///
+    /// let mut viz = SchemaVisualizer::new(&mut db);
+    /// let dot_code = viz.to_dot();
+    /// println!("{}", dot_code);
+    /// ```
     pub fn to_dot(&mut self) -> String {
         let mut dot = String::from("digraph DatabaseSchema {\n");
         dot.push_str("    rankdir=LR;\n");

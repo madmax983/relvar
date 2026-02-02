@@ -19,3 +19,7 @@
 ## The Case of the Missing Operator
 **Confusion:** The `divide` operator was implemented and re-exported, but missing from the "Operators" summary table in the `relvar-core/src/algebra/mod.rs` documentation, making it undiscoverable via the module index.
 **Clarification:** Added `Division` to the "Join Operators" table in the module-level documentation with a link to the `divide()` method.
+
+## The Case of the Phantom Module
+**Confusion:** The `relvar::experimental` module was declared but had no documentation, making its contents (like `exporter`) invisible to users browsing the docs. Additionally, running doctests for this module required careful targeting as it is re-exported in `lib.rs`.
+**Clarification:** Added module-level documentation with a usage example for `exporter` in `relvar/src/experimental/mod.rs` and verified that its doctests are executed as part of the `relvar` crate tests.

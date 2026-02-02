@@ -674,6 +674,36 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Set CHECK constraints for a relation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::constraints::{CheckConstraints, CheckConstraint, ConstraintExpression, ValueOrRef};
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("age", ScalarType::Int)
+    /// );
+    /// db.create_relvar("PEOPLE", rel_type).unwrap();
+    ///
+    /// // Age must be >= 0
+    /// let constraints = CheckConstraints::new()
+    ///     .with_constraint(CheckConstraint::from_expression(
+    ///         "valid_age",
+    ///         "Age must be non-negative",
+    ///         ConstraintExpression::Gt(
+    ///             "age".to_string(),
+    ///             ValueOrRef::Value(ScalarValue::Int(-1))
+    ///         )
+    ///     ));
+    ///
+    /// db.set_check_constraints("PEOPLE", constraints).unwrap();
+    /// ```
     pub fn set_check_constraints(
         &mut self,
         relation_name: &str,
@@ -722,6 +752,25 @@ impl<E: StorageEngine> Database<E> {
 
     /// Query a relation (base or virtual).
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new().with_attribute("id", ScalarType::Int)
+    /// );
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    /// db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+    ///
+    /// let result = db.query("TEST").unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
@@ -738,6 +787,29 @@ impl<E: StorageEngine> Database<E> {
     /// Delete tuples matching a predicate.
     ///
     /// Returns the number of tuples deleted.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new().with_attribute("id", ScalarType::Int)
+    /// );
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    /// db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+    /// db.insert("TEST", tuple! { id: 2i64 }).unwrap();
+    ///
+    /// // Delete id 1
+    /// let count = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1).unwrap();
+    ///
+    /// assert_eq!(count, 1);
+    /// assert_eq!(db.query("TEST").unwrap().cardinality(), 1);
+    /// ```
     pub fn delete<F>(&mut self, relation_name: &str, predicate: F) -> Result<usize, DatabaseError>
     where
         F: Fn(&Tuple) -> bool,
@@ -773,6 +845,42 @@ impl<E: StorageEngine> Database<E> {
     /// Update tuples matching a predicate.
     ///
     /// Returns the number of tuples updated.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::Int)
+    ///         .with_attribute("salary", ScalarType::Int)
+    /// );
+    /// db.create_relvar("EMPLOYEES", rel_type).unwrap();
+    /// db.insert("EMPLOYEES", tuple! { id: 1i64, salary: 50000i64 }).unwrap();
+    ///
+    /// // Give a 10% raise to employee 1
+    /// let count = db.update(
+    ///     "EMPLOYEES",
+    ///     |t| t.get_typed::<i64>("id").unwrap() == 1,
+    ///     |t| {
+    ///         let old_salary = t.get_typed::<i64>("salary").unwrap();
+    ///         tuple! {
+    ///             id: t.get_typed::<i64>("id").unwrap(),
+    ///             salary: old_salary + (old_salary / 10)
+    ///         }
+    ///     }
+    /// ).unwrap();
+    ///
+    /// assert_eq!(count, 1);
+    /// let employees = db.query("EMPLOYEES").unwrap();
+    /// let emp1 = employees.tuples().next().unwrap();
+    /// assert_eq!(emp1.get_typed::<i64>("salary").unwrap(), 55000);
+    /// ```
     pub fn update<F, U>(
         &mut self,
         relation_name: &str,
