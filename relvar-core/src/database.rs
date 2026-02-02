@@ -12,7 +12,7 @@ use crate::types::RelationType;
 use crate::values::relation::RelationError;
 use crate::values::{Relation, ScalarValue, Tuple};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 /// Errors that can occur during database operations.
@@ -165,15 +165,8 @@ impl ConstraintManager {
         for fk in constraints.foreign_keys() {
             let referenced_relation = engine.load_relation(fk.referenced_relation_name())?;
             // Build a HashSet of referenced keys for efficient O(1) lookups.
-            let referenced_keys: std::collections::HashSet<Vec<_>> = referenced_relation
-                .tuples()
-                .map(|ref_tuple| {
-                    fk.referenced_attributes()
-                        .iter()
-                        .map(|attr| ref_tuple.get(attr).cloned().unwrap())
-                        .collect()
-                })
-                .collect();
+            let referenced_keys =
+                Self::extract_attribute_values(&referenced_relation, fk.referenced_attributes());
 
             for tuple in relation.tuples() {
                 let fk_values: Vec<_> = fk
@@ -413,39 +406,66 @@ impl ConstraintManager {
         // Iterate over constraints without collecting/cloning
         for (ref_name, fk_constraints) in &self.foreign_key_constraints {
             for fk in fk_constraints.foreign_keys() {
-                if fk.referenced_relation_name() == relation_name {
-                    let referencing_relation = engine.load_relation(ref_name)?;
+                if fk.referenced_relation_name() != relation_name {
+                    continue;
+                }
 
-                    // Build a HashSet of keys from the relation after deletion for efficient lookups.
-                    let existing_keys: std::collections::HashSet<Vec<_>> = relation_after_delete
-                        .tuples()
-                        .map(|t| {
-                            fk.referenced_attributes()
-                                .iter()
-                                .filter_map(|attr| t.get(attr).cloned())
-                                .collect()
+                let referencing_relation = engine.load_relation(ref_name)?;
+
+                // Build a HashSet of keys from the relation after deletion for efficient lookups.
+                let existing_keys = Self::extract_attribute_values(
+                    relation_after_delete,
+                    fk.referenced_attributes(),
+                );
+
+                // Check if any referencing tuples would be orphaned by looking up in the HashSet.
+                for ref_tuple in referencing_relation.tuples() {
+                    let ref_key_values: Vec<ScalarValue> = fk
+                        .foreign_key_attributes()
+                        .iter()
+                        .map(|attr| {
+                            ref_tuple
+                                .get(attr)
+                                .cloned()
+                                .expect("Foreign key attribute must exist")
                         })
                         .collect();
 
-                    // Check if any referencing tuples would be orphaned by looking up in the HashSet.
-                    for ref_tuple in referencing_relation.tuples() {
-                        let ref_key_values: Vec<ScalarValue> = fk
-                            .foreign_key_attributes()
-                            .iter()
-                            .filter_map(|attr| ref_tuple.get(attr).cloned())
-                            .collect();
-
-                        if !existing_keys.contains(&ref_key_values) {
-                            return Err(DatabaseError::ForeignKeyViolation(format!(
-                                "Deleting tuples would orphan referencing tuples in {}",
-                                ref_name
-                            )));
-                        }
+                    if !existing_keys.contains(&ref_key_values) {
+                        return Err(DatabaseError::ForeignKeyViolation(format!(
+                            "Deleting tuples would orphan referencing tuples in {}",
+                            ref_name
+                        )));
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    // --- Helper Methods ---
+
+    /// Extract a set of attribute values from a relation.
+    ///
+    /// Used for efficient constraint validation (e.g. Foreign Keys).
+    fn extract_attribute_values(
+        relation: &Relation,
+        attributes: &[String],
+    ) -> HashSet<Vec<ScalarValue>> {
+        relation
+            .tuples()
+            .map(|tuple| {
+                attributes
+                    .iter()
+                    .map(|attr| {
+                        tuple
+                            .get(attr)
+                            .cloned()
+                            .expect("Attribute must exist in relation")
+                    })
+                    .collect()
+            })
+            .collect()
     }
 }
 
