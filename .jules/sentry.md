@@ -13,3 +13,7 @@
 ## 2026-02-18 - Silent Corruption Healing in Storage Operations
 **Learning:** `HeapFile` modification methods (`insert`, `update`, `delete`) were silently swallowing corrupted slots (pointing outside page bounds) by replacing them with empty tuples during page rewrite. This effectively "healed" the page by deleting the inaccessible data without warning.
 **Action:** In storage modification paths, always treat structural corruption (e.g., out-of-bounds pointers) as a hard error. Never "skip" or "default" corrupted data during a rewrite, as this makes data loss permanent.
+
+## 2026-05-21 - Silent Data Loss in Rename Collision
+**Learning:** `Relation::rename` handles attribute collisions (multiple attributes renamed to same target) by iterating map entries. Due to `BTreeMap` order, the lexicographically last attribute overwrites earlier ones without warning.
+**Action:** When testing renaming or mapping operations, always verify "collision" scenarios. Document the behavior explicitly in tests to prevent accidental regression if iteration order changes.
