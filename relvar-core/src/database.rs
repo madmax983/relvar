@@ -448,6 +448,10 @@ impl ConstraintManager {
     /// Extract a set of attribute values from a relation.
     ///
     /// Used for efficient constraint validation (e.g. Foreign Keys).
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the specified attributes do not exist in the relation.
     fn extract_attribute_values(
         relation: &Relation,
         attributes: &[String],
