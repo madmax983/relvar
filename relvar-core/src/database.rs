@@ -347,7 +347,7 @@ impl ConstraintManager {
         let fks_to_check = self
             .foreign_key_constraints
             .get(relation_name)
-            .map(|c| c.foreign_keys().to_vec())
+            .map(|c| c.foreign_keys())
             .unwrap_or_default();
 
         for fk in fks_to_check {
@@ -410,46 +410,38 @@ impl ConstraintManager {
         relation_name: &str,
         relation_after_delete: &Relation,
     ) -> Result<(), DatabaseError> {
-        // Collect referencing foreign keys to avoid borrowing issues
-        let referencing_fks: Vec<(String, crate::constraints::ForeignKey)> = self
-            .foreign_key_constraints
-            .iter()
-            .flat_map(|(ref_name, fk_constraints)| {
-                fk_constraints
-                    .foreign_keys()
-                    .iter()
-                    .filter(|fk| fk.referenced_relation_name() == relation_name)
-                    .map(move |fk| (ref_name.clone(), fk.clone()))
-            })
-            .collect();
+        // Iterate over constraints without collecting/cloning
+        for (ref_name, fk_constraints) in &self.foreign_key_constraints {
+            for fk in fk_constraints.foreign_keys() {
+                if fk.referenced_relation_name() == relation_name {
+                    let referencing_relation = engine.load_relation(ref_name)?;
 
-        for (ref_name, fk) in referencing_fks {
-            let referencing_relation = engine.load_relation(&ref_name)?;
+                    // Build a HashSet of keys from the relation after deletion for efficient lookups.
+                    let existing_keys: std::collections::HashSet<Vec<_>> = relation_after_delete
+                        .tuples()
+                        .map(|t| {
+                            fk.referenced_attributes()
+                                .iter()
+                                .filter_map(|attr| t.get(attr).cloned())
+                                .collect()
+                        })
+                        .collect();
 
-            // Build a HashSet of keys from the relation after deletion for efficient lookups.
-            let existing_keys: std::collections::HashSet<Vec<_>> = relation_after_delete
-                .tuples()
-                .map(|t| {
-                    fk.referenced_attributes()
-                        .iter()
-                        .filter_map(|attr| t.get(attr).cloned())
-                        .collect()
-                })
-                .collect();
+                    // Check if any referencing tuples would be orphaned by looking up in the HashSet.
+                    for ref_tuple in referencing_relation.tuples() {
+                        let ref_key_values: Vec<ScalarValue> = fk
+                            .foreign_key_attributes()
+                            .iter()
+                            .filter_map(|attr| ref_tuple.get(attr).cloned())
+                            .collect();
 
-            // Check if any referencing tuples would be orphaned by looking up in the HashSet.
-            for ref_tuple in referencing_relation.tuples() {
-                let ref_key_values: Vec<ScalarValue> = fk
-                    .foreign_key_attributes()
-                    .iter()
-                    .filter_map(|attr| ref_tuple.get(attr).cloned())
-                    .collect();
-
-                if !existing_keys.contains(&ref_key_values) {
-                    return Err(DatabaseError::ForeignKeyViolation(format!(
-                        "Deleting tuples would orphan referencing tuples in {}",
-                        ref_name
-                    )));
+                        if !existing_keys.contains(&ref_key_values) {
+                            return Err(DatabaseError::ForeignKeyViolation(format!(
+                                "Deleting tuples would orphan referencing tuples in {}",
+                                ref_name
+                            )));
+                        }
+                    }
                 }
             }
         }
