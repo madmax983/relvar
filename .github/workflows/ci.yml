@@ -17,7 +17,7 @@ env:
 jobs:
   fmt:
     name: Format Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -29,7 +29,7 @@ jobs:
   clippy:
     name: Clippy
     needs: [fmt]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -59,7 +59,7 @@ jobs:
   build:
     name: Build
     needs: [fmt]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -70,7 +70,7 @@ jobs:
   coverage:
     name: Code Coverage
     needs: [fmt]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -95,7 +95,7 @@ jobs:
   benchmark:
     name: Benchmarks
     needs: [fmt]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     # Only run benchmarks on schedule, manual trigger, or explicit request
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[bench]')
     steps:
