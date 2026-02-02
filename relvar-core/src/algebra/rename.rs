@@ -250,4 +250,34 @@ mod tests {
         assert!(result.is_empty());
         assert!(result.relation_type().heading().has_attribute("id"));
     }
+
+    /// Verifies the behavior when multiple attributes are renamed to the same name.
+    ///
+    /// CURRENT BEHAVIOR: Silent overwriting.
+    /// Since iteration over attributes is based on BTreeMap (sorted by name),
+    /// the attribute that comes later lexicographically overwrites earlier ones.
+    ///
+    /// This test documents this "Last Write Wins" behavior.
+    #[test]
+    fn test_rename_collision_overwrites_values() {
+        let heading = TupleType::new()
+            .with_attribute("A", ScalarType::Int)
+            .with_attribute("B", ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation.insert(tuple! { A: 1i64, B: 2i64 }).unwrap();
+
+        // Rename both A and B to C
+        // A comes before B, so we expect B to overwrite A.
+        let result = relation.rename(&[("A", "C"), ("B", "C")]);
+
+        assert_eq!(result.degree(), 1);
+        assert!(result.relation_type().heading().has_attribute("C"));
+
+        let tuple = result.tuples().next().unwrap();
+        // Value should be 2 (from B)
+        assert_eq!(tuple.get_typed::<i64>("C").unwrap(), 2);
+    }
 }
