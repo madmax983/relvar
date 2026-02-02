@@ -6,6 +6,7 @@
 //! # Included Features
 //!
 //! - **Exporter**: Tools for exporting relations to CSV, JSON, and ASCII tables.
+//! - **Differ**: Tools for calculating semantic differences between relations.
 //!
 //! # Example: Using the Exporter
 //!
@@ -28,4 +29,5 @@
 //! println!("JSON:\n{}", exporter.to_json().unwrap());
 //! ```
 
+pub mod differ;
 pub mod exporter;
