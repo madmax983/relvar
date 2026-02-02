@@ -733,7 +733,10 @@ mod tests {
                     msg
                 );
             }
-            _ => panic!("Expected Serialization error with overflow message, got {:?}", result),
+            _ => panic!(
+                "Expected Serialization error with overflow message, got {:?}",
+                result
+            ),
         }
     }
 }
