@@ -390,27 +390,7 @@ impl<E: StorageEngine> Database<E> {
     /// - A constraint is violated
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
         self.ensure_not_virtual(relation_name)?;
-
-        // Pure checks and Type validations
-        self.constraints
-            .validate_tuple_type(&self.engine, relation_name, &tuple)?;
-        self.constraints
-            .validate_type_constraints(relation_name, &tuple)?;
-        self.constraints
-            .validate_check_constraints(relation_name, &tuple)?;
-
-        // Load current relation to check key constraints
-        let current_relation = self.query(relation_name)?;
-        self.constraints.validate_key_constraints_single_tuple(
-            relation_name,
-            &tuple,
-            &current_relation,
-        )?;
-        self.constraints.validate_foreign_keys_single_tuple(
-            &mut self.engine,
-            relation_name,
-            &tuple,
-        )?;
+        self.validate_insert(relation_name, &tuple)?;
 
         // Insert into engine
         self.engine.insert_tuple(relation_name, tuple)?;
@@ -487,16 +467,8 @@ impl<E: StorageEngine> Database<E> {
         let current_relation = self.query(relation_name)?;
 
         // Filter out tuples to delete
-        let mut new_relation = Relation::new(current_relation.relation_type().clone());
-        let mut delete_count = 0;
-
-        for tuple in current_relation.tuples() {
-            if predicate(tuple) {
-                delete_count += 1;
-            } else {
-                new_relation.insert(tuple.clone())?;
-            }
-        }
+        let (new_relation, delete_count) =
+            self.compute_relation_after_delete(&current_relation, predicate)?;
 
         self.constraints.validate_referencing_foreign_keys(
             &mut self.engine,
@@ -564,24 +536,8 @@ impl<E: StorageEngine> Database<E> {
         let current_relation = self.query(relation_name)?;
 
         // Apply updates
-        let mut new_relation = Relation::new(current_relation.relation_type().clone());
-        let mut update_count = 0;
-
-        for tuple in current_relation.tuples() {
-            if predicate(tuple) {
-                let updated_tuple = updater(tuple);
-
-                // Validate updated tuple
-                if !updated_tuple.conforms_to(current_relation.relation_type().tuple_type()) {
-                    return Err(DatabaseError::TupleMismatch);
-                }
-
-                new_relation.insert(updated_tuple)?;
-                update_count += 1;
-            } else {
-                new_relation.insert(tuple.clone())?;
-            }
-        }
+        let (new_relation, update_count) =
+            self.compute_relation_after_update(&current_relation, predicate, updater)?;
 
         // Validate key constraints on new relation
         if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
@@ -701,6 +657,85 @@ impl<E: StorageEngine> Database<E> {
         } else {
             Ok(())
         }
+    }
+
+    fn compute_relation_after_delete<F>(
+        &self,
+        current_relation: &Relation,
+        predicate: F,
+    ) -> Result<(Relation, usize), DatabaseError>
+    where
+        F: Fn(&Tuple) -> bool,
+    {
+        let mut new_relation = Relation::new(current_relation.relation_type().clone());
+        let mut delete_count = 0;
+
+        for tuple in current_relation.tuples() {
+            if predicate(tuple) {
+                delete_count += 1;
+            } else {
+                new_relation.insert(tuple.clone())?;
+            }
+        }
+
+        Ok((new_relation, delete_count))
+    }
+
+    fn compute_relation_after_update<F, U>(
+        &self,
+        current_relation: &Relation,
+        predicate: F,
+        updater: U,
+    ) -> Result<(Relation, usize), DatabaseError>
+    where
+        F: Fn(&Tuple) -> bool,
+        U: Fn(&Tuple) -> Tuple,
+    {
+        let mut new_relation = Relation::new(current_relation.relation_type().clone());
+        let mut update_count = 0;
+
+        for tuple in current_relation.tuples() {
+            if predicate(tuple) {
+                let updated_tuple = updater(tuple);
+
+                // Validate updated tuple
+                if !updated_tuple.conforms_to(current_relation.relation_type().tuple_type()) {
+                    return Err(DatabaseError::TupleMismatch);
+                }
+
+                new_relation.insert(updated_tuple)?;
+                update_count += 1;
+            } else {
+                new_relation.insert(tuple.clone())?;
+            }
+        }
+
+        Ok((new_relation, update_count))
+    }
+
+    fn validate_insert(&mut self, relation_name: &str, tuple: &Tuple) -> Result<(), DatabaseError> {
+        // Pure checks and Type validations
+        self.constraints
+            .validate_tuple_type(&self.engine, relation_name, tuple)?;
+        self.constraints
+            .validate_type_constraints(relation_name, tuple)?;
+        self.constraints
+            .validate_check_constraints(relation_name, tuple)?;
+
+        // Load current relation to check key constraints
+        let current_relation = self.query(relation_name)?;
+        self.constraints.validate_key_constraints_single_tuple(
+            relation_name,
+            tuple,
+            &current_relation,
+        )?;
+        self.constraints.validate_foreign_keys_single_tuple(
+            &mut self.engine,
+            relation_name,
+            tuple,
+        )?;
+
+        Ok(())
     }
 }
 
