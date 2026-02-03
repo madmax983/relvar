@@ -277,9 +277,7 @@ mod tests {
         let db = Database::new(InMemoryEngine::new());
         let mut audited_db = AuditedDatabase::new(db).unwrap();
 
-        let rel_type = RelationType::new(
-            TupleType::new().with_attribute("id", ScalarType::Int),
-        );
+        let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
         audited_db.create_relvar("TEST", rel_type).unwrap();
         audited_db.drop_relvar("TEST").unwrap();
         assert!(audited_db.query("TEST").is_err());
@@ -315,12 +313,12 @@ mod tests {
 
         // Manually create audit log first
         let audit_type = RelationType::new(
-                TupleType::new()
-                    .with_attribute("timestamp", ScalarType::Int)
-                    .with_attribute("operation", ScalarType::String)
-                    .with_attribute("target", ScalarType::String)
-                    .with_attribute("details", ScalarType::String),
-            );
+            TupleType::new()
+                .with_attribute("timestamp", ScalarType::Int)
+                .with_attribute("operation", ScalarType::String)
+                .with_attribute("target", ScalarType::String)
+                .with_attribute("details", ScalarType::String),
+        );
         db.create_relvar(AUDIT_RELVAR, audit_type).unwrap();
 
         // Wrappering should not fail
