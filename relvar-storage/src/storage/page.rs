@@ -278,7 +278,9 @@ impl PageFile {
     /// Returns [`PageError::Io`] if the read fails.
     pub fn read_page(&mut self, page_id: PageId) -> Result<Page, PageError> {
         // Seek to the page offset
-        let offset = page_id * PAGE_SIZE as u64;
+        let offset = page_id
+            .checked_mul(PAGE_SIZE as u64)
+            .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
 
         // Read the page data
@@ -304,7 +306,11 @@ impl PageFile {
         let data_len = u64::from_le_bytes(buffer[0..8].try_into().unwrap()) as usize;
 
         // Check if declared length fits in the buffer
-        if data_len + 8 > buffer.len() {
+        let required_len = data_len
+            .checked_add(8)
+            .ok_or_else(|| PageError::Serialization("Page length overflow".to_string()))?;
+
+        if required_len > buffer.len() {
             return Err(PageError::Serialization(format!(
                 "Corrupted page: length prefix says {}, but only {} bytes available",
                 data_len,
@@ -330,7 +336,10 @@ impl PageFile {
     /// Returns [`PageError::Io`] if the write fails.
     pub fn write_page(&mut self, page: &Page) -> Result<(), PageError> {
         // Seek to the page offset
-        let offset = page.id() * PAGE_SIZE as u64;
+        let offset = page
+            .id()
+            .checked_mul(PAGE_SIZE as u64)
+            .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
 
         // Prepare buffer with length prefix and data
@@ -381,7 +390,10 @@ impl PageFile {
     /// Returns [`PageError::Io`] if the write fails.
     pub fn write_page_buffered(&mut self, page: &Page) -> Result<(), PageError> {
         // Seek to the page offset
-        let offset = page.id() * PAGE_SIZE as u64;
+        let offset = page
+            .id()
+            .checked_mul(PAGE_SIZE as u64)
+            .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
 
         // Prepare buffer with length prefix and data
@@ -686,6 +698,45 @@ mod tests {
                 assert!(msg.contains("Page too short"));
             }
             _ => panic!("Expected Serialization error"),
+        }
+    }
+
+    #[test]
+    fn test_page_file_data_len_overflow() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let mut page_file = PageFile::create(path).unwrap();
+
+        // manually write a page with data_len = u64::MAX
+        // This simulates a corrupted/malicious page
+        let bad_len: u64 = u64::MAX;
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(&bad_len.to_le_bytes());
+        buffer.resize(PAGE_SIZE, 0); // Fill rest with zeros
+
+        // Write manually to file
+        {
+            let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+            use std::io::Write;
+            file.write_all(&buffer).unwrap();
+        }
+
+        // Now read it back - should error cleanly without panic
+        let result = page_file.read_page(0);
+        assert!(result.is_err());
+        match result {
+            Err(PageError::Serialization(msg)) => {
+                assert!(
+                    msg.contains("Page length overflow"),
+                    "Unexpected message: {}",
+                    msg
+                );
+            }
+            _ => panic!(
+                "Expected Serialization error with overflow message, got {:?}",
+                result
+            ),
         }
     }
 }
