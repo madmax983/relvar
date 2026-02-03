@@ -1346,6 +1346,163 @@ mod tests {
     }
 
     #[test]
+    fn test_set_foreign_key_constraints_with_existing_valid_data() {
+        use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        // Create parent and child relvars
+        let parent_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("name", ScalarType::String),
+        );
+        let child_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("child_id", ScalarType::Int)
+                .with_attribute("parent_id", ScalarType::Int),
+        );
+
+        db.create_relvar("PARENT", parent_type).unwrap();
+        db.create_relvar("CHILD", child_type).unwrap();
+
+        // Set PK on parent
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        db.set_key_constraints("PARENT", KeyConstraints::new().with_primary_key(pk))
+            .unwrap();
+
+        // Insert data BEFORE setting FK
+        db.insert("PARENT", tuple! { id: 1i64, name: "Parent1" })
+            .unwrap();
+        db.insert("CHILD", tuple! { child_id: 100i64, parent_id: 1i64 })
+            .unwrap();
+
+        // Set FK constraints
+        let fk = ForeignKey::new(
+            vec!["parent_id".to_string()],
+            "PARENT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+        let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+
+        // Should succeed as data is valid
+        db.set_foreign_key_constraints("CHILD", fk_constraints)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_set_foreign_key_constraints_with_existing_invalid_data() {
+        use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        // Create parent and child relvars
+        let parent_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("name", ScalarType::String),
+        );
+        let child_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("child_id", ScalarType::Int)
+                .with_attribute("parent_id", ScalarType::Int),
+        );
+
+        db.create_relvar("PARENT", parent_type).unwrap();
+        db.create_relvar("CHILD", child_type).unwrap();
+
+        // Set PK on parent
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        db.set_key_constraints("PARENT", KeyConstraints::new().with_primary_key(pk))
+            .unwrap();
+
+        // Insert data BEFORE setting FK
+        db.insert("PARENT", tuple! { id: 1i64, name: "Parent1" })
+            .unwrap();
+        // Insert ORPHAN child
+        db.insert("CHILD", tuple! { child_id: 100i64, parent_id: 99i64 })
+            .unwrap();
+
+        // Set FK constraints
+        let fk = ForeignKey::new(
+            vec!["parent_id".to_string()],
+            "PARENT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+        let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+
+        // Should fail
+        let result = db.set_foreign_key_constraints("CHILD", fk_constraints);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::ForeignKeyViolation(_))));
+    }
+
+    #[test]
+    fn test_delete_referenced_parent_success() {
+        use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        let parent_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("name", ScalarType::String),
+        );
+        let child_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("child_id", ScalarType::Int)
+                .with_attribute("parent_id", ScalarType::Int),
+        );
+
+        db.create_relvar("PARENT", parent_type).unwrap();
+        db.create_relvar("CHILD", child_type).unwrap();
+
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        db.set_key_constraints("PARENT", KeyConstraints::new().with_primary_key(pk))
+            .unwrap();
+
+        let fk = ForeignKey::new(
+            vec!["parent_id".to_string()],
+            "PARENT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+        db.set_foreign_key_constraints("CHILD", ForeignKeyConstraints::new().with_foreign_key(fk))
+            .unwrap();
+
+        // Insert parents
+        db.insert("PARENT", tuple! { id: 1i64, name: "Parent1" })
+            .unwrap();
+        db.insert("PARENT", tuple! { id: 2i64, name: "Parent2" })
+            .unwrap();
+
+        // Insert child referencing Parent1
+        db.insert("CHILD", tuple! { child_id: 100i64, parent_id: 1i64 })
+            .unwrap();
+
+        // Delete Parent2 (not referenced) - should succeed
+        let count = db
+            .delete("PARENT", |t| t.get_typed::<i64>("id").unwrap() == 2)
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Verify Parent2 is gone
+        let result = db.query("PARENT").unwrap();
+        assert_eq!(result.cardinality(), 1);
+        assert_eq!(
+            result
+                .tuples()
+                .next()
+                .unwrap()
+                .get_typed::<String>("name")
+                .unwrap(),
+            "Parent1"
+        );
+    }
+
+    #[test]
     fn test_delete_returns_count() {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
         db.create_relvar("TEST", test_rel_type()).unwrap();
