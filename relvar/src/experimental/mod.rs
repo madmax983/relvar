@@ -6,6 +6,7 @@
 //! # Included Features
 //!
 //! - **Exporter**: Tools for exporting relations to CSV, JSON, and ASCII tables.
+//! - **Audit**: Wrapper for automatic audit logging of database operations.
 //!
 //! # Example: Using the Exporter
 //!
@@ -28,4 +29,5 @@
 //! println!("JSON:\n{}", exporter.to_json().unwrap());
 //! ```
 
+pub mod audit;
 pub mod exporter;
