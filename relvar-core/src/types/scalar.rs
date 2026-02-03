@@ -190,6 +190,24 @@ impl ScalarType {
     /// TTM: The selector takes a value of the representation type and produces
     /// a value of this user-defined type.
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::types::ScalarType;
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// // Define a user-defined type backed by Int
+    /// let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
+    ///
+    /// // Successful selection
+    /// let widget = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
+    /// assert_eq!(widget.scalar_type().name(), "WidgetId");
+    ///
+    /// // Type mismatch error
+    /// let result = widget_id_type.selector(ScalarValue::String("not an int".into()));
+    /// assert!(result.is_err());
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns `Err` if the provided value's type doesn't match the expected
