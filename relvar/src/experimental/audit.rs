@@ -221,4 +221,109 @@ mod tests {
         // Should have insert log and delete log
         assert_eq!(audit_log.cardinality(), 2);
     }
+
+    #[test]
+    fn test_audit_log_update() {
+        let db = Database::new(InMemoryEngine::new());
+        let mut audited_db = AuditedDatabase::new(db).unwrap();
+
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("val", ScalarType::Int),
+        );
+        audited_db.create_relvar("TEST", rel_type).unwrap();
+        audited_db
+            .insert("TEST", tuple! { id: 1i64, val: 10i64 })
+            .unwrap();
+
+        audited_db
+            .update(
+                "TEST",
+                |_| true,
+                |t| tuple! { id: 1i64, val: t.get_typed::<i64>("val").unwrap() + 5 },
+            )
+            .unwrap();
+
+        let audit_log = audited_db.query(AUDIT_RELVAR).unwrap();
+        // Insert log + Update log = 2
+        assert_eq!(audit_log.cardinality(), 2);
+
+        // Find UPDATE entry
+        let has_update = audit_log.tuples().any(|t| {
+            t.get_typed::<String>("operation").unwrap() == "UPDATE"
+                && t.get_typed::<String>("details")
+                    .unwrap()
+                    .contains("Updated 1 rows")
+        });
+        assert!(has_update);
+    }
+
+    #[test]
+    fn test_transactions_passthrough() {
+        let db = Database::new(InMemoryEngine::new());
+        let mut audited_db = AuditedDatabase::new(db).unwrap();
+
+        audited_db.begin().unwrap();
+        // Nothing to assert, just checking it delegates without panic
+        audited_db.commit().unwrap();
+
+        audited_db.begin().unwrap();
+        audited_db.rollback().unwrap();
+    }
+
+    #[test]
+    fn test_drop_relvar_passthrough() {
+        let db = Database::new(InMemoryEngine::new());
+        let mut audited_db = AuditedDatabase::new(db).unwrap();
+
+        let rel_type = RelationType::new(
+            TupleType::new().with_attribute("id", ScalarType::Int),
+        );
+        audited_db.create_relvar("TEST", rel_type).unwrap();
+        audited_db.drop_relvar("TEST").unwrap();
+        assert!(audited_db.query("TEST").is_err());
+    }
+
+    #[test]
+    fn test_direct_audit_log_modification_no_recursion() {
+        let db = Database::new(InMemoryEngine::new());
+        let mut audited_db = AuditedDatabase::new(db).unwrap();
+
+        // Directly insert into _AUDIT_LOG via audited wrapper
+        // This should NOT trigger another "INSERT" log entry about inserting into _AUDIT_LOG
+        // (which would cause infinite recursion if not handled)
+
+        let fake_log = tuple! {
+            timestamp: 0i64,
+            operation: "FAKE",
+            target: "FAKE",
+            details: "FAKE"
+        };
+
+        audited_db.insert(AUDIT_RELVAR, fake_log).unwrap();
+
+        // If recursion was blocked, we should have exactly 1 tuple (the fake one)
+        // If recursion happened once (and then stopped), we'd have 2.
+        let log = audited_db.query(AUDIT_RELVAR).unwrap();
+        assert_eq!(log.cardinality(), 1);
+    }
+
+    #[test]
+    fn test_new_idempotency() {
+        let mut db = Database::new(InMemoryEngine::new());
+
+        // Manually create audit log first
+        let audit_type = RelationType::new(
+                TupleType::new()
+                    .with_attribute("timestamp", ScalarType::Int)
+                    .with_attribute("operation", ScalarType::String)
+                    .with_attribute("target", ScalarType::String)
+                    .with_attribute("details", ScalarType::String),
+            );
+        db.create_relvar(AUDIT_RELVAR, audit_type).unwrap();
+
+        // Wrappering should not fail
+        let _audited_db = AuditedDatabase::new(db).unwrap();
+    }
 }
