@@ -157,6 +157,24 @@ impl ScalarValue {
     /// TTM: The observer function extracts the representation from a
     /// user-defined type value.
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::types::ScalarType;
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let widget_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
+    /// let widget_val = widget_type.selector(ScalarValue::Int(42)).unwrap();
+    ///
+    /// // Observer extracts the Int(42)
+    /// let representation = widget_val.observer().unwrap();
+    /// assert_eq!(representation, ScalarValue::Int(42));
+    ///
+    /// // Built-in types have no observer
+    /// let raw_int = ScalarValue::Int(42);
+    /// assert!(raw_int.observer().is_err());
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns `Err` if called on a built-in type (only user-defined types

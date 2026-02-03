@@ -107,6 +107,24 @@ pub enum RelationError {
 /// let alice = tuple! { id: 1i64, name: "Alice" };
 /// assert!(relation.contains(&alice));
 /// ```
+///
+/// # Relational Algebra
+///
+/// The `Relation` struct implements the full suite of relational algebra operators
+/// as inherent methods. These methods transform relations into new relations
+/// according to TTM principles.
+///
+/// Available operators include:
+///
+/// - **Selection**: [`restrict`](Relation::restrict)
+/// - **Projection**: [`project`](Relation::project)
+/// - **Renaming**: [`rename`](Relation::rename)
+/// - **Set Operations**: [`union`](Relation::union), [`intersect`](Relation::intersect), [`difference`](Relation::difference)
+/// - **Joins**: [`join`](Relation::join) (natural), [`theta_join`](Relation::theta_join), [`semijoin`](Relation::semijoin)
+/// - **Advanced**: [`extend`](Relation::extend), [`summarize`](Relation::summarize), [`group`](Relation::group), [`ungroup`](Relation::ungroup)
+/// - **Division**: [`divide`](Relation::divide)
+///
+/// See the [`algebra`](crate::algebra) module for detailed documentation on each operator.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Relation {
     /// The relation type (heading) that defines the structure.
