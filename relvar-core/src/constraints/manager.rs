@@ -253,9 +253,9 @@ impl ConstraintManager {
         if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
             for (attr_name, constraints) in attr_constraints {
                 if let Some(value) = tuple.get(attr_name)
-                    && !constraints
-                        .is_satisfied_by(value)
-                        .map_err(|e| ConstraintManagerError::TypeConstraintViolation(e.to_string()))?
+                    && !constraints.is_satisfied_by(value).map_err(|e| {
+                        ConstraintManagerError::TypeConstraintViolation(e.to_string())
+                    })?
                 {
                     return Err(ConstraintManagerError::TypeConstraintViolation(format!(
                         "Attribute {} violates constraint",

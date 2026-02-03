@@ -91,9 +91,7 @@ impl From<ConstraintManagerError> for DatabaseError {
             ConstraintManagerError::TupleMismatch => DatabaseError::TupleMismatch,
             ConstraintManagerError::PrimaryKeyViolation => DatabaseError::PrimaryKeyViolation,
             ConstraintManagerError::CandidateKeyViolation => DatabaseError::CandidateKeyViolation,
-            ConstraintManagerError::ForeignKeyViolation(s) => {
-                DatabaseError::ForeignKeyViolation(s)
-            }
+            ConstraintManagerError::ForeignKeyViolation(s) => DatabaseError::ForeignKeyViolation(s),
             ConstraintManagerError::TypeConstraintViolation(s) => {
                 DatabaseError::TypeConstraintViolation(s)
             }
@@ -298,9 +296,11 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: ForeignKeyConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self
-            .constraints
-            .set_foreign_key_constraints(&mut self.engine, relation_name, constraints)?)
+        Ok(self.constraints.set_foreign_key_constraints(
+            &mut self.engine,
+            relation_name,
+            constraints,
+        )?)
     }
 
     /// Set type constraints for an attribute.
