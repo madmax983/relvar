@@ -5,3 +5,7 @@
 ## 2024-05-23 - Constraint Logic Extraction Success
 **Learning:** Extracting constraint logic from `Database` to `ConstraintManager` significantly reduced the size and complexity of the main struct. Passing `&mut Engine` explicitly to the manager's methods resolved potential borrowing conflicts.
 **Action:** Use the "Manager" pattern with explicit dependency injection (passing `&mut Dependency` to methods) when extracting logic that requires access to sibling fields.
+
+## 2024-05-24 - Database Method Logic Extraction
+**Learning:** `Database` methods `insert`, `update`, and `delete` contained mixed levels of abstraction (validation, logic calculation, storage execution). Extracting "calculation" logic (e.g., `compute_relation_after_delete`) and "validation" logic (e.g., `validate_insert`) into helper methods significantly improved readability and separation of concerns.
+**Action:** When a method performs distinct phases (validate -> compute -> execute), extract each phase into a separate helper method.
