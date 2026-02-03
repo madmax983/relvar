@@ -587,4 +587,147 @@ mod tests {
         assert_ne!(type1, type2);
         assert_eq!(type1.name(), type2.name());
     }
+
+    // Bytes tests
+    #[test]
+    fn test_bytes_equality() {
+        let b1 = ScalarValue::Bytes(vec![]);
+        let b2 = ScalarValue::Bytes(vec![]);
+        let b3 = ScalarValue::Bytes(vec![1, 2, 3]);
+        let b4 = ScalarValue::Bytes(vec![1, 2, 3]);
+
+        assert_eq!(b1, b2);
+        assert_eq!(b3, b4);
+        assert_ne!(b1, b3);
+    }
+
+    #[test]
+    fn test_bytes_hashing() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ScalarValue::Bytes(vec![1, 2, 3]));
+        set.insert(ScalarValue::Bytes(vec![1, 2, 3]));
+        set.insert(ScalarValue::Bytes(vec![]));
+
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_bytes_serialization() {
+        let val = ScalarValue::Bytes(vec![1, 2, 3, 255]);
+        let serialized = serde_json::to_string(&val).unwrap();
+        let deserialized: ScalarValue = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(val, deserialized);
+    }
+
+    // Relation value tests (RVAs)
+    #[test]
+    fn test_relation_value_equality() {
+        use crate::tuple;
+        use crate::types::{RelationType, TupleType};
+        use crate::values::Relation;
+
+        let heading = TupleType::new().with_attribute("a", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+
+        let mut rel1 = Relation::new(rel_type.clone());
+        rel1.insert(tuple! { a: 1i64 }).unwrap();
+
+        let mut rel2 = Relation::new(rel_type);
+        rel2.insert(tuple! { a: 1i64 }).unwrap();
+
+        let val1 = ScalarValue::Relation(rel1);
+        let val2 = ScalarValue::Relation(rel2);
+
+        assert_eq!(val1, val2);
+    }
+
+    #[test]
+    fn test_relation_value_hashing() {
+        use crate::tuple;
+        use crate::types::{RelationType, TupleType};
+        use crate::values::Relation;
+        use std::collections::HashSet;
+
+        let heading = TupleType::new().with_attribute("a", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+
+        let mut rel1 = Relation::new(rel_type.clone());
+        rel1.insert(tuple! { a: 1i64 }).unwrap();
+
+        let mut rel2 = Relation::new(rel_type);
+        rel2.insert(tuple! { a: 1i64 }).unwrap();
+
+        let mut set = HashSet::new();
+        set.insert(ScalarValue::Relation(rel1));
+        set.insert(ScalarValue::Relation(rel2)); // Duplicate
+
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn test_relation_value_serialization() {
+        use crate::tuple;
+        use crate::types::{RelationType, TupleType};
+        use crate::values::Relation;
+
+        let heading = TupleType::new().with_attribute("a", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+
+        let mut rel = Relation::new(rel_type);
+        rel.insert(tuple! { a: 1i64 }).unwrap();
+        rel.insert(tuple! { a: 2i64 }).unwrap();
+
+        let val = ScalarValue::Relation(rel);
+        let serialized = serde_json::to_string(&val).unwrap();
+        let deserialized: ScalarValue = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(val, deserialized);
+    }
+
+    #[test]
+    fn test_nested_relation_value() {
+        use crate::tuple;
+        use crate::types::{RelationType, TupleType};
+        use crate::values::Relation;
+
+        // Inner relation: {a: Int}
+        let inner_heading = TupleType::new().with_attribute("a", ScalarType::Int);
+        let inner_rel_type = RelationType::new(inner_heading.clone());
+
+        let mut inner_rel = Relation::new(inner_rel_type.clone());
+        inner_rel.insert(tuple! { a: 42i64 }).unwrap();
+
+        // Outer relation: {id: Int, data: Relation}
+        let outer_heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("data", ScalarType::Relation(Box::new(inner_rel_type)));
+
+        let outer_rel_type = RelationType::new(outer_heading);
+        let mut outer_rel = Relation::new(outer_rel_type);
+
+        outer_rel
+            .insert(tuple! {
+                id: 1i64,
+                data: ScalarValue::Relation(inner_rel)
+            })
+            .unwrap();
+
+        assert_eq!(outer_rel.cardinality(), 1);
+
+        // Verify we can retrieve the RVA
+        let tuple = outer_rel.tuples().next().unwrap();
+        let data = tuple.get("data").unwrap();
+
+        match data {
+            ScalarValue::Relation(rel) => {
+                assert_eq!(rel.cardinality(), 1);
+                assert_eq!(rel.degree(), 1);
+
+                let inner_tuple = rel.tuples().next().unwrap();
+                assert_eq!(inner_tuple.get("a"), Some(&ScalarValue::Int(42)));
+            }
+            _ => panic!("Expected relation value"),
+        }
+    }
 }
