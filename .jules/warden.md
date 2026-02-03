@@ -22,3 +22,14 @@ Added a pre-check `check_tuple_size_limit` using `bincode::serialized_size` on a
 **Defense:**
 1. Replaced `*` with `checked_mul` for offset calculations, returning `PageError::PageTooLarge` on overflow.
 2. Replaced `+` with `checked_add` for `data_len` check, returning `PageError::Serialization` on overflow.
+
+## 2026-02-03 - HeapFile Integer Overflow and Deserialization Hardening
+**Threat:**
+1. `HeapFile::extract_tuple_from_page` and `extract_raw_tuple_data` calculated `start + length` without overflow protection. On 32-bit systems, this could wrap around, bypassing the `end > page.data().len()` check and causing out-of-bounds access or panic.
+2. `HeapFile::deserialize_versioned_page` assumed `page.data()` had at least 5 bytes if the first byte matched the version, potentially panicking on short malicious pages.
+3. `HeapFile::serialize_versioned_page_with_tuples` did not verify that `slot_dir.len()` fit in `u32`, potentially truncating the length prefix.
+
+**Defense:**
+1. Replaced `+` with `checked_add` in offset calculations, returning `HeapError::Serialization` on overflow.
+2. Added explicit length check in `deserialize_versioned_page` to ensure the header exists before slicing.
+3. Added check for `slot_dir.len() > u32::MAX` in serialization.

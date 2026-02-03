@@ -747,7 +747,18 @@ impl HeapFile {
         const HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
 
-        if slot_dir.len() + HEADER_SIZE > USABLE_PAGE_SIZE {
+        if slot_dir.len() > u32::MAX as usize {
+            return Err(HeapError::Serialization(
+                "Slot directory too large to be represented by u32 length prefix".to_string(),
+            ));
+        }
+
+        if slot_dir
+            .len()
+            .checked_add(HEADER_SIZE)
+            .ok_or_else(|| HeapError::Serialization("Header size overflow".to_string()))?
+            > USABLE_PAGE_SIZE
+        {
             return Err(HeapError::Serialization(format!(
                 "slot directory too large for page: {} > {}",
                 slot_dir.len() + HEADER_SIZE,
@@ -821,7 +832,12 @@ impl HeapFile {
 
     /// Deserializes a versioned page, handling both V1 and V2 formats.
     fn deserialize_versioned_page(&self, page: &Page) -> Result<VersionedSlottedPage, HeapError> {
-        if page.data().len() >= 5 && page.data()[0] == PAGE_FORMAT_VERSION {
+        if !page.data().is_empty() && page.data()[0] == PAGE_FORMAT_VERSION {
+            if page.data().len() < 5 {
+                return Err(HeapError::Serialization(
+                    "Versioned page too short to contain header".to_string(),
+                ));
+            }
             // New format: [version:1][length:4][slot_dir][tuples]
             let len_bytes: [u8; 4] = page.data()[1..5].try_into().map_err(|_| {
                 HeapError::Serialization(
@@ -832,14 +848,18 @@ impl HeapFile {
 
             // Ensure the declared slot directory length fits within the page data
             // Header is 5 bytes (1 byte version + 4 bytes length)
-            if 5 + slot_dir_len > page.data().len() {
+            let end_of_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
+                HeapError::Serialization("Slot directory length overflow".to_string())
+            })?;
+
+            if end_of_header > page.data().len() {
                 return Err(HeapError::Serialization(format!(
                     "Slot directory length ({}) exceeds page size",
                     slot_dir_len
                 )));
             }
 
-            bincode::deserialize(&page.data()[5..5 + slot_dir_len])
+            bincode::deserialize(&page.data()[5..end_of_header])
                 .map_err(|e| HeapError::Serialization(e.to_string()))
         } else {
             // Old format: [slot_dir][tuples]
@@ -860,7 +880,9 @@ impl HeapFile {
         length: u32,
     ) -> Result<Tuple, HeapError> {
         let start = offset as usize;
-        let end = start + length as usize;
+        let end = start
+            .checked_add(length as usize)
+            .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
 
         if end > page.data().len() {
             return Err(HeapError::Serialization(format!(
@@ -881,7 +903,9 @@ impl HeapFile {
         length: u32,
     ) -> Result<Vec<u8>, HeapError> {
         let start = offset as usize;
-        let end = start + length as usize;
+        let end = start
+            .checked_add(length as usize)
+            .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
 
         if end <= page.data().len() {
             Ok(page.data()[start..end].to_vec())
@@ -3278,6 +3302,80 @@ mod tests {
                 assert!(size >= 5000);
             }
             _ => panic!("Expected TupleTooLarge error, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_heap_scan_offset_overflow() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Create a page with an overflowing offset
+        // offset = u32::MAX - 10, length = 20
+        // offset + length overflows u32
+        let corrupted_slot = SlotEntry {
+            offset: u32::MAX - 10,
+            length: 20,
+        };
+
+        let slotted_page = SlottedPage {
+            slot_count: 1,
+            slots: vec![Some(corrupted_slot)],
+        };
+
+        // Serialize header only
+        let slot_dir = bincode::serialize(&slotted_page).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE - 8];
+        page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
+
+        let page = Page::from_data(0, page_data).unwrap();
+        heap.page_file.write_page(&page).unwrap();
+
+        // Scan should fail cleanly
+        let result = heap.scan();
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::Serialization(msg)) => {
+                // On 64-bit systems, u32+u32 fits in usize, so we get bounds check error.
+                // On 32-bit systems, we get overflow error.
+                assert!(
+                    msg.contains("Tuple end offset overflow") || msg.contains("Corrupted slot"),
+                    "Unexpected error message: {}",
+                    msg
+                );
+            }
+            _ => panic!(
+                "Expected Serialization error with overflow message, got {:?}",
+                result
+            ),
+        }
+    }
+
+    #[test]
+    fn test_heap_deserialize_short_page() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let rel_type = create_test_relation_type();
+        let heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Create a page that mimics versioned format but is too short
+        // PAGE_FORMAT_VERSION (1 byte) + 4 bytes length = 5 bytes needed
+        // We write 3 bytes: [PAGE_FORMAT_VERSION, 0, 0]
+        let data = vec![PAGE_FORMAT_VERSION, 0, 0];
+        let page = Page::from_data(0, data).unwrap();
+
+        // Call private method directly to verify protection
+        // (update_tuple_versioned calls this without is_versioned_page check)
+        let result = heap.deserialize_versioned_page(&page);
+
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::Serialization(msg)) => {
+                assert_eq!(msg, "Versioned page too short to contain header");
+            }
+            _ => panic!("Expected specific Serialization error, got {:?}", result),
         }
     }
 }
