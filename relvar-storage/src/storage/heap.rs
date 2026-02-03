@@ -848,9 +848,9 @@ impl HeapFile {
 
             // Ensure the declared slot directory length fits within the page data
             // Header is 5 bytes (1 byte version + 4 bytes length)
-            let end_of_header = 5usize
-                .checked_add(slot_dir_len)
-                .ok_or_else(|| HeapError::Serialization("Slot directory length overflow".to_string()))?;
+            let end_of_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
+                HeapError::Serialization("Slot directory length overflow".to_string())
+            })?;
 
             if end_of_header > page.data().len() {
                 return Err(HeapError::Serialization(format!(
