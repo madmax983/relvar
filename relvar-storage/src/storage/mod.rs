@@ -1,8 +1,8 @@
 //! Physical storage layer for persistent data management.
 //!
 //! This module implements the storage subsystem that persists relations to disk.
-//! It provides page-based I/O, heap file storage, B-tree indexing, and a
-//! system catalog for metadata management.
+//! It provides page-based I/O, heap file storage, and a system catalog for
+//! metadata management.
 //!
 //! # Architecture
 //!
@@ -12,10 +12,10 @@
 //! ┌─────────────────────────────────────────────────────┐
 //! │                    Catalog                          │
 //! │         (relation metadata & schema)                │
-//! ├─────────────────────┬───────────────────────────────┤
-//! │     HeapFile        │        BTreeIndex             │
-//! │  (tuple storage)    │     (key-value lookup)        │
-//! ├─────────────────────┴───────────────────────────────┤
+//! ├─────────────────────────────────────────────────────┤
+//! │                    HeapFile                         │
+//! │                 (tuple storage)                     │
+//! ├─────────────────────────────────────────────────────┤
 //! │                    PageFile                         │
 //! │              (fixed-size page I/O)                  │
 //! └─────────────────────────────────────────────────────┘
@@ -25,7 +25,6 @@
 //!
 //! - `Page` / `PageFile` - Fixed-size page abstraction for disk I/O
 //! - `HeapFile` - Unordered tuple storage with slotted pages
-//! - `BTreeIndex` - Ordered index for efficient key lookups
 //! - `Catalog` - System catalog storing relation metadata
 //!
 //! # TTM Compliance
@@ -62,14 +61,12 @@
 //! let tuples = heap.scan().unwrap();
 //! ```
 
-pub mod btree;
 pub mod catalog;
 pub mod heap;
 pub mod page;
 pub mod system_relvars;
 pub mod type_serializer;
 
-pub use btree::{BTreeIndex, BTreeIndexError};
 pub use catalog::{Catalog, CatalogError};
 pub use heap::{HeapError, HeapFile};
 // TupleId is now pub(crate) in heap.rs, not exported
