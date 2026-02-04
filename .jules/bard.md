@@ -23,3 +23,7 @@
 ## The Case of the Phantom Module
 **Confusion:** The `relvar::experimental` module was declared but had no documentation, making its contents (like `exporter`) invisible to users browsing the docs. Additionally, running doctests for this module required careful targeting as it is re-exported in `lib.rs`.
 **Clarification:** Added module-level documentation with a usage example for `exporter` in `relvar/src/experimental/mod.rs` and verified that its doctests are executed as part of the `relvar` crate tests.
+
+## The Case of the Silent Update
+**Confusion:** `Database::update` operation was assumed to enforce all integrity constraints, but it only validated Key constraints, silently ignoring CHECK and Type constraints.
+**Clarification:** Refactored `Database::update` to enforce Type, CHECK, and Foreign Key constraints on all tuples in the updated relation. Added comprehensive `# Errors` documentation to `update` and `delete` to make failure modes explicit. Note: Self-referential foreign keys are validated against the pre-update state.
