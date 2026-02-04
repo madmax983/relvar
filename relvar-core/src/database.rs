@@ -435,6 +435,13 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// Returns the number of tuples deleted.
     ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
+    /// - Deleting the tuples would violate a foreign key constraint in another relation
+    ///   ([`DatabaseError::ForeignKeyViolation`])
+    ///
     /// # Example
     ///
     /// ```
@@ -484,6 +491,16 @@ impl<E: StorageEngine> Database<E> {
     /// Update tuples matching a predicate.
     ///
     /// Returns the number of tuples updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
+    /// - The updated tuple doesn't match the relation type ([`DatabaseError::TupleMismatch`])
+    /// - A key constraint is violated ([`DatabaseError::PrimaryKeyViolation`], [`DatabaseError::CandidateKeyViolation`])
+    /// - A foreign key constraint is violated ([`DatabaseError::ForeignKeyViolation`])
+    /// - A type constraint is violated ([`DatabaseError::TypeConstraintViolation`])
+    /// - A CHECK constraint is violated ([`DatabaseError::CheckConstraintViolation`])
     ///
     /// # Example
     ///
@@ -543,6 +560,21 @@ impl<E: StorageEngine> Database<E> {
         if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
             self.constraints
                 .validate_key_constraints_bulk(&new_relation, key_constraints)?;
+        }
+
+        // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
+        // NOTE: In a production system we'd only validate changed tuples, but for now
+        // we validate everything to ensure total consistency.
+        for tuple in new_relation.tuples() {
+            self.constraints
+                .validate_type_constraints(relation_name, tuple)?;
+            self.constraints
+                .validate_check_constraints(relation_name, tuple)?;
+            self.constraints.validate_foreign_keys_single_tuple(
+                &mut self.engine,
+                relation_name,
+                tuple,
+            )?;
         }
 
         // Store the new relation
