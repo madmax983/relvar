@@ -1043,17 +1043,18 @@ mod overflow_tests {
         relation
             .insert(tuple! { id: 1i64, amount: i64::MAX })
             .unwrap();
-        relation
-            .insert(tuple! { id: 2i64, amount: 1i64 })
-            .unwrap();
+        relation.insert(tuple! { id: 2i64, amount: 1i64 }).unwrap();
 
-        let result = relation
-            .summarize(&[], &[Aggregation::sum("total", "amount")]);
+        let result = relation.summarize(&[], &[Aggregation::sum("total", "amount")]);
 
         assert!(result.is_err(), "Expected overflow error, got Ok");
         match result {
             Err(SummarizeError::AggregationError(msg)) => {
-                assert!(msg.contains("overflow"), "Expected overflow message, got: {}", msg);
+                assert!(
+                    msg.contains("overflow"),
+                    "Expected overflow message, got: {}",
+                    msg
+                );
             }
             _ => panic!("Expected AggregationError, got {:?}", result),
         }
@@ -1071,17 +1072,18 @@ mod overflow_tests {
         relation
             .insert(tuple! { id: 1i64, amount: i64::MAX })
             .unwrap();
-        relation
-            .insert(tuple! { id: 2i64, amount: 1i64 })
-            .unwrap();
+        relation.insert(tuple! { id: 2i64, amount: 1i64 }).unwrap();
 
-        let result = relation
-            .summarize(&[], &[Aggregation::avg("average", "amount")]);
+        let result = relation.summarize(&[], &[Aggregation::avg("average", "amount")]);
 
         assert!(result.is_err(), "Expected overflow error, got Ok");
         match result {
             Err(SummarizeError::AggregationError(msg)) => {
-                assert!(msg.contains("overflow"), "Expected overflow message, got: {}", msg);
+                assert!(
+                    msg.contains("overflow"),
+                    "Expected overflow message, got: {}",
+                    msg
+                );
             }
             _ => panic!("Expected AggregationError, got {:?}", result),
         }
