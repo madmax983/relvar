@@ -24,6 +24,4 @@ pub(crate) mod mvcc;
 pub use persistent_engine::PersistentEngine;
 
 // Re-export key storage types
-pub use storage::{
-    Catalog, CatalogError, HeapError, HeapFile, Page, PageError, PageFile,
-};
+pub use storage::{Catalog, CatalogError, HeapError, HeapFile, Page, PageError, PageFile};
