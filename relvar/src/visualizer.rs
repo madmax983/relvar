@@ -42,7 +42,7 @@
 //! db.set_foreign_key_constraints("EMP", ForeignKeyConstraints::new().with_foreign_key(fk)).unwrap();
 //!
 //! // Generate DOT
-//! let mut visualizer = SchemaVisualizer::new(&mut db);
+//! let visualizer = SchemaVisualizer::new(&db);
 //! let dot = visualizer.to_dot();
 //!
 //! assert!(dot.contains("digraph DatabaseSchema"));
@@ -54,12 +54,12 @@ use relvar_core::storage_engine::StorageEngine;
 
 /// A tool for visualizing the database schema.
 pub struct SchemaVisualizer<'a, E: StorageEngine> {
-    db: &'a mut Database<E>,
+    db: &'a Database<E>,
 }
 
 impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
     /// Create a new schema visualizer for the given database.
-    pub fn new(db: &'a mut Database<E>) -> Self {
+    pub fn new(db: &'a Database<E>) -> Self {
         Self { db }
     }
 
@@ -76,11 +76,11 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
     /// let mut db = Database::new(InMemoryEngine::new());
     /// // ... setup schema ...
     ///
-    /// let mut viz = SchemaVisualizer::new(&mut db);
+    /// let viz = SchemaVisualizer::new(&db);
     /// let dot_code = viz.to_dot();
     /// println!("{}", dot_code);
     /// ```
-    pub fn to_dot(&mut self) -> String {
+    pub fn to_dot(&self) -> String {
         let mut dot = String::from("digraph DatabaseSchema {\n");
         dot.push_str("    rankdir=LR;\n");
         dot.push_str("    node [shape=none, fontname=\"Helvetica\", fontsize=10];\n");
@@ -90,11 +90,9 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
 
         // 1. Generate nodes (Tables)
         for name in &relvars {
-            // Note: We use query() to get the relation structure.
-            // Since this is for visualization, we ignore potential errors (e.g. temporary locks)
-            // or if the relation somehow disappears.
-            if let Ok(relation) = self.db.query(name) {
-                let relation_type = relation.relation_type();
+            // Note: We use get_relvar_type() to get the relation structure.
+            // This avoids loading the full relation data.
+            if let Ok(relation_type) = self.db.get_relvar_type(name) {
                 let tuple_type = relation_type.tuple_type();
 
                 // Determine primary key attributes
@@ -198,7 +196,7 @@ mod tests {
             .unwrap();
 
         // Visualize
-        let mut visualizer = SchemaVisualizer::new(&mut db);
+        let visualizer = SchemaVisualizer::new(&db);
         let dot = visualizer.to_dot();
 
         println!("{}", dot);

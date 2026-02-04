@@ -214,6 +214,24 @@ impl<E: StorageEngine> Database<E> {
         names
     }
 
+    /// Get the relation type (heading) for a relvar.
+    ///
+    /// This method retrieves the metadata without loading the full relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError::RelationNotFound` if the relvar doesn't exist.
+    pub fn get_relvar_type(&self, name: &str) -> Result<RelationType, DatabaseError> {
+        // Check virtual relvars first
+        if let Some(def) = self.virtual_relvars.get(name) {
+            return Ok(def.relation_type.clone());
+        }
+
+        // Check base relvars
+        let metadata = self.engine.get_relation_metadata(name)?;
+        Ok(metadata.relation_type)
+    }
+
     /// Get the key constraints for a relation.
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.constraints.get_key_constraints(relation_name)
