@@ -136,15 +136,8 @@ impl ConstraintManager {
             let referenced_relation = engine.load_relation(fk.referenced_relation_name())?;
             // Build a HashSet of referenced keys for efficient O(1) lookups.
             // We store references to avoid cloning potentially large values.
-            let referenced_keys: std::collections::HashSet<Vec<&ScalarValue>> = referenced_relation
-                .tuples()
-                .map(|ref_tuple| {
-                    fk.referenced_attributes()
-                        .iter()
-                        .map(|attr| ref_tuple.get(attr).unwrap())
-                        .collect()
-                })
-                .collect();
+            let referenced_keys =
+                Self::extract_attribute_values(&referenced_relation, fk.referenced_attributes());
 
             // Pre-allocate buffer for key construction to avoid repeated allocations
             let mut fk_key_buffer = Vec::with_capacity(fk.foreign_key_attributes().len());
@@ -310,6 +303,21 @@ impl ConstraintManager {
         Ok(())
     }
 
+    /// Validate constraints that depend only on the tuple's content and foreign keys.
+    ///
+    /// This includes Type constraints, CHECK constraints, and Foreign Key constraints.
+    pub fn validate_tuple_content_constraints<E: StorageEngine>(
+        &self,
+        engine: &mut E,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), ConstraintManagerError> {
+        self.validate_type_constraints(relation_name, tuple)?;
+        self.validate_check_constraints(relation_name, tuple)?;
+        self.validate_foreign_keys_single_tuple(engine, relation_name, tuple)?;
+        Ok(())
+    }
+
     /// Validate foreign key constraints for a single tuple.
     ///
     /// Checks that values in the tuple exist in the referenced relations.
@@ -393,16 +401,10 @@ impl ConstraintManager {
 
                     // Build a HashSet of keys from the relation after deletion for efficient lookups.
                     // We store references to avoid cloning potentially large values (Strings, Blobs).
-                    let existing_keys: std::collections::HashSet<Vec<&ScalarValue>> =
-                        relation_after_delete
-                            .tuples()
-                            .map(|t| {
-                                fk.referenced_attributes()
-                                    .iter()
-                                    .filter_map(|attr| t.get(attr))
-                                    .collect()
-                            })
-                            .collect();
+                    let existing_keys = Self::extract_attribute_values(
+                        relation_after_delete,
+                        fk.referenced_attributes(),
+                    );
 
                     // Pre-allocate buffer for key construction to avoid repeated allocations
                     let mut ref_key_buffer = Vec::with_capacity(fk.foreign_key_attributes().len());
@@ -427,5 +429,25 @@ impl ConstraintManager {
             }
         }
         Ok(())
+    }
+
+    /// Helper to extract a set of attribute value combinations from a relation.
+    fn extract_attribute_values<'a>(
+        relation: &'a Relation,
+        attributes: &[String],
+    ) -> std::collections::HashSet<Vec<&'a ScalarValue>> {
+        relation
+            .tuples()
+            .map(|tuple| {
+                attributes
+                    .iter()
+                    .map(|attr| {
+                        tuple
+                            .get(attr)
+                            .expect("Attribute must exist in relation schema")
+                    })
+                    .collect()
+            })
+            .collect()
     }
 }

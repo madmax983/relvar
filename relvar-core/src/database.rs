@@ -584,11 +584,7 @@ impl<E: StorageEngine> Database<E> {
         // NOTE: In a production system we'd only validate changed tuples, but for now
         // we validate everything to ensure total consistency.
         for tuple in new_relation.tuples() {
-            self.constraints
-                .validate_type_constraints(relation_name, tuple)?;
-            self.constraints
-                .validate_check_constraints(relation_name, tuple)?;
-            self.constraints.validate_foreign_keys_single_tuple(
+            self.constraints.validate_tuple_content_constraints(
                 &mut self.engine,
                 relation_name,
                 tuple,
@@ -769,10 +765,12 @@ impl<E: StorageEngine> Database<E> {
         // Pure checks and Type validations
         self.constraints
             .validate_tuple_type(&self.engine, relation_name, tuple)?;
-        self.constraints
-            .validate_type_constraints(relation_name, tuple)?;
-        self.constraints
-            .validate_check_constraints(relation_name, tuple)?;
+
+        self.constraints.validate_tuple_content_constraints(
+            &mut self.engine,
+            relation_name,
+            tuple,
+        )?;
 
         // Load current relation to check key constraints
         let current_relation = self.query(relation_name)?;
@@ -780,11 +778,6 @@ impl<E: StorageEngine> Database<E> {
             relation_name,
             tuple,
             &current_relation,
-        )?;
-        self.constraints.validate_foreign_keys_single_tuple(
-            &mut self.engine,
-            relation_name,
-            tuple,
         )?;
 
         Ok(())
