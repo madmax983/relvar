@@ -274,7 +274,9 @@ impl Aggregation {
                             attr_name
                         ))
                     })?;
-                    sum += value;
+                    sum = sum.checked_add(value).ok_or_else(|| {
+                        SummarizeError::AggregationError("Integer overflow in SUM".to_string())
+                    })?;
                 }
                 Ok(ScalarValue::Int(sum))
             }
@@ -290,7 +292,9 @@ impl Aggregation {
                             attr_name
                         ))
                     })?;
-                    sum += value;
+                    sum = sum.checked_add(value).ok_or_else(|| {
+                        SummarizeError::AggregationError("Integer overflow in AVG".to_string())
+                    })?;
                 }
                 let avg = sum as f64 / tuples.len() as f64;
                 Ok(ScalarValue::Float(avg))
@@ -1017,5 +1021,71 @@ mod tests {
         let tuple = result.tuples().next().unwrap();
         assert_eq!(tuple.get_typed::<String>("min_name").unwrap(), "Alice");
         assert_eq!(tuple.get_typed::<String>("max_name").unwrap(), "Charlie");
+    }
+}
+
+#[cfg(test)]
+mod overflow_tests {
+    use super::*;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::values::Relation;
+
+    #[test]
+    fn test_sum_overflow_returns_error() {
+        let heading = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("amount".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { id: 1i64, amount: i64::MAX })
+            .unwrap();
+        relation.insert(tuple! { id: 2i64, amount: 1i64 }).unwrap();
+
+        let result = relation.summarize(&[], &[Aggregation::sum("total", "amount")]);
+
+        assert!(result.is_err(), "Expected overflow error, got Ok");
+        match result {
+            Err(SummarizeError::AggregationError(msg)) => {
+                assert!(
+                    msg.contains("overflow"),
+                    "Expected overflow message, got: {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected AggregationError, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_avg_overflow_returns_error() {
+        let heading = TupleType::new()
+            .with_attribute("id".to_string(), ScalarType::Int)
+            .with_attribute("amount".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { id: 1i64, amount: i64::MAX })
+            .unwrap();
+        relation.insert(tuple! { id: 2i64, amount: 1i64 }).unwrap();
+
+        let result = relation.summarize(&[], &[Aggregation::avg("average", "amount")]);
+
+        assert!(result.is_err(), "Expected overflow error, got Ok");
+        match result {
+            Err(SummarizeError::AggregationError(msg)) => {
+                assert!(
+                    msg.contains("overflow"),
+                    "Expected overflow message, got: {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected AggregationError, got {:?}", result),
+        }
     }
 }
