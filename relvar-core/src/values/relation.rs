@@ -156,6 +156,15 @@ impl std::hash::Hash for Relation {
     }
 }
 
+impl IntoIterator for Relation {
+    type Item = Tuple;
+    type IntoIter = std::collections::hash_set::IntoIter<Tuple>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.body.into_iter()
+    }
+}
+
 impl Relation {
     /// Creates a new empty relation with the given type.
     ///
