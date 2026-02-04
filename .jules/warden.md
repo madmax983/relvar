@@ -33,3 +33,15 @@ Added a pre-check `check_tuple_size_limit` using `bincode::serialized_size` on a
 1. Replaced `+` with `checked_add` in offset calculations, returning `HeapError::Serialization` on overflow.
 2. Added explicit length check in `deserialize_versioned_page` to ensure the header exists before slicing.
 3. Added check for `slot_dir.len() > u32::MAX` in serialization.
+
+## 2025-05-24 - Schema Visualizer Injection
+**Threat:**
+`SchemaVisualizer::to_dot` blindly trusted user input (relvar names, attribute names) when constructing Graphviz DOT output. This allowed:
+1. DOT Injection: An attacker could break out of the node identifier context using quotes (`"`) and inject arbitrary DOT commands (e.g., adding edges).
+2. HTML Injection: An attacker could break out of the HTML-like label context using HTML tags (e.g., `</td>`) and corrupt the table visualization.
+
+**Defense:**
+1. Implemented `escape_dot_id` to strictly quote all DOT identifiers and escape internal quotes.
+2. Implemented `escape_html` to sanitize strings used in HTML-like labels (replacing `<, >, &, ", '` with entities).
+3. Implemented `escape_dot_string_content` for string literals in labels.
+4. Updated `to_dot` to use these helpers for all user-controlled data.

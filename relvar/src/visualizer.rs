@@ -46,7 +46,8 @@
 //! let dot = visualizer.to_dot();
 //!
 //! assert!(dot.contains("digraph DatabaseSchema"));
-//! assert!(dot.contains("EMP -> DEPT"));
+//! // Identifiers are now quoted for security
+//! assert!(dot.contains("\"EMP\" -> \"DEPT\""));
 //! ```
 
 use relvar_core::database::Database;
@@ -106,10 +107,16 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                     Vec::new()
                 };
 
-                dot.push_str(&format!("    {} [label=<<table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\">\n", name));
+                let node_id = escape_dot_id(name);
+                let table_title = escape_html(name);
+
+                dot.push_str(&format!(
+                    "    {} [label=<<table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\">\n",
+                    node_id
+                ));
                 dot.push_str(&format!(
                     "        <tr><td bgcolor=\"lightgrey\" colspan=\"2\"><b>{}</b></td></tr>\n",
-                    name
+                    table_title
                 ));
 
                 // Sort attributes for consistent output
@@ -118,15 +125,21 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
 
                 for (attr_name, scalar_type) in attributes {
                     let is_pk = pk_attrs.contains(attr_name);
+                    let safe_attr_name = escape_html(attr_name);
+
                     let display_name = if is_pk {
-                        format!("<u>{}</u>", attr_name)
+                        format!("<u>{}</u>", safe_attr_name)
                     } else {
-                        attr_name.to_string()
+                        safe_attr_name
                     };
 
+                    // Note: scalar_type implements Debug, which might contain special chars.
+                    // Ideally we'd escape that too, strictly speaking.
+                    let safe_type = escape_html(&format!("{:?}", scalar_type));
+
                     dot.push_str(&format!(
-                        "        <tr><td align=\"left\">{}</td><td align=\"left\">{:?}</td></tr>\n",
-                        display_name, scalar_type
+                        "        <tr><td align=\"left\">{}</td><td align=\"left\">{}</td></tr>\n",
+                        display_name, safe_type
                     ));
                 }
                 dot.push_str("    </table>>];\n\n");
@@ -139,11 +152,14 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                 for fk in fk_constraints.foreign_keys() {
                     let ref_table = fk.referenced_relation_name();
                     let cols = fk.foreign_key_attributes().join(", ");
-                    // We label the edge with the columns involved
+
+                    let source_id = escape_dot_id(name);
+                    let target_id = escape_dot_id(ref_table);
+                    let label = escape_dot_string_content(&cols);
 
                     dot.push_str(&format!(
                         "    {} -> {} [label=\"({})\"];\n",
-                        name, ref_table, cols
+                        source_id, target_id, label
                     ));
                 }
             }
@@ -152,6 +168,25 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
         dot.push_str("}\n");
         dot
     }
+}
+
+/// Escapes special characters for HTML-like labels in Graphviz.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+/// Escapes a string to be used as a DOT identifier, adding quotes.
+fn escape_dot_id(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', "\\\""))
+}
+
+/// Escapes content to be placed inside a DOT double-quoted string.
+fn escape_dot_string_content(s: &str) -> String {
+    s.replace('"', "\\\"")
 }
 
 #[cfg(test)]
@@ -201,11 +236,19 @@ mod tests {
 
         println!("{}", dot);
 
-        // Assertions
+        // Assertions - now with quotes
         assert!(dot.contains("digraph DatabaseSchema"));
-        assert!(dot.contains("DEPT [label="));
-        assert!(dot.contains("EMP [label="));
+        assert!(dot.contains("\"DEPT\" [label="));
+        assert!(dot.contains("\"EMP\" [label="));
         assert!(dot.contains("<u>dept_id</u>")); // PK underlined
-        assert!(dot.contains("EMP -> DEPT")); // FK edge
+        assert!(dot.contains("\"EMP\" -> \"DEPT\"")); // FK edge
+    }
+
+    #[test]
+    fn test_escaping_helpers() {
+        assert_eq!(escape_html("foo < bar"), "foo &lt; bar");
+        assert_eq!(escape_html("foo \" bar"), "foo &quot; bar");
+        assert_eq!(escape_dot_id("foo \" bar"), "\"foo \\\" bar\"");
+        assert_eq!(escape_dot_string_content("foo \" bar"), "foo \\\" bar");
     }
 }
