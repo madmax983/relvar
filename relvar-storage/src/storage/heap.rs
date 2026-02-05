@@ -295,12 +295,6 @@ impl HeapFile {
             sp
         };
 
-        // Calculate required space (account for 8-byte length prefix in page format)
-        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
-        let slot_entry_size = std::mem::size_of::<SlotEntry>();
-        let header_size =
-            std::mem::size_of::<u32>() + (slotted_page.slots.len() + 1) * slot_entry_size;
-
         // Find free slot or add new one
         let slot_number = if let Some(pos) = slotted_page.slots.iter().position(|s| s.is_none()) {
             pos as u32
@@ -310,6 +304,20 @@ impl HeapFile {
             slotted_page.slot_count += 1;
             new_slot
         };
+
+        // Calculate required space (account for 8-byte length prefix in page format)
+        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
+
+        // Calculate exact header size using bincode (to account for Vec length and Option overhead)
+        // We must assume the target slot is occupied (Some) to reserve enough space
+        let mut temp_page = slotted_page.clone();
+        temp_page.slots[slot_number as usize] = Some(SlotEntry {
+            offset: 0,
+            length: 0,
+        });
+
+        let header_size = bincode::serialized_size(&temp_page)
+            .map_err(|e| HeapError::Serialization(e.to_string()))? as usize;
 
         // Add new tuple to the list
         existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
@@ -678,8 +686,19 @@ impl HeapFile {
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
         const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
 
+        // We must assume the target slot is occupied (Some) to reserve enough space
+        // because we will fill it with metadata later
+        let mut temp_page = versioned_page.clone();
+        temp_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
+            offset: 0,
+            length: 0,
+            xmin: txn_id,
+            xmax: None,
+            prev_version: None,
+        });
+
         // Serialize the slot directory to get actual size
-        let slot_dir = bincode::serialize(&versioned_page)
+        let slot_dir = bincode::serialize(&temp_page)
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
         let header_size = FORMAT_HEADER_SIZE + slot_dir.len();
 
@@ -1043,12 +1062,32 @@ impl HeapFile {
             vp
         };
 
+        // Find free slot or add new one
+        let slot_number = if let Some(pos) = versioned_page.slots.iter().position(|s| s.is_none()) {
+            pos as u32
+        } else {
+            let new_slot = versioned_page.slots.len() as u32;
+            versioned_page.slots.push(None);
+            versioned_page.slot_count += 1;
+            new_slot
+        };
+
         // Calculate required space using ACTUAL serialized size
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
         const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
 
+        // We must assume the target slot is occupied (Some) to reserve enough space
+        let mut temp_page = versioned_page.clone();
+        temp_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
+            offset: 0,
+            length: 0,
+            xmin: txn_id,
+            xmax: None,
+            prev_version: Some(prev_version),
+        });
+
         // Serialize the slot directory to get actual size
-        let slot_dir = bincode::serialize(&versioned_page)
+        let slot_dir = bincode::serialize(&temp_page)
             .map_err(|e| HeapError::Serialization(e.to_string()))?;
         let header_size = FORMAT_HEADER_SIZE + slot_dir.len();
 
@@ -1059,16 +1098,6 @@ impl HeapFile {
         if required_space > USABLE_PAGE_SIZE {
             return Err(HeapError::PageFull);
         }
-
-        // Find free slot or add new one
-        let slot_number = if let Some(pos) = versioned_page.slots.iter().position(|s| s.is_none()) {
-            pos as u32
-        } else {
-            let new_slot = versioned_page.slots.len() as u32;
-            versioned_page.slots.push(None);
-            versioned_page.slot_count += 1;
-            new_slot
-        };
 
         // Add new tuple to the list
         existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
@@ -3376,6 +3405,55 @@ mod tests {
                 assert_eq!(msg, "Versioned page too short to contain header");
             }
             _ => panic!("Expected specific Serialization error, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_heap_header_corruption() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Create a relation type
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // We want to insert many small tuples to increase N (number of slots).
+        // Discrepancy D = N bytes.
+        // We want to fill the page such that we are just on the edge.
+
+        for i in 0..1000 {
+            let t = tuple! { id: i as i64 };
+            heap.insert_tuple(&t).unwrap();
+
+            // Read page 0
+            let page = heap.page_file.read_page(0).unwrap();
+            // Try to deserialize
+            let res = heap.deserialize_slotted_page(&page);
+            if res.is_err() {
+                println!("Corruption detected at insert {}!", i);
+                panic!("Corruption detected: {:?}", res.err());
+            }
+
+            // Also verify that the last inserted tuple is valid
+            let sp = res.unwrap();
+            if let Some(Some(last_slot)) = sp.slots.last() {
+                 // Check for overlap
+                 let slot_dir = bincode::serialize(&sp).unwrap();
+                 // Slot dir is at offset 0.
+                 // Tuple is at last_slot.offset.
+                 // If tuple start < slot_dir end, we have overlap.
+                 if last_slot.offset < slot_dir.len() as u32 {
+                     println!("Overlap detected at insert {}! Offset: {}, Header: {}", i, last_slot.offset, slot_dir.len());
+                     panic!("Overlap detected!");
+                 }
+            }
+
+            if page.id() > 0 {
+                 println!("Page split happened at insert {}", i);
+                 break;
+            }
         }
     }
 }
