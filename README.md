@@ -57,6 +57,10 @@ Unlike SQL databases, Relvar adheres strictly to relational theory:
   - Query with full relational algebra
   - Transactions (begin/commit/rollback)
 
+- **Tools**
+  - **Schema Visualizer**: Generate Graphviz DOT diagrams of database schema and foreign keys
+  - **Exporter**: Export relations to CSV, JSON, and ASCII tables (Experimental)
+
 - **CI/CD**
   - Automated formatting checks (`cargo fmt`)
   - Linting with zero warnings (`cargo clippy`)
