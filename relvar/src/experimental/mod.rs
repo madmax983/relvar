@@ -29,3 +29,4 @@
 //! ```
 
 pub mod exporter;
+pub mod mock;
