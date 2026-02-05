@@ -284,7 +284,7 @@ impl Aggregation {
                 if tuples.is_empty() {
                     return Ok(ScalarValue::Float(0.0));
                 }
-                let mut sum = 0i64;
+                let mut sum = 0i128;
                 for tuple in tuples {
                     let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
                         SummarizeError::AggregationError(format!(
@@ -292,7 +292,7 @@ impl Aggregation {
                             attr_name
                         ))
                     })?;
-                    sum = sum.checked_add(value).ok_or_else(|| {
+                    sum = sum.checked_add(value as i128).ok_or_else(|| {
                         SummarizeError::AggregationError("Integer overflow in AVG".to_string())
                     })?;
                 }
@@ -1061,7 +1061,7 @@ mod overflow_tests {
     }
 
     #[test]
-    fn test_avg_overflow_returns_error() {
+    fn test_avg_handles_large_sums() {
         let heading = TupleType::new()
             .with_attribute("id".to_string(), ScalarType::Int)
             .with_attribute("amount".to_string(), ScalarType::Int);
@@ -1072,20 +1072,16 @@ mod overflow_tests {
         relation
             .insert(tuple! { id: 1i64, amount: i64::MAX })
             .unwrap();
-        relation.insert(tuple! { id: 2i64, amount: 1i64 }).unwrap();
+        relation
+            .insert(tuple! { id: 2i64, amount: i64::MAX })
+            .unwrap();
 
         let result = relation.summarize(&[], &[Aggregation::avg("average", "amount")]);
 
-        assert!(result.is_err(), "Expected overflow error, got Ok");
-        match result {
-            Err(SummarizeError::AggregationError(msg)) => {
-                assert!(
-                    msg.contains("overflow"),
-                    "Expected overflow message, got: {}",
-                    msg
-                );
-            }
-            _ => panic!("Expected AggregationError, got {:?}", result),
-        }
+        assert!(result.is_ok(), "Expected success on large sum average");
+        let result = result.unwrap();
+        let tuple = result.tuples().next().unwrap();
+        // Average of MAX and MAX is MAX
+        assert_eq!(tuple.get_typed::<f64>("average").unwrap(), i64::MAX as f64);
     }
 }

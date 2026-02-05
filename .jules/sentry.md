@@ -17,3 +17,7 @@
 ## 2026-05-21 - Silent Data Loss in Rename Collision
 **Learning:** `Relation::rename` handles attribute collisions (multiple attributes renamed to same target) by iterating map entries. Due to `BTreeMap` order, the lexicographically last attribute overwrites earlier ones without warning.
 **Action:** When testing renaming or mapping operations, always verify "collision" scenarios. Document the behavior explicitly in tests to prevent accidental regression if iteration order changes.
+
+## 2026-06-15 - Unnecessary Integer Overflow in Aggregation
+**Learning:** `Avg` aggregation was using `i64` accumulator, causing it to fail on large datasets where the sum exceeds `i64::MAX` even if the average is small.
+**Action:** Use `i128` (or larger type) accumulators for integer aggregations to prevent intermediate overflows.
