@@ -84,19 +84,16 @@ impl Relation {
         let new_rel_type = RelationType::new(new_heading.clone());
 
         // Project each tuple
-        let projected_tuples: Vec<_> = self
-            .tuples()
-            .map(|tuple| {
-                let mut values = HashMap::new();
-                for attr_name in attributes {
-                    if let Some(value) = tuple.get(attr_name) {
-                        values.insert(attr_name.to_string(), value.clone());
-                    }
+        let projected_tuples = self.tuples().map(|tuple| {
+            let mut values = HashMap::new();
+            for attr_name in attributes {
+                if let Some(value) = tuple.get(attr_name) {
+                    values.insert(attr_name.to_string(), value.clone());
                 }
-                Tuple::new(new_heading.clone(), values)
-                    .expect("Projection should maintain type consistency")
-            })
-            .collect();
+            }
+            Tuple::new(new_heading.clone(), values)
+                .expect("Projection should maintain type consistency")
+        });
 
         // Duplicates are automatically removed when creating the relation
         Relation::from_tuples(new_rel_type, projected_tuples)
