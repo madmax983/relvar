@@ -317,7 +317,8 @@ impl HeapFile {
         });
 
         let header_size = bincode::serialized_size(&temp_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))? as usize;
+            .map_err(|e| HeapError::Serialization(e.to_string()))?
+            as usize;
 
         // Add new tuple to the list
         existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
@@ -698,8 +699,8 @@ impl HeapFile {
         });
 
         // Serialize the slot directory to get actual size
-        let slot_dir = bincode::serialize(&temp_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let slot_dir =
+            bincode::serialize(&temp_page).map_err(|e| HeapError::Serialization(e.to_string()))?;
         let header_size = FORMAT_HEADER_SIZE + slot_dir.len();
 
         // existing_tuples already includes tuple_data, so we just sum existing_tuples
@@ -1087,8 +1088,8 @@ impl HeapFile {
         });
 
         // Serialize the slot directory to get actual size
-        let slot_dir = bincode::serialize(&temp_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let slot_dir =
+            bincode::serialize(&temp_page).map_err(|e| HeapError::Serialization(e.to_string()))?;
         let header_size = FORMAT_HEADER_SIZE + slot_dir.len();
 
         let total_tuple_data_size: usize =
@@ -3439,20 +3440,25 @@ mod tests {
             // Also verify that the last inserted tuple is valid
             let sp = res.unwrap();
             if let Some(Some(last_slot)) = sp.slots.last() {
-                 // Check for overlap
-                 let slot_dir = bincode::serialize(&sp).unwrap();
-                 // Slot dir is at offset 0.
-                 // Tuple is at last_slot.offset.
-                 // If tuple start < slot_dir end, we have overlap.
-                 if last_slot.offset < slot_dir.len() as u32 {
-                     println!("Overlap detected at insert {}! Offset: {}, Header: {}", i, last_slot.offset, slot_dir.len());
-                     panic!("Overlap detected!");
-                 }
+                // Check for overlap
+                let slot_dir = bincode::serialize(&sp).unwrap();
+                // Slot dir is at offset 0.
+                // Tuple is at last_slot.offset.
+                // If tuple start < slot_dir end, we have overlap.
+                if last_slot.offset < slot_dir.len() as u32 {
+                    println!(
+                        "Overlap detected at insert {}! Offset: {}, Header: {}",
+                        i,
+                        last_slot.offset,
+                        slot_dir.len()
+                    );
+                    panic!("Overlap detected!");
+                }
             }
 
             if page.id() > 0 {
-                 println!("Page split happened at insert {}", i);
-                 break;
+                println!("Page split happened at insert {}", i);
+                break;
             }
         }
     }
