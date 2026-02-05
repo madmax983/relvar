@@ -12,3 +12,13 @@
 **Bloat:** `relvar-storage/src/storage/btree.rs` - unused, speculative `BTreeIndex` implementation (placeholder wrapper around `BTreeMap`).
 **Cut:** Deleted the file and removed exports.
 **Saved:** ~400 lines of dead code + cognitive load (removed misleading architecture diagram components).
+
+## [Reduction]
+**Bloat:** `relvar-storage/src/storage/type_serializer.rs` and `system_relvars.rs` - unused custom serialization and unimplemented system catalog definitions ("Future Proofing" burden).
+**Cut:** Deleted both files and removed exports.
+**Saved:** ~400 lines of dead code, removed unnecessary maintenance burden for unimplemented features.
+
+## [Reduction]
+**Bloat:** `relvar/src/experimental/exporter.rs` - `Exporter` struct was a "Factory Factory" / unnecessary wrapper around `Relation` just to call methods.
+**Cut:** Refactored into free functions (`to_csv`, `to_json`, `to_ascii_table`).
+**Saved:** Simplified API (no need to instantiate `Exporter`), reduced boilerplate.

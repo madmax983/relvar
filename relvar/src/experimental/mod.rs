@@ -12,7 +12,7 @@
 //! ```
 //! use relvar::{Database, InMemoryEngine, tuple};
 //! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::experimental::exporter::Exporter;
+//! use relvar::experimental::exporter;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
 //! let rel_type = RelationType::new(
@@ -22,10 +22,9 @@
 //! db.insert("TEST", tuple! { name: "Alice" }).unwrap();
 //!
 //! let relation = db.query("TEST").unwrap();
-//! let exporter = Exporter::new(&relation);
 //!
-//! println!("CSV:\n{}", exporter.to_csv(',').unwrap());
-//! println!("JSON:\n{}", exporter.to_json().unwrap());
+//! println!("CSV:\n{}", exporter::to_csv(&relation, ',').unwrap());
+//! println!("JSON:\n{}", exporter::to_json(&relation).unwrap());
 //! ```
 
 pub mod exporter;
