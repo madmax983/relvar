@@ -63,7 +63,6 @@ pub enum DatabaseError {
     AttributeNotFound(String, String),
 }
 
-
 /// Definition of a virtual relvar (view).
 ///
 /// TTM: RM Prescription 10 - Virtual relvars (views) re-evaluate their
