@@ -57,6 +57,14 @@ impl Relation {
     /// - Tuple values are preserved (associated with new names)
     /// - Mappings for non-existent attributes are silently ignored
     ///
+    /// # Naming Collisions
+    ///
+    /// If multiple attributes are mapped to the same target name (e.g., A -> C, B -> C),
+    /// the "Last Write Wins" rule applies based on the **lexicographical order of the source attributes**.
+    ///
+    /// Since attributes are stored in a `BTreeMap`, iteration order is determined by attribute name.
+    /// The attribute that comes later alphabetically will overwrite the value of the earlier one.
+    ///
     /// # Example
     ///
     /// ```
