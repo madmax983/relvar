@@ -1072,7 +1072,9 @@ mod overflow_tests {
         relation
             .insert(tuple! { id: 1i64, amount: i64::MAX })
             .unwrap();
-        relation.insert(tuple! { id: 2i64, amount: i64::MAX }).unwrap();
+        relation
+            .insert(tuple! { id: 2i64, amount: i64::MAX })
+            .unwrap();
 
         let result = relation.summarize(&[], &[Aggregation::avg("average", "amount")]);
 
