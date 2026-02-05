@@ -5,7 +5,6 @@
 //! - HeapFile - Unordered tuple storage
 //! - Page - Fixed-size disk blocks
 //! - Catalog - Relation metadata storage
-//! - BTreeIndex - Efficient key lookups
 //! - PersistentEngine - StorageEngine implementation with persistence
 //!
 //! This crate implements the physical storage layer and is feature-flagged
@@ -25,6 +24,4 @@ pub(crate) mod mvcc;
 pub use persistent_engine::PersistentEngine;
 
 // Re-export key storage types
-pub use storage::{
-    BTreeIndex, Catalog, CatalogError, HeapError, HeapFile, Page, PageError, PageFile,
-};
+pub use storage::{Catalog, CatalogError, HeapError, HeapFile, Page, PageError, PageFile};
