@@ -480,7 +480,10 @@ mod tests {
         assert!(aud_db.inner().relvar_exists("TEST"));
 
         // inner_mut()
-        aud_db.inner_mut().insert("TEST", tuple!{ id: 100i64 }).unwrap();
+        aud_db
+            .inner_mut()
+            .insert("TEST", tuple! { id: 100i64 })
+            .unwrap();
         assert_eq!(aud_db.query("TEST").unwrap().cardinality(), 1);
 
         // Mutation via inner_mut should NOT be logged
@@ -495,7 +498,7 @@ mod tests {
 
         // create_relvar
         let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
-        aud_db.create_relvar("TEST", rel_type).unwrap();
+        aud_db.create_relvar("TEST", rel_type.clone()).unwrap();
 
         // relvar_exists
         assert!(aud_db.relvar_exists("TEST"));
@@ -554,11 +557,9 @@ mod tests {
         aud_db.insert("TEST", tuple! { id: 1i64 }).unwrap();
 
         // define_virtual_relvar
-        aud_db.define_virtual_relvar(
-            "V_TEST",
-            rel_type,
-            |db| db.query("TEST")
-        ).unwrap();
+        aud_db
+            .define_virtual_relvar("V_TEST", rel_type, |db| db.query("TEST"))
+            .unwrap();
 
         assert!(aud_db.relvar_exists("V_TEST"));
 
@@ -583,21 +584,19 @@ mod tests {
         // Set PK
         let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
         let key_constraints = KeyConstraints::new().with_primary_key(pk);
-        aud_db.set_key_constraints("TEST", key_constraints).unwrap();
+        aud_db
+            .set_key_constraints("TEST", key_constraints)
+            .unwrap();
 
         // Get PK
         assert!(aud_db.get_key_constraints("TEST").is_some());
 
         // Set Check Constraint
-        let check = CheckConstraints::new().with_constraint(
-            CheckConstraint::from_expression(
-                "positive_id", "ID > 0",
-                ConstraintExpression::Gt(
-                    "id".to_string(),
-                    ValueOrRef::Value(ScalarValue::Int(0))
-                )
-            )
-        );
+        let check = CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
+            "positive_id",
+            "ID > 0",
+            ConstraintExpression::Gt("id".to_string(), ValueOrRef::Value(ScalarValue::Int(0))),
+        ));
         aud_db.set_check_constraints("TEST", check).unwrap();
 
         // Verify constraint logic via insert forwarding
