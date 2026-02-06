@@ -69,8 +69,8 @@ impl Relation {
     ///
     /// # Complexity
     ///
-    /// O(n * m) where n and m are the cardinalities of the two relations.
-    /// This is a nested-loop join implementation.
+    /// O(n + m) where n and m are the cardinalities of the two relations (assuming hash collisions are minimal).
+    /// This is a Hash Join implementation.
     ///
     /// # Example
     ///
@@ -126,17 +126,39 @@ impl Relation {
 
         let result_rel_type = RelationType::new(result_heading.clone());
 
-        // Perform join
+        // Perform Hash Join
+        // 1. Build phase: Index the right relation (other) by common attributes
+        let mut build_index: HashMap<Vec<crate::values::ScalarValue>, Vec<&Tuple>> = HashMap::new();
+
+        for tuple in other.tuples() {
+            let key: Vec<crate::values::ScalarValue> = common_attrs
+                .iter()
+                .map(|attr| {
+                    tuple
+                        .get(attr)
+                        .expect("Tuple should have attribute defined in heading")
+                        .clone()
+                })
+                .collect();
+            build_index.entry(key).or_default().push(tuple);
+        }
+
+        // 2. Probe phase: Scan left relation (self) and look up matches
         let mut joined_tuples = Vec::new();
 
         for tuple1 in self.tuples() {
-            for tuple2 in other.tuples() {
-                // Check if tuples match on common attributes
-                let matches = common_attrs
-                    .iter()
-                    .all(|attr| tuple1.get(attr) == tuple2.get(attr));
+            let key: Vec<crate::values::ScalarValue> = common_attrs
+                .iter()
+                .map(|attr| {
+                    tuple1
+                        .get(attr)
+                        .expect("Tuple should have attribute defined in heading")
+                        .clone()
+                })
+                .collect();
 
-                if matches {
+            if let Some(matching_tuples) = build_index.get(&key) {
+                for tuple2 in matching_tuples {
                     // Combine tuples
                     let mut combined_values = HashMap::new();
 
