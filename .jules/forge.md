@@ -9,3 +9,7 @@
 ## 2024-05-24 - Database Method Logic Extraction
 **Learning:** `Database` methods `insert`, `update`, and `delete` contained mixed levels of abstraction (validation, logic calculation, storage execution). Extracting "calculation" logic (e.g., `compute_relation_after_delete`) and "validation" logic (e.g., `validate_insert`) into helper methods significantly improved readability and separation of concerns.
 **Action:** When a method performs distinct phases (validate -> compute -> execute), extract each phase into a separate helper method.
+
+## 2024-05-25 - Storage Layer Duplication
+**Learning:** `HeapFile` contained significant code duplication between standard and versioned (MVCC) operations. Logic for extracting tuples and handling page insertion loops was copy-pasted, increasing maintenance burden.
+**Action:** Extract common logic into helper methods (`extract_all_tuples`, `find_page_for_insertion`) using internal traits (`SlotDescriptor`) to abstract over slight structural differences.

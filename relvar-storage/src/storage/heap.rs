@@ -137,6 +137,32 @@ struct VersionedSlotEntry {
     prev_version: Option<TupleId>,
 }
 
+/// Helper trait to abstract over SlotEntry and VersionedSlotEntry
+trait SlotDescriptor {
+    fn offset(&self) -> u32;
+    fn length(&self) -> u32;
+}
+
+impl SlotDescriptor for SlotEntry {
+    fn offset(&self) -> u32 {
+        self.offset
+    }
+
+    fn length(&self) -> u32 {
+        self.length
+    }
+}
+
+impl SlotDescriptor for VersionedSlotEntry {
+    fn offset(&self) -> u32 {
+        self.offset
+    }
+
+    fn length(&self) -> u32 {
+        self.length
+    }
+}
+
 /// Page layout: [slot_count (4 bytes)] [slot_entries...] [free_space] [...tuple_data]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SlottedPage {
@@ -223,19 +249,9 @@ impl HeapFile {
         self.check_tuple_size_limit(tuple_data.len())?;
 
         // Find a page with enough space, or create a new one
-        let mut page_id = 0;
-        loop {
-            match self.try_insert_into_page(page_id, &tuple_data) {
-                Ok(_slot) => {
-                    return Ok(()); // Discard slot, return success
-                }
-                Err(HeapError::PageFull) => {
-                    page_id += 1;
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
+        self.find_page_for_insertion(|heap, page_id| {
+            heap.try_insert_into_page(page_id, &tuple_data).map(|_| ())
+        })
     }
 
     /// Check if a tuple can theoretically fit in an empty page
@@ -261,6 +277,46 @@ impl HeapFile {
         Ok(())
     }
 
+    /// Helper to extract all tuples from a page based on slot entries.
+    /// This abstracts the common logic used in insert, update, delete, and GC operations.
+    fn extract_all_tuples<T: SlotDescriptor>(
+        &self,
+        page: &Page,
+        slots: &[Option<T>],
+    ) -> Result<Vec<Vec<u8>>, HeapError> {
+        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
+        // Maintain alignment with slots: push empty Vec for None slots
+        for slot_option in slots.iter() {
+            if let Some(slot_entry) = slot_option {
+                let raw_data =
+                    self.extract_raw_tuple_data(page, slot_entry.offset(), slot_entry.length())?;
+                existing_tuples.push(raw_data);
+            } else {
+                existing_tuples.push(Vec::new());
+            }
+        }
+        Ok(existing_tuples)
+    }
+
+    /// Finds the first page that can accommodate the insertion.
+    /// Retries on PageFull error by incrementing the page ID.
+    fn find_page_for_insertion<F, R>(&mut self, mut insert_fn: F) -> Result<R, HeapError>
+    where
+        F: FnMut(&mut Self, PageId) -> Result<R, HeapError>,
+    {
+        let mut page_id = 0;
+        loop {
+            match insert_fn(self, page_id) {
+                Ok(result) => return Ok(result),
+                Err(HeapError::PageFull) => {
+                    page_id += 1;
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
     /// Try to insert tuple data into a specific page
     fn try_insert_into_page(
         &mut self,
@@ -271,28 +327,18 @@ impl HeapFile {
         let page = self.page_file.read_page(page_id)?;
 
         // Read existing tuples from the page
-        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-        let mut slotted_page = if page.is_empty() {
-            SlottedPage {
-                slot_count: 0,
-                slots: Vec::new(),
-            }
+        let (mut slotted_page, mut existing_tuples) = if page.is_empty() {
+            (
+                SlottedPage {
+                    slot_count: 0,
+                    slots: Vec::new(),
+                },
+                Vec::new(),
+            )
         } else {
             let sp = self.deserialize_slotted_page(&page)?;
-
-            // Extract existing tuple data
-            // Maintain alignment with slots: push empty Vec for None slots
-            for slot_option in sp.slots.iter() {
-                if let Some(slot_entry) = slot_option {
-                    let raw_data =
-                        self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                    existing_tuples.push(raw_data);
-                } else {
-                    existing_tuples.push(Vec::new());
-                }
-            }
-
-            sp
+            let tuples = self.extract_all_tuples(&page, &sp.slots)?;
+            (sp, tuples)
         };
 
         // Calculate required space (account for 8-byte length prefix in page format)
@@ -580,19 +626,10 @@ impl HeapFile {
         self.check_versioned_tuple_size_limit(tuple_data.len())?;
 
         // Find a page with enough space, or create a new one
-        let mut page_id = 0;
-        loop {
-            match self.try_insert_into_page_versioned(page_id, &tuple_data, txn_id) {
-                Ok(slot) => {
-                    return Ok(TupleId { page_id, slot });
-                }
-                Err(HeapError::PageFull) => {
-                    page_id += 1;
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
+        self.find_page_for_insertion(|heap, page_id| {
+            heap.try_insert_into_page_versioned(page_id, &tuple_data, txn_id)
+                .map(|slot| TupleId { page_id, slot })
+        })
     }
 
     /// Check if a versioned tuple can theoretically fit in an empty page
@@ -634,29 +671,19 @@ impl HeapFile {
         let page = self.page_file.read_page(page_id)?;
 
         // Read existing tuples from the page
-        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-        let mut versioned_page = if page.is_empty() {
-            VersionedSlottedPage {
-                magic: VERSIONED_PAGE_MAGIC,
-                slot_count: 0,
-                slots: Vec::new(),
-            }
+        let (mut versioned_page, mut existing_tuples) = if page.is_empty() {
+            (
+                VersionedSlottedPage {
+                    magic: VERSIONED_PAGE_MAGIC,
+                    slot_count: 0,
+                    slots: Vec::new(),
+                },
+                Vec::new(),
+            )
         } else {
             let vp = self.deserialize_versioned_page(&page)?;
-
-            // Extract existing tuple data
-            // Maintain alignment with slots: push empty Vec for None slots
-            for slot_option in vp.slots.iter() {
-                if let Some(slot_entry) = slot_option {
-                    let raw_data =
-                        self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                    existing_tuples.push(raw_data);
-                } else {
-                    existing_tuples.push(Vec::new());
-                }
-            }
-
-            vp
+            let tuples = self.extract_all_tuples(&page, &vp.slots)?;
+            (vp, tuples)
         };
 
         // Find free slot or add new one
@@ -965,17 +992,7 @@ impl HeapFile {
         old_slot.xmax = Some(txn_id);
 
         // Extract all existing tuple data
-        // Maintain alignment with slots: push empty Vec for None slots
-        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-        for slot_option in versioned_page.slots.iter() {
-            if let Some(slot_entry) = slot_option {
-                let raw_data =
-                    self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                existing_tuples.push(raw_data);
-            } else {
-                existing_tuples.push(Vec::new());
-            }
-        }
+        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
 
         // Serialize and write updated page with old version marked
         let page_data =
@@ -991,19 +1008,10 @@ impl HeapFile {
         self.check_versioned_tuple_size_limit(new_tuple_data.len())?;
 
         // Find a page with space for new version
-        let mut page_id = 0;
-        loop {
-            match self.try_insert_new_version(page_id, &new_tuple_data, txn_id, old_tuple_id) {
-                Ok(slot) => {
-                    return Ok(TupleId { page_id, slot });
-                }
-                Err(HeapError::PageFull) => {
-                    page_id += 1;
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
+        self.find_page_for_insertion(|heap, page_id| {
+            heap.try_insert_new_version(page_id, &new_tuple_data, txn_id, old_tuple_id)
+                .map(|slot| TupleId { page_id, slot })
+        })
     }
 
     /// Try to insert a new version into a specific page (used by update)
@@ -1157,17 +1165,7 @@ impl HeapFile {
         slot.xmax = Some(txn_id);
 
         // Extract all existing tuple data
-        // Maintain alignment with slots: push empty Vec for None slots
-        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-        for slot_option in versioned_page.slots.iter() {
-            if let Some(slot_entry) = slot_option {
-                let raw_data =
-                    self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                existing_tuples.push(raw_data);
-            } else {
-                existing_tuples.push(Vec::new());
-            }
-        }
+        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
 
         // Serialize and write updated page
         let page_data =
@@ -1225,19 +1223,7 @@ impl HeapFile {
             };
 
             // Extract existing tuple data
-            // IMPORTANT: Maintain 1:1 correspondence with slots vector
-            // Push empty Vec for None slots to preserve indexing
-            let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-            for slot_option in versioned_page.slots.iter() {
-                if let Some(slot_entry) = slot_option {
-                    let raw_data =
-                        self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                    existing_tuples.push(raw_data);
-                } else {
-                    // None slot - push empty to maintain index alignment
-                    existing_tuples.push(Vec::new());
-                }
-            }
+            let mut existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
 
             let mut page_modified = false;
 
