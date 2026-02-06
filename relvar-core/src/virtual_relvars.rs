@@ -6,6 +6,11 @@ use crate::types::RelationType;
 use crate::values::Relation;
 use std::collections::HashMap;
 
+/// Type alias for virtual relvar evaluator function.
+///
+/// Takes a mutable reference to a [`QueryExecutor`] and returns the computed relation.
+pub type VirtualRelvarEvaluator = fn(&mut dyn QueryExecutor) -> Result<Relation, DatabaseError>;
+
 /// Definition of a virtual relvar (view).
 ///
 /// TTM: RM Prescription 10 - Virtual relvars (views) re-evaluate their
@@ -17,9 +22,7 @@ pub struct VirtualRelvarDefinition {
     /// The relation type (heading).
     pub relation_type: RelationType,
     /// The evaluation function that computes the virtual relvar's contents.
-    ///
-    /// Takes a mutable reference to a [`QueryExecutor`] and returns the computed relation.
-    pub evaluator: fn(&mut dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+    pub evaluator: VirtualRelvarEvaluator,
 }
 
 /// Manages virtual relvars (views).
@@ -44,7 +47,7 @@ impl VirtualRelvarManager {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&mut dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+        evaluator: VirtualRelvarEvaluator,
     ) -> Result<(), DatabaseError> {
         if self.virtual_relvars.contains_key(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -92,10 +95,7 @@ impl VirtualRelvarManager {
     /// Get the evaluator function for a virtual relvar.
     ///
     /// Returns `None` if the relvar does not exist.
-    pub fn get_evaluator(
-        &self,
-        name: &str,
-    ) -> Option<fn(&mut dyn QueryExecutor) -> Result<Relation, DatabaseError>> {
+    pub fn get_evaluator(&self, name: &str) -> Option<VirtualRelvarEvaluator> {
         self.virtual_relvars.get(name).map(|def| def.evaluator)
     }
 }

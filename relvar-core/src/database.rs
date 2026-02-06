@@ -12,7 +12,7 @@ use crate::storage_engine::StorageEngine;
 use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
-use crate::virtual_relvars::VirtualRelvarManager;
+use crate::virtual_relvars::{VirtualRelvarEvaluator, VirtualRelvarManager};
 
 /// A relational database instance.
 ///
@@ -566,7 +566,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&mut dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+        evaluator: VirtualRelvarEvaluator,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
