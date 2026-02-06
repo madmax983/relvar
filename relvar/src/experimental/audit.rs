@@ -584,9 +584,7 @@ mod tests {
         // Set PK
         let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
         let key_constraints = KeyConstraints::new().with_primary_key(pk);
-        aud_db
-            .set_key_constraints("TEST", key_constraints)
-            .unwrap();
+        aud_db.set_key_constraints("TEST", key_constraints).unwrap();
 
         // Get PK
         assert!(aud_db.get_key_constraints("TEST").is_some());
