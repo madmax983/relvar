@@ -172,6 +172,22 @@ impl<E: StorageEngine> Database<E> {
 
     /// Create a new base relvar (stored relation).
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new().with_attribute("id", ScalarType::Int)
+    /// );
+    ///
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    /// assert!(db.relvar_exists("TEST"));
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns `DatabaseError::RelationAlreadyExists` if a relation with this name exists.
@@ -189,6 +205,25 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Drop a base relvar.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new().with_attribute("id", ScalarType::Int)
+    /// );
+    ///
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    /// assert!(db.relvar_exists("TEST"));
+    ///
+    /// db.drop_relvar("TEST").unwrap();
+    /// assert!(!db.relvar_exists("TEST"));
+    /// ```
     ///
     /// # Errors
     ///
@@ -399,6 +434,28 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Insert a tuple into a relation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::Int)
+    ///         .with_attribute("name", ScalarType::String)
+    /// );
+    /// db.create_relvar("USERS", rel_type).unwrap();
+    ///
+    /// db.insert("USERS", tuple! { id: 1i64, name: "Alice" }).unwrap();
+    ///
+    /// let users = db.query("USERS").unwrap();
+    /// assert_eq!(users.cardinality(), 1);
+    /// ```
     ///
     /// # Errors
     ///
