@@ -13,3 +13,7 @@
 ## 2024-05-25 - Storage Layer Duplication
 **Learning:** `HeapFile` contained significant code duplication between standard and versioned (MVCC) operations. Logic for extracting tuples and handling page insertion loops was copy-pasted, increasing maintenance burden.
 **Action:** Extract common logic into helper methods (`extract_all_tuples`, `find_page_for_insertion`) using internal traits (`SlotDescriptor`) to abstract over slight structural differences.
+
+## 2024-05-26 - HeapFile Helper Extraction
+**Learning:** `HeapFile` still contained significant duplication in tuple extraction (`scan`) and slot allocation (`insert`). Extracting generic helpers (`find_or_allocate_slot`, `extract_tuples_from_slots`, `validate_slot_bounds`) simplified `scan` and `insert` logic, removing redundant loops and bounds checks.
+**Action:** Look for "copy-paste" logic in distinct but similar code paths (like versioned vs standard page handling) and try to unify them with generic helpers or traits, even if the data structures are slightly different.
