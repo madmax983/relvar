@@ -16,11 +16,16 @@
 pub mod algebra;
 pub mod constraints;
 pub mod database;
+pub mod error;
 pub mod storage_engine;
+pub mod traits;
 pub mod types;
 pub mod values;
+pub mod virtual_relvars;
 
-pub use database::{Database, DatabaseError};
+pub use database::Database;
+pub use error::DatabaseError;
+pub use traits::QueryExecutor;
 pub use types::{RelationType, ScalarType, TupleType};
 pub use values::{Relation, ScalarValue, Tuple};
 

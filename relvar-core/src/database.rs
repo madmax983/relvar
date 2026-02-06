@@ -4,120 +4,15 @@
 //! for all database operations.
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraintError, CheckConstraints, ConstraintManager,
-    ConstraintManagerError, ForeignKeyConstraints, KeyConstraints,
+    AttributeConstraints, CheckConstraints, ConstraintManager, ForeignKeyConstraints,
+    KeyConstraints,
 };
-use crate::storage_engine::{StorageEngine, StorageError};
+use crate::error::DatabaseError;
+use crate::storage_engine::StorageEngine;
+use crate::traits::QueryExecutor;
 use crate::types::RelationType;
-use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
-
-use std::collections::HashMap;
-use thiserror::Error;
-
-/// Errors that can occur during database operations.
-#[derive(Debug, Error)]
-pub enum DatabaseError {
-    /// A storage error occurred.
-    #[error("Storage error: {0}")]
-    Storage(#[from] StorageError),
-
-    /// An error occurred with a relation value.
-    #[error("Relation error: {0}")]
-    Relation(#[from] RelationError),
-
-    /// Attempted to create a relation that already exists.
-    #[error("Relation {0} already exists")]
-    RelationAlreadyExists(String),
-
-    /// The specified relation does not exist.
-    #[error("Relation {0} not found")]
-    RelationNotFound(String),
-
-    /// The tuple's type does not match the relation's heading.
-    #[error("Tuple type does not match relation type")]
-    TupleMismatch,
-
-    /// Primary key constraint violation.
-    #[error("Primary key violation")]
-    PrimaryKeyViolation,
-
-    /// Candidate key constraint violation.
-    #[error("Candidate key violation")]
-    CandidateKeyViolation,
-
-    /// Foreign key constraint violation.
-    #[error("Foreign key violation: {0}")]
-    ForeignKeyViolation(String),
-
-    /// Type constraint violation.
-    #[error("Type constraint violation: {0}")]
-    TypeConstraintViolation(String),
-
-    /// CHECK constraint violation.
-    #[error("CHECK constraint violation: {0}")]
-    CheckConstraintViolation(#[from] CheckConstraintError),
-
-    /// Transaction error.
-    #[error("Transaction error: {0}")]
-    TransactionError(String),
-
-    /// Cannot modify a virtual relvar.
-    #[error("Cannot modify virtual relvar {0}")]
-    CannotModifyVirtualRelvar(String),
-
-    /// Cannot drop a system relvar.
-    #[error("Cannot drop system relvar {0}")]
-    CannotDropSystemRelvar(String),
-
-    /// Duplicate attribute name.
-    #[error("Duplicate attribute name: {0}")]
-    DuplicateAttributeName(String),
-
-    /// The attribute does not exist.
-    #[error("Attribute {0} not found in relation {1}")]
-    AttributeNotFound(String, String),
-}
-
-impl From<ConstraintManagerError> for DatabaseError {
-    fn from(err: ConstraintManagerError) -> Self {
-        match err {
-            ConstraintManagerError::Storage(e) => DatabaseError::Storage(e),
-            ConstraintManagerError::Relation(e) => DatabaseError::Relation(e),
-            ConstraintManagerError::RelationNotFound(n) => DatabaseError::RelationNotFound(n),
-            ConstraintManagerError::AttributeNotFound(a, r) => {
-                DatabaseError::AttributeNotFound(a, r)
-            }
-            ConstraintManagerError::TupleMismatch => DatabaseError::TupleMismatch,
-            ConstraintManagerError::PrimaryKeyViolation => DatabaseError::PrimaryKeyViolation,
-            ConstraintManagerError::CandidateKeyViolation => DatabaseError::CandidateKeyViolation,
-            ConstraintManagerError::ForeignKeyViolation(s) => DatabaseError::ForeignKeyViolation(s),
-            ConstraintManagerError::TypeConstraintViolation(s) => {
-                DatabaseError::TypeConstraintViolation(s)
-            }
-            ConstraintManagerError::CheckConstraintViolation(e) => {
-                DatabaseError::CheckConstraintViolation(e)
-            }
-            ConstraintManagerError::TransactionError(s) => DatabaseError::TransactionError(s),
-        }
-    }
-}
-
-/// Definition of a virtual relvar (view).
-///
-/// TTM: RM Prescription 10 - Virtual relvars (views) re-evaluate their
-/// defining expression on each query.
-#[derive(Debug, Clone)]
-pub struct VirtualRelvarDefinition<E: StorageEngine> {
-    /// The name of the virtual relvar.
-    pub name: String,
-    /// The relation type (heading).
-    pub relation_type: RelationType,
-    /// The evaluation function that computes the virtual relvar's contents.
-    ///
-    /// Takes a mutable reference to the database and returns the computed relation.
-    pub evaluator: fn(&mut Database<E>) -> Result<Relation, DatabaseError>,
-}
+use crate::virtual_relvars::VirtualRelvarManager;
 
 /// A relational database instance.
 ///
@@ -154,8 +49,14 @@ pub struct Database<E: StorageEngine> {
     in_transaction: bool,
     /// Transaction savepoint.
     transaction_snapshot: Option<E::Snapshot>,
-    /// Virtual relvars defined by expressions.
-    virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
+    /// Manages virtual relvars (views).
+    virtual_relvars: VirtualRelvarManager,
+}
+
+impl<E: StorageEngine> QueryExecutor for Database<E> {
+    fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
+        self.query(relation_name)
+    }
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -166,7 +67,7 @@ impl<E: StorageEngine> Database<E> {
             constraints: ConstraintManager::new(),
             in_transaction: false,
             transaction_snapshot: None,
-            virtual_relvars: HashMap::new(),
+            virtual_relvars: VirtualRelvarManager::new(),
         }
     }
 
@@ -180,7 +81,7 @@ impl<E: StorageEngine> Database<E> {
         name: &str,
         relation_type: RelationType,
     ) -> Result<(), DatabaseError> {
-        if self.engine.relation_exists(name) || self.virtual_relvars.contains_key(name) {
+        if self.engine.relation_exists(name) || self.virtual_relvars.exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
         }
 
@@ -204,13 +105,13 @@ impl<E: StorageEngine> Database<E> {
 
     /// Check if a relvar exists (base or virtual).
     pub fn relvar_exists(&self, name: &str) -> bool {
-        self.engine.relation_exists(name) || self.virtual_relvars.contains_key(name)
+        self.engine.relation_exists(name) || self.virtual_relvars.exists(name)
     }
 
     /// List all relvar names (base and virtual).
     pub fn list_relvars(&self) -> Vec<String> {
         let mut names = self.engine.list_relations();
-        names.extend(self.virtual_relvars.keys().cloned());
+        names.extend(self.virtual_relvars.list_names().cloned());
         names
     }
 
@@ -223,8 +124,8 @@ impl<E: StorageEngine> Database<E> {
     /// Returns `DatabaseError::RelationNotFound` if the relvar doesn't exist.
     pub fn get_relvar_type(&self, name: &str) -> Result<RelationType, DatabaseError> {
         // Check virtual relvars first
-        if let Some(def) = self.virtual_relvars.get(name) {
-            return Ok(def.relation_type.clone());
+        if let Some(rel_type) = self.virtual_relvars.get_type(name) {
+            return Ok(rel_type.clone());
         }
 
         // Check base relvars
@@ -441,8 +342,10 @@ impl<E: StorageEngine> Database<E> {
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
     pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Check if this is a virtual relvar
-        if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
-            return (virtual_relvar.evaluator)(self);
+        if let Some(evaluator) = self.virtual_relvars.get_evaluator(relation_name) {
+            // Drop borrow on self.virtual_relvars by extracting evaluator (it's a fn pointer, so it's Copy)
+            // Then call it passing self (which coerces to &mut dyn QueryExecutor)
+            return evaluator(self);
         }
 
         // Otherwise, load from engine
@@ -663,22 +566,14 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&mut Database<E>) -> Result<Relation, DatabaseError>,
+        evaluator: fn(&mut dyn QueryExecutor) -> Result<Relation, DatabaseError>,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
         }
 
-        self.virtual_relvars.insert(
-            name.to_string(),
-            VirtualRelvarDefinition {
-                name: name.to_string(),
-                relation_type,
-                evaluator,
-            },
-        );
-
-        Ok(())
+        self.virtual_relvars
+            .define_virtual_relvar(name, relation_type, evaluator)
     }
 
     /// Drop a virtual relvar.
@@ -687,16 +582,13 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// Returns an error if the virtual relvar doesn't exist.
     pub fn drop_virtual_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
-        self.virtual_relvars
-            .remove(name)
-            .ok_or_else(|| DatabaseError::RelationNotFound(name.to_string()))?;
-        Ok(())
+        self.virtual_relvars.drop_virtual_relvar(name)
     }
 
     // --- Helper Methods ---
 
     fn ensure_not_virtual(&self, relation_name: &str) -> Result<(), DatabaseError> {
-        if self.virtual_relvars.contains_key(relation_name) {
+        if self.virtual_relvars.exists(relation_name) {
             Err(DatabaseError::CannotModifyVirtualRelvar(
                 relation_name.to_string(),
             ))
@@ -789,7 +681,7 @@ mod tests {
     use super::*;
     use crate::constraints::check::{CheckConstraint, CheckConstraints};
     use crate::constraints::expression::{ConstraintExpression, ValueOrRef};
-    use crate::storage_engine::InMemoryEngine;
+    use crate::storage_engine::{InMemoryEngine, StorageError};
     use crate::tuple;
     use crate::types::{ScalarType, TupleType};
     use crate::values::ScalarValue;
@@ -1061,7 +953,7 @@ mod tests {
         db.define_virtual_relvar(
             "NAMES",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &mut dyn QueryExecutor| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1308,7 +1200,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &mut dyn QueryExecutor| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1344,7 +1236,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &mut dyn QueryExecutor| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1365,11 +1257,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
         db.create_relvar("TEST", test_rel_type()).unwrap();
 
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("TEST"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &mut dyn QueryExecutor| {
+            db.query("TEST")
+        })
         .unwrap();
 
         // Try to delete
@@ -1386,11 +1276,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
         db.create_relvar("TEST", test_rel_type()).unwrap();
 
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("TEST"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &mut dyn QueryExecutor| {
+            db.query("TEST")
+        })
         .unwrap();
 
         // Try to update
@@ -1413,11 +1301,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
         // Define virtual relvar that queries nonexistent base
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("NONEXISTENT"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &mut dyn QueryExecutor| {
+            db.query("NONEXISTENT")
+        })
         .unwrap();
 
         // Querying it should fail
