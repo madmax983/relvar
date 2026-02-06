@@ -53,7 +53,7 @@ pub enum ExpressionError {
 }
 
 /// Maximum allowed depth for expression trees to prevent stack overflow.
-const MAX_RECURSION_DEPTH: usize = 500;
+const MAX_RECURSION_DEPTH: usize = 100;
 
 /// Represents a value or attribute reference in a constraint expression.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -750,8 +750,8 @@ mod tests {
         let mut expr =
             ConstraintExpression::Eq("x".to_string(), ValueOrRef::Value(ScalarValue::Int(1)));
 
-        // Exceed limit (500)
-        for _ in 0..1000 {
+        // Exceed limit (100)
+        for _ in 0..200 {
             expr = ConstraintExpression::Not(Box::new(expr));
         }
 
