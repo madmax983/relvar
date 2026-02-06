@@ -4,8 +4,8 @@
 //! for all database operations.
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraintError, CheckConstraints, ConstraintManager,
-    ConstraintManagerError, ForeignKeyConstraints, KeyConstraints,
+    AttributeConstraints, CheckConstraints, ConstraintManager, ConstraintManagerError,
+    ForeignKeyConstraints, KeyConstraints,
 };
 use crate::storage_engine::{StorageEngine, StorageError};
 use crate::types::RelationType;
@@ -38,25 +38,9 @@ pub enum DatabaseError {
     #[error("Tuple type does not match relation type")]
     TupleMismatch,
 
-    /// Primary key constraint violation.
-    #[error("Primary key violation")]
-    PrimaryKeyViolation,
-
-    /// Candidate key constraint violation.
-    #[error("Candidate key violation")]
-    CandidateKeyViolation,
-
-    /// Foreign key constraint violation.
-    #[error("Foreign key violation: {0}")]
-    ForeignKeyViolation(String),
-
-    /// Type constraint violation.
-    #[error("Type constraint violation: {0}")]
-    TypeConstraintViolation(String),
-
-    /// CHECK constraint violation.
-    #[error("CHECK constraint violation: {0}")]
-    CheckConstraintViolation(#[from] CheckConstraintError),
+    /// Constraint violation.
+    #[error("Constraint violation: {0}")]
+    Constraint(#[from] ConstraintManagerError),
 
     /// Transaction error.
     #[error("Transaction error: {0}")]
@@ -77,30 +61,6 @@ pub enum DatabaseError {
     /// The attribute does not exist.
     #[error("Attribute {0} not found in relation {1}")]
     AttributeNotFound(String, String),
-}
-
-impl From<ConstraintManagerError> for DatabaseError {
-    fn from(err: ConstraintManagerError) -> Self {
-        match err {
-            ConstraintManagerError::Storage(e) => DatabaseError::Storage(e),
-            ConstraintManagerError::Relation(e) => DatabaseError::Relation(e),
-            ConstraintManagerError::RelationNotFound(n) => DatabaseError::RelationNotFound(n),
-            ConstraintManagerError::AttributeNotFound(a, r) => {
-                DatabaseError::AttributeNotFound(a, r)
-            }
-            ConstraintManagerError::TupleMismatch => DatabaseError::TupleMismatch,
-            ConstraintManagerError::PrimaryKeyViolation => DatabaseError::PrimaryKeyViolation,
-            ConstraintManagerError::CandidateKeyViolation => DatabaseError::CandidateKeyViolation,
-            ConstraintManagerError::ForeignKeyViolation(s) => DatabaseError::ForeignKeyViolation(s),
-            ConstraintManagerError::TypeConstraintViolation(s) => {
-                DatabaseError::TypeConstraintViolation(s)
-            }
-            ConstraintManagerError::CheckConstraintViolation(e) => {
-                DatabaseError::CheckConstraintViolation(e)
-            }
-            ConstraintManagerError::TransactionError(s) => DatabaseError::TransactionError(s),
-        }
-    }
 }
 
 /// Definition of a virtual relvar (view).
@@ -458,7 +418,7 @@ impl<E: StorageEngine> Database<E> {
     /// Returns an error if:
     /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
     /// - Deleting the tuples would violate a foreign key constraint in another relation
-    ///   ([`DatabaseError::ForeignKeyViolation`])
+    ///   ([`ConstraintManagerError::ForeignKeyViolation`])
     ///
     /// # Example
     ///
@@ -515,10 +475,10 @@ impl<E: StorageEngine> Database<E> {
     /// Returns an error if:
     /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
     /// - The updated tuple doesn't match the relation type ([`DatabaseError::TupleMismatch`])
-    /// - A key constraint is violated ([`DatabaseError::PrimaryKeyViolation`], [`DatabaseError::CandidateKeyViolation`])
-    /// - A foreign key constraint is violated ([`DatabaseError::ForeignKeyViolation`])
-    /// - A type constraint is violated ([`DatabaseError::TypeConstraintViolation`])
-    /// - A CHECK constraint is violated ([`DatabaseError::CheckConstraintViolation`])
+    /// - A key constraint is violated ([`ConstraintManagerError::PrimaryKeyViolation`], [`ConstraintManagerError::CandidateKeyViolation`])
+    /// - A foreign key constraint is violated ([`ConstraintManagerError::ForeignKeyViolation`])
+    /// - A type constraint is violated ([`ConstraintManagerError::TypeConstraintViolation`])
+    /// - A CHECK constraint is violated ([`ConstraintManagerError::CheckConstraintViolation`])
     ///
     /// # Example
     ///
@@ -905,7 +865,12 @@ mod tests {
         // Duplicate primary key should fail
         let result = db.insert("TEST", tuple! { id: 1i64, name: "Bob" });
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::PrimaryKeyViolation)));
+        assert!(matches!(
+            result,
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::PrimaryKeyViolation
+            ))
+        ));
     }
 
     #[test]
@@ -927,7 +892,12 @@ mod tests {
         // Duplicate candidate key should fail
         let result = db.insert("TEST", tuple! { id: 2i64, name: "Alice" });
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::CandidateKeyViolation)));
+        assert!(matches!(
+            result,
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::CandidateKeyViolation
+            ))
+        ));
     }
 
     #[test]
@@ -978,7 +948,12 @@ mod tests {
         // Insert with invalid foreign key should fail
         let result = db.insert("EMP", tuple! { emp_id: 2i64, dept_id: 99i64 });
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::ForeignKeyViolation(_))));
+        assert!(matches!(
+            result,
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::ForeignKeyViolation(_)
+            ))
+        ));
     }
 
     #[test]
@@ -1009,7 +984,9 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result,
-            Err(DatabaseError::TypeConstraintViolation(_))
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::TypeConstraintViolation(_)
+            ))
         ));
 
         // Value above max should fail
@@ -1017,7 +994,9 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result,
-            Err(DatabaseError::TypeConstraintViolation(_))
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::TypeConstraintViolation(_)
+            ))
         ));
     }
 
@@ -1119,7 +1098,12 @@ mod tests {
         // Deleting parent should fail due to foreign key
         let result = db.delete("PARENT", |_| true);
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::ForeignKeyViolation(_))));
+        assert!(matches!(
+            result,
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::ForeignKeyViolation(_)
+            ))
+        ));
     }
 
     #[test]
@@ -1146,7 +1130,12 @@ mod tests {
             },
         );
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::PrimaryKeyViolation)));
+        assert!(matches!(
+            result,
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::PrimaryKeyViolation
+            ))
+        ));
     }
 
     #[test]
@@ -1516,7 +1505,12 @@ mod tests {
         // Should fail
         let result = db.set_foreign_key_constraints("CHILD", fk_constraints);
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::ForeignKeyViolation(_))));
+        assert!(matches!(
+            result,
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::ForeignKeyViolation(_)
+            ))
+        ));
     }
 
     #[test]
@@ -1673,7 +1667,12 @@ mod tests {
         );
 
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::CandidateKeyViolation)));
+        assert!(matches!(
+            result,
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::CandidateKeyViolation
+            ))
+        ));
     }
 
     #[test]
@@ -1731,7 +1730,9 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result,
-            Err(DatabaseError::CheckConstraintViolation(_))
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::CheckConstraintViolation(_)
+            ))
         ));
     }
 
@@ -1767,7 +1768,9 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result,
-            Err(DatabaseError::CheckConstraintViolation(_))
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::CheckConstraintViolation(_)
+            ))
         ));
     }
 
