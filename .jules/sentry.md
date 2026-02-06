@@ -21,3 +21,7 @@
 ## 2026-06-15 - Unnecessary Integer Overflow in Aggregation
 **Learning:** `Avg` aggregation was using `i64` accumulator, causing it to fail on large datasets where the sum exceeds `i64::MAX` even if the average is small.
 **Action:** Use `i128` (or larger type) accumulators for integer aggregations to prevent intermediate overflows.
+
+## 2026-10-27 - Stack Overflow in Recursive Expression Evaluation
+**Learning:** `ConstraintExpression::evaluate` recursively traverses the expression tree without depth limits. A deeply nested expression (e.g., created via JSON) causes a stack overflow crash.
+**Action:** Enforce recursion limits in tree traversal functions or use iterative algorithms. Add a "deep recursion" test case to verify graceful failure.

@@ -46,7 +46,14 @@ pub enum ExpressionError {
     /// Invalid comparison operation for the given types.
     #[error("Invalid comparison: {0}")]
     InvalidComparison(String),
+
+    /// The expression exceeds the maximum allowed recursion depth.
+    #[error("Recursion limit exceeded")]
+    RecursionLimitExceeded,
 }
+
+/// Maximum allowed depth for expression trees to prevent stack overflow.
+const MAX_RECURSION_DEPTH: usize = 500;
 
 /// Represents a value or attribute reference in a constraint expression.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -160,6 +167,14 @@ impl ConstraintExpression {
     /// assert!(expr.evaluate(&tuple).unwrap());
     /// ```
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
+        self.evaluate_with_depth(tuple, 0)
+    }
+
+    fn evaluate_with_depth(&self, tuple: &Tuple, depth: usize) -> Result<bool, ExpressionError> {
+        if depth > MAX_RECURSION_DEPTH {
+            return Err(ExpressionError::RecursionLimitExceeded);
+        }
+
         match self {
             ConstraintExpression::Eq(attr, value_or_ref) => {
                 let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
@@ -185,13 +200,11 @@ impl ConstraintExpression {
                 let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
                 Ok(left >= right)
             }
-            ConstraintExpression::And(left, right) => {
-                Ok(left.evaluate(tuple)? && right.evaluate(tuple)?)
-            }
-            ConstraintExpression::Or(left, right) => {
-                Ok(left.evaluate(tuple)? || right.evaluate(tuple)?)
-            }
-            ConstraintExpression::Not(expr) => Ok(!expr.evaluate(tuple)?),
+            ConstraintExpression::And(left, right) => Ok(left.evaluate_with_depth(tuple, depth + 1)?
+                && right.evaluate_with_depth(tuple, depth + 1)?),
+            ConstraintExpression::Or(left, right) => Ok(left.evaluate_with_depth(tuple, depth + 1)?
+                || right.evaluate_with_depth(tuple, depth + 1)?),
+            ConstraintExpression::Not(expr) => Ok(!expr.evaluate_with_depth(tuple, depth + 1)?),
             ConstraintExpression::AttrCmp { left, op, right } => {
                 let left_value = tuple
                     .get(left)
@@ -727,5 +740,29 @@ mod tests {
         let result = expr.evaluate(&tuple);
         assert!(result.is_err());
         assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
+    }
+
+    #[test]
+    fn test_deeply_nested_expression_fails_gracefully() {
+        // Build a deep expression tree: Not(Not(Not(...)))
+        let mut expr = ConstraintExpression::Eq(
+            "x".to_string(),
+            ValueOrRef::Value(ScalarValue::Int(1)),
+        );
+
+        // Exceed limit (500)
+        for _ in 0..1000 {
+            expr = ConstraintExpression::Not(Box::new(expr));
+        }
+
+        let tuple = tuple! { x: 1i64 };
+
+        // Should return error instead of crashing
+        let result = expr.evaluate(&tuple);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ExpressionError::RecursionLimitExceeded
+        ));
     }
 }
