@@ -13,7 +13,7 @@ use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
 
 use std::collections::HashMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use thiserror::Error;
 
 /// Errors that can occur during database operations.
