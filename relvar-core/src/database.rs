@@ -474,11 +474,10 @@ impl<E: StorageEngine> Database<E> {
 
         // Check if this is a virtual relvar
         // We need to extract the evaluator to avoid borrowing self immutably while calling it mutably
-        let evaluator = if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
-            Some(virtual_relvar.evaluator)
-        } else {
-            None
-        };
+        let evaluator = self
+            .virtual_relvars
+            .get(relation_name)
+            .map(|virtual_relvar| virtual_relvar.evaluator);
 
         if let Some(evaluator) = evaluator {
             self.evaluating_relvars.push(relation_name.to_string());
