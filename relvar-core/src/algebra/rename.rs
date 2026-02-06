@@ -108,25 +108,22 @@ impl Relation {
         let new_rel_type = RelationType::new(new_heading.clone());
 
         // Rename attributes in each tuple
-        let renamed_tuples: Vec<_> = self
-            .tuples()
-            .map(|tuple| {
-                let mut values = HashMap::new();
+        let renamed_tuples = self.tuples().map(|tuple| {
+            let mut values = HashMap::new();
 
-                for (old_name, value) in tuple.values() {
-                    let new_name = mappings
-                        .iter()
-                        .find(|(from, _)| from == old_name)
-                        .map(|(_, to)| *to)
-                        .unwrap_or(old_name.as_str());
+            for (old_name, value) in tuple.values() {
+                let new_name = mappings
+                    .iter()
+                    .find(|(from, _)| from == old_name)
+                    .map(|(_, to)| *to)
+                    .unwrap_or(old_name.as_str());
 
-                    values.insert(new_name.to_string(), value.clone());
-                }
+                values.insert(new_name.to_string(), value.clone());
+            }
 
-                Tuple::new(new_heading.clone(), values)
-                    .expect("Rename should maintain type consistency")
-            })
-            .collect();
+            Tuple::new(new_heading.clone(), values)
+                .expect("Rename should maintain type consistency")
+        });
 
         Relation::from_tuples(new_rel_type, renamed_tuples)
             .expect("Renamed tuples should conform to new relation type")

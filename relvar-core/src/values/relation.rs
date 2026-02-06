@@ -195,6 +195,19 @@ impl Relation {
         }
     }
 
+    /// Creates a new empty relation with the given type and initial capacity.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_type` - The type defining the relation's structure
+    /// * `capacity` - The initial capacity of the underlying storage
+    pub fn with_capacity(relation_type: RelationType, capacity: usize) -> Self {
+        Self {
+            relation_type,
+            body: HashSet::with_capacity(capacity),
+        }
+    }
+
     /// Creates a relation from a type and an iterable of tuples.
     ///
     /// This is useful for creating a pre-populated relation. Duplicate
@@ -233,9 +246,12 @@ impl Relation {
         relation_type: RelationType,
         tuples: impl IntoIterator<Item = Tuple>,
     ) -> Result<Self, RelationError> {
-        let mut body = HashSet::new();
+        let iter = tuples.into_iter();
+        let (lower, _upper) = iter.size_hint();
+        // Use lower bound as a conservative estimate to avoid over-allocation if upper is None or very large
+        let mut body = HashSet::with_capacity(lower);
 
-        for tuple in tuples {
+        for tuple in iter {
             // Verify tuple conforms to the relation type
             if tuple.tuple_type() != relation_type.heading() {
                 return Err(RelationError::TypeMismatch);

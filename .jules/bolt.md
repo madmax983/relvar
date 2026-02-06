@@ -7,3 +7,7 @@
 ## 2024-05-24 - Avoiding Clones in Update/Delete
 **Learning:** `Relation::insert` takes `Tuple` by value. Iterating over `Relation` using `IntoIterator` allows moving tuples from old to new relation during updates/deletes, saving O(N) clones.
 **Action:** When refactoring collection transformations, always check if the source collection can be consumed (`into_iter`) to avoid cloning elements.
+
+## 2026-02-05 - Pre-allocation in Collection Transformations
+**Learning:** Relational algebra operations often involve transforming one relation to another with preserved or predictable cardinality. Naively collecting into a `Vec` before building a `HashSet` (or other collection) incurs double allocation.
+**Action:** Use `Iterator::size_hint` in constructors (like `from_tuples`) and pass iterators directly instead of intermediate collections. Add `with_capacity` constructors to custom collection types.

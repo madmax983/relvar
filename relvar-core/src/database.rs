@@ -673,7 +673,11 @@ impl<E: StorageEngine> Database<E> {
     where
         F: Fn(&Tuple) -> bool,
     {
-        let mut new_relation = Relation::new(current_relation.relation_type().clone());
+        // Pre-allocate new relation with same capacity as current, assuming worst case (no deletions)
+        let mut new_relation = Relation::with_capacity(
+            current_relation.relation_type().clone(),
+            current_relation.cardinality(),
+        );
         let mut delete_count = 0;
 
         for tuple in current_relation {
@@ -699,7 +703,9 @@ impl<E: StorageEngine> Database<E> {
     {
         let relation_type = current_relation.relation_type().clone();
         let expected_type = relation_type.tuple_type().clone();
-        let mut new_relation = Relation::new(relation_type);
+        // Pre-allocate new relation with same capacity as current, as update preserves cardinality
+        let mut new_relation =
+            Relation::with_capacity(relation_type, current_relation.cardinality());
         let mut update_count = 0;
 
         for tuple in current_relation {
