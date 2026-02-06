@@ -46,6 +46,8 @@ use relvar_core::database::{Database, DatabaseError};
 use relvar_core::storage_engine::StorageEngine;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
+#[cfg(test)]
+use relvar_core::values::ScalarValue;
 use relvar_core::values::{Relation, Tuple};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -464,5 +466,147 @@ mod tests {
         // If recursion wasn't guarded, we'd have 2 or more (stack overflow)
         let logs = aud_db.query(AUDIT_LOG_NAME).unwrap();
         assert_eq!(logs.cardinality(), 1);
+    }
+
+    #[test]
+    fn test_forwarding_accessors() {
+        let db = Database::new(InMemoryEngine::new());
+        let mut aud_db = AuditedDatabase::new(db).unwrap();
+
+        let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        aud_db.create_relvar("TEST", rel_type).unwrap();
+
+        // inner()
+        assert!(aud_db.inner().relvar_exists("TEST"));
+
+        // inner_mut()
+        aud_db.inner_mut().insert("TEST", tuple!{ id: 100i64 }).unwrap();
+        assert_eq!(aud_db.query("TEST").unwrap().cardinality(), 1);
+
+        // Mutation via inner_mut should NOT be logged
+        let logs = aud_db.query(AUDIT_LOG_NAME).unwrap();
+        assert_eq!(logs.cardinality(), 0);
+    }
+
+    #[test]
+    fn test_forwarding_schema_ops() {
+        let db = Database::new(InMemoryEngine::new());
+        let mut aud_db = AuditedDatabase::new(db).unwrap();
+
+        // create_relvar
+        let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        aud_db.create_relvar("TEST", rel_type).unwrap();
+
+        // relvar_exists
+        assert!(aud_db.relvar_exists("TEST"));
+
+        // list_relvars
+        let relvars = aud_db.list_relvars();
+        assert!(relvars.contains(&"TEST".to_string()));
+        assert!(relvars.contains(&AUDIT_LOG_NAME.to_string()));
+
+        // get_relvar_type
+        let type_info = aud_db.get_relvar_type("TEST").unwrap();
+        assert!(type_info.heading().has_attribute("id"));
+
+        // drop_relvar
+        aud_db.drop_relvar("TEST").unwrap();
+        assert!(!aud_db.relvar_exists("TEST"));
+    }
+
+    #[test]
+    fn test_forwarding_transactions() {
+        let db = Database::new(InMemoryEngine::new());
+        let mut aud_db = AuditedDatabase::new(db).unwrap();
+
+        let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        aud_db.create_relvar("TEST", rel_type).unwrap();
+
+        // Begin
+        aud_db.begin().unwrap();
+        aud_db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+
+        // Should see uncommitted change
+        assert_eq!(aud_db.query("TEST").unwrap().cardinality(), 1);
+
+        // Rollback
+        aud_db.rollback().unwrap();
+        assert_eq!(aud_db.query("TEST").unwrap().cardinality(), 0);
+
+        // Commit flow
+        aud_db.begin().unwrap();
+        aud_db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+        aud_db.commit().unwrap();
+        assert_eq!(aud_db.query("TEST").unwrap().cardinality(), 1);
+
+        // Verify logs were also committed
+        let logs = aud_db.query(AUDIT_LOG_NAME).unwrap();
+        assert_eq!(logs.cardinality(), 1);
+    }
+
+    #[test]
+    fn test_forwarding_virtual_relvars() {
+        let db = Database::new(InMemoryEngine::new());
+        let mut aud_db = AuditedDatabase::new(db).unwrap();
+
+        let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        aud_db.create_relvar("TEST", rel_type.clone()).unwrap();
+        aud_db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+
+        // define_virtual_relvar
+        aud_db.define_virtual_relvar(
+            "V_TEST",
+            rel_type,
+            |db| db.query("TEST")
+        ).unwrap();
+
+        assert!(aud_db.relvar_exists("V_TEST"));
+
+        let v_result = aud_db.query("V_TEST").unwrap();
+        assert_eq!(v_result.cardinality(), 1);
+
+        // drop_virtual_relvar
+        aud_db.drop_virtual_relvar("V_TEST").unwrap();
+        assert!(!aud_db.relvar_exists("V_TEST"));
+    }
+
+    #[test]
+    fn test_forwarding_constraints() {
+        use relvar_core::constraints::{CheckConstraint, ConstraintExpression, ValueOrRef};
+
+        let db = Database::new(InMemoryEngine::new());
+        let mut aud_db = AuditedDatabase::new(db).unwrap();
+
+        let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        aud_db.create_relvar("TEST", rel_type).unwrap();
+
+        // Set PK
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let key_constraints = KeyConstraints::new().with_primary_key(pk);
+        aud_db.set_key_constraints("TEST", key_constraints).unwrap();
+
+        // Get PK
+        assert!(aud_db.get_key_constraints("TEST").is_some());
+
+        // Set Check Constraint
+        let check = CheckConstraints::new().with_constraint(
+            CheckConstraint::from_expression(
+                "positive_id", "ID > 0",
+                ConstraintExpression::Gt(
+                    "id".to_string(),
+                    ValueOrRef::Value(ScalarValue::Int(0))
+                )
+            )
+        );
+        aud_db.set_check_constraints("TEST", check).unwrap();
+
+        // Verify constraint logic via insert forwarding
+        let result = aud_db.insert("TEST", tuple! { id: -1i64 });
+        assert!(result.is_err()); // Check constraint violation
+
+        // Verify PK logic
+        aud_db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+        let result = aud_db.insert("TEST", tuple! { id: 1i64 });
+        assert!(result.is_err()); // PK violation
     }
 }
