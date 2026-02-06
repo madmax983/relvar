@@ -45,3 +45,11 @@ Added a pre-check `check_tuple_size_limit` using `bincode::serialized_size` on a
 2. Implemented `escape_html` to sanitize strings used in HTML-like labels (replacing `<, >, &, ", '` with entities).
 3. Implemented `escape_dot_string_content` for string literals in labels.
 4. Updated `to_dot` to use these helpers for all user-controlled data.
+
+## 2026-02-04 - HeapFile Header Corruption and DoS
+**Threat:**
+1. `HeapFile::try_insert_into_page` and related methods underestimated the page header size by manually calculating it (`size_of::<u32> + N * size`) instead of using `bincode`'s actual serialization size. `bincode` adds overhead (tags, varint lengths) not accounted for. This caused the header to grow into the tuple data area, leading to silent data corruption (overlap).
+2. The discrepancy between `check_tuple_size_limit` (correctly using bincode) and `try_insert_into_page` (underestimating) could hypothetically lead to infinite loops if `check` passed but `insert` failed with `PageFull` repeatedly on new pages (though in this specific case it caused corruption instead of `PageFull`).
+
+**Defense:**
+Modified insertion logic to clone the page structure, insert a dummy entry into the target slot, and use `bincode::serialized_size` to calculate the exact header requirements before committing the write.
