@@ -6,6 +6,8 @@
 //! # Included Features
 //!
 //! - **Exporter**: Tools for exporting relations to CSV, JSON, and ASCII tables.
+//! - **Mock**: Tools for generating random relations for testing.
+//! - **Audit**: `AuditedDatabase` wrapper for automatic logging of changes.
 //!
 //! # Example: Using the Exporter
 //!
@@ -27,5 +29,6 @@
 //! println!("JSON:\n{}", exporter::to_json(&relation).unwrap());
 //! ```
 
+pub mod audit;
 pub mod exporter;
 pub mod mock;
