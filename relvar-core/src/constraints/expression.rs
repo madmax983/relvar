@@ -200,9 +200,11 @@ impl ConstraintExpression {
                 let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
                 Ok(left >= right)
             }
-            ConstraintExpression::And(left, right) => Ok(left.evaluate_with_depth(tuple, depth + 1)?
+            ConstraintExpression::And(left, right) => Ok(left
+                .evaluate_with_depth(tuple, depth + 1)?
                 && right.evaluate_with_depth(tuple, depth + 1)?),
-            ConstraintExpression::Or(left, right) => Ok(left.evaluate_with_depth(tuple, depth + 1)?
+            ConstraintExpression::Or(left, right) => Ok(left
+                .evaluate_with_depth(tuple, depth + 1)?
                 || right.evaluate_with_depth(tuple, depth + 1)?),
             ConstraintExpression::Not(expr) => Ok(!expr.evaluate_with_depth(tuple, depth + 1)?),
             ConstraintExpression::AttrCmp { left, op, right } => {
@@ -745,10 +747,8 @@ mod tests {
     #[test]
     fn test_deeply_nested_expression_fails_gracefully() {
         // Build a deep expression tree: Not(Not(Not(...)))
-        let mut expr = ConstraintExpression::Eq(
-            "x".to_string(),
-            ValueOrRef::Value(ScalarValue::Int(1)),
-        );
+        let mut expr =
+            ConstraintExpression::Eq("x".to_string(), ValueOrRef::Value(ScalarValue::Int(1)));
 
         // Exceed limit (500)
         for _ in 0..1000 {
