@@ -53,3 +53,11 @@ Added a pre-check `check_tuple_size_limit` using `bincode::serialized_size` on a
 
 **Defense:**
 Modified insertion logic to clone the page structure, insert a dummy entry into the target slot, and use `bincode::serialized_size` to calculate the exact header requirements before committing the write.
+
+## 2024-05-23 - [Recursion Limit Exceeded in Virtual Relvars]
+**Threat:** Infinite recursion in virtual relvar definitions (views) could cause a stack overflow and crash the database process (Denial of Service).
+**Defense:** Added recursion detection in `Database::query` by tracking currently evaluating virtual relvars in a stack. Returns `DatabaseError::RecursionLimitExceeded` if a cycle is detected.
+
+## 2024-05-23 - [Potential Allocation Bomb in Heap File Deserialization]
+**Threat:** Maliciously crafted heap pages with large vector lengths could cause massive memory allocation attempts during deserialization (DoS).
+**Defense:** Verified that `bincode` 1.3.3 correctly handles slice inputs by checking `len * min_size`, preventing allocation if data is insufficient. Added regression test `relvar-storage/tests/security_exploit.rs`.

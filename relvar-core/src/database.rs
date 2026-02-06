@@ -13,6 +13,7 @@ use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
 
 use std::collections::HashMap;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use thiserror::Error;
 
 /// Errors that can occur during database operations.
@@ -61,6 +62,10 @@ pub enum DatabaseError {
     /// The attribute does not exist.
     #[error("Attribute {0} not found in relation {1}")]
     AttributeNotFound(String, String),
+
+    /// Recursion limit exceeded for virtual relvar.
+    #[error("Recursion limit exceeded for virtual relvar {0}")]
+    RecursionLimitExceeded(String),
 }
 
 /// Definition of a virtual relvar (view).
@@ -116,6 +121,8 @@ pub struct Database<E: StorageEngine> {
     transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
     virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
+    /// Stack of currently evaluating virtual relvars to detect recursion.
+    evaluating_relvars: Vec<String>,
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -127,6 +134,7 @@ impl<E: StorageEngine> Database<E> {
             in_transaction: false,
             transaction_snapshot: None,
             virtual_relvars: HashMap::new(),
+            evaluating_relvars: Vec::new(),
         }
     }
 
@@ -457,9 +465,36 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
     pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
+        // Check for recursion
+        if self.evaluating_relvars.contains(&relation_name.to_string()) {
+            return Err(DatabaseError::RecursionLimitExceeded(
+                relation_name.to_string(),
+            ));
+        }
+
         // Check if this is a virtual relvar
-        if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
-            return (virtual_relvar.evaluator)(self);
+        // We need to extract the evaluator to avoid borrowing self immutably while calling it mutably
+        let evaluator = if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
+            Some(virtual_relvar.evaluator)
+        } else {
+            None
+        };
+
+        if let Some(evaluator) = evaluator {
+            self.evaluating_relvars.push(relation_name.to_string());
+
+            // Use catch_unwind to ensure we pop from the stack even if the evaluator panics.
+            // We use AssertUnwindSafe because we want to maintain the evaluating_relvars invariant
+            // even if other parts of the Database are left in an inconsistent state by a panic.
+            let result = catch_unwind(AssertUnwindSafe(|| evaluator(self)));
+
+            let popped = self.evaluating_relvars.pop();
+            debug_assert_eq!(popped.as_deref(), Some(relation_name));
+
+            match result {
+                Ok(r) => return r,
+                Err(payload) => std::panic::resume_unwind(payload),
+            }
         }
 
         // Otherwise, load from engine
