@@ -53,3 +53,10 @@ Added a pre-check `check_tuple_size_limit` using `bincode::serialized_size` on a
 
 **Defense:**
 Modified insertion logic to clone the page structure, insert a dummy entry into the target slot, and use `bincode::serialized_size` to calculate the exact header requirements before committing the write.
+
+## 2026-02-05 - Virtual Relvar Infinite Recursion DoS
+**Threat:**
+A virtual relvar definition could reference itself (directly or indirectly), creating an infinite recursion loop during query evaluation. This would lead to a stack overflow and crash the server (DoS).
+
+**Defense:**
+Implemented a recursion guard in `Database::query`. It maintains a `recursion_stack` of relvars currently being evaluated. If `query` encounters a relvar already in the stack, it returns `DatabaseError::RecursionLimitExceeded` instead of recursing.

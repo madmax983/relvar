@@ -61,6 +61,10 @@ pub enum DatabaseError {
     /// The attribute does not exist.
     #[error("Attribute {0} not found in relation {1}")]
     AttributeNotFound(String, String),
+
+    /// Recursion limit exceeded.
+    #[error("Recursion limit exceeded for relation {0}")]
+    RecursionLimitExceeded(String),
 }
 
 /// Definition of a virtual relvar (view).
@@ -116,6 +120,8 @@ pub struct Database<E: StorageEngine> {
     transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
     virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
+    /// Stack of virtual relvars currently being evaluated (to detect recursion).
+    recursion_stack: Vec<String>,
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -127,6 +133,7 @@ impl<E: StorageEngine> Database<E> {
             in_transaction: false,
             transaction_snapshot: None,
             virtual_relvars: HashMap::new(),
+            recursion_stack: Vec::new(),
         }
     }
 
@@ -458,12 +465,35 @@ impl<E: StorageEngine> Database<E> {
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
     pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Check if this is a virtual relvar
-        if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
-            return (virtual_relvar.evaluator)(self);
+        // We capture the evaluator function pointer to avoid holding a borrow on self.virtual_relvars
+        // when we need to pass &mut self to the evaluator.
+        let evaluator = if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
+            virtual_relvar.evaluator
+        } else {
+            // Otherwise, load from engine
+            return Ok(self.engine.load_relation(relation_name)?);
+        };
+
+        // Check for recursion
+        if self.recursion_stack.iter().any(|r| r == relation_name) {
+            return Err(DatabaseError::RecursionLimitExceeded(
+                relation_name.to_string(),
+            ));
         }
 
-        // Otherwise, load from engine
-        Ok(self.engine.load_relation(relation_name)?)
+        // Push to recursion stack
+        self.recursion_stack.push(relation_name.to_string());
+
+        // Evaluate the virtual relvar
+        // We use a panic guard logic implicitly by popping after the call.
+        // NOTE: If evaluator panics, the stack won't be unwound properly in this simplistic implementation.
+        // However, standard database operations shouldn't panic. A robust solution would use a Drop guard.
+        let result = evaluator(self);
+
+        // Pop from recursion stack
+        self.recursion_stack.pop();
+
+        result
     }
 
     /// Delete tuples matching a predicate.
@@ -1475,6 +1505,27 @@ mod tests {
         // Querying it should fail
         let result = db.query("VIRT");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_infinite_recursion_prevention() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        // Define a virtual relvar "RECURSIVE" that queries itself
+        db.define_virtual_relvar(
+            "RECURSIVE",
+            test_rel_type(),
+            |db: &mut Database<InMemoryEngine>| db.query("RECURSIVE"),
+        )
+        .unwrap();
+
+        // Querying it should return RecursionLimitExceeded error
+        let result = db.query("RECURSIVE");
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::RecursionLimitExceeded(_))
+        ));
     }
 
     #[test]
