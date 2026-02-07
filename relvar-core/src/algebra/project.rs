@@ -32,7 +32,6 @@
 
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
-use std::collections::HashMap;
 
 impl Relation {
     /// Projects this relation onto a subset of attributes.
@@ -85,12 +84,11 @@ impl Relation {
 
         // Project each tuple
         let projected_tuples = self.tuples().map(|tuple| {
-            let mut values = HashMap::new();
-            for attr_name in attributes {
-                if let Some(value) = tuple.get(attr_name) {
-                    values.insert(attr_name.to_string(), value.clone());
-                }
-            }
+            let values = attributes.iter().filter_map(|&attr_name| {
+                tuple
+                    .get(attr_name)
+                    .map(|value| (attr_name.to_string(), value.clone()))
+            });
             Tuple::new(new_heading.clone(), values)
                 .expect("Projection should maintain type consistency")
         });
