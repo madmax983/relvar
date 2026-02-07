@@ -303,44 +303,7 @@ impl Ord for ScalarType {
                     | (ScalarType::String, ScalarType::String)
                     | (ScalarType::Bool, ScalarType::Bool)
                     | (ScalarType::Bytes, ScalarType::Bytes) => Ordering::Equal,
-                    (ScalarType::Relation(a), ScalarType::Relation(b)) => {
-                        // Compare relation types by their headings
-                        // Since TupleType doesn't have Ord, we need a custom comparison
-                        let a_attrs: Vec<_> = a
-                            .heading()
-                            .attribute_names()
-                            .map(|n| (n, a.heading().get_attribute_type(n).unwrap()))
-                            .collect();
-                        let b_attrs: Vec<_> = b
-                            .heading()
-                            .attribute_names()
-                            .map(|n| (n, b.heading().get_attribute_type(n).unwrap()))
-                            .collect();
-
-                        // Compare by count first, then by sorted attributes
-                        match a_attrs.len().cmp(&b_attrs.len()) {
-                            Ordering::Equal => {
-                                let mut a_sorted = a_attrs;
-                                let mut b_sorted = b_attrs;
-                                a_sorted.sort_by_key(|(name, _)| *name);
-                                b_sorted.sort_by_key(|(name, _)| *name);
-
-                                for ((a_name, a_ty), (b_name, b_ty)) in
-                                    a_sorted.iter().zip(b_sorted.iter())
-                                {
-                                    match a_name.cmp(b_name) {
-                                        Ordering::Equal => match a_ty.cmp(b_ty) {
-                                            Ordering::Equal => continue,
-                                            other => return other,
-                                        },
-                                        other => return other,
-                                    }
-                                }
-                                Ordering::Equal
-                            }
-                            other => other,
-                        }
-                    }
+                    (ScalarType::Relation(a), ScalarType::Relation(b)) => a.cmp(b),
                     (
                         ScalarType::UserDefined {
                             name: a_name,

@@ -64,7 +64,7 @@ use std::collections::BTreeMap;
 /// assert_eq!(person_type.get_attribute_type("id"), Some(&ScalarType::Int));
 /// assert!(!person_type.has_attribute("nonexistent"));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TupleType {
     /// The attributes of this tuple type, mapping names to scalar types.
     attributes: BTreeMap<String, ScalarType>,
