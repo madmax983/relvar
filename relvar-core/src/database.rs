@@ -202,6 +202,11 @@ impl<E: StorageEngine> Database<E> {
         self.engine.relation_exists(name) || self.virtual_relvars.contains_key(name)
     }
 
+    /// Check if a transaction is currently in progress.
+    pub fn is_in_transaction(&self) -> bool {
+        self.in_transaction
+    }
+
     /// List all relvar names (base and virtual).
     pub fn list_relvars(&self) -> Vec<String> {
         let mut names = self.engine.list_relations();

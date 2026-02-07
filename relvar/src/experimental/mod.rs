@@ -27,5 +27,7 @@
 //! println!("JSON:\n{}", exporter::to_json(&relation).unwrap());
 //! ```
 
+/// Audit logging functionality.
+pub mod audit;
 pub mod exporter;
 pub mod mock;
