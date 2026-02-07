@@ -13,19 +13,20 @@
 //! # Example
 //!
 //! ```
-//! use relvar_core::constraints::check::{CheckConstraint, CheckPredicate};
-//! use relvar_core::constraints::expression::{ConstraintExpression, ValueOrRef};
+//! use relvar_core::constraints::check::CheckConstraint;
+//! use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
 //! use relvar_core::values::ScalarValue;
 //! use relvar_core::tuple;
 //!
 //! // Create a CHECK constraint using an expression
-//! let constraint = CheckConstraint::from_expression(
+//! let constraint = CheckConstraint::new(
 //!     "positive_salary",
 //!     "Salary must be positive",
-//!     ConstraintExpression::Gt(
-//!         "salary".to_string(),
-//!         ValueOrRef::Value(ScalarValue::Int(0)),
-//!     ),
+//!     ConstraintExpression::Cmp {
+//!         left: "salary".to_string(),
+//!         op: CmpOp::Gt,
+//!         right: ValueOrRef::Value(ScalarValue::Int(0)),
+//!     },
 //! );
 //!
 //! let valid_tuple = tuple! { salary: 50000i64 };
@@ -37,6 +38,7 @@
 
 use crate::constraints::expression::ConstraintExpression;
 use crate::values::Tuple;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Errors that can occur during CHECK constraint evaluation.
@@ -56,123 +58,58 @@ pub enum CheckConstraintError {
     EvaluationError(String),
 }
 
-/// Predicate type for CHECK constraints.
-///
-/// Supports both closure-based (flexible, not serializable) and
-/// expression-based (serializable, persistent) predicates.
-pub enum CheckPredicate {
-    /// Closure-based predicate (not serializable).
-    ///
-    /// Use for complex business logic that can't be expressed in the DSL.
-    /// Must be re-registered on database restart.
-    Dynamic(Box<dyn Fn(&Tuple) -> bool + Send + Sync>),
-
-    /// Expression-based predicate (serializable).
-    ///
-    /// Can be persisted to storage and loaded on restart.
-    Expression(Box<ConstraintExpression>),
-}
-
-impl std::fmt::Debug for CheckPredicate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CheckPredicate::Dynamic(_) => write!(f, "Dynamic(<closure>)"),
-            CheckPredicate::Expression(expr) => write!(f, "Expression({:?})", expr),
-        }
-    }
-}
-
 /// A CHECK constraint that must be satisfied by every tuple in a relvar.
 ///
 /// CHECK constraints are tuple-level constraints that enforce business rules
 /// on individual tuples. They are checked on INSERT and UPDATE operations.
 ///
-/// # Example
-///
-/// ```
-/// use relvar_core::constraints::check::CheckConstraint;
-/// use relvar_core::tuple;
-///
-/// let constraint = CheckConstraint::from_closure(
-///     "positive_salary",
-///     "Salary must be positive",
-///     |tuple| {
-///         tuple.get("salary")
-///             .map(|v| matches!(v, relvar_core::values::ScalarValue::Int(n) if *n > 0))
-///             .unwrap_or(false)
-///     }
-/// );
-///
-/// let valid = tuple! { name: "Alice", salary: 50000i64 };
-/// assert!(constraint.is_satisfied_by(&valid).unwrap());
-/// ```
-#[derive(Debug)]
+/// Constraints are defined using declarative expressions ([`ConstraintExpression`]),
+/// ensuring they can be serialized and persisted in the system catalog.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckConstraint {
     /// Constraint name (unique identifier).
     name: String,
-    /// The predicate to evaluate.
-    predicate: CheckPredicate,
+    /// The expression to evaluate.
+    expression: ConstraintExpression,
     /// Human-readable description.
     description: String,
 }
 
 impl CheckConstraint {
-    /// Creates a CHECK constraint from a closure.
+    /// Creates a new CHECK constraint from an expression.
     ///
     /// # Example
     ///
     /// ```
     /// use relvar_core::constraints::check::CheckConstraint;
+    /// use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
     /// use relvar_core::values::ScalarValue;
     ///
-    /// let constraint = CheckConstraint::from_closure(
-    ///     "positive_balance",
-    ///     "Balance must be non-negative",
-    ///     |tuple| {
-    ///         tuple.get("balance")
-    ///             .map(|v| matches!(v, ScalarValue::Int(n) if *n >= 0))
-    ///             .unwrap_or(false)
-    ///     }
-    /// );
-    /// ```
-    pub fn from_closure<F>(name: impl Into<String>, description: impl Into<String>, f: F) -> Self
-    where
-        F: Fn(&Tuple) -> bool + Send + Sync + 'static,
-    {
-        Self {
-            name: name.into(),
-            predicate: CheckPredicate::Dynamic(Box::new(f)),
-            description: description.into(),
-        }
-    }
-
-    /// Creates a CHECK constraint from an expression.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use relvar_core::constraints::check::CheckConstraint;
-    /// use relvar_core::constraints::expression::{ConstraintExpression, ValueOrRef};
-    /// use relvar_core::values::ScalarValue;
-    ///
-    /// let constraint = CheckConstraint::from_expression(
+    /// let constraint = CheckConstraint::new(
     ///     "valid_age",
     ///     "Age must be between 0 and 150",
-    ///     ConstraintExpression::Between(
-    ///         "age".to_string(),
-    ///         ScalarValue::Int(0),
-    ///         ScalarValue::Int(150),
+    ///     ConstraintExpression::And(
+    ///         Box::new(ConstraintExpression::Cmp {
+    ///             left: "age".to_string(),
+    ///             op: CmpOp::Ge,
+    ///             right: ValueOrRef::Value(ScalarValue::Int(0)),
+    ///         }),
+    ///         Box::new(ConstraintExpression::Cmp {
+    ///             left: "age".to_string(),
+    ///             op: CmpOp::Le,
+    ///             right: ValueOrRef::Value(ScalarValue::Int(150)),
+    ///         }),
     ///     ),
     /// );
     /// ```
-    pub fn from_expression(
+    pub fn new(
         name: impl Into<String>,
         description: impl Into<String>,
-        expr: ConstraintExpression,
+        expression: ConstraintExpression,
     ) -> Self {
         Self {
             name: name.into(),
-            predicate: CheckPredicate::Expression(Box::new(expr)),
+            expression,
             description: description.into(),
         }
     }
@@ -187,23 +124,20 @@ impl CheckConstraint {
         &self.description
     }
 
-    /// Returns true if this constraint is serializable (expression-based).
-    pub fn is_serializable(&self) -> bool {
-        matches!(self.predicate, CheckPredicate::Expression(_))
+    /// Returns the constraint expression.
+    pub fn expression(&self) -> &ConstraintExpression {
+        &self.expression
     }
 
     /// Checks if this constraint is satisfied by the given tuple.
     ///
     /// # Errors
     ///
-    /// Returns `Err` if the constraint evaluation fails.
+    /// Returns `Err` if the constraint evaluation fails (e.g. type mismatch).
     pub fn is_satisfied_by(&self, tuple: &Tuple) -> Result<bool, CheckConstraintError> {
-        match &self.predicate {
-            CheckPredicate::Dynamic(f) => Ok(f(tuple)),
-            CheckPredicate::Expression(expr) => (**expr)
-                .evaluate(tuple)
-                .map_err(|e| CheckConstraintError::EvaluationError(e.to_string())),
-        }
+        self.expression
+            .evaluate(tuple)
+            .map_err(|e| CheckConstraintError::EvaluationError(e.to_string()))
     }
 }
 
@@ -211,7 +145,7 @@ impl CheckConstraint {
 ///
 /// This manages multiple CHECK constraints and provides methods to check
 /// if all constraints are satisfied by a tuple.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CheckConstraints {
     constraints: Vec<CheckConstraint>,
 }
@@ -236,7 +170,7 @@ impl CheckConstraints {
     ///
     /// # Errors
     ///
-    /// Returns `Err` with the first violated constraint.
+    /// Returns `Err` with the first violated constraint or evaluation error.
     pub fn are_all_satisfied_by(&self, tuple: &Tuple) -> Result<bool, CheckConstraintError> {
         for constraint in &self.constraints {
             if !constraint.is_satisfied_by(tuple)? {
@@ -249,73 +183,45 @@ impl CheckConstraints {
         Ok(true)
     }
 
-    /// Returns only the serializable (expression-based) constraints.
-    ///
-    /// Useful for persistence - closure-based constraints cannot be serialized.
-    pub fn serializable_constraints(&self) -> Vec<&CheckConstraint> {
-        self.constraints
-            .iter()
-            .filter(|c| c.is_serializable())
-            .collect()
+    /// Returns all constraints.
+    pub fn constraints(&self) -> &[CheckConstraint] {
+        &self.constraints
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constraints::expression::{ConstraintExpression, ValueOrRef};
+    use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
     use crate::tuple;
     use crate::values::ScalarValue;
 
     #[test]
-    fn test_check_constraint_from_closure() {
-        let constraint =
-            CheckConstraint::from_closure("positive_salary", "Salary must be positive", |tuple| {
-                tuple
-                    .get("salary")
-                    .map(|v| matches!(v, ScalarValue::Int(n) if *n > 0))
-                    .unwrap_or(false)
-            });
-
-        assert_eq!(constraint.name(), "positive_salary");
-        assert!(!constraint.is_serializable());
-    }
-
-    #[test]
-    fn test_check_constraint_from_expression() {
-        let constraint = CheckConstraint::from_expression(
+    fn test_check_constraint_creation() {
+        let constraint = CheckConstraint::new(
             "positive_salary",
             "Salary must be positive",
-            ConstraintExpression::Gt("salary".to_string(), ValueOrRef::Value(ScalarValue::Int(0))),
+            ConstraintExpression::Cmp {
+                left: "salary".to_string(),
+                op: CmpOp::Gt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            },
         );
 
         assert_eq!(constraint.name(), "positive_salary");
-        assert!(constraint.is_serializable());
+        assert_eq!(constraint.description(), "Salary must be positive");
     }
 
     #[test]
-    fn test_check_constraint_dynamic_satisfied() {
-        let constraint =
-            CheckConstraint::from_closure("positive_salary", "Salary must be positive", |tuple| {
-                tuple
-                    .get("salary")
-                    .map(|v| matches!(v, ScalarValue::Int(n) if *n > 0))
-                    .unwrap_or(false)
-            });
-
-        let good_tuple = tuple! { name: "Alice", salary: 50000i64 };
-        assert!(constraint.is_satisfied_by(&good_tuple).unwrap());
-
-        let bad_tuple = tuple! { name: "Bob", salary: -100i64 };
-        assert!(!constraint.is_satisfied_by(&bad_tuple).unwrap());
-    }
-
-    #[test]
-    fn test_check_constraint_expression_satisfied() {
-        let constraint = CheckConstraint::from_expression(
+    fn test_check_constraint_satisfied() {
+        let constraint = CheckConstraint::new(
             "positive_salary",
             "Salary must be positive",
-            ConstraintExpression::Gt("salary".to_string(), ValueOrRef::Value(ScalarValue::Int(0))),
+            ConstraintExpression::Cmp {
+                left: "salary".to_string(),
+                op: CmpOp::Gt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            },
         );
 
         let good_tuple = tuple! { salary: 50000i64 };
@@ -328,11 +234,23 @@ mod tests {
     #[test]
     fn test_check_constraints_all_satisfied() {
         let constraints = CheckConstraints::new()
-            .with_constraint(CheckConstraint::from_closure("c1", "d1", |_| true))
-            .with_constraint(CheckConstraint::from_expression(
+            .with_constraint(CheckConstraint::new(
+                "c1",
+                "x > 0",
+                ConstraintExpression::Cmp {
+                    left: "x".to_string(),
+                    op: CmpOp::Gt,
+                    right: ValueOrRef::Value(ScalarValue::Int(0)),
+                },
+            ))
+            .with_constraint(CheckConstraint::new(
                 "c2",
-                "d2",
-                ConstraintExpression::Gt("x".to_string(), ValueOrRef::Value(ScalarValue::Int(0))),
+                "x < 100",
+                ConstraintExpression::Cmp {
+                    left: "x".to_string(),
+                    op: CmpOp::Lt,
+                    right: ValueOrRef::Value(ScalarValue::Int(100)),
+                },
             ));
 
         let tuple = tuple! { x: 10i64 };
@@ -341,29 +259,48 @@ mod tests {
 
     #[test]
     fn test_check_constraints_violation_returns_error() {
-        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::from_closure(
+        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
             "must_fail",
             "always fails",
-            |_| false,
+            ConstraintExpression::Cmp {
+                left: "id".to_string(),
+                op: CmpOp::Lt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            },
         ));
 
         let tuple = tuple! { id: 1i64 };
         let result = constraints.are_all_satisfied_by(&tuple);
         assert!(result.is_err());
+        match result {
+            Err(CheckConstraintError::Violation {
+                constraint_name, ..
+            }) => {
+                assert_eq!(constraint_name, "must_fail");
+            }
+            _ => panic!("Expected Violation error"),
+        }
     }
 
     #[test]
-    fn test_check_constraints_serializable_only() {
-        let constraints = CheckConstraints::new()
-            .with_constraint(CheckConstraint::from_closure("c1", "d1", |_| true))
-            .with_constraint(CheckConstraint::from_expression(
-                "c2",
-                "d2",
-                ConstraintExpression::Gt("x".to_string(), ValueOrRef::Value(ScalarValue::Int(0))),
-            ));
+    fn test_serialization() {
+        let constraint = CheckConstraint::new(
+            "test_const",
+            "desc",
+            ConstraintExpression::Cmp {
+                left: "a".to_string(),
+                op: CmpOp::Eq,
+                right: ValueOrRef::Value(ScalarValue::Int(1)),
+            },
+        );
 
-        let serializable = constraints.serializable_constraints();
-        assert_eq!(serializable.len(), 1);
-        assert_eq!(serializable[0].name(), "c2");
+        let serialized = serde_json::to_string(&constraint).unwrap();
+        let deserialized: CheckConstraint = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(constraint.name(), deserialized.name());
+        assert_eq!(constraint.description(), deserialized.description());
+
+        let tuple = tuple! { a: 1i64 };
+        assert!(deserialized.is_satisfied_by(&tuple).unwrap());
     }
 }

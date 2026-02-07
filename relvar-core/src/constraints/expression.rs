@@ -11,15 +11,16 @@
 //! # Example
 //!
 //! ```
-//! use relvar_core::constraints::expression::{ConstraintExpression, ValueOrRef};
+//! use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
 //! use relvar_core::values::ScalarValue;
 //! use relvar_core::tuple;
 //!
 //! // Create a constraint: salary > 0
-//! let expr = ConstraintExpression::Gt(
-//!     "salary".to_string(),
-//!     ValueOrRef::Value(ScalarValue::Int(0)),
-//! );
+//! let expr = ConstraintExpression::Cmp {
+//!     left: "salary".to_string(),
+//!     op: CmpOp::Gt,
+//!     right: ValueOrRef::Value(ScalarValue::Int(0)),
+//! };
 //!
 //! let valid_tuple = tuple! { salary: 50000i64 };
 //! assert!(expr.evaluate(&valid_tuple).unwrap());
@@ -58,7 +59,7 @@ pub enum ValueOrRef {
 }
 
 /// Comparison operators for constraint expressions.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CmpOp {
     /// Equal (=)
     Eq,
@@ -82,26 +83,21 @@ pub enum CmpOp {
 ///
 /// # Supported Operations
 ///
-/// - **Comparisons**: Eq, Ne, Lt, Le, Gt, Ge
+/// - **Comparisons**: Eq, Ne, Lt, Le, Gt, Ge via `Cmp`
 /// - **Logical**: And, Or, Not
-/// - **Attribute comparison**: Compare two attributes
-/// - **Range**: Between
 /// - **Set membership**: In
 /// - **Pattern matching**: Like
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ConstraintExpression {
-    /// Equality comparison: attribute = value
-    Eq(String, ValueOrRef),
-    /// Inequality comparison: attribute ≠ value
-    Ne(String, ValueOrRef),
-    /// Less than: attribute < value
-    Lt(String, ValueOrRef),
-    /// Less than or equal: attribute ≤ value
-    Le(String, ValueOrRef),
-    /// Greater than: attribute > value
-    Gt(String, ValueOrRef),
-    /// Greater than or equal: attribute ≥ value
-    Ge(String, ValueOrRef),
+    /// Comparison: left_attr op right_value_or_ref
+    Cmp {
+        /// Left attribute name
+        left: String,
+        /// Comparison operator
+        op: CmpOp,
+        /// Right operand (value or attribute reference)
+        right: ValueOrRef,
+    },
 
     /// Logical AND: both expressions must be true
     And(Box<ConstraintExpression>, Box<ConstraintExpression>),
@@ -109,19 +105,6 @@ pub enum ConstraintExpression {
     Or(Box<ConstraintExpression>, Box<ConstraintExpression>),
     /// Logical NOT: inverts the expression
     Not(Box<ConstraintExpression>),
-
-    /// Attribute-to-attribute comparison: left_attr op right_attr
-    AttrCmp {
-        /// Left attribute name
-        left: String,
-        /// Comparison operator
-        op: CmpOp,
-        /// Right attribute name
-        right: String,
-    },
-
-    /// Range check: value BETWEEN min AND max (inclusive)
-    Between(String, ScalarValue, ScalarValue),
 
     /// Set membership: attribute IN (value1, value2, ...)
     In(String, Vec<ScalarValue>),
@@ -147,43 +130,31 @@ impl ConstraintExpression {
     /// # Example
     ///
     /// ```
-    /// use relvar_core::constraints::expression::{ConstraintExpression, ValueOrRef};
+    /// use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
     /// use relvar_core::values::ScalarValue;
     /// use relvar_core::tuple;
     ///
-    /// let expr = ConstraintExpression::Gt(
-    ///     "age".to_string(),
-    ///     ValueOrRef::Value(ScalarValue::Int(0)),
-    /// );
+    /// let expr = ConstraintExpression::Cmp {
+    ///     left: "age".to_string(),
+    ///     op: CmpOp::Gt,
+    ///     right: ValueOrRef::Value(ScalarValue::Int(0)),
+    /// };
     ///
     /// let tuple = tuple! { age: 30i64 };
     /// assert!(expr.evaluate(&tuple).unwrap());
     /// ```
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
         match self {
-            ConstraintExpression::Eq(attr, value_or_ref) => {
-                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
-                Ok(left == right)
-            }
-            ConstraintExpression::Ne(attr, value_or_ref) => {
-                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
-                Ok(left != right)
-            }
-            ConstraintExpression::Lt(attr, value_or_ref) => {
-                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
-                Ok(left < right)
-            }
-            ConstraintExpression::Le(attr, value_or_ref) => {
-                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
-                Ok(left <= right)
-            }
-            ConstraintExpression::Gt(attr, value_or_ref) => {
-                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
-                Ok(left > right)
-            }
-            ConstraintExpression::Ge(attr, value_or_ref) => {
-                let (left, right) = Self::get_comparison_operands(tuple, attr, value_or_ref)?;
-                Ok(left >= right)
+            ConstraintExpression::Cmp { left, op, right } => {
+                let (left_val, right_val) = Self::get_comparison_operands(tuple, left, right)?;
+                match op {
+                    CmpOp::Eq => Ok(left_val == right_val),
+                    CmpOp::Ne => Ok(left_val != right_val),
+                    CmpOp::Lt => Ok(left_val < right_val),
+                    CmpOp::Le => Ok(left_val <= right_val),
+                    CmpOp::Gt => Ok(left_val > right_val),
+                    CmpOp::Ge => Ok(left_val >= right_val),
+                }
             }
             ConstraintExpression::And(left, right) => {
                 Ok(left.evaluate(tuple)? && right.evaluate(tuple)?)
@@ -192,37 +163,6 @@ impl ConstraintExpression {
                 Ok(left.evaluate(tuple)? || right.evaluate(tuple)?)
             }
             ConstraintExpression::Not(expr) => Ok(!expr.evaluate(tuple)?),
-            ConstraintExpression::AttrCmp { left, op, right } => {
-                let left_value = tuple
-                    .get(left)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(left.clone()))?;
-                let right_value = tuple
-                    .get(right)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(right.clone()))?;
-
-                // Validate types are compatible for comparison
-                if std::mem::discriminant(left_value) != std::mem::discriminant(right_value) {
-                    return Err(ExpressionError::TypeMismatch(
-                        format!("{:?}", left_value.scalar_type()),
-                        format!("{:?}", right_value.scalar_type()),
-                    ));
-                }
-
-                match op {
-                    CmpOp::Eq => Ok(left_value == right_value),
-                    CmpOp::Ne => Ok(left_value != right_value),
-                    CmpOp::Lt => Ok(left_value < right_value),
-                    CmpOp::Le => Ok(left_value <= right_value),
-                    CmpOp::Gt => Ok(left_value > right_value),
-                    CmpOp::Ge => Ok(left_value >= right_value),
-                }
-            }
-            ConstraintExpression::Between(attr, min, max) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-                Ok(tuple_value >= min && tuple_value <= max)
-            }
             ConstraintExpression::In(attr, values) => {
                 let tuple_value = tuple
                     .get(attr)
@@ -361,10 +301,11 @@ mod tests {
 
     #[test]
     fn test_constraint_expression_eq() {
-        let expr = ConstraintExpression::Eq(
-            "salary".to_string(),
-            ValueOrRef::Value(ScalarValue::Int(50000)),
-        );
+        let expr = ConstraintExpression::Cmp {
+            left: "salary".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(50000)),
+        };
 
         let tuple = tuple! { salary: 50000i64 };
         assert!(expr.evaluate(&tuple).unwrap());
@@ -375,10 +316,11 @@ mod tests {
 
     #[test]
     fn test_constraint_expression_ne() {
-        let expr = ConstraintExpression::Ne(
-            "status".to_string(),
-            ValueOrRef::Value(ScalarValue::String("inactive".to_string())),
-        );
+        let expr = ConstraintExpression::Cmp {
+            left: "status".to_string(),
+            op: CmpOp::Ne,
+            right: ValueOrRef::Value(ScalarValue::String("inactive".to_string())),
+        };
 
         let tuple = tuple! { status: "active" };
         assert!(expr.evaluate(&tuple).unwrap());
@@ -389,8 +331,11 @@ mod tests {
 
     #[test]
     fn test_constraint_expression_lt() {
-        let expr =
-            ConstraintExpression::Lt("age".to_string(), ValueOrRef::Value(ScalarValue::Int(65)));
+        let expr = ConstraintExpression::Cmp {
+            left: "age".to_string(),
+            op: CmpOp::Lt,
+            right: ValueOrRef::Value(ScalarValue::Int(65)),
+        };
 
         let tuple = tuple! { age: 30i64 };
         assert!(expr.evaluate(&tuple).unwrap());
@@ -404,10 +349,11 @@ mod tests {
 
     #[test]
     fn test_constraint_expression_le() {
-        let expr = ConstraintExpression::Le(
-            "score".to_string(),
-            ValueOrRef::Value(ScalarValue::Int(100)),
-        );
+        let expr = ConstraintExpression::Cmp {
+            left: "score".to_string(),
+            op: CmpOp::Le,
+            right: ValueOrRef::Value(ScalarValue::Int(100)),
+        };
 
         let tuple = tuple! { score: 95i64 };
         assert!(expr.evaluate(&tuple).unwrap());
@@ -421,8 +367,11 @@ mod tests {
 
     #[test]
     fn test_constraint_expression_gt() {
-        let expr =
-            ConstraintExpression::Gt("salary".to_string(), ValueOrRef::Value(ScalarValue::Int(0)));
+        let expr = ConstraintExpression::Cmp {
+            left: "salary".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Value(ScalarValue::Int(0)),
+        };
 
         let tuple = tuple! { salary: 50000i64 };
         assert!(expr.evaluate(&tuple).unwrap());
@@ -436,10 +385,11 @@ mod tests {
 
     #[test]
     fn test_constraint_expression_ge() {
-        let expr = ConstraintExpression::Ge(
-            "balance".to_string(),
-            ValueOrRef::Value(ScalarValue::Int(0)),
-        );
+        let expr = ConstraintExpression::Cmp {
+            left: "balance".to_string(),
+            op: CmpOp::Ge,
+            right: ValueOrRef::Value(ScalarValue::Int(0)),
+        };
 
         let tuple = tuple! { balance: 100i64 };
         assert!(expr.evaluate(&tuple).unwrap());
@@ -454,14 +404,16 @@ mod tests {
     #[test]
     fn test_constraint_expression_and() {
         let expr = ConstraintExpression::And(
-            Box::new(ConstraintExpression::Gt(
-                "age".to_string(),
-                ValueOrRef::Value(ScalarValue::Int(0)),
-            )),
-            Box::new(ConstraintExpression::Lt(
-                "age".to_string(),
-                ValueOrRef::Value(ScalarValue::Int(150)),
-            )),
+            Box::new(ConstraintExpression::Cmp {
+                left: "age".to_string(),
+                op: CmpOp::Gt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            }),
+            Box::new(ConstraintExpression::Cmp {
+                left: "age".to_string(),
+                op: CmpOp::Lt,
+                right: ValueOrRef::Value(ScalarValue::Int(150)),
+            }),
         );
 
         let valid = tuple! { age: 30i64 };
@@ -477,14 +429,16 @@ mod tests {
     #[test]
     fn test_constraint_expression_or() {
         let expr = ConstraintExpression::Or(
-            Box::new(ConstraintExpression::Eq(
-                "status".to_string(),
-                ValueOrRef::Value(ScalarValue::String("active".to_string())),
-            )),
-            Box::new(ConstraintExpression::Eq(
-                "status".to_string(),
-                ValueOrRef::Value(ScalarValue::String("pending".to_string())),
-            )),
+            Box::new(ConstraintExpression::Cmp {
+                left: "status".to_string(),
+                op: CmpOp::Eq,
+                right: ValueOrRef::Value(ScalarValue::String("active".to_string())),
+            }),
+            Box::new(ConstraintExpression::Cmp {
+                left: "status".to_string(),
+                op: CmpOp::Eq,
+                right: ValueOrRef::Value(ScalarValue::String("pending".to_string())),
+            }),
         );
 
         let active = tuple! { status: "active" };
@@ -499,10 +453,11 @@ mod tests {
 
     #[test]
     fn test_constraint_expression_not() {
-        let expr = ConstraintExpression::Not(Box::new(ConstraintExpression::Eq(
-            "deleted".to_string(),
-            ValueOrRef::Value(ScalarValue::Bool(true)),
-        )));
+        let expr = ConstraintExpression::Not(Box::new(ConstraintExpression::Cmp {
+            left: "deleted".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Bool(true)),
+        }));
 
         let not_deleted = tuple! { deleted: false };
         assert!(expr.evaluate(&not_deleted).unwrap());
@@ -513,10 +468,10 @@ mod tests {
 
     #[test]
     fn test_attr_comparison_ge() {
-        let expr = ConstraintExpression::AttrCmp {
+        let expr = ConstraintExpression::Cmp {
             left: "end_date".to_string(),
             op: CmpOp::Ge,
-            right: "start_date".to_string(),
+            right: ValueOrRef::Attribute("start_date".to_string()),
         };
 
         let valid = tuple! { start_date: 100i64, end_date: 200i64 };
@@ -531,10 +486,10 @@ mod tests {
 
     #[test]
     fn test_attr_comparison_eq() {
-        let expr = ConstraintExpression::AttrCmp {
+        let expr = ConstraintExpression::Cmp {
             left: "password".to_string(),
             op: CmpOp::Eq,
-            right: "password_confirmation".to_string(),
+            right: ValueOrRef::Attribute("password_confirmation".to_string()),
         };
 
         let valid = tuple! { password: "secret123", password_confirmation: "secret123" };
@@ -546,10 +501,10 @@ mod tests {
 
     #[test]
     fn test_attr_comparison_lt() {
-        let expr = ConstraintExpression::AttrCmp {
+        let expr = ConstraintExpression::Cmp {
             left: "min_value".to_string(),
             op: CmpOp::Lt,
-            right: "max_value".to_string(),
+            right: ValueOrRef::Attribute("max_value".to_string()),
         };
 
         let valid = tuple! { min_value: 10i64, max_value: 100i64 };
@@ -563,11 +518,19 @@ mod tests {
     }
 
     #[test]
-    fn test_between_inclusive() {
-        let expr = ConstraintExpression::Between(
-            "age".to_string(),
-            ScalarValue::Int(18),
-            ScalarValue::Int(65),
+    fn test_between_inclusive_replacement() {
+        // Between replacement: And(Ge(min), Le(max))
+        let expr = ConstraintExpression::And(
+            Box::new(ConstraintExpression::Cmp {
+                left: "age".to_string(),
+                op: CmpOp::Ge,
+                right: ValueOrRef::Value(ScalarValue::Int(18)),
+            }),
+            Box::new(ConstraintExpression::Cmp {
+                left: "age".to_string(),
+                op: CmpOp::Le,
+                right: ValueOrRef::Value(ScalarValue::Int(65)),
+            }),
         );
 
         let valid_low = tuple! { age: 18i64 };
@@ -627,8 +590,11 @@ mod tests {
 
     #[test]
     fn test_expression_serialization_simple() {
-        let expr =
-            ConstraintExpression::Gt("age".to_string(), ValueOrRef::Value(ScalarValue::Int(0)));
+        let expr = ConstraintExpression::Cmp {
+            left: "age".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Value(ScalarValue::Int(0)),
+        };
 
         let json = serde_json::to_string(&expr).unwrap();
         let restored: ConstraintExpression = serde_json::from_str(&json).unwrap();
@@ -642,14 +608,16 @@ mod tests {
     #[test]
     fn test_expression_serialization_complex() {
         let expr = ConstraintExpression::And(
-            Box::new(ConstraintExpression::Gt(
-                "age".to_string(),
-                ValueOrRef::Value(ScalarValue::Int(0)),
-            )),
-            Box::new(ConstraintExpression::Lt(
-                "age".to_string(),
-                ValueOrRef::Value(ScalarValue::Int(150)),
-            )),
+            Box::new(ConstraintExpression::Cmp {
+                left: "age".to_string(),
+                op: CmpOp::Gt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            }),
+            Box::new(ConstraintExpression::Cmp {
+                left: "age".to_string(),
+                op: CmpOp::Lt,
+                right: ValueOrRef::Value(ScalarValue::Int(150)),
+            }),
         );
 
         let json = serde_json::to_string(&expr).unwrap();
@@ -666,24 +634,11 @@ mod tests {
 
     #[test]
     fn test_expression_serialization_attr_cmp() {
-        let expr = ConstraintExpression::AttrCmp {
+        let expr = ConstraintExpression::Cmp {
             left: "end_date".to_string(),
             op: CmpOp::Ge,
-            right: "start_date".to_string(),
+            right: ValueOrRef::Attribute("start_date".to_string()),
         };
-
-        let json = serde_json::to_string(&expr).unwrap();
-        let restored: ConstraintExpression = serde_json::from_str(&json).unwrap();
-        assert_eq!(expr, restored);
-    }
-
-    #[test]
-    fn test_expression_serialization_between() {
-        let expr = ConstraintExpression::Between(
-            "score".to_string(),
-            ScalarValue::Int(0),
-            ScalarValue::Int(100),
-        );
 
         let json = serde_json::to_string(&expr).unwrap();
         let restored: ConstraintExpression = serde_json::from_str(&json).unwrap();
@@ -693,10 +648,11 @@ mod tests {
     #[test]
     fn test_type_mismatch_in_comparison() {
         // Comparing Int with String should fail with TypeMismatch
-        let expr = ConstraintExpression::Gt(
-            "age".to_string(),
-            ValueOrRef::Value(ScalarValue::String("not_a_number".to_string())),
-        );
+        let expr = ConstraintExpression::Cmp {
+            left: "age".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Value(ScalarValue::String("not_a_number".to_string())),
+        };
 
         let tuple = tuple! { age: 30i64 };
         let result = expr.evaluate(&tuple);
@@ -706,8 +662,11 @@ mod tests {
 
     #[test]
     fn test_type_mismatch_in_lt() {
-        let expr =
-            ConstraintExpression::Lt("name".to_string(), ValueOrRef::Value(ScalarValue::Int(42)));
+        let expr = ConstraintExpression::Cmp {
+            left: "name".to_string(),
+            op: CmpOp::Lt,
+            right: ValueOrRef::Value(ScalarValue::Int(42)),
+        };
 
         let tuple = tuple! { name: "Alice" };
         let result = expr.evaluate(&tuple);
@@ -717,10 +676,10 @@ mod tests {
 
     #[test]
     fn test_type_mismatch_attr_to_attr() {
-        let expr = ConstraintExpression::AttrCmp {
+        let expr = ConstraintExpression::Cmp {
             left: "age".to_string(),
             op: CmpOp::Lt,
-            right: "name".to_string(),
+            right: ValueOrRef::Attribute("name".to_string()),
         };
 
         let tuple = tuple! { age: 30i64, name: "Alice" };

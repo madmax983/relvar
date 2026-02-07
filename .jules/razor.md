@@ -22,3 +22,18 @@
 **Bloat:** `relvar/src/experimental/exporter.rs` - `Exporter` struct was a "Factory Factory" / unnecessary wrapper around `Relation` just to call methods.
 **Cut:** Refactored into free functions (`to_csv`, `to_json`, `to_ascii_table`).
 **Saved:** Simplified API (no need to instantiate `Exporter`), reduced boilerplate.
+
+## [Reduction]
+**Bloat:** `CheckPredicate::Dynamic` and `TypeConstraint::Custom` (closure-based validation)
+**Cut:** Removed dynamic predicates; enforced strictly declarative, serializable constraints.
+**Saved:** Removed "Zombie Code" path that couldn't be persisted, simplified `CheckConstraint` struct.
+
+## [Reduction]
+**Bloat:** `ConstraintExpression` variants (`Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`, `AttrCmp`, `Between`)
+**Cut:** Consolidated into a single `Cmp` variant and removed `Between` (syntactic sugar).
+**Saved:** Reduced 8 variants to 1, significantly simplifying evaluation logic and DRY.
+
+## [Reduction]
+**Bloat:** `TypeConstraint::PositiveInt` and `NonNegativeInt`
+**Cut:** Replaced with `Range`.
+**Saved:** Removed redundant enum variants.
