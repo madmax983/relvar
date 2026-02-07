@@ -41,8 +41,56 @@
 //! ```
 
 use crate::types::{RelationType, TupleType};
-use crate::values::{Relation, Tuple};
+use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
+
+/// Computes the union of two relation headings.
+///
+/// Used for both Natural Join and Theta Join result types.
+/// Attributes from the `left` relation take precedence if there are collisions
+/// (the `right` attribute is skipped).
+fn compute_join_heading(left: &Relation, right: &Relation) -> TupleType {
+    // Build result heading (union of both headings)
+    let mut result_heading = TupleType::new();
+
+    // Add all attributes from left
+    for (attr_name, attr_type) in left.relation_type().heading().attributes() {
+        result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
+    }
+
+    // Add attributes from right that aren't already in result
+    // Note: If an attribute exists in both, we keep the one from left.
+    // This handles both Natural Join (types match, values match)
+    // and Theta Join (collision resolution: drop right).
+    for (attr_name, attr_type) in right.relation_type().heading().attributes() {
+        if !result_heading.has_attribute(attr_name) {
+            result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
+        }
+    }
+    result_heading
+}
+
+/// Merges values from two tuples into a single map.
+///
+/// Values from the `left` tuple take precedence.
+/// Attributes present in both tuples (common attributes) are taken from `left`,
+/// and the value from `right` is skipped.
+fn merge_tuple_values(left: &Tuple, right: &Tuple) -> HashMap<String, ScalarValue> {
+    let mut combined_values = HashMap::new();
+
+    // Add all values from left
+    for (attr_name, value) in left.values() {
+        combined_values.insert(attr_name.clone(), value.clone());
+    }
+
+    // Add values from right that aren't common (common ones are already in)
+    for (attr_name, value) in right.values() {
+        if !combined_values.contains_key(attr_name) {
+            combined_values.insert(attr_name.clone(), value.clone());
+        }
+    }
+    combined_values
+}
 
 impl Relation {
     /// Performs a natural join with another relation.
@@ -69,8 +117,8 @@ impl Relation {
     ///
     /// # Complexity
     ///
-    /// O(n * m) where n and m are the cardinalities of the two relations.
-    /// This is a nested-loop join implementation.
+    /// O(N + M) using Hash Join algorithm (where N and M are cardinalities).
+    /// If no common attributes exist (Cartesian product), falls back to O(N * M).
     ///
     /// # Example
     ///
@@ -100,7 +148,10 @@ impl Relation {
     /// assert_eq!(result.cardinality(), 1);  // Only emp 1 matches (dept 10)
     /// ```
     pub fn join(&self, other: &Relation) -> Self {
-        // Find common attributes
+        let result_heading = compute_join_heading(self, other);
+        let result_rel_type = RelationType::new(result_heading.clone());
+
+        // Find common attributes (join keys)
         let common_attrs: Vec<String> = self
             .relation_type()
             .heading()
@@ -109,53 +160,48 @@ impl Relation {
             .cloned()
             .collect();
 
-        // Build result heading (union of both headings)
-        let mut result_heading = TupleType::new();
-
-        // Add all attributes from self
-        for (attr_name, attr_type) in self.relation_type().heading().attributes() {
-            result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-        }
-
-        // Add attributes from other that aren't already in result
-        for (attr_name, attr_type) in other.relation_type().heading().attributes() {
-            if !result_heading.has_attribute(attr_name) {
-                result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-            }
-        }
-
-        let result_rel_type = RelationType::new(result_heading.clone());
-
-        // Perform join
         let mut joined_tuples = Vec::new();
 
-        for tuple1 in self.tuples() {
-            for tuple2 in other.tuples() {
-                // Check if tuples match on common attributes
-                let matches = common_attrs
-                    .iter()
-                    .all(|attr| tuple1.get(attr) == tuple2.get(attr));
-
-                if matches {
-                    // Combine tuples
-                    let mut combined_values = HashMap::new();
-
-                    // Add all values from tuple1
-                    for (attr_name, value) in tuple1.values() {
-                        combined_values.insert(attr_name.clone(), value.clone());
-                    }
-
-                    // Add values from tuple2 that aren't common (common ones are already in)
-                    for (attr_name, value) in tuple2.values() {
-                        if !combined_values.contains_key(attr_name) {
-                            combined_values.insert(attr_name.clone(), value.clone());
-                        }
-                    }
-
+        if common_attrs.is_empty() {
+            // Cartesian Product: No common attributes, so every tuple matches every tuple
+            // Complexity: O(N * M)
+            for tuple1 in self.tuples() {
+                for tuple2 in other.tuples() {
+                    let combined_values = merge_tuple_values(tuple1, tuple2);
                     let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
                         .expect("Combined tuple should conform to result heading");
-
                     joined_tuples.push(combined_tuple);
+                }
+            }
+        } else {
+            // Hash Join: O(N + M)
+            // Build phase: construct hash map from 'other' relation
+            // Key: Vec<ScalarValue> (values of common attributes)
+            // Value: Vec<&Tuple> (list of tuples matching that key)
+            let mut build_map: HashMap<Vec<ScalarValue>, Vec<&Tuple>> = HashMap::new();
+
+            for tuple in other.tuples() {
+                let key: Vec<ScalarValue> = common_attrs
+                    .iter()
+                    .map(|attr| tuple.get(attr).expect("Attribute must exist").clone())
+                    .collect();
+                build_map.entry(key).or_default().push(tuple);
+            }
+
+            // Probe phase: iterate 'self' relation and probe map
+            for tuple1 in self.tuples() {
+                let key: Vec<ScalarValue> = common_attrs
+                    .iter()
+                    .map(|attr| tuple1.get(attr).expect("Attribute must exist").clone())
+                    .collect();
+
+                if let Some(matching_tuples) = build_map.get(&key) {
+                    for tuple2 in matching_tuples {
+                        let combined_values = merge_tuple_values(tuple1, tuple2);
+                        let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
+                            .expect("Combined tuple should conform to result heading");
+                        joined_tuples.push(combined_tuple);
+                    }
                 }
             }
         }
@@ -234,42 +280,14 @@ impl Relation {
     where
         F: Fn(&Tuple, &Tuple) -> bool,
     {
-        // Build result heading (union of both headings, but must handle conflicts)
-        let mut result_heading = TupleType::new();
-
-        // Add all attributes from self
-        for (attr_name, attr_type) in self.relation_type().heading().attributes() {
-            result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-        }
-
-        // Add attributes from other, renaming if there's a conflict
-        for (attr_name, attr_type) in other.relation_type().heading().attributes() {
-            if !result_heading.has_attribute(attr_name) {
-                result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-            }
-            // Note: In a production system, we'd want to handle conflicts more explicitly
-        }
-
+        let result_heading = compute_join_heading(self, other);
         let result_rel_type = RelationType::new(result_heading.clone());
-
-        // Perform theta join
         let mut joined_tuples = Vec::new();
 
         for tuple1 in self.tuples() {
             for tuple2 in other.tuples() {
                 if predicate(tuple1, tuple2) {
-                    // Combine tuples
-                    let mut combined_values = HashMap::new();
-
-                    for (attr_name, value) in tuple1.values() {
-                        combined_values.insert(attr_name.clone(), value.clone());
-                    }
-
-                    for (attr_name, value) in tuple2.values() {
-                        if !combined_values.contains_key(attr_name) {
-                            combined_values.insert(attr_name.clone(), value.clone());
-                        }
-                    }
+                    let combined_values = merge_tuple_values(tuple1, tuple2);
 
                     if let Ok(combined_tuple) = Tuple::new(result_heading.clone(), combined_values)
                     {
