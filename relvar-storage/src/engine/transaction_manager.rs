@@ -27,10 +27,7 @@ pub struct TransactionManager {
 
 impl TransactionManager {
     /// Create a new transaction manager.
-    pub fn new(
-        txn_id_gen: TransactionIdGenerator,
-        committed_txns: HashSet<TransactionId>,
-    ) -> Self {
+    pub fn new(txn_id_gen: TransactionIdGenerator, committed_txns: HashSet<TransactionId>) -> Self {
         Self {
             txn_id_gen,
             active_txns: ActiveTransactionTable::new(),

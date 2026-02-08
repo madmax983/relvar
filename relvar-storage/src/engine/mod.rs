@@ -194,13 +194,14 @@ impl PersistentEngine {
         }
 
         // Determine minimum active LSN
-        let min_active_lsn = if let Some(oldest_lsn) = self.txn_manager.active_txns().oldest_active_lsn() {
-            // If there are active transactions, checkpoint from oldest active txn
-            oldest_lsn
-        } else {
-            // No active transactions - can checkpoint from current position
-            self.wal.current_lsn()
-        };
+        let min_active_lsn =
+            if let Some(oldest_lsn) = self.txn_manager.active_txns().oldest_active_lsn() {
+                // If there are active transactions, checkpoint from oldest active txn
+                oldest_lsn
+            } else {
+                // No active transactions - can checkpoint from current position
+                self.wal.current_lsn()
+            };
 
         // Collect dirty pages (simplified - all open heap files are considered dirty)
         let mut dirty_pages = std::collections::HashMap::new();
@@ -300,7 +301,6 @@ impl PersistentEngine {
 
         Ok(())
     }
-
 }
 
 impl StorageEngine for PersistentEngine {
