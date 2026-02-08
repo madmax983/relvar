@@ -581,4 +581,24 @@ mod tests {
             Some(&ScalarType::Int)
         );
     }
+
+    #[test]
+    fn test_join_swap_optimization() {
+        // Test case 1: Left is smaller (no swap)
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let mut small = Relation::new(RelationType::new(heading.clone()));
+        small.insert(tuple! { id: 1i64 }).unwrap();
+
+        let mut large = Relation::new(RelationType::new(heading.clone()));
+        for i in 0..10 {
+            large.insert(tuple! { id: i as i64 }).unwrap();
+        }
+
+        let result1 = small.join(&large).unwrap();
+        assert_eq!(result1.cardinality(), 1);
+
+        // Test case 2: Right is smaller (swap)
+        let result2 = large.join(&small).unwrap();
+        assert_eq!(result2.cardinality(), 1);
+    }
 }
