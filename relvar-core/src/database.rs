@@ -4,13 +4,13 @@
 //! for all database operations.
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraints, ConstraintManager,
-    ForeignKeyConstraints, KeyConstraints,
+    AttributeConstraints, CheckConstraints, ConstraintManager, ForeignKeyConstraints,
+    KeyConstraints,
 };
+pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
-pub use crate::error::DatabaseError;
 
 use std::collections::HashMap;
 
@@ -763,9 +763,9 @@ impl<E: StorageEngine> Database<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constraints::ConstraintManagerError;
     use crate::constraints::check::{CheckConstraint, CheckConstraints};
     use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
-    use crate::constraints::ConstraintManagerError;
     use crate::storage_engine::{InMemoryEngine, StorageError};
     use crate::tuple;
     use crate::types::{ScalarType, TupleType};
