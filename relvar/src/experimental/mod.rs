@@ -29,3 +29,5 @@
 
 pub mod exporter;
 pub mod mock;
+/// System catalog views (`_RELVARS`, `_ATTRIBUTES`, etc.) for database reflection.
+pub mod system_views;
