@@ -690,4 +690,47 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
     }
+
+    #[test]
+    fn test_like_pattern_matching() {
+        // Helper to evaluate LIKE
+        let check = |text: &str, pattern: &str| -> bool {
+            let expr = ConstraintExpression::Like("val".to_string(), pattern.to_string());
+            let tuple = tuple! { val: text };
+            expr.evaluate(&tuple).unwrap()
+        };
+
+        // Literal match
+        assert!(check("hello", "hello"));
+        assert!(!check("hello", "world"));
+        assert!(!check("hello", "hell"));
+        assert!(!check("hello", "hello!"));
+
+        // % wildcard
+        assert!(check("hello", "%"));
+        assert!(check("hello", "h%"));
+        assert!(check("hello", "%o"));
+        assert!(check("hello", "%ll%"));
+        assert!(check("hello", "he%lo"));
+        assert!(!check("hello", "h%x"));
+
+        // _ wildcard
+        assert!(check("hello", "h_llo"));
+        assert!(check("hello", "_____"));
+        assert!(!check("hello", "____"));
+        assert!(!check("hello", "______"));
+
+        // Combined wildcards
+        assert!(check("hello", "_e%o"));
+        assert!(check("hello", "h%__"));
+
+        // Empty strings
+        assert!(check("", ""));
+        assert!(check("", "%"));
+        assert!(!check("", "_"));
+        assert!(!check("a", ""));
+
+        // Case sensitivity (current impl is likely case-sensitive based on char comparison)
+        assert!(!check("Hello", "hello"));
+    }
 }
