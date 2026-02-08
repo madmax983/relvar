@@ -5,3 +5,7 @@
 ## 2025-05-24 - Unify Database Error Handling
 **Tangle:** `DatabaseError` duplicated `ConstraintManagerError` variants (violating DRY) and required manual synchronization.
 **Blueprint:** Nested `ConstraintManagerError` within `DatabaseError` via a `Constraint(#[from] ConstraintManagerError)` variant. This enforces hierarchy and removes code duplication.
+
+## 2025-05-25 - Decompose PersistentEngine
+**Tangle:** `PersistentEngine` in `relvar-storage/src/persistent_engine.rs` was a 2000-line "God Struct" mixing storage orchestration, transaction management (MVCC), and catalog management.
+**Blueprint:** Decomposed `PersistentEngine` into `TransactionManager` (lifecycle & MVCC state) and `CatalogManager` (metadata persistence). Renamed `persistent_engine.rs` to `engine/mod.rs` and moved components to `engine/transaction_manager.rs` and `engine/catalog_manager.rs`.
