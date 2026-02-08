@@ -4,64 +4,15 @@
 //! for all database operations.
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraints, ConstraintManager, ConstraintManagerError,
+    AttributeConstraints, CheckConstraints, ConstraintManager,
     ForeignKeyConstraints, KeyConstraints,
 };
-use crate::storage_engine::{StorageEngine, StorageError};
+use crate::storage_engine::StorageEngine;
 use crate::types::RelationType;
-use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
+pub use crate::error::DatabaseError;
 
 use std::collections::HashMap;
-use thiserror::Error;
-
-/// Errors that can occur during database operations.
-#[derive(Debug, Error)]
-pub enum DatabaseError {
-    /// A storage error occurred.
-    #[error("Storage error: {0}")]
-    Storage(#[from] StorageError),
-
-    /// An error occurred with a relation value.
-    #[error("Relation error: {0}")]
-    Relation(#[from] RelationError),
-
-    /// Attempted to create a relation that already exists.
-    #[error("Relation {0} already exists")]
-    RelationAlreadyExists(String),
-
-    /// The specified relation does not exist.
-    #[error("Relation {0} not found")]
-    RelationNotFound(String),
-
-    /// The tuple's type does not match the relation's heading.
-    #[error("Tuple type does not match relation type")]
-    TupleMismatch,
-
-    /// Constraint violation.
-    #[error("Constraint violation: {0}")]
-    Constraint(#[from] ConstraintManagerError),
-
-    /// Transaction error.
-    #[error("Transaction error: {0}")]
-    TransactionError(String),
-
-    /// Cannot modify a virtual relvar.
-    #[error("Cannot modify virtual relvar {0}")]
-    CannotModifyVirtualRelvar(String),
-
-    /// Cannot drop a system relvar.
-    #[error("Cannot drop system relvar {0}")]
-    CannotDropSystemRelvar(String),
-
-    /// Duplicate attribute name.
-    #[error("Duplicate attribute name: {0}")]
-    DuplicateAttributeName(String),
-
-    /// The attribute does not exist.
-    #[error("Attribute {0} not found in relation {1}")]
-    AttributeNotFound(String, String),
-}
 
 /// Definition of a virtual relvar (view).
 ///
@@ -814,7 +765,8 @@ mod tests {
     use super::*;
     use crate::constraints::check::{CheckConstraint, CheckConstraints};
     use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
-    use crate::storage_engine::InMemoryEngine;
+    use crate::constraints::ConstraintManagerError;
+    use crate::storage_engine::{InMemoryEngine, StorageError};
     use crate::tuple;
     use crate::types::{ScalarType, TupleType};
     use crate::values::ScalarValue;

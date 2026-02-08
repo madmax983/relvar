@@ -36,10 +36,11 @@
 //! departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
 //!
 //! // Natural join on dept_id
-//! let result = employees.join(&departments);
+//! let result = employees.join(&departments).unwrap();
 //! assert_eq!(result.degree(), 4);  // emp_id, name, dept_id, dept_name
 //! ```
 
+use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
@@ -97,10 +98,10 @@ impl Relation {
     /// let mut departments = Relation::new(RelationType::new(dept_heading));
     /// departments.insert(tuple! { dept_id: 10i64, budget: 100000i64 }).unwrap();
     ///
-    /// let result = employees.join(&departments);
+    /// let result = employees.join(&departments).unwrap();
     /// assert_eq!(result.cardinality(), 1);  // Only emp 1 matches (dept 10)
     /// ```
-    pub fn join(&self, other: &Relation) -> Self {
+    pub fn join(&self, other: &Relation) -> Result<Self, DatabaseError> {
         // Find common attributes
         let common_attrs: Vec<String> = self
             .relation_type()
@@ -147,20 +148,23 @@ impl Relation {
         let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> = HashMap::new();
 
         for tuple in build_rel.tuples() {
-            let key: Vec<&ScalarValue> = common_attrs
-                .iter()
-                .map(|attr| tuple.get(attr).expect("Attribute should exist"))
-                .collect();
-
+            let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
+            for attr in &common_attrs {
+                key.push(tuple.get(attr).ok_or_else(|| {
+                    DatabaseError::AttributeNotFound(attr.clone(), "build relation".to_string())
+                })?);
+            }
             build_map.entry(key).or_default().push(tuple);
         }
 
         // Probe Phase: Iterate through probe relation and look up matches
         for probe_tuple in probe_rel.tuples() {
-            let key: Vec<&ScalarValue> = common_attrs
-                .iter()
-                .map(|attr| probe_tuple.get(attr).expect("Attribute should exist"))
-                .collect();
+            let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
+            for attr in &common_attrs {
+                key.push(probe_tuple.get(attr).ok_or_else(|| {
+                    DatabaseError::AttributeNotFound(attr.clone(), "probe relation".to_string())
+                })?);
+            }
 
             if let Some(matching_tuples) = build_map.get(&key) {
                 for build_tuple in matching_tuples {
@@ -179,16 +183,20 @@ impl Relation {
                         }
                     }
 
-                    if let Ok(combined_tuple) = Tuple::new(result_heading.clone(), combined_values)
-                    {
-                        joined_tuples.push(combined_tuple);
-                    }
+                    let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
+                        .map_err(|e| {
+                            DatabaseError::AlgebraError(format!(
+                                "Failed to construct combined tuple: {}",
+                                e
+                            ))
+                        })?;
+
+                    joined_tuples.push(combined_tuple);
                 }
             }
         }
 
-        Relation::from_tuples(result_rel_type, joined_tuples)
-            .expect("Joined tuples should conform to result relation type")
+        Ok(Relation::from_tuples(result_rel_type, joined_tuples)?)
     }
 
     /// Performs a theta join with another relation using an arbitrary predicate.
@@ -351,7 +359,7 @@ mod tests {
             .unwrap();
 
         // Join on dept_id
-        let result = employees.join(&departments);
+        let result = employees.join(&departments).unwrap();
 
         assert_eq!(result.degree(), 4); // emp_id, name, dept_id, dept_name
         assert_eq!(result.cardinality(), 2);
@@ -384,7 +392,7 @@ mod tests {
         rel2.insert(tuple! { b: "x" }).unwrap();
         rel2.insert(tuple! { b: "y" }).unwrap();
 
-        let result = rel1.join(&rel2);
+        let result = rel1.join(&rel2).unwrap();
 
         // Cartesian product: 2 x 2 = 4
         assert_eq!(result.cardinality(), 4);
@@ -404,7 +412,7 @@ mod tests {
 
         let rel2 = Relation::new(rel_type);
 
-        let result = rel1.join(&rel2);
+        let result = rel1.join(&rel2).unwrap();
 
         assert_eq!(result.cardinality(), 0);
         assert!(result.is_empty());
@@ -426,7 +434,7 @@ mod tests {
             .insert(tuple! { emp_id: 2i64, name: "Bob" })
             .unwrap();
 
-        let result = relation.join(&relation);
+        let result = relation.join(&relation).unwrap();
 
         // Self-join on all attributes = original relation
         assert_eq!(result.cardinality(), 2);
@@ -495,7 +503,7 @@ mod tests {
 
         rel2.insert(tuple! { dept_id: 20i64 }).unwrap();
 
-        let result = rel1.join(&rel2);
+        let result = rel1.join(&rel2).unwrap();
 
         assert_eq!(result.cardinality(), 0);
         assert!(result.is_empty());

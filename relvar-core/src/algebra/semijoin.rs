@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_semidifference_no_common_attributes_other_non_empty() {
-        // Disjoint headings + B non-empty => semijoin = A, so semidiff = A - A = empty
+        // Disjoint headings + B non-empty => result = A (vacuous match)
         let heading_a = TupleType::new().with_attribute("a", ScalarType::Int);
         let mut rel_a = Relation::new(RelationType::new(heading_a));
         rel_a.insert(tuple! { a: 1i64 }).unwrap();
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn test_semidifference_no_common_attributes_other_empty() {
-        // Disjoint headings + B empty => semijoin = empty, so semidiff = A
+        // Disjoint headings + B empty => result = empty
         let heading_a = TupleType::new().with_attribute("a", ScalarType::Int);
         let mut rel_a = Relation::new(RelationType::new(heading_a));
         rel_a.insert(tuple! { a: 1i64 }).unwrap();
@@ -671,6 +671,7 @@ mod tests {
         let direct = employees.semijoin(&departments);
         let via_join = employees
             .join(&departments)
+            .unwrap()
             .project(&["emp_id", "name", "dept_id"]);
 
         assert_eq!(direct, via_join);
