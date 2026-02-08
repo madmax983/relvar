@@ -53,7 +53,7 @@ impl CatalogManager {
     ) -> Result<crate::storage::catalog::RelationMetadata, StorageError> {
         self.catalog
             .get_relation(name)
-            .map(|m| m.clone())
+            .cloned()
             .map_err(Self::convert_catalog_error)
     }
 
