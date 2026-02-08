@@ -90,9 +90,12 @@ use relvar::{Database, RelationType, ScalarType, TupleType, tuple};
 use tempfile::TempDir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a database
+    // Create a database (requires "storage" feature for persistent engine)
     let temp_dir = TempDir::new()?;
-    let mut db = Database::open(temp_dir.path())?;
+
+    // Use relvar::open() helper or Database::new(PersistentEngine::open(...))
+    // Note: requires `relvar-storage` feature which is enabled by default
+    let mut db = relvar::open(temp_dir.path())?;
 
     // Define a relation type (heading)
     let employee_type = RelationType::new(
@@ -148,38 +151,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Architecture
 
+The project is organized as a Cargo workspace with three main crates:
+
+### 1. `relvar` (Facade)
+The user-facing API that re-exports functionality from the core and storage crates. This is what you should depend on in your projects.
+
+### 2. `relvar-core` (Pure Logic)
+Contains the pure implementation of the relational model and TTM principles. It has zero I/O dependencies and operates entirely in memory.
+
 ```
-src/
-├── lib.rs                 # Public API
-├── types/                 # Type system
-│   ├── scalar.rs          # Scalar types
-│   ├── tuple_type.rs      # Tuple types
-│   └── relation_type.rs   # Relation types
-├── values/                # Value representations
-│   ├── scalar.rs          # Scalar values
-│   ├── tuple.rs           # Tuple values
-│   └── relation.rs        # Relation values
+relvar-core/src/
+├── lib.rs                 # Core API exports
+├── types/                 # Type system (ScalarType, TupleType, RelationType)
+├── values/                # Runtime values (ScalarValue, Tuple, Relation)
 ├── algebra/               # Relational algebra operators
 │   ├── restrict.rs        # Filter tuples
 │   ├── project.rs         # Select attributes
-│   ├── rename.rs          # Rename attributes
 │   ├── join.rs            # Join operations
-│   ├── union.rs           # Union
-│   ├── intersect.rs       # Intersection
-│   ├── difference.rs      # Set difference
-│   ├── extend.rs          # Computed attributes
-│   ├── summarize.rs       # Aggregation
-│   └── group.rs           # GROUP/UNGROUP for RVAs
+│   └── ...                # Other operators
 ├── constraints/           # Constraint system
-│   ├── type_constraint.rs # Type constraints
-│   ├── key.rs             # Key constraints
-│   └── foreign_key.rs     # Foreign keys
-├── storage/               # Persistence layer
-│   ├── page.rs            # Page-based storage
-│   ├── heap.rs            # Heap files
-│   ├── btree.rs           # B-tree indexes
-│   └── catalog.rs         # System catalog
-└── database.rs            # Main database API
+└── database.rs            # Database logical transaction manager
+```
+
+### 3. `relvar-storage` (Persistence)
+Implements the physical storage layer using heap files and pages. This is an optional dependency enabled by the default `storage` feature.
+
+```
+relvar-storage/src/
+├── lib.rs                 # Storage API exports
+├── storage/               # Physical storage implementation
+│   ├── page.rs            # Fixed-size page abstraction
+│   ├── heap.rs            # Heap file (unordered tuple storage)
+│   └── catalog.rs         # System catalog metadata
+├── mvcc/                  # Multi-Version Concurrency Control
+└── wal/                   # Write-Ahead Logging
 ```
 
 ## Key Principles
@@ -251,7 +256,7 @@ students.union(&teachers)
 The project follows Test-Driven Development (TDD):
 
 ```bash
-# Run all tests
+# Run all tests in the workspace
 cargo test
 
 # Run tests with output
