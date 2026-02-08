@@ -10,12 +10,25 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Snapshot for persistent transactions.
+///
+/// Represents the state of a transaction at a specific point in time.
 #[derive(Debug, Clone)]
 pub struct PersistentSnapshot {
     /// The transaction ID.
     pub txn_id: TransactionId,
     /// Saved relations (for compatibility with old rollback approach).
-    /// TODO: Remove once full WAL recovery is implemented.
+    ///
+    /// # Transition Note
+    ///
+    /// This field is a temporary bridge. Currently, rollback is implemented by
+    /// restoring full relation state from memory.
+    ///
+    /// **Future State:** Once full MVCC integration is complete, rollback will
+    /// be instantaneous (simply discarding the transaction ID), as uncommitted
+    /// versions are automatically invisible to other transactions. At that point,
+    /// this field will be removed.
+    ///
+    /// TODO: Remove once full WAL/MVCC recovery is implemented.
     pub saved_relations: HashMap<String, Relation>,
 }
 
