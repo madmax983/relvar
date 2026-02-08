@@ -509,4 +509,41 @@ mod tests {
             1
         );
     }
+
+    /// Verifies behavior when colliding attributes have DIFFERENT types.
+    ///
+    /// Even if types mismatch, the second attribute is dropped, and the result
+    /// retains the type and value of the first attribute. This ensures no
+    /// type confusion or panic occurs during tuple construction.
+    #[test]
+    fn test_theta_join_colliding_attributes_different_types() {
+        // Relation 1: id=1 (Int)
+        let heading1 = TupleType::new().with_attribute("id", ScalarType::Int);
+        let mut rel1 = Relation::new(RelationType::new(heading1));
+        rel1.insert(tuple! { id: 1i64 }).unwrap();
+
+        // Relation 2: id="2" (String) - Same name, different type
+        let heading2 = TupleType::new().with_attribute("id", ScalarType::String);
+        let mut rel2 = Relation::new(RelationType::new(heading2));
+        rel2.insert(tuple! { id: "2" }).unwrap();
+
+        // Theta join
+        let result = rel1.theta_join(&rel2, |_, _| true);
+
+        // Result should have 'id' as Int (from rel1)
+        assert_eq!(result.degree(), 1);
+        let tuple = result.tuples().next().unwrap();
+
+        // Should be able to get as Int
+        assert_eq!(tuple.get_typed::<i64>("id").unwrap(), 1);
+
+        // Should NOT be able to get as String
+        assert!(tuple.get_typed::<String>("id").is_none());
+
+        // Verify type in heading
+        assert_eq!(
+            result.relation_type().heading().get_attribute_type("id"),
+            Some(&ScalarType::Int)
+        );
+    }
 }
