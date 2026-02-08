@@ -41,7 +41,7 @@ pub mod key;
 pub mod manager;
 pub mod type_constraint;
 
-pub use check::{CheckConstraint, CheckConstraintError, CheckConstraints, CheckPredicate};
+pub use check::{CheckConstraint, CheckConstraintError, CheckConstraints};
 pub use expression::{CmpOp, ConstraintExpression, ExpressionError, ValueOrRef};
 pub use foreign_key::{ForeignKey, ForeignKeyConstraints, ForeignKeyError};
 pub use key::{CandidateKey, KeyConstraintError, KeyConstraints, PrimaryKey};

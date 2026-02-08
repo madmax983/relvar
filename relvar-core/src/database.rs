@@ -326,6 +326,7 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
     /// use relvar_core::constraints::AttributeConstraints;
     /// use relvar_core::constraints::TypeConstraint;
+    /// use relvar_core::values::ScalarValue;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let rel_type = RelationType::new(
@@ -334,7 +335,7 @@ impl<E: StorageEngine> Database<E> {
     /// db.create_relvar("TEST", rel_type).unwrap();
     ///
     /// let attr_constraints = AttributeConstraints::new("count".to_string(), ScalarType::Int)
-    ///     .with_constraint(TypeConstraint::PositiveInt);
+    ///     .with_constraint(TypeConstraint::Range { min: ScalarValue::Int(1), max: ScalarValue::Int(i64::MAX) });
     ///
     /// db.set_type_constraints("TEST", "count", attr_constraints).unwrap();
     /// ```
@@ -360,7 +361,7 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::constraints::{CheckConstraints, CheckConstraint, ConstraintExpression, ValueOrRef};
+    /// use relvar_core::constraints::{CheckConstraints, CheckConstraint, ConstraintExpression, CmpOp, ValueOrRef};
     /// use relvar_core::values::ScalarValue;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
@@ -372,13 +373,14 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// // Age must be >= 0
     /// let constraints = CheckConstraints::new()
-    ///     .with_constraint(CheckConstraint::from_expression(
+    ///     .with_constraint(CheckConstraint::new(
     ///         "valid_age",
     ///         "Age must be non-negative",
-    ///         ConstraintExpression::Gt(
-    ///             "age".to_string(),
-    ///             ValueOrRef::Value(ScalarValue::Int(-1))
-    ///         )
+    ///         ConstraintExpression::Cmp {
+    ///             left: "age".to_string(),
+    ///             op: CmpOp::Gt,
+    ///             right: ValueOrRef::Value(ScalarValue::Int(-1))
+    ///         }
     ///     ));
     ///
     /// db.set_check_constraints("PEOPLE", constraints).unwrap();
@@ -811,7 +813,7 @@ impl<E: StorageEngine> Database<E> {
 mod tests {
     use super::*;
     use crate::constraints::check::{CheckConstraint, CheckConstraints};
-    use crate::constraints::expression::{ConstraintExpression, ValueOrRef};
+    use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
     use crate::storage_engine::InMemoryEngine;
     use crate::tuple;
     use crate::types::{ScalarType, TupleType};
@@ -1073,7 +1075,10 @@ mod tests {
 
         // Add positive int constraint
         let attr_constraints = AttributeConstraints::new("id".to_string(), ScalarType::Int)
-            .with_constraint(TypeConstraint::PositiveInt);
+            .with_constraint(TypeConstraint::Range {
+                min: ScalarValue::Int(1),
+                max: ScalarValue::Int(i64::MAX),
+            });
         db.set_type_constraints("TEST", "id", attr_constraints)
             .unwrap();
 
@@ -1750,15 +1755,15 @@ mod tests {
         db.create_relvar("EMPLOYEES", rel_type).unwrap();
 
         // Create CHECK constraint: salary must be positive
-        let constraints =
-            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
-                "positive_salary",
-                "Salary must be positive",
-                ConstraintExpression::Gt(
-                    "salary".to_string(),
-                    ValueOrRef::Value(ScalarValue::Int(0)),
-                ),
-            ));
+        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+            "positive_salary",
+            "Salary must be positive",
+            ConstraintExpression::Cmp {
+                left: "salary".to_string(),
+                op: CmpOp::Gt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            },
+        ));
 
         db.set_check_constraints("EMPLOYEES", constraints).unwrap();
     }
@@ -1779,15 +1784,15 @@ mod tests {
             .unwrap();
 
         // Try to add CHECK constraint - should fail because existing data violates it
-        let constraints =
-            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
-                "positive_salary",
-                "Salary must be positive",
-                ConstraintExpression::Gt(
-                    "salary".to_string(),
-                    ValueOrRef::Value(ScalarValue::Int(0)),
-                ),
-            ));
+        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+            "positive_salary",
+            "Salary must be positive",
+            ConstraintExpression::Cmp {
+                left: "salary".to_string(),
+                op: CmpOp::Gt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            },
+        ));
 
         let result = db.set_check_constraints("EMPLOYEES", constraints);
         assert!(result.is_err());
@@ -1811,15 +1816,15 @@ mod tests {
         db.create_relvar("EMPLOYEES", rel_type).unwrap();
 
         // Add CHECK constraint: salary must be positive
-        let constraints =
-            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
-                "positive_salary",
-                "Salary must be positive",
-                ConstraintExpression::Gt(
-                    "salary".to_string(),
-                    ValueOrRef::Value(ScalarValue::Int(0)),
-                ),
-            ));
+        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+            "positive_salary",
+            "Salary must be positive",
+            ConstraintExpression::Cmp {
+                left: "salary".to_string(),
+                op: CmpOp::Gt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            },
+        ));
         db.set_check_constraints("EMPLOYEES", constraints).unwrap();
 
         // Insert with positive salary should succeed
@@ -1849,21 +1854,22 @@ mod tests {
         db.create_relvar("PERSONS", rel_type).unwrap();
 
         // Add complex CHECK constraint: age between 0 and 150
-        let constraints =
-            CheckConstraints::new().with_constraint(CheckConstraint::from_expression(
-                "valid_age",
-                "Age must be between 0 and 150",
-                ConstraintExpression::And(
-                    Box::new(ConstraintExpression::Gt(
-                        "age".to_string(),
-                        ValueOrRef::Value(ScalarValue::Int(0)),
-                    )),
-                    Box::new(ConstraintExpression::Lt(
-                        "age".to_string(),
-                        ValueOrRef::Value(ScalarValue::Int(150)),
-                    )),
-                ),
-            ));
+        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+            "valid_age",
+            "Age must be between 0 and 150",
+            ConstraintExpression::And(
+                Box::new(ConstraintExpression::Cmp {
+                    left: "age".to_string(),
+                    op: CmpOp::Gt,
+                    right: ValueOrRef::Value(ScalarValue::Int(0)),
+                }),
+                Box::new(ConstraintExpression::Cmp {
+                    left: "age".to_string(),
+                    op: CmpOp::Lt,
+                    right: ValueOrRef::Value(ScalarValue::Int(150)),
+                }),
+            ),
+        ));
         db.set_check_constraints("PERSONS", constraints).unwrap();
 
         // Insert with valid age should succeed

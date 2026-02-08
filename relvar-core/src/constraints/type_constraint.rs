@@ -2,16 +2,13 @@
 //!
 //! Type constraints define additional rules beyond basic type checking that
 //! values must satisfy. These include range limits, enumerated values,
-//! string length requirements, and custom validation functions.
+//! and string length requirements.
 //!
 //! # Constraint Types
 //!
 //! - [`TypeConstraint::Range`] - Value must be within min/max bounds
 //! - [`TypeConstraint::Enum`] - Value must be one of specified options
 //! - [`TypeConstraint::StringLength`] - String length must be within bounds
-//! - [`TypeConstraint::PositiveInt`] - Integer must be > 0
-//! - [`TypeConstraint::NonNegativeInt`] - Integer must be >= 0
-//! - [`TypeConstraint::Custom`] - User-defined validation function
 //!
 //! # Example
 //!
@@ -55,8 +52,7 @@ pub enum TypeConstraintError {
 /// A constraint that restricts the valid values for a scalar type.
 ///
 /// Type constraints add domain restrictions beyond the basic type system.
-/// They can enforce ranges, enumerated values, string lengths, or custom
-/// validation logic.
+/// They can enforce ranges, enumerated values, or string lengths.
 ///
 /// # Example
 ///
@@ -79,7 +75,7 @@ pub enum TypeConstraintError {
 ///     ],
 /// };
 /// ```
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TypeConstraint {
     /// Value must be within an inclusive range.
     ///
@@ -104,85 +100,6 @@ pub enum TypeConstraint {
         /// Maximum string length (inclusive).
         max: usize,
     },
-
-    /// Integer must be strictly positive (> 0).
-    PositiveInt,
-
-    /// Integer must be non-negative (>= 0).
-    NonNegativeInt,
-
-    /// Custom validation function.
-    ///
-    /// The validator function is not serializable. After deserialization,
-    /// the validator will be `None` and validation will pass by default.
-    Custom {
-        /// The validation function (optional for deserialization support).
-        #[serde(skip)]
-        #[allow(clippy::type_complexity)]
-        validator: Option<Box<dyn Fn(&ScalarValue) -> bool + Send + Sync>>,
-        /// Human-readable description of the constraint.
-        description: String,
-    },
-}
-
-// Manual Clone implementation since Custom variant contains a function
-impl Clone for TypeConstraint {
-    fn clone(&self) -> Self {
-        match self {
-            TypeConstraint::Range { min, max } => TypeConstraint::Range {
-                min: min.clone(),
-                max: max.clone(),
-            },
-            TypeConstraint::Enum { allowed_values } => TypeConstraint::Enum {
-                allowed_values: allowed_values.clone(),
-            },
-            TypeConstraint::StringLength { min, max } => TypeConstraint::StringLength {
-                min: *min,
-                max: *max,
-            },
-            TypeConstraint::PositiveInt => TypeConstraint::PositiveInt,
-            TypeConstraint::NonNegativeInt => TypeConstraint::NonNegativeInt,
-            TypeConstraint::Custom {
-                validator: _,
-                description,
-            } => TypeConstraint::Custom {
-                validator: None, // Can't clone functions
-                description: description.clone(),
-            },
-        }
-    }
-}
-
-// Manual Debug implementation since Custom variant contains a function
-impl std::fmt::Debug for TypeConstraint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TypeConstraint::Range { min, max } => f
-                .debug_struct("Range")
-                .field("min", min)
-                .field("max", max)
-                .finish(),
-            TypeConstraint::Enum { allowed_values } => f
-                .debug_struct("Enum")
-                .field("allowed_values", allowed_values)
-                .finish(),
-            TypeConstraint::StringLength { min, max } => f
-                .debug_struct("StringLength")
-                .field("min", min)
-                .field("max", max)
-                .finish(),
-            TypeConstraint::PositiveInt => f.debug_tuple("PositiveInt").finish(),
-            TypeConstraint::NonNegativeInt => f.debug_tuple("NonNegativeInt").finish(),
-            TypeConstraint::Custom {
-                validator,
-                description,
-            } => f
-                .debug_struct("Custom")
-                .field("validator", &validator.is_some())
-                .field("description", description)
-                .finish(),
-        }
-    }
 }
 
 impl TypeConstraint {
@@ -224,36 +141,6 @@ impl TypeConstraint {
                         expected: "String".to_string(),
                         actual: value.scalar_type().name(),
                     })
-                }
-            }
-            TypeConstraint::PositiveInt => {
-                if let ScalarValue::Int(n) = value {
-                    Ok(*n > 0)
-                } else {
-                    Err(TypeConstraintError::TypeMismatch {
-                        expected: "Int".to_string(),
-                        actual: value.scalar_type().name(),
-                    })
-                }
-            }
-            TypeConstraint::NonNegativeInt => {
-                if let ScalarValue::Int(n) = value {
-                    Ok(*n >= 0)
-                } else {
-                    Err(TypeConstraintError::TypeMismatch {
-                        expected: "Int".to_string(),
-                        actual: value.scalar_type().name(),
-                    })
-                }
-            }
-            TypeConstraint::Custom {
-                validator,
-                description: _,
-            } => {
-                if let Some(f) = validator {
-                    Ok(f(value))
-                } else {
-                    Ok(true) // Skip validation if no function (e.g., after deserialization)
                 }
             }
         }
@@ -412,8 +299,12 @@ mod tests {
     }
 
     #[test]
-    fn test_positive_int_constraint() {
-        let constraint = TypeConstraint::PositiveInt;
+    fn test_positive_int_replacement() {
+        // Replacement for PositiveInt: Range { min: 1, max: MAX }
+        let constraint = TypeConstraint::Range {
+            min: ScalarValue::Int(1),
+            max: ScalarValue::Int(i64::MAX),
+        };
 
         assert!(constraint.is_satisfied_by(&ScalarValue::Int(1)).unwrap());
         assert!(constraint.is_satisfied_by(&ScalarValue::Int(100)).unwrap());
@@ -422,8 +313,12 @@ mod tests {
     }
 
     #[test]
-    fn test_non_negative_int_constraint() {
-        let constraint = TypeConstraint::NonNegativeInt;
+    fn test_non_negative_int_replacement() {
+        // Replacement for NonNegativeInt: Range { min: 0, max: MAX }
+        let constraint = TypeConstraint::Range {
+            min: ScalarValue::Int(0),
+            max: ScalarValue::Int(i64::MAX),
+        };
 
         assert!(constraint.is_satisfied_by(&ScalarValue::Int(0)).unwrap());
         assert!(constraint.is_satisfied_by(&ScalarValue::Int(1)).unwrap());
@@ -438,7 +333,11 @@ mod tests {
                 min: ScalarValue::Int(0),
                 max: ScalarValue::Int(150),
             })
-            .with_constraint(TypeConstraint::NonNegativeInt);
+            // Use Range instead of NonNegativeInt
+            .with_constraint(TypeConstraint::Range {
+                min: ScalarValue::Int(0),
+                max: ScalarValue::Int(i64::MAX),
+            });
 
         assert!(
             age_constraints
@@ -490,25 +389,6 @@ mod tests {
                 .is_satisfied_by(&ScalarValue::String("pass".to_string()))
                 .unwrap()
         );
-    }
-
-    #[test]
-    fn test_custom_constraint() {
-        let constraint = TypeConstraint::Custom {
-            validator: Some(Box::new(|v| {
-                if let ScalarValue::Int(n) = v {
-                    n % 2 == 0 // Even numbers only
-                } else {
-                    false
-                }
-            })),
-            description: "Must be even".to_string(),
-        };
-
-        assert!(constraint.is_satisfied_by(&ScalarValue::Int(2)).unwrap());
-        assert!(constraint.is_satisfied_by(&ScalarValue::Int(100)).unwrap());
-        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(1)).unwrap());
-        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(99)).unwrap());
     }
 
     #[test]
@@ -618,44 +498,6 @@ mod tests {
     }
 
     #[test]
-    fn test_positive_int_with_negative() {
-        let constraint = TypeConstraint::PositiveInt;
-
-        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(-100)).unwrap());
-        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(-1)).unwrap());
-    }
-
-    #[test]
-    fn test_non_negative_int_with_negative() {
-        let constraint = TypeConstraint::NonNegativeInt;
-
-        // Zero should pass
-        assert!(constraint.is_satisfied_by(&ScalarValue::Int(0)).unwrap());
-
-        // Negative should fail
-        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(-1)).unwrap());
-        assert!(!constraint.is_satisfied_by(&ScalarValue::Int(-100)).unwrap());
-    }
-
-    #[test]
-    fn test_non_negative_int_type_mismatch() {
-        let constraint = TypeConstraint::NonNegativeInt;
-
-        // Should return error for non-int type
-        let result = constraint.is_satisfied_by(&ScalarValue::String("test".to_string()));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_positive_int_type_mismatch() {
-        let constraint = TypeConstraint::PositiveInt;
-
-        // Should return error for non-int type
-        let result = constraint.is_satisfied_by(&ScalarValue::Float(1.5));
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_enum_constraint_with_different_types() {
         let constraint = TypeConstraint::Enum {
             allowed_values: vec![
@@ -668,47 +510,6 @@ mod tests {
         // Wrong type should return error (type mismatch)
         let result = constraint.is_satisfied_by(&ScalarValue::String("1".to_string()));
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_custom_constraint_clone() {
-        let constraint = TypeConstraint::Custom {
-            validator: Some(Box::new(|v: &ScalarValue| match v {
-                ScalarValue::Int(i) => *i % 2 == 0,
-                _ => false,
-            })),
-            description: "Even numbers only".to_string(),
-        };
-
-        let cloned = constraint.clone();
-
-        // Cloned validator should be None
-        if let TypeConstraint::Custom {
-            validator,
-            description,
-        } = cloned
-        {
-            assert!(validator.is_none());
-            assert_eq!(description, "Even numbers only");
-        } else {
-            panic!("Expected Custom variant");
-        }
-    }
-
-    #[test]
-    fn test_custom_constraint_without_validator() {
-        // Custom constraint with validator = None should always pass
-        let constraint = TypeConstraint::Custom {
-            validator: None,
-            description: "No validator".to_string(),
-        };
-
-        assert!(constraint.is_satisfied_by(&ScalarValue::Int(42)).unwrap());
-        assert!(
-            constraint
-                .is_satisfied_by(&ScalarValue::String("anything".to_string()))
-                .unwrap()
-        );
     }
 
     #[test]
@@ -738,7 +539,11 @@ mod tests {
     #[test]
     fn test_attribute_constraints_multiple_failures() {
         let constraints = AttributeConstraints::new("age".to_string(), ScalarType::Int)
-            .with_constraint(TypeConstraint::PositiveInt)
+            // Use Range instead of PositiveInt
+            .with_constraint(TypeConstraint::Range {
+                min: ScalarValue::Int(1),
+                max: ScalarValue::Int(i64::MAX),
+            })
             .with_constraint(TypeConstraint::Range {
                 min: ScalarValue::Int(1),
                 max: ScalarValue::Int(120),
