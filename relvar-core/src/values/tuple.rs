@@ -519,4 +519,111 @@ mod tests {
             "Tuples with same content but different insertion order must hash identically"
         );
     }
+
+    #[test]
+    fn test_tuple_extra_attribute_fails() {
+        let tuple_type = TupleType::new().with_attribute("emp_id", ScalarType::Int);
+
+        let mut values = HashMap::new();
+        values.insert("emp_id".to_string(), ScalarValue::Int(1));
+        values.insert("extra".to_string(), ScalarValue::Int(2)); // Extra attribute
+
+        let result = Tuple::new(tuple_type, values);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TupleError::AttributeNotFound(attr) if attr == "extra"
+        ));
+    }
+
+    #[test]
+    fn test_tuple_empty() {
+        let tuple_type = TupleType::new(); // Empty type (degree 0)
+        let values: HashMap<String, ScalarValue> = HashMap::new(); // Empty values
+
+        let tuple = Tuple::new(tuple_type, values).unwrap();
+        assert_eq!(tuple.degree(), 0);
+        assert!(tuple.values().is_empty());
+        assert_eq!(tuple.get("any"), None);
+    }
+
+    #[test]
+    fn test_tuple_set_valid() {
+        let tuple_type = TupleType::new().with_attribute("val", ScalarType::Int);
+
+        let mut values = HashMap::new();
+        values.insert("val".to_string(), ScalarValue::Int(10));
+
+        let mut tuple = Tuple::new(tuple_type, values).unwrap();
+
+        // Update valid attribute with valid type
+        let result = tuple.set("val".to_string(), ScalarValue::Int(20));
+        assert!(result.is_ok());
+        assert_eq!(tuple.get("val"), Some(&ScalarValue::Int(20)));
+    }
+
+    #[test]
+    fn test_tuple_set_invalid_type() {
+        let tuple_type = TupleType::new().with_attribute("val", ScalarType::Int);
+
+        let mut values = HashMap::new();
+        values.insert("val".to_string(), ScalarValue::Int(10));
+
+        let mut tuple = Tuple::new(tuple_type, values).unwrap();
+
+        // Update valid attribute with WRONG type
+        let result = tuple.set("val".to_string(), ScalarValue::String("wrong".to_string()));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TupleError::TypeMismatch(_, _, _)
+        ));
+
+        // Verify value was NOT updated
+        assert_eq!(tuple.get("val"), Some(&ScalarValue::Int(10)));
+    }
+
+    #[test]
+    fn test_tuple_set_attribute_not_found() {
+        let tuple_type = TupleType::new().with_attribute("val", ScalarType::Int);
+
+        let mut values = HashMap::new();
+        values.insert("val".to_string(), ScalarValue::Int(10));
+
+        let mut tuple = Tuple::new(tuple_type, values).unwrap();
+
+        // Try to set non-existent attribute
+        let result = tuple.set("new_attr".to_string(), ScalarValue::Int(20));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TupleError::AttributeNotFound(attr) if attr == "new_attr"
+        ));
+    }
+
+    #[test]
+    fn test_tuple_from_different_iterators() {
+        let tuple_type = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+
+        // Case 1: Vec<(String, ScalarValue)>
+        let vec_values = vec![
+            ("a".to_string(), ScalarValue::Int(1)),
+            ("b".to_string(), ScalarValue::Int(2)),
+        ];
+        let tuple_from_vec = Tuple::new(tuple_type.clone(), vec_values).unwrap();
+        assert_eq!(tuple_from_vec.degree(), 2);
+
+        // Case 2: BTreeMap<String, ScalarValue>
+        use std::collections::BTreeMap;
+        let mut btree_values = BTreeMap::new();
+        btree_values.insert("a".to_string(), ScalarValue::Int(1));
+        btree_values.insert("b".to_string(), ScalarValue::Int(2));
+
+        let tuple_from_btree = Tuple::new(tuple_type, btree_values).unwrap();
+        assert_eq!(tuple_from_btree.degree(), 2);
+
+        assert_eq!(tuple_from_vec, tuple_from_btree);
+    }
 }
