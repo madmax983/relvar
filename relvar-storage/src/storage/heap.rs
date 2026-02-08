@@ -277,6 +277,36 @@ impl HeapFile {
         Ok(())
     }
 
+    /// Helper to find a free slot or allocate a new one.
+    fn find_or_allocate_slot<T>(slots: &mut Vec<Option<T>>, slot_count: &mut u32) -> u32 {
+        if let Some(pos) = slots.iter().position(|s| s.is_none()) {
+            pos as u32
+        } else {
+            let new_slot = slots.len() as u32;
+            slots.push(None);
+            *slot_count += 1;
+            new_slot
+        }
+    }
+
+    /// Helper to extract tuples from a sequence of slots.
+    fn extract_tuples_from_slots<'a, I, S>(
+        &self,
+        page: &Page,
+        slots: I,
+    ) -> Result<Vec<Tuple>, HeapError>
+    where
+        I: Iterator<Item = &'a S>,
+        S: SlotDescriptor + 'a,
+    {
+        let mut results = Vec::new();
+        for slot in slots {
+            let tuple = self.extract_tuple_from_page(page, slot.offset(), slot.length())?;
+            results.push(tuple);
+        }
+        Ok(results)
+    }
+
     /// Helper to extract all tuples from a page based on slot entries.
     /// This abstracts the common logic used in insert, update, delete, and GC operations.
     fn extract_all_tuples<T: SlotDescriptor>(
@@ -342,14 +372,8 @@ impl HeapFile {
         };
 
         // Find free slot or add new one
-        let slot_number = if let Some(pos) = slotted_page.slots.iter().position(|s| s.is_none()) {
-            pos as u32
-        } else {
-            let new_slot = slotted_page.slots.len() as u32;
-            slotted_page.slots.push(None);
-            slotted_page.slot_count += 1;
-            new_slot
-        };
+        let slot_number =
+            Self::find_or_allocate_slot(&mut slotted_page.slots, &mut slotted_page.slot_count);
 
         // Calculate required space (account for 8-byte length prefix in page format)
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
@@ -535,21 +559,15 @@ impl HeapFile {
             if self.is_versioned_page(&page) {
                 // Versioned page format (MVCC)
                 let versioned_page = self.deserialize_versioned_page(&page)?;
-
-                for slot_entry in versioned_page.slots.iter().flatten() {
-                    let tuple =
-                        self.extract_tuple_from_page(&page, slot_entry.offset, slot_entry.length)?;
-                    results.push(tuple);
-                }
+                results.extend(
+                    self.extract_tuples_from_slots(&page, versioned_page.slots.iter().flatten())?,
+                );
             } else {
                 // Old slotted page format (non-MVCC)
                 let slotted_page = self.deserialize_slotted_page(&page)?;
-
-                for slot_entry in slotted_page.slots.iter().flatten() {
-                    let tuple =
-                        self.extract_tuple_from_page(&page, slot_entry.offset, slot_entry.length)?;
-                    results.push(tuple);
-                }
+                results.extend(
+                    self.extract_tuples_from_slots(&page, slotted_page.slots.iter().flatten())?,
+                );
             }
 
             page_id += 1;
@@ -697,14 +715,8 @@ impl HeapFile {
 
         // Find free slot or add new one
         // NOTE: We do this BEFORE space calculation so we know the final slot count
-        let slot_number = if let Some(pos) = versioned_page.slots.iter().position(|s| s.is_none()) {
-            pos as u32
-        } else {
-            let new_slot = versioned_page.slots.len() as u32;
-            versioned_page.slots.push(None);
-            versioned_page.slot_count += 1;
-            new_slot
-        };
+        let slot_number =
+            Self::find_or_allocate_slot(&mut versioned_page.slots, &mut versioned_page.slot_count);
 
         // Add new tuple to the list
         existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
@@ -919,13 +931,13 @@ impl HeapFile {
         bincode::deserialize(page.data()).map_err(|e| HeapError::Serialization(e.to_string()))
     }
 
-    /// Extracts a tuple from a page at the given offset and length.
-    fn extract_tuple_from_page(
+    /// Validates that a slot points to valid data within the page.
+    fn validate_slot_bounds(
         &self,
         page: &Page,
         offset: u32,
         length: u32,
-    ) -> Result<Tuple, HeapError> {
+    ) -> Result<(usize, usize), HeapError> {
         let start = offset as usize;
         let end = start
             .checked_add(length as usize)
@@ -937,7 +949,17 @@ impl HeapFile {
                 page.id()
             )));
         }
+        Ok((start, end))
+    }
 
+    /// Extracts a tuple from a page at the given offset and length.
+    fn extract_tuple_from_page(
+        &self,
+        page: &Page,
+        offset: u32,
+        length: u32,
+    ) -> Result<Tuple, HeapError> {
+        let (start, end) = self.validate_slot_bounds(page, offset, length)?;
         let tuple_data = &page.data()[start..end];
         bincode::deserialize(tuple_data).map_err(|e| HeapError::Serialization(e.to_string()))
     }
