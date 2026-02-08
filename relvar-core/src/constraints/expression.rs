@@ -209,49 +209,52 @@ impl ConstraintExpression {
     /// _ matches exactly one character
     ///
     /// Time complexity: O(n*m) where n = text length, m = pattern length
-    /// Space complexity: O(n*m) for DP table
+    /// Space complexity: O(m) for DP table (optimized from O(n*m))
     fn matches_pattern(text: &str, pattern: &str) -> bool {
-        let text_chars: Vec<char> = text.chars().collect();
         let pattern_chars: Vec<char> = pattern.chars().collect();
-
-        let text_len = text_chars.len();
         let pattern_len = pattern_chars.len();
 
-        // DP table: dp[i][j] = true if text[0..i] matches pattern[0..j]
-        let mut dp = vec![vec![false; pattern_len + 1]; text_len + 1];
+        // Only store current and previous rows to save space
+        let mut prev = vec![false; pattern_len + 1];
+        let mut curr = vec![false; pattern_len + 1];
 
         // Empty pattern matches empty text
-        dp[0][0] = true;
+        prev[0] = true;
 
         // Handle patterns that start with % (can match empty text)
         for j in 1..=pattern_len {
             if pattern_chars[j - 1] == '%' {
-                dp[0][j] = dp[0][j - 1];
+                prev[j] = prev[j - 1];
             }
         }
 
-        // Fill DP table
-        for i in 1..=text_len {
+        // Iterate through text characters without collecting them all
+        for char_i in text.chars() {
+            curr.fill(false);
+            // curr[0] is always false because non-empty text doesn't match empty pattern
+
             for j in 1..=pattern_len {
                 match pattern_chars[j - 1] {
                     '%' => {
-                        // % can match zero characters (dp[i][j-1])
-                        // or match one or more characters (dp[i-1][j])
-                        dp[i][j] = dp[i][j - 1] || dp[i - 1][j];
+                        // % can match zero characters (curr[j-1] -> current row, previous pattern char)
+                        // or match one or more characters (prev[j] -> previous row, current pattern char)
+                        curr[j] = curr[j - 1] || prev[j];
                     }
                     '_' => {
                         // _ matches exactly one character
-                        dp[i][j] = dp[i - 1][j - 1];
+                        curr[j] = prev[j - 1];
                     }
                     c => {
                         // Literal character must match
-                        dp[i][j] = dp[i - 1][j - 1] && text_chars[i - 1] == c;
+                        curr[j] = prev[j - 1] && char_i == c;
                     }
                 }
             }
+            // Swap buffers for next iteration
+            std::mem::swap(&mut prev, &mut curr);
         }
 
-        dp[text_len][pattern_len]
+        prev[pattern_len]
     }
 
     /// Helper to resolve a ValueOrRef to a concrete ScalarValue from the tuple.

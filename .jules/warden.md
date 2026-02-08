@@ -53,3 +53,10 @@ Added a pre-check `check_tuple_size_limit` using `bincode::serialized_size` on a
 
 **Defense:**
 Modified insertion logic to clone the page structure, insert a dummy entry into the target slot, and use `bincode::serialized_size` to calculate the exact header requirements before committing the write.
+
+## 2024-05-24 - DoS via O(N*M) Allocation in LIKE Operator
+**Threat:**
+The `matches_pattern` function used by the `LIKE` operator allocated a full dynamic programming table of size `N * M` (text length * pattern length). For large inputs (e.g., 500k chars), this caused excessive memory allocation and performance degradation, leading to a Denial of Service.
+
+**Defense:**
+Optimized `matches_pattern` to use an iterative O(M) space algorithm. It now only maintains two rows (current and previous) of size `M + 1`, reusing the allocation buffers to minimize overhead.
