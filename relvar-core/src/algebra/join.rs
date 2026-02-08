@@ -179,7 +179,8 @@ impl Relation {
                         }
                     }
 
-                    if let Ok(combined_tuple) = Tuple::new(result_heading.clone(), combined_values) {
+                    if let Ok(combined_tuple) = Tuple::new(result_heading.clone(), combined_values)
+                    {
                         joined_tuples.push(combined_tuple);
                     }
                 }
