@@ -157,7 +157,7 @@ fn bench_join(c: &mut Criterion) {
             let departments = create_department_relation(size);
 
             b.iter(|| {
-                let result = employees.join(&departments);
+                let result = employees.join(&departments).unwrap();
                 black_box(result);
             });
         });

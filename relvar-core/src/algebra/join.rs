@@ -36,12 +36,13 @@
 //! departments.insert(tuple! { dept_id: 10i64, dept_name: "Engineering" }).unwrap();
 //!
 //! // Natural join on dept_id
-//! let result = employees.join(&departments);
+//! let result = employees.join(&departments).unwrap();
 //! assert_eq!(result.degree(), 4);  // emp_id, name, dept_id, dept_name
 //! ```
 
+use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
-use crate::values::{Relation, Tuple};
+use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
 
 impl Relation {
@@ -69,8 +70,9 @@ impl Relation {
     ///
     /// # Complexity
     ///
-    /// O(n * m) where n and m are the cardinalities of the two relations.
-    /// This is a nested-loop join implementation.
+    /// O(n + m) where n and m are the cardinalities of the two relations.
+    /// This implementation uses a Hash Join algorithm, significantly outperforming
+    /// the O(n * m) nested-loop join for large relations.
     ///
     /// # Example
     ///
@@ -96,10 +98,10 @@ impl Relation {
     /// let mut departments = Relation::new(RelationType::new(dept_heading));
     /// departments.insert(tuple! { dept_id: 10i64, budget: 100000i64 }).unwrap();
     ///
-    /// let result = employees.join(&departments);
+    /// let result = employees.join(&departments).unwrap();
     /// assert_eq!(result.cardinality(), 1);  // Only emp 1 matches (dept 10)
     /// ```
-    pub fn join(&self, other: &Relation) -> Self {
+    pub fn join(&self, other: &Relation) -> Result<Self, DatabaseError> {
         // Find common attributes
         let common_attrs: Vec<String> = self
             .relation_type()
@@ -126,42 +128,75 @@ impl Relation {
 
         let result_rel_type = RelationType::new(result_heading.clone());
 
-        // Perform join
+        // Perform Hash Join
         let mut joined_tuples = Vec::new();
 
-        for tuple1 in self.tuples() {
-            for tuple2 in other.tuples() {
-                // Check if tuples match on common attributes
-                let matches = common_attrs
-                    .iter()
-                    .all(|attr| tuple1.get(attr) == tuple2.get(attr));
+        // Determine Build and Probe sides
+        // We want the smaller relation to be the build side to minimize hash map size.
+        // This optimization ensures O(min(N, M)) memory usage for the hash table.
+        let (build_rel, probe_rel) = if self.cardinality() <= other.cardinality() {
+            (self, other)
+        } else {
+            (other, self)
+        };
 
-                if matches {
+        // Build Phase: Create a hash map from common attribute values to tuples
+        // Key: Vec<&ScalarValue> (values of common attributes)
+        // Value: Vec<&Tuple> (tuples that have these values)
+        // Note: We use &ScalarValue to avoid cloning the values for the key,
+        // relying on ScalarValue's Hash implementation which works transitively.
+        let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> = HashMap::new();
+
+        for tuple in build_rel.tuples() {
+            let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
+            for attr in &common_attrs {
+                key.push(tuple.get(attr).ok_or_else(|| {
+                    DatabaseError::AttributeNotFound(attr.clone(), "build relation".to_string())
+                })?);
+            }
+            build_map.entry(key).or_default().push(tuple);
+        }
+
+        // Probe Phase: Iterate through probe relation and look up matches
+        for probe_tuple in probe_rel.tuples() {
+            let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
+            for attr in &common_attrs {
+                key.push(probe_tuple.get(attr).ok_or_else(|| {
+                    DatabaseError::AttributeNotFound(attr.clone(), "probe relation".to_string())
+                })?);
+            }
+
+            if let Some(matching_tuples) = build_map.get(&key) {
+                for build_tuple in matching_tuples {
                     // Combine tuples
                     let mut combined_values = HashMap::new();
 
-                    // Add all values from tuple1
-                    for (attr_name, value) in tuple1.values() {
+                    // Add all values from build_tuple
+                    for (attr_name, value) in build_tuple.values() {
                         combined_values.insert(attr_name.clone(), value.clone());
                     }
 
-                    // Add values from tuple2 that aren't common (common ones are already in)
-                    for (attr_name, value) in tuple2.values() {
+                    // Add values from probe_tuple (skipping common ones which are already in)
+                    for (attr_name, value) in probe_tuple.values() {
                         if !combined_values.contains_key(attr_name) {
                             combined_values.insert(attr_name.clone(), value.clone());
                         }
                     }
 
                     let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
-                        .expect("Combined tuple should conform to result heading");
+                        .map_err(|e| {
+                            DatabaseError::AlgebraError(format!(
+                                "Failed to construct combined tuple: {}",
+                                e
+                            ))
+                        })?;
 
                     joined_tuples.push(combined_tuple);
                 }
             }
         }
 
-        Relation::from_tuples(result_rel_type, joined_tuples)
-            .expect("Joined tuples should conform to result relation type")
+        Ok(Relation::from_tuples(result_rel_type, joined_tuples)?)
     }
 
     /// Performs a theta join with another relation using an arbitrary predicate.
@@ -324,7 +359,7 @@ mod tests {
             .unwrap();
 
         // Join on dept_id
-        let result = employees.join(&departments);
+        let result = employees.join(&departments).unwrap();
 
         assert_eq!(result.degree(), 4); // emp_id, name, dept_id, dept_name
         assert_eq!(result.cardinality(), 2);
@@ -357,7 +392,7 @@ mod tests {
         rel2.insert(tuple! { b: "x" }).unwrap();
         rel2.insert(tuple! { b: "y" }).unwrap();
 
-        let result = rel1.join(&rel2);
+        let result = rel1.join(&rel2).unwrap();
 
         // Cartesian product: 2 x 2 = 4
         assert_eq!(result.cardinality(), 4);
@@ -377,7 +412,7 @@ mod tests {
 
         let rel2 = Relation::new(rel_type);
 
-        let result = rel1.join(&rel2);
+        let result = rel1.join(&rel2).unwrap();
 
         assert_eq!(result.cardinality(), 0);
         assert!(result.is_empty());
@@ -399,7 +434,7 @@ mod tests {
             .insert(tuple! { emp_id: 2i64, name: "Bob" })
             .unwrap();
 
-        let result = relation.join(&relation);
+        let result = relation.join(&relation).unwrap();
 
         // Self-join on all attributes = original relation
         assert_eq!(result.cardinality(), 2);
@@ -468,7 +503,7 @@ mod tests {
 
         rel2.insert(tuple! { dept_id: 20i64 }).unwrap();
 
-        let result = rel1.join(&rel2);
+        let result = rel1.join(&rel2).unwrap();
 
         assert_eq!(result.cardinality(), 0);
         assert!(result.is_empty());
@@ -545,5 +580,25 @@ mod tests {
             result.relation_type().heading().get_attribute_type("id"),
             Some(&ScalarType::Int)
         );
+    }
+
+    #[test]
+    fn test_join_swap_optimization() {
+        // Test case 1: Left is smaller (no swap)
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let mut small = Relation::new(RelationType::new(heading.clone()));
+        small.insert(tuple! { id: 1i64 }).unwrap();
+
+        let mut large = Relation::new(RelationType::new(heading.clone()));
+        for i in 0..10 {
+            large.insert(tuple! { id: i as i64 }).unwrap();
+        }
+
+        let result1 = small.join(&large).unwrap();
+        assert_eq!(result1.cardinality(), 1);
+
+        // Test case 2: Right is smaller (swap)
+        let result2 = large.join(&small).unwrap();
+        assert_eq!(result2.cardinality(), 1);
     }
 }
