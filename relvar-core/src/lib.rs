@@ -39,3 +39,6 @@ pub use constraints::{
 
 // Re-export storage engine types
 pub use storage_engine::{InMemoryEngine, StorageEngine, StorageError};
+
+#[cfg(test)]
+mod coverage_tests;
