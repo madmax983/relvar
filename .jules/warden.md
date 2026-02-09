@@ -53,3 +53,12 @@ Added a pre-check `check_tuple_size_limit` using `bincode::serialized_size` on a
 
 **Defense:**
 Modified insertion logic to clone the page structure, insert a dummy entry into the target slot, and use `bincode::serialized_size` to calculate the exact header requirements before committing the write.
+
+## 2026-02-05 - Bincode Allocation Bomb DoS
+**Threat:**
+`relvar-storage` uses `bincode` 1.3.3, which is unmaintained and vulnerable to allocation bomb attacks. `bincode::deserialize` reads length prefixes from the input and pre-allocates memory based on that length before reading the actual data. An attacker could craft a malicious page containing a tuple with a huge declared length (e.g., 1GB) but very little data, causing the server to exhaust memory (DoS) or panic when attempting to allocate.
+
+**Defense:**
+1.  Implemented `deserialize_bounded` helper function in `HeapFile`.
+2.  Configured `bincode::options()` with `.with_limit(PAGE_SIZE)` to reject any allocation request exceeding the page size (4KB). Since no tuple or structure within a page can validly exceed the page size, this prevents unbounded allocation.
+3.  Preserved legacy configuration (`LittleEndian`, `FixedIntEncoding`, `AllowTrailingBytes`) to maintain compatibility with existing disk format.
