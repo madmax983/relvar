@@ -9,26 +9,12 @@ use crate::constraints::{
 };
 pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
+use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
+use crate::virtual_relvars::{VirtualRelvarDefinition, VirtualRelvarEvaluator};
 
 use std::collections::HashMap;
-
-/// Definition of a virtual relvar (view).
-///
-/// TTM: RM Prescription 10 - Virtual relvars (views) re-evaluate their
-/// defining expression on each query.
-#[derive(Debug, Clone)]
-pub struct VirtualRelvarDefinition<E: StorageEngine> {
-    /// The name of the virtual relvar.
-    pub name: String,
-    /// The relation type (heading).
-    pub relation_type: RelationType,
-    /// The evaluation function that computes the virtual relvar's contents.
-    ///
-    /// Takes a mutable reference to the database and returns the computed relation.
-    pub evaluator: fn(&mut Database<E>) -> Result<Relation, DatabaseError>,
-}
 
 /// A relational database instance.
 ///
@@ -66,7 +52,17 @@ pub struct Database<E: StorageEngine> {
     /// Transaction savepoint.
     transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
-    virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
+    virtual_relvars: HashMap<String, VirtualRelvarDefinition>,
+}
+
+impl<E: StorageEngine> QueryExecutor for Database<E> {
+    fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
+        self.query(relation_name)
+    }
+
+    fn relvar_exists(&self, name: &str) -> bool {
+        self.relvar_exists(name)
+    }
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -411,8 +407,8 @@ impl<E: StorageEngine> Database<E> {
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
     pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Check if this is a virtual relvar
-        if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
-            return (virtual_relvar.evaluator)(self);
+        if let Some(evaluator) = self.virtual_relvars.get(relation_name).map(|v| v.evaluator) {
+            return evaluator(self);
         }
 
         // Otherwise, load from engine
@@ -640,7 +636,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&mut Database<E>) -> Result<Relation, DatabaseError>,
+        evaluator: VirtualRelvarEvaluator,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -1067,7 +1063,7 @@ mod tests {
         db.define_virtual_relvar(
             "NAMES",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &mut dyn QueryExecutor| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1324,7 +1320,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &mut dyn QueryExecutor| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1360,7 +1356,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &mut dyn QueryExecutor| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1381,11 +1377,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
         db.create_relvar("TEST", test_rel_type()).unwrap();
 
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("TEST"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &mut dyn QueryExecutor| {
+            db.query("TEST")
+        })
         .unwrap();
 
         // Try to delete
@@ -1402,11 +1396,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
         db.create_relvar("TEST", test_rel_type()).unwrap();
 
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("TEST"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &mut dyn QueryExecutor| {
+            db.query("TEST")
+        })
         .unwrap();
 
         // Try to update
@@ -1429,11 +1421,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
         // Define virtual relvar that queries nonexistent base
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("NONEXISTENT"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &mut dyn QueryExecutor| {
+            db.query("NONEXISTENT")
+        })
         .unwrap();
 
         // Querying it should fail
