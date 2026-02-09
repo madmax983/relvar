@@ -322,7 +322,7 @@ impl Relation {
             .values()
             .clone()
             .into_iter()
-            .chain(left.values().clone().into_iter());
+            .chain(left.values().clone());
 
         Tuple::new(heading, combined_values)
             .map_err(|e| DatabaseError::AlgebraError(format!("Failed to combine tuples: {}", e)))
