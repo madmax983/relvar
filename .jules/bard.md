@@ -14,3 +14,11 @@
 - `relvar`: Facade crate that re-exports the core API
 
 This ensures the map matches the territory.
+
+## 2024-05-24 - Project Operator Silently Ignores Attributes
+**Confusion:** Users might expect `relation.project(&["non_existent"])` to panic or return a Result::Err.
+**Clarification:** The `project` operator follows set intersection logic. It projects the relation onto the intersection of the relation's heading and the requested attributes. If a requested attribute doesn't exist, it is simply not in the result. Asking for a set of non-existent attributes correctly returns a relation with an empty heading (TABLE_DEE or TABLE_DUM), which is mathematically consistent but potentially surprising to SQL users.
+
+## 2024-05-24 - Update Validation Performance
+**Confusion:** Updating a large relation seemed slower than expected, even for small changes.
+**Clarification:** To ensure absolute data integrity, `Database::update` currently re-validates ALL constraints (Type, CHECK, Foreign Key) against EVERY tuple in the resulting relation, not just the modified ones. This is an O(N) operation. While safe, it is a known performance bottleneck that will be optimized in future versions.

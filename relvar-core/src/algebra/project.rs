@@ -50,9 +50,11 @@ impl Relation {
     ///
     /// # Behavior
     ///
-    /// - Attributes not in the list are removed
-    /// - Attributes that don't exist in the relation are silently ignored
-    /// - Duplicate tuples are automatically eliminated
+    /// - Attributes not in the list are removed.
+    /// - **Warning:** Attributes requested that do not exist in the relation are silently ignored.
+    ///   This follows set intersection logic: the result contains only attributes present in BOTH
+    ///   the relation and the request list.
+    /// - Duplicate tuples are automatically eliminated.
     ///
     /// # Example
     ///
@@ -70,6 +72,12 @@ impl Relation {
     ///
     /// let names_only = relation.project(&["name"]);
     /// assert_eq!(names_only.degree(), 1);
+    ///
+    /// // Projecting non-existent attributes results in empty heading (TABLE_DEE or TABLE_DUM)
+    /// // Here, since the relation is not empty, we get TABLE_DEE (degree 0, cardinality 1)
+    /// let ignored = relation.project(&["non_existent_attr"]);
+    /// assert_eq!(ignored.degree(), 0);
+    /// assert_eq!(ignored.cardinality(), 1);
     /// ```
     pub fn project(&self, attributes: &[&str]) -> Self {
         // Build new heading with selected attributes

@@ -43,8 +43,14 @@ use thiserror::Error;
 
 /// Page size in bytes (4KB).
 ///
-/// This is a common page size that balances I/O efficiency with memory usage.
-/// Larger pages reduce I/O overhead but may waste space for small tuples.
+/// This size (4096 bytes) is chosen to align with:
+/// - Standard disk sector sizes (typically 4KB on modern SSDs/HDDs).
+/// - Virtual memory page sizes (typically 4KB on x86/ARM).
+///
+/// # Trade-offs
+/// - **I/O Efficiency:** Matches the atomic write unit of most storage hardware, minimizing write amplification.
+/// - **Fragmentation:** Smaller pages reduce wasted space (internal fragmentation) for small tuples but increase metadata overhead.
+/// - **Memory Usage:** 4KB is small enough to keep many pages cached in memory.
 pub const PAGE_SIZE: usize = 4096;
 
 /// Unique identifier for a page within a page file.
