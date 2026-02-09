@@ -91,36 +91,10 @@ impl PersistentEngine {
         let catalog_path = db_path.join("catalog.json");
         let wal_path = db_path.join("wal.log");
 
-        // Create directory if it doesn't exist
-        if !db_path.exists() {
-            std::fs::create_dir_all(&db_path)
-                .map_err(|e| StorageError::Other(format!("Failed to create directory: {}", e)))?;
-        }
+        Self::ensure_db_directory(&db_path)?;
 
-        // Load or create catalog
-        let catalog = if catalog_path.exists() {
-            Catalog::load(&catalog_path).map_err(|e| match e {
-                CatalogError::Io(io_err) => {
-                    StorageError::Other(format!("Catalog I/O error: {}", io_err))
-                }
-                CatalogError::Serialization(s) => {
-                    StorageError::Other(format!("Catalog serialization error: {}", s))
-                }
-                CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-                CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-            })?
-        } else {
-            Catalog::new()
-        };
-
-        // Open or create WAL
-        let mut wal = if wal_path.exists() {
-            WalManager::open(&wal_path)
-                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?
-        } else {
-            WalManager::create(&wal_path)
-                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?
-        };
+        let catalog = Self::load_catalog_from_disk(&catalog_path)?;
+        let mut wal = Self::open_wal_manager(&wal_path)?;
 
         // Perform crash recovery if needed
         let recovery_result =
@@ -220,26 +194,58 @@ impl PersistentEngine {
     pub fn checkpoint(&mut self) -> Result<(), StorageError> {
         // CRITICAL: Flush WAL first to ensure all prior modifications are logged
         // This upholds the WAL protocol: log must be on disk before data pages
-        self.wal
-            .flush()
-            .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
+        self.flush_wal()?;
 
         // Now safe to flush heap files (dirty pages to disk)
+        self.flush_heap_files()?;
+
+        // Determine minimum active LSN
+        let min_active_lsn = self.get_checkpoint_lsn();
+
+        // Log checkpoint record
+        self.log_checkpoint_record(min_active_lsn)?;
+
+        // Flush WAL to ensure checkpoint is durable
+        self.flush_wal()?;
+
+        // Garbage collect old versions
+        self.garbage_collect_versions()?;
+
+        // TODO: Truncate old WAL records before min_active_lsn
+        // This would require WalManager.truncate(lsn) method
+
+        Ok(())
+    }
+
+    /// Flush WAL to disk.
+    fn flush_wal(&mut self) -> Result<(), StorageError> {
+        self.wal
+            .flush()
+            .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))
+    }
+
+    /// Flush all heap files to disk.
+    fn flush_heap_files(&mut self) -> Result<(), StorageError> {
         for heap_file in self.heap_files.values_mut() {
             heap_file
                 .sync()
                 .map_err(|e| StorageError::Other(format!("Heap sync error: {}", e)))?;
         }
+        Ok(())
+    }
 
-        // Determine minimum active LSN
-        let min_active_lsn = if let Some(oldest_lsn) = self.active_txns.oldest_active_lsn() {
-            // If there are active transactions, checkpoint from oldest active txn
-            oldest_lsn
-        } else {
-            // No active transactions - can checkpoint from current position
-            self.wal.current_lsn()
-        };
+    /// Get the LSN to checkpoint from (oldest active or current).
+    fn get_checkpoint_lsn(&self) -> crate::wal::Lsn {
+        self.active_txns
+            .oldest_active_lsn()
+            .unwrap_or_else(|| self.wal.current_lsn())
+    }
 
+    /// Log checkpoint record to WAL.
+    fn log_checkpoint_record(
+        &mut self,
+        min_active_lsn: crate::wal::Lsn,
+    ) -> Result<(), StorageError> {
         // Collect dirty pages (simplified - all open heap files are considered dirty)
         let mut dirty_pages = std::collections::HashMap::new();
         for name in self.heap_files.keys() {
@@ -248,54 +254,56 @@ impl PersistentEngine {
             dirty_pages.insert(name.clone(), vec![]);
         }
 
-        // Log checkpoint record
         self.wal
             .log(WalRecord::Checkpoint {
                 min_active_lsn,
                 dirty_pages,
             })
             .map_err(|e| StorageError::Other(format!("WAL checkpoint error: {}", e)))?;
-
-        // Flush WAL to ensure checkpoint is durable
-        self.wal
-            .flush()
-            .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
-
-        // Garbage collect old versions
-        if let Some(oldest_lsn) = self.active_txns.oldest_active_lsn() {
-            // There are active transactions - GC versions older than oldest active
-            for heap_file in self.heap_files.values_mut() {
-                crate::mvcc::gc::collect_garbage(heap_file, oldest_lsn, &self.committed_txns)
-                    .map_err(|e| StorageError::Other(format!("GC error: {}", e)))?;
-            }
-        } else {
-            // No active transactions - GC all dead versions
-            let current_lsn = self.wal.current_lsn();
-            for heap_file in self.heap_files.values_mut() {
-                crate::mvcc::gc::collect_garbage(heap_file, current_lsn, &self.committed_txns)
-                    .map_err(|e| StorageError::Other(format!("GC error: {}", e)))?;
-            }
-        }
-
-        // TODO: Truncate old WAL records before min_active_lsn
-        // This would require WalManager.truncate(lsn) method
-
         Ok(())
+    }
+
+    /// Garbage collect old versions.
+    fn garbage_collect_versions(&mut self) -> Result<(), StorageError> {
+        let gc_lsn = self.get_checkpoint_lsn();
+
+        for heap_file in self.heap_files.values_mut() {
+            crate::mvcc::gc::collect_garbage(heap_file, gc_lsn, &self.committed_txns)
+                .map_err(|e| StorageError::Other(format!("GC error: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    /// Get snapshot for the current transaction context.
+    fn get_snapshot_for_current_context(
+        &self,
+    ) -> Result<crate::mvcc::TransactionSnapshot, StorageError> {
+        if let Some(txn_id) = self.current_txn {
+            // In transaction - use snapshot isolation
+            self.active_txns
+                .get_snapshot(txn_id)
+                .cloned()
+                .ok_or_else(|| {
+                    StorageError::Other(format!("Transaction {} not found", txn_id.value()))
+                })
+        } else {
+            // Outside transaction - see all committed data
+            // Create ad-hoc snapshot with no active transactions
+            Ok(crate::mvcc::TransactionSnapshot::new(
+                TransactionId::new(0),
+                self.wal.current_lsn(),
+                vec![],
+            ))
+        }
     }
 
     /// Get or open a heap file for a relation.
     fn get_or_open_heap_file(&mut self, name: &str) -> Result<&mut HeapFile, StorageError> {
         if !self.heap_files.contains_key(name) {
-            let metadata = self.catalog.get_relation(name).map_err(|e| match e {
-                CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-                CatalogError::Io(io_err) => {
-                    StorageError::Other(format!("Catalog I/O error: {}", io_err))
-                }
-                CatalogError::Serialization(s) => {
-                    StorageError::Other(format!("Catalog error: {}", s))
-                }
-                CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-            })?;
+            let metadata = self
+                .catalog
+                .get_relation(name)
+                .map_err(Self::convert_catalog_error)?;
 
             let heap_file =
                 HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
@@ -310,6 +318,48 @@ impl PersistentEngine {
     /// Convert HeapError to StorageError.
     fn convert_heap_error(e: HeapError) -> StorageError {
         StorageError::Other(format!("Heap error: {}", e))
+    }
+
+    /// Convert CatalogError to StorageError.
+    fn convert_catalog_error(e: CatalogError) -> StorageError {
+        match e {
+            CatalogError::Io(io_err) => {
+                StorageError::Other(format!("Catalog I/O error: {}", io_err))
+            }
+            CatalogError::Serialization(s) => {
+                StorageError::Other(format!("Catalog serialization error: {}", s))
+            }
+            CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
+            CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
+        }
+    }
+
+    /// Ensure the database directory exists.
+    fn ensure_db_directory(path: &Path) -> Result<(), StorageError> {
+        if !path.exists() {
+            std::fs::create_dir_all(path)
+                .map_err(|e| StorageError::Other(format!("Failed to create directory: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    /// Load catalog from disk or create a new one.
+    fn load_catalog_from_disk(catalog_path: &Path) -> Result<Catalog, StorageError> {
+        if catalog_path.exists() {
+            Catalog::load(catalog_path).map_err(Self::convert_catalog_error)
+        } else {
+            Ok(Catalog::new())
+        }
+    }
+
+    /// Open or create WAL manager.
+    fn open_wal_manager(wal_path: &Path) -> Result<WalManager, StorageError> {
+        if wal_path.exists() {
+            WalManager::open(wal_path).map_err(|e| StorageError::Other(format!("WAL error: {}", e)))
+        } else {
+            WalManager::create(wal_path)
+                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))
+        }
     }
 
     /// Validate that a relvar name is safe for use in file paths.
@@ -342,16 +392,9 @@ impl PersistentEngine {
 
     /// Save the catalog to disk.
     fn save_catalog(&self) -> Result<(), StorageError> {
-        self.catalog.save(&self.catalog_path).map_err(|e| match e {
-            CatalogError::Io(io_err) => {
-                StorageError::Other(format!("Catalog I/O error: {}", io_err))
-            }
-            CatalogError::Serialization(s) => {
-                StorageError::Other(format!("Catalog serialization error: {}", s))
-            }
-            CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-            CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-        })
+        self.catalog
+            .save(&self.catalog_path)
+            .map_err(Self::convert_catalog_error)
     }
 }
 
@@ -380,16 +423,7 @@ impl StorageEngine for PersistentEngine {
         // Add to catalog
         self.catalog
             .create_relation(name.to_string(), relation_type, heap_file_path.clone())
-            .map_err(|e| match e {
-                CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-                CatalogError::Io(io_err) => {
-                    StorageError::Other(format!("Catalog I/O error: {}", io_err))
-                }
-                CatalogError::Serialization(s) => {
-                    StorageError::Other(format!("Catalog error: {}", s))
-                }
-                CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-            })?;
+            .map_err(Self::convert_catalog_error)?;
 
         // Save catalog
         self.save_catalog()?;
@@ -402,14 +436,10 @@ impl StorageEngine for PersistentEngine {
 
     fn drop_relation(&mut self, name: &str) -> Result<(), StorageError> {
         // Remove from catalog
-        let metadata = self.catalog.drop_relation(name).map_err(|e| match e {
-            CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-            CatalogError::Io(io_err) => {
-                StorageError::Other(format!("Catalog I/O error: {}", io_err))
-            }
-            CatalogError::Serialization(s) => StorageError::Other(format!("Catalog error: {}", s)),
-            CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-        })?;
+        let metadata = self
+            .catalog
+            .drop_relation(name)
+            .map_err(Self::convert_catalog_error)?;
 
         // Save catalog
         self.save_catalog()?;
@@ -431,14 +461,10 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn get_relation_metadata(&self, name: &str) -> Result<RelationMetadata, StorageError> {
-        let metadata = self.catalog.get_relation(name).map_err(|e| match e {
-            CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-            CatalogError::Io(io_err) => {
-                StorageError::Other(format!("Catalog I/O error: {}", io_err))
-            }
-            CatalogError::Serialization(s) => StorageError::Other(format!("Catalog error: {}", s)),
-            CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-        })?;
+        let metadata = self
+            .catalog
+            .get_relation(name)
+            .map_err(Self::convert_catalog_error)?;
 
         Ok(RelationMetadata {
             name: name.to_string(),
@@ -452,46 +478,21 @@ impl StorageEngine for PersistentEngine {
 
     fn load_relation(&self, name: &str) -> Result<Relation, StorageError> {
         // Get metadata
-        let metadata = self.catalog.get_relation(name).map_err(|e| match e {
-            CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-            CatalogError::Io(io_err) => {
-                StorageError::Other(format!("Catalog I/O error: {}", io_err))
-            }
-            CatalogError::Serialization(s) => StorageError::Other(format!("Catalog error: {}", s)),
-            CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-        })?;
+        let metadata = self
+            .catalog
+            .get_relation(name)
+            .map_err(Self::convert_catalog_error)?;
 
         let mut heap_file =
             HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
                 .map_err(Self::convert_heap_error)?;
 
         // Use MVCC visibility if in a transaction, otherwise see all committed data
-        let tuples = if let Some(txn_id) = self.current_txn {
-            // In transaction - use snapshot isolation
-            let snapshot = self
-                .active_txns
-                .get_snapshot(txn_id)
-                .ok_or_else(|| {
-                    StorageError::Other(format!("Transaction {} not found", txn_id.value()))
-                })?
-                .clone();
+        let snapshot = self.get_snapshot_for_current_context()?;
 
-            heap_file
-                .scan_visible(&snapshot, &self.committed_txns)
-                .map_err(Self::convert_heap_error)?
-        } else {
-            // Outside transaction - see all committed data
-            // Create ad-hoc snapshot with no active transactions
-            let snapshot = crate::mvcc::TransactionSnapshot::new(
-                TransactionId::new(0),
-                self.wal.current_lsn(),
-                vec![],
-            );
-
-            heap_file
-                .scan_visible(&snapshot, &self.committed_txns)
-                .map_err(Self::convert_heap_error)?
-        };
+        let tuples = heap_file
+            .scan_visible(&snapshot, &self.committed_txns)
+            .map_err(Self::convert_heap_error)?;
 
         // Build relation from visible tuples
         Relation::from_tuples(metadata.relation_type.clone(), tuples)
@@ -500,14 +501,10 @@ impl StorageEngine for PersistentEngine {
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {
         // Get metadata
-        let metadata = self.catalog.get_relation(name).map_err(|e| match e {
-            CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-            CatalogError::Io(io_err) => {
-                StorageError::Other(format!("Catalog I/O error: {}", io_err))
-            }
-            CatalogError::Serialization(s) => StorageError::Other(format!("Catalog error: {}", s)),
-            CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-        })?;
+        let metadata = self
+            .catalog
+            .get_relation(name)
+            .map_err(Self::convert_catalog_error)?;
 
         // Remove old heap file and create new one
         if let Err(e) = std::fs::remove_file(&metadata.heap_file_path) {
@@ -713,10 +710,10 @@ impl PersistentEngine {
             .clone();
 
         // Get relation type from catalog
-        let rel_metadata = self.catalog.get_relation(name).map_err(|e| match e {
-            CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-            _ => StorageError::Other(format!("Catalog error: {}", e)),
-        })?;
+        let rel_metadata = self
+            .catalog
+            .get_relation(name)
+            .map_err(Self::convert_catalog_error)?;
         let rel_type = rel_metadata.relation_type.clone();
 
         // Clone committed set to avoid borrow conflict
