@@ -110,7 +110,24 @@ pub enum ConstraintExpression {
     In(String, Vec<ScalarValue>),
 
     /// Pattern matching: attribute LIKE pattern
-    /// (Simple SQL-style patterns: % for any chars, _ for single char)
+    ///
+    /// # Wildcards
+    /// - `%`: Matches any sequence of characters (including empty).
+    /// - `_`: Matches exactly one character.
+    ///
+    /// # Complexity
+    /// Uses a dynamic programming approach with **O(N*M)** time and space complexity,
+    /// where N is the string length and M is the pattern length.
+    ///
+    /// # Example
+    /// ```
+    /// use relvar_core::constraints::expression::ConstraintExpression;
+    /// use relvar_core::tuple;
+    ///
+    /// // Matches "data_2024.csv", "data_final.csv", etc.
+    /// let expr = ConstraintExpression::Like("filename".to_string(), "data_%.csv".to_string());
+    /// assert!(expr.evaluate(&tuple! { filename: "data_2024.csv" }).unwrap());
+    /// ```
     Like(String, String),
 }
 

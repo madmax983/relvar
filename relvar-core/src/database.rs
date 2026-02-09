@@ -539,6 +539,13 @@ impl<E: StorageEngine> Database<E> {
     /// - A type constraint is violated ([`ConstraintManagerError::TypeConstraintViolation`])
     /// - A CHECK constraint is violated ([`ConstraintManagerError::CheckConstraintViolation`])
     ///
+    /// # Performance
+    ///
+    /// - **Constraint Validation:** Currently, all constraints (CHECK, Type, Foreign Key) are re-validated
+    ///   against **every tuple** in the relation after the update, not just the modified ones.
+    ///   This ensures total consistency but has O(N) complexity where N is the relation size.
+    ///   Future versions may optimize this to O(K) where K is the number of updated tuples.
+    ///
     /// # Example
     ///
     /// ```
