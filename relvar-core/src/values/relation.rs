@@ -441,6 +441,63 @@ impl Relation {
     pub fn is_empty(&self) -> bool {
         self.body.is_empty()
     }
+
+    /// Deletes tuples matching a predicate.
+    ///
+    /// Returns the new relation and the number of deleted tuples.
+    pub fn delete_where<F>(self, predicate: F) -> (Self, usize)
+    where
+        F: Fn(&Tuple) -> bool,
+    {
+        let mut new_relation =
+            Relation::with_capacity(self.relation_type.clone(), self.cardinality());
+        let mut delete_count = 0;
+
+        for tuple in self {
+            if predicate(&tuple) {
+                delete_count += 1;
+            } else {
+                new_relation.insert(tuple).expect("Tuple should match type");
+            }
+        }
+
+        (new_relation, delete_count)
+    }
+
+    /// Updates tuples matching a predicate.
+    ///
+    /// Returns the new relation and the number of updated tuples.
+    pub fn update_where<F, U>(
+        self,
+        predicate: F,
+        updater: U,
+    ) -> Result<(Self, usize), RelationError>
+    where
+        F: Fn(&Tuple) -> bool,
+        U: Fn(&Tuple) -> Tuple,
+    {
+        let mut new_relation =
+            Relation::with_capacity(self.relation_type.clone(), self.cardinality());
+        let mut update_count = 0;
+        let expected_type = self.relation_type.tuple_type().clone();
+
+        for tuple in self {
+            if predicate(&tuple) {
+                let updated_tuple = updater(&tuple);
+
+                if !updated_tuple.conforms_to(&expected_type) {
+                    return Err(RelationError::TypeMismatch);
+                }
+
+                new_relation.insert(updated_tuple)?;
+                update_count += 1;
+            } else {
+                new_relation.insert(tuple)?;
+            }
+        }
+
+        Ok((new_relation, update_count))
+    }
 }
 
 #[cfg(test)]

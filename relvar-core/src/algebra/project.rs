@@ -80,30 +80,39 @@ impl Relation {
     /// assert_eq!(ignored.cardinality(), 1);
     /// ```
     pub fn project(&self, attributes: &[&str]) -> Self {
-        // Build new heading with selected attributes
+        let new_heading = self.compute_project_heading(attributes);
+        let new_rel_type = RelationType::new(new_heading.clone());
+
+        // Project each tuple
+        let projected_tuples = self
+            .tuples()
+            .map(|tuple| Self::project_tuple(tuple, attributes, new_heading.clone()));
+
+        // Duplicates are automatically removed when creating the relation
+        Relation::from_tuples(new_rel_type, projected_tuples)
+            .expect("Projected tuples should conform to new relation type")
+    }
+
+    /// Helper to compute the new heading based on requested attributes.
+    /// Silently ignores attributes that don't exist in the relation.
+    fn compute_project_heading(&self, attributes: &[&str]) -> TupleType {
         let mut new_heading = TupleType::new();
         for attr_name in attributes {
             if let Some(attr_type) = self.relation_type().heading().get_attribute_type(attr_name) {
                 new_heading = new_heading.with_attribute(*attr_name, attr_type.clone());
             }
         }
+        new_heading
+    }
 
-        let new_rel_type = RelationType::new(new_heading.clone());
-
-        // Project each tuple
-        let projected_tuples = self.tuples().map(|tuple| {
-            let values = attributes.iter().filter_map(|&attr_name| {
-                tuple
-                    .get(attr_name)
-                    .map(|value| (attr_name.to_string(), value.clone()))
-            });
-            Tuple::new(new_heading.clone(), values)
-                .expect("Projection should maintain type consistency")
+    /// Helper to project a single tuple onto the new heading.
+    fn project_tuple(tuple: &Tuple, attributes: &[&str], heading: TupleType) -> Tuple {
+        let values = attributes.iter().filter_map(|&attr_name| {
+            tuple
+                .get(attr_name)
+                .map(|value| (attr_name.to_string(), value.clone()))
         });
-
-        // Duplicates are automatically removed when creating the relation
-        Relation::from_tuples(new_rel_type, projected_tuples)
-            .expect("Projected tuples should conform to new relation type")
+        Tuple::new(heading, values).expect("Projection should maintain type consistency")
     }
 }
 

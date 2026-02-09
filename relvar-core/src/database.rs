@@ -462,8 +462,7 @@ impl<E: StorageEngine> Database<E> {
         let current_relation = self.query(relation_name)?;
 
         // Filter out tuples to delete
-        let (new_relation, delete_count) =
-            self.compute_relation_after_delete(current_relation, predicate)?;
+        let (new_relation, delete_count) = current_relation.delete_where(predicate);
 
         self.constraints.validate_referencing_foreign_keys(
             &mut self.engine,
@@ -548,8 +547,14 @@ impl<E: StorageEngine> Database<E> {
         let current_relation = self.query(relation_name)?;
 
         // Apply updates
-        let (new_relation, update_count) =
-            self.compute_relation_after_update(current_relation, predicate, updater)?;
+        let (new_relation, update_count) = current_relation
+            .update_where(predicate, updater)
+            .map_err(|e| match e {
+                crate::values::relation::RelationError::TypeMismatch => {
+                    DatabaseError::TupleMismatch
+                }
+                _ => DatabaseError::Relation(e),
+            })?;
 
         // Validate key constraints on new relation
         if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
@@ -680,68 +685,6 @@ impl<E: StorageEngine> Database<E> {
         } else {
             Ok(())
         }
-    }
-
-    fn compute_relation_after_delete<F>(
-        &self,
-        current_relation: Relation,
-        predicate: F,
-    ) -> Result<(Relation, usize), DatabaseError>
-    where
-        F: Fn(&Tuple) -> bool,
-    {
-        // Pre-allocate new relation with same capacity as current, assuming worst case (no deletions)
-        let mut new_relation = Relation::with_capacity(
-            current_relation.relation_type().clone(),
-            current_relation.cardinality(),
-        );
-        let mut delete_count = 0;
-
-        for tuple in current_relation {
-            if predicate(&tuple) {
-                delete_count += 1;
-            } else {
-                new_relation.insert(tuple)?;
-            }
-        }
-
-        Ok((new_relation, delete_count))
-    }
-
-    fn compute_relation_after_update<F, U>(
-        &self,
-        current_relation: Relation,
-        predicate: F,
-        updater: U,
-    ) -> Result<(Relation, usize), DatabaseError>
-    where
-        F: Fn(&Tuple) -> bool,
-        U: Fn(&Tuple) -> Tuple,
-    {
-        let relation_type = current_relation.relation_type().clone();
-        let expected_type = relation_type.tuple_type().clone();
-        // Pre-allocate new relation with same capacity as current, as update preserves cardinality
-        let mut new_relation =
-            Relation::with_capacity(relation_type, current_relation.cardinality());
-        let mut update_count = 0;
-
-        for tuple in current_relation {
-            if predicate(&tuple) {
-                let updated_tuple = updater(&tuple);
-
-                // Validate updated tuple
-                if !updated_tuple.conforms_to(&expected_type) {
-                    return Err(DatabaseError::TupleMismatch);
-                }
-
-                new_relation.insert(updated_tuple)?;
-                update_count += 1;
-            } else {
-                new_relation.insert(tuple)?;
-            }
-        }
-
-        Ok((new_relation, update_count))
     }
 
     fn validate_insert(&mut self, relation_name: &str, tuple: &Tuple) -> Result<(), DatabaseError> {
