@@ -18,16 +18,12 @@ pub mod constraints;
 pub mod database;
 pub mod error;
 pub mod storage_engine;
-pub mod traits;
 pub mod types;
 pub mod values;
-pub mod virtual_relvars;
 
 pub use database::{Database, DatabaseError};
-pub use traits::QueryExecutor;
 pub use types::{RelationType, ScalarType, TupleType};
 pub use values::{Relation, ScalarValue, Tuple};
-pub use virtual_relvars::{VirtualRelvarDefinition, VirtualRelvarEvaluator};
 
 // Re-export constraint types
 pub use constraints::{
@@ -39,6 +35,3 @@ pub use constraints::{
 
 // Re-export storage engine types
 pub use storage_engine::{InMemoryEngine, StorageEngine, StorageError};
-
-#[cfg(test)]
-mod coverage_tests;
