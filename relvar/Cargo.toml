@@ -16,10 +16,8 @@ storage = ["dep:relvar-storage"]
 [dependencies]
 relvar-core.workspace = true
 relvar-storage = { workspace = true, optional = true }
-serde_json.workspace = true
 thiserror.workspace = true
 serde.workspace = true
-rand = "0.8"
 
 [dev-dependencies]
 proptest.workspace = true
