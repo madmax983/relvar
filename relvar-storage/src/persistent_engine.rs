@@ -16,20 +16,6 @@ use std::path::{Path, PathBuf};
 pub struct PersistentSnapshot {
     /// The transaction ID.
     pub txn_id: TransactionId,
-    /// Saved relations (for compatibility with old rollback approach).
-    ///
-    /// # Transition Note
-    ///
-    /// This field is a temporary bridge. Currently, rollback is implemented by
-    /// restoring full relation state from memory.
-    ///
-    /// **Future State:** Once full MVCC integration is complete, rollback will
-    /// be instantaneous (simply discarding the transaction ID), as uncommitted
-    /// versions are automatically invisible to other transactions. At that point,
-    /// this field will be removed.
-    ///
-    /// TODO: Remove once full WAL/MVCC recovery is implemented.
-    pub saved_relations: HashMap<String, Relation>,
 }
 
 /// Persistent storage engine using heap files and JSON catalog.
@@ -543,10 +529,7 @@ impl StorageEngine for PersistentEngine {
 
         // Auto-commit if needed
         if auto_commit {
-            let snapshot = PersistentSnapshot {
-                txn_id,
-                saved_relations: HashMap::new(),
-            };
+            let snapshot = PersistentSnapshot { txn_id };
             self.commit_transaction(snapshot)?;
         }
 
@@ -589,10 +572,7 @@ impl StorageEngine for PersistentEngine {
 
         // Auto-commit if needed
         if auto_commit {
-            let snapshot = PersistentSnapshot {
-                txn_id,
-                saved_relations: HashMap::new(), // Empty for auto-commit
-            };
+            let snapshot = PersistentSnapshot { txn_id };
             self.commit_transaction(snapshot)?;
         }
 
@@ -618,10 +598,7 @@ impl StorageEngine for PersistentEngine {
         self.current_txn = Some(txn_id);
 
         // MVCC handles rollback via visibility - no need to save relations
-        Ok(PersistentSnapshot {
-            txn_id,
-            saved_relations: HashMap::new(),
-        })
+        Ok(PersistentSnapshot { txn_id })
     }
 
     fn commit_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
