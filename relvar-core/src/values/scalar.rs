@@ -207,7 +207,13 @@ impl PartialEq for ScalarValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (ScalarValue::Int(a), ScalarValue::Int(b)) => a == b,
-            (ScalarValue::Float(a), ScalarValue::Float(b)) => a.to_bits() == b.to_bits(),
+            (ScalarValue::Float(a), ScalarValue::Float(b)) => {
+                if a.is_nan() && b.is_nan() {
+                    true
+                } else {
+                    a.to_bits() == b.to_bits()
+                }
+            }
             (ScalarValue::String(a), ScalarValue::String(b)) => a == b,
             (ScalarValue::Bool(a), ScalarValue::Bool(b)) => a == b,
             (ScalarValue::Bytes(a), ScalarValue::Bytes(b)) => a == b,
@@ -241,7 +247,11 @@ impl std::hash::Hash for ScalarValue {
             }
             ScalarValue::Float(v) => {
                 1u8.hash(state);
-                v.to_bits().hash(state);
+                if v.is_nan() {
+                    f64::NAN.to_bits().hash(state);
+                } else {
+                    v.to_bits().hash(state);
+                }
             }
             ScalarValue::String(v) => {
                 2u8.hash(state);
@@ -302,8 +312,13 @@ impl Ord for ScalarValue {
                 match (self, other) {
                     (ScalarValue::Int(a), ScalarValue::Int(b)) => a.cmp(b),
                     (ScalarValue::Float(a), ScalarValue::Float(b)) => {
-                        // For floats, use bit ordering (treats NaN consistently)
-                        a.to_bits().cmp(&b.to_bits())
+                        // For floats, treat all NaNs as equal and greater than any other float
+                        match (a.is_nan(), b.is_nan()) {
+                            (true, true) => Ordering::Equal,
+                            (true, false) => Ordering::Greater,
+                            (false, true) => Ordering::Less,
+                            (false, false) => a.to_bits().cmp(&b.to_bits()),
+                        }
                     }
                     (ScalarValue::String(a), ScalarValue::String(b)) => a.cmp(b),
                     (ScalarValue::Bool(a), ScalarValue::Bool(b)) => a.cmp(b),
@@ -729,5 +744,29 @@ mod tests {
             }
             _ => panic!("Expected relation value"),
         }
+    }
+}
+
+#[cfg(test)]
+mod nan_fix_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_nan_grouping_consistent() {
+        let nan1 = ScalarValue::Float(f64::NAN);
+        let nan2 = ScalarValue::Float(f64::from_bits(f64::NAN.to_bits() ^ 1));
+
+        assert!(nan1.is_type(&ScalarType::Float));
+        assert!(nan2.is_type(&ScalarType::Float));
+
+        // This assertion ensures that different NaN bit patterns are treated as equal
+        assert_eq!(nan1, nan2, "All NaNs should be equal");
+
+        let mut set = HashSet::new();
+        set.insert(nan1.clone());
+        set.insert(nan2.clone());
+
+        assert_eq!(set.len(), 1, "Set should contain only one NaN");
     }
 }
