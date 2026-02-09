@@ -895,7 +895,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn test_min_with_multiple_tuples() {
         let heading = TupleType::new()
