@@ -428,7 +428,7 @@ impl<E: StorageEngine> Database<E> {
     /// Returns an error if:
     /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
     /// - Deleting the tuples would violate a foreign key constraint in another relation
-    ///   ([`ConstraintManagerError::ForeignKeyViolation`])
+    ///   ([`crate::constraints::ConstraintManagerError::ForeignKeyViolation`])
     ///
     /// # Example
     ///
@@ -485,10 +485,10 @@ impl<E: StorageEngine> Database<E> {
     /// Returns an error if:
     /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
     /// - The updated tuple doesn't match the relation type ([`DatabaseError::TupleMismatch`])
-    /// - A key constraint is violated ([`ConstraintManagerError::PrimaryKeyViolation`], [`ConstraintManagerError::CandidateKeyViolation`])
-    /// - A foreign key constraint is violated ([`ConstraintManagerError::ForeignKeyViolation`])
-    /// - A type constraint is violated ([`ConstraintManagerError::TypeConstraintViolation`])
-    /// - A CHECK constraint is violated ([`ConstraintManagerError::CheckConstraintViolation`])
+    /// - A key constraint is violated ([`crate::constraints::ConstraintManagerError::PrimaryKeyViolation`], [`crate::constraints::ConstraintManagerError::CandidateKeyViolation`])
+    /// - A foreign key constraint is violated ([`crate::constraints::ConstraintManagerError::ForeignKeyViolation`])
+    /// - A type constraint is violated ([`crate::constraints::ConstraintManagerError::TypeConstraintViolation`])
+    /// - A CHECK constraint is violated ([`crate::constraints::ConstraintManagerError::CheckConstraintViolation`])
     ///
     /// # Performance
     ///
