@@ -31,7 +31,7 @@
 
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 impl Relation {
     /// Renames attributes in this relation according to the provided mapping.
@@ -109,7 +109,7 @@ impl Relation {
 
         // Rename attributes in each tuple
         let renamed_tuples = self.tuples().map(|tuple| {
-            let mut values = HashMap::new();
+            let mut values = BTreeMap::new();
 
             for (old_name, value) in tuple.values() {
                 let new_name = mappings
@@ -121,12 +121,10 @@ impl Relation {
                 values.insert(new_name.to_string(), value.clone());
             }
 
-            Tuple::new(new_heading.clone(), values)
-                .expect("Rename should maintain type consistency")
+            Tuple::new_unchecked(new_heading.clone(), values)
         });
 
-        Relation::from_tuples(new_rel_type, renamed_tuples)
-            .expect("Renamed tuples should conform to new relation type")
+        Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
     }
 }
 

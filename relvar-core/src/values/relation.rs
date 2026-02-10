@@ -265,6 +265,32 @@ impl Relation {
         })
     }
 
+    /// Creates a relation from tuples without checking their type.
+    ///
+    /// # Safety
+    ///
+    /// This function is marked `pub(crate)` because it bypasses the type checks.
+    /// The caller must ensure that all tuples conform to `relation_type`.
+    pub(crate) fn from_tuples_unchecked(
+        relation_type: RelationType,
+        tuples: impl IntoIterator<Item = Tuple>,
+    ) -> Self {
+        let iter = tuples.into_iter();
+        let (lower, _upper) = iter.size_hint();
+        // Use lower bound as a conservative estimate
+        let mut body = HashSet::with_capacity(lower);
+
+        for tuple in iter {
+            // We skip the type check here
+            body.insert(tuple);
+        }
+
+        Self {
+            relation_type,
+            body,
+        }
+    }
+
     /// Returns the relation type (heading) of this relation.
     ///
     /// # Example

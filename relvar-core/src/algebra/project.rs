@@ -92,18 +92,19 @@ impl Relation {
 
         // Project each tuple
         let projected_tuples = self.tuples().map(|tuple| {
-            let values = attributes.iter().filter_map(|&attr_name| {
-                tuple
-                    .get(attr_name)
-                    .map(|value| (attr_name.to_string(), value.clone()))
-            });
-            Tuple::new(new_heading.clone(), values)
-                .expect("Projection should maintain type consistency")
+            let values: std::collections::BTreeMap<_, _> = attributes
+                .iter()
+                .filter_map(|&attr_name| {
+                    tuple
+                        .get(attr_name)
+                        .map(|value| (attr_name.to_string(), value.clone()))
+                })
+                .collect();
+            Tuple::new_unchecked(new_heading.clone(), values)
         });
 
         // Duplicates are automatically removed when creating the relation
-        Relation::from_tuples(new_rel_type, projected_tuples)
-            .expect("Projected tuples should conform to new relation type")
+        Relation::from_tuples_unchecked(new_rel_type, projected_tuples)
     }
 }
 

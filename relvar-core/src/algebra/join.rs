@@ -43,7 +43,7 @@
 use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 impl Relation {
     /// Performs a natural join with another relation.
@@ -169,7 +169,7 @@ impl Relation {
             if let Some(matching_tuples) = build_map.get(&key) {
                 for build_tuple in matching_tuples {
                     // Combine tuples
-                    let mut combined_values = HashMap::new();
+                    let mut combined_values = BTreeMap::new();
 
                     // Add all values from build_tuple
                     for (attr_name, value) in build_tuple.values() {
@@ -183,20 +183,18 @@ impl Relation {
                         }
                     }
 
-                    let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
-                        .map_err(|e| {
-                            DatabaseError::AlgebraError(format!(
-                                "Failed to construct combined tuple: {}",
-                                e
-                            ))
-                        })?;
+                    let combined_tuple =
+                        Tuple::new_unchecked(result_heading.clone(), combined_values);
 
                     joined_tuples.push(combined_tuple);
                 }
             }
         }
 
-        Ok(Relation::from_tuples(result_rel_type, joined_tuples)?)
+        Ok(Relation::from_tuples_unchecked(
+            result_rel_type,
+            joined_tuples,
+        ))
     }
 
     /// Performs a theta join with another relation using an arbitrary predicate.
@@ -294,7 +292,7 @@ impl Relation {
             for tuple2 in other.tuples() {
                 if predicate(tuple1, tuple2) {
                     // Combine tuples
-                    let mut combined_values = HashMap::new();
+                    let mut combined_values = BTreeMap::new();
 
                     for (attr_name, value) in tuple1.values() {
                         combined_values.insert(attr_name.clone(), value.clone());
@@ -306,16 +304,14 @@ impl Relation {
                         }
                     }
 
-                    if let Ok(combined_tuple) = Tuple::new(result_heading.clone(), combined_values)
-                    {
-                        joined_tuples.push(combined_tuple);
-                    }
+                    let combined_tuple =
+                        Tuple::new_unchecked(result_heading.clone(), combined_values);
+                    joined_tuples.push(combined_tuple);
                 }
             }
         }
 
-        Relation::from_tuples(result_rel_type, joined_tuples)
-            .expect("Joined tuples should conform to result relation type")
+        Relation::from_tuples_unchecked(result_rel_type, joined_tuples)
     }
 }
 

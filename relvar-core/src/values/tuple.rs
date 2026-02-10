@@ -242,6 +242,25 @@ impl Tuple {
         self.values.insert(attr_name, value);
         Ok(())
     }
+
+    /// Creates a new tuple without performing type validation.
+    ///
+    /// # Safety
+    ///
+    /// This function is marked `pub(crate)` because it bypasses the type checks
+    /// performed by `new`. It is intended for internal use where the caller
+    /// can guarantee that the provided values conform to the tuple type.
+    ///
+    /// The caller must ensure:
+    /// 1. All attributes in `tuple_type` are present in `values`.
+    /// 2. All values in `values` have types matching `tuple_type`.
+    /// 3. No extra attributes are present in `values`.
+    pub(crate) fn new_unchecked(
+        tuple_type: TupleType,
+        values: BTreeMap<String, ScalarValue>,
+    ) -> Self {
+        Self { tuple_type, values }
+    }
 }
 
 impl std::hash::Hash for Tuple {

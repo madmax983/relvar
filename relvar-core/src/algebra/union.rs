@@ -111,10 +111,10 @@ impl Relation {
         all_tuples.extend(other.tuples().cloned());
 
         // from_tuples automatically removes duplicates via HashSet
-        Ok(
-            Relation::from_tuples(self.relation_type().clone(), all_tuples)
-                .expect("Union tuples should conform to relation type"),
-        )
+        Ok(Relation::from_tuples_unchecked(
+            self.relation_type().clone(),
+            all_tuples,
+        ))
     }
 }
 

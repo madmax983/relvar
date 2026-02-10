@@ -5,3 +5,7 @@
 ## 2025-05-24 - Unify Database Error Handling
 **Tangle:** `DatabaseError` duplicated `ConstraintManagerError` variants (violating DRY) and required manual synchronization.
 **Blueprint:** Nested `ConstraintManagerError` within `DatabaseError` via a `Constraint(#[from] ConstraintManagerError)` variant. This enforces hierarchy and removes code duplication.
+
+## 2025-05-24 - Trusted Internal Algebra
+**Tangle:** O(N) tuple validation overhead in core algebra operators (`project`, `join`, `rename`, `union`) due to public API constraints.
+**Blueprint:** Introduced `pub(crate)` trusted constructors `Tuple::new_unchecked` and `Relation::from_tuples_unchecked`. This separates the "Public Safety" boundary from the "Internal Performance" core, allowing algebra operators to bypass redundant checks when data integrity is guaranteed by construction.
