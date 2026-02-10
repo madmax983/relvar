@@ -1369,6 +1369,51 @@ mod tests {
     }
 
     #[test]
+    fn test_recovery_undoes_uncommitted_data() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create database with uncommitted data that hits disk via checkpoint
+        {
+            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            engine.create_relation("TEST", test_rel_type()).unwrap();
+
+            // Insert committed data
+            let snapshot = engine.begin_transaction().unwrap();
+            engine
+                .insert_tuple("TEST", tuple! { id: 1i64, name: "Committed" })
+                .unwrap();
+            engine.commit_transaction(snapshot).unwrap();
+
+            // Start new transaction
+            let _snapshot2 = engine.begin_transaction().unwrap();
+            engine
+                .insert_tuple("TEST", tuple! { id: 2i64, name: "Uncommitted" })
+                .unwrap();
+
+            // Force flush via checkpoint while transaction is still active
+            // This ensures the uncommitted tuple is on disk (in heap file)
+            // and the transaction is recorded as active in the checkpoint
+            engine.checkpoint().unwrap();
+
+            // Simulate crash (drop engine without committing/aborting txn 2)
+        }
+
+        // Reopen - should trigger recovery
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            let relation = engine.load_relation("TEST").unwrap();
+
+            // Should see committed data
+            assert_eq!(relation.cardinality(), 1);
+            let tuple = relation.tuples().next().unwrap();
+            assert_eq!(tuple.get_typed::<String>("name").unwrap(), "Committed");
+
+            // Should NOT see uncommitted data
+            // This verifies that `undo_uncommitted_inserts` (and `rebuild_relation_without_uncommitted`) ran correctly
+        }
+    }
+
+    #[test]
     fn test_recovery_from_checkpoint() {
         let temp_dir = TempDir::new().unwrap();
 
