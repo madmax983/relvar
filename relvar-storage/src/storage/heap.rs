@@ -21,11 +21,31 @@
 //! storage references, maintaining the relational abstraction.
 
 use super::page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
+use bincode::Options;
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
+
+/// Helper for bounded deserialization to prevent allocation bombs.
+/// Limits allocation size to PAGE_SIZE (4KB), preventing DoS from malicious length prefixes.
+fn deserialize_bounded<'a, T>(data: &'a [u8]) -> Result<T, HeapError>
+where
+    T: Deserialize<'a>,
+{
+    // Limit deserialization size to PAGE_SIZE to prevent allocation bombs.
+    // bincode 1.3.3's with_limit checks the size of data being deserialized.
+    // For Vec/String, it checks the length prefix against this limit.
+    // NOTE: Must explicitly set LittleEndian and FixedIntEncoding to match legacy bincode::serialize defaults.
+    bincode::options()
+        .with_little_endian()
+        .with_fixint_encoding()
+        .with_limit(PAGE_SIZE as u64)
+        .allow_trailing_bytes()
+        .deserialize(data)
+        .map_err(|e| HeapError::Serialization(e.to_string()))
+}
 
 /// Tuple ID: (page_id, slot_number)
 /// Internal to storage layer only (TTM Proscription 6)
@@ -464,8 +484,7 @@ impl HeapFile {
             return Err(HeapError::TupleNotFound);
         }
 
-        let slotted_page: SlottedPage = bincode::deserialize(page.data())
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let slotted_page: SlottedPage = deserialize_bounded(page.data())?;
 
         let slot_entry = slotted_page
             .slots
@@ -482,8 +501,7 @@ impl HeapFile {
         }
 
         let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = bincode::deserialize(tuple_data)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let tuple: Tuple = deserialize_bounded(tuple_data)?;
 
         Ok(tuple)
     }
@@ -518,8 +536,7 @@ impl HeapFile {
         }
 
         let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = bincode::deserialize(tuple_data)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let tuple: Tuple = deserialize_bounded(tuple_data)?;
 
         Ok(tuple)
     }
@@ -918,17 +935,16 @@ impl HeapFile {
                 )));
             }
 
-            bincode::deserialize(&page.data()[5..end_of_header])
-                .map_err(|e| HeapError::Serialization(e.to_string()))
+            deserialize_bounded(&page.data()[5..end_of_header])
         } else {
             // Old format: [slot_dir][tuples]
-            bincode::deserialize(page.data()).map_err(|e| HeapError::Serialization(e.to_string()))
+            deserialize_bounded(page.data())
         }
     }
 
     /// Deserializes a standard slotted page.
     fn deserialize_slotted_page(&self, page: &Page) -> Result<SlottedPage, HeapError> {
-        bincode::deserialize(page.data()).map_err(|e| HeapError::Serialization(e.to_string()))
+        deserialize_bounded(page.data())
     }
 
     /// Validates that a slot points to valid data within the page.
@@ -961,7 +977,7 @@ impl HeapFile {
     ) -> Result<Tuple, HeapError> {
         let (start, end) = self.validate_slot_bounds(page, offset, length)?;
         let tuple_data = &page.data()[start..end];
-        bincode::deserialize(tuple_data).map_err(|e| HeapError::Serialization(e.to_string()))
+        deserialize_bounded(tuple_data)
     }
 
     /// Extracts raw tuple data from a page at the given offset and length.
@@ -1392,8 +1408,7 @@ impl HeapFile {
 
                     if end <= page.data().len() {
                         let tuple_data = &page.data()[start..end];
-                        let tuple: Tuple = bincode::deserialize(tuple_data)
-                            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+                        let tuple: Tuple = deserialize_bounded(tuple_data)?;
                         results.push(tuple);
                     }
                 }
@@ -3468,6 +3483,28 @@ mod tests {
                 println!("Page split happened at insert {}", i);
                 break;
             }
+        }
+    }
+
+    #[test]
+    fn test_allocation_bomb_prevention() {
+        // Construct a malicious payload: a Vec<u8> with length prefix 1GB
+        // bincode uses little-endian by default
+        let huge_len: u64 = 1024 * 1024 * 1024; // 1 GB
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&huge_len.to_le_bytes());
+        // No actual data follows
+
+        // Try to deserialize into Vec<u8> using our bounded deserializer
+        // This should fail immediately because the declared length exceeds PAGE_SIZE
+        let result: Result<Vec<u8>, HeapError> = deserialize_bounded(&payload);
+
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::Serialization(_)) => {
+                // Expected error
+            }
+            _ => panic!("Expected Serialization error, got {:?}", result),
         }
     }
 }
