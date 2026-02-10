@@ -31,7 +31,30 @@ use crate::types::TupleType;
 use crate::values::ScalarValue;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use thiserror::Error;
+
+mod arc_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S, T>(val: &Arc<T>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        T: Serialize,
+    {
+        T::serialize(val, serializer)
+    }
+
+    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Arc<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        let val = T::deserialize(deserializer)?;
+        Ok(Arc::new(val))
+    }
+}
 
 /// Errors that can occur when creating or modifying tuples.
 #[derive(Debug, Error)]
@@ -91,7 +114,8 @@ pub enum TupleError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tuple {
     /// The tuple type (heading) that this tuple conforms to.
-    tuple_type: TupleType,
+    #[serde(with = "arc_serde")]
+    tuple_type: Arc<TupleType>,
     /// The attribute values, keyed by attribute name.
     values: BTreeMap<String, ScalarValue>,
 }
@@ -160,9 +184,27 @@ impl Tuple {
         }
 
         Ok(Self {
-            tuple_type,
+            tuple_type: Arc::new(tuple_type),
             values: values_map,
         })
+    }
+
+    /// Creates a tuple skipping all validation checks.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe in terms of memory safety (no undefined behavior),
+    /// but the resulting `Tuple` may violate relational integrity if:
+    /// - Attributes are missing
+    /// - Extra attributes are present
+    /// - Types do not match the `tuple_type`
+    ///
+    /// The caller must ensure that `values` perfectly matches `tuple_type`.
+    pub(crate) fn new_unchecked(
+        tuple_type: Arc<TupleType>,
+        values: BTreeMap<String, ScalarValue>,
+    ) -> Self {
+        Self { tuple_type, values }
     }
 
     /// Get the tuple type
