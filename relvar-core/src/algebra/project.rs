@@ -32,6 +32,8 @@
 
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 impl Relation {
     /// Projects this relation onto a subset of attributes.
@@ -90,20 +92,27 @@ impl Relation {
 
         let new_rel_type = RelationType::new(new_heading.clone());
 
+        // Share the heading via Arc to avoid cloning it for every tuple
+        let shared_heading = Arc::new(new_heading);
+
         // Project each tuple
         let projected_tuples = self.tuples().map(|tuple| {
-            let values = attributes.iter().filter_map(|&attr_name| {
-                tuple
-                    .get(attr_name)
-                    .map(|value| (attr_name.to_string(), value.clone()))
-            });
-            Tuple::new(new_heading.clone(), values)
-                .expect("Projection should maintain type consistency")
+            let values: BTreeMap<_, _> = attributes
+                .iter()
+                .filter_map(|&attr_name| {
+                    tuple
+                        .get(attr_name)
+                        .map(|value| (attr_name.to_string(), value.clone()))
+                })
+                .collect();
+            // Safety: We constructed values exactly from attributes present in new_heading
+            // derived from the source relation schema, so types match by definition.
+            Tuple::new_unchecked(shared_heading.clone(), values)
         });
 
         // Duplicates are automatically removed when creating the relation
-        Relation::from_tuples(new_rel_type, projected_tuples)
-            .expect("Projected tuples should conform to new relation type")
+        // Safety: projected_tuples use shared_heading which matches new_rel_type.heading()
+        Relation::from_tuples_unchecked(new_rel_type, projected_tuples)
     }
 }
 

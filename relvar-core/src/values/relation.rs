@@ -265,6 +265,33 @@ impl Relation {
         })
     }
 
+    /// Creates a relation from a type and an iterable of tuples without type checking.
+    ///
+    /// # Safety
+    ///
+    /// This method bypasses the check that ensures all tuples conform to the relation type.
+    /// The caller must guarantee that all tuples in the iterator strictly conform to
+    /// `relation_type.heading()`.
+    ///
+    /// It still performs duplicate elimination (set semantics).
+    pub(crate) fn from_tuples_unchecked(
+        relation_type: RelationType,
+        tuples: impl IntoIterator<Item = Tuple>,
+    ) -> Self {
+        let iter = tuples.into_iter();
+        let (lower, _upper) = iter.size_hint();
+        let mut body = HashSet::with_capacity(lower);
+
+        for tuple in iter {
+            body.insert(tuple);
+        }
+
+        Self {
+            relation_type,
+            body,
+        }
+    }
+
     /// Returns the relation type (heading) of this relation.
     ///
     /// # Example
