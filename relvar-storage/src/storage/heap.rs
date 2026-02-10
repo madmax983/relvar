@@ -667,7 +667,8 @@ impl HeapFile {
             bincode::serialize(tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
 
         // Check if tuple is too large to ever fit
-        self.check_versioned_tuple_size_limit(tuple_data.len())?;
+        // New inserts have no previous version (prev_version = None)
+        self.check_versioned_tuple_size_limit(tuple_data.len(), false)?;
 
         // Find a page with enough space, or create a new one
         self.find_page_for_insertion(|heap, page_id| {
@@ -677,7 +678,11 @@ impl HeapFile {
     }
 
     /// Check if a versioned tuple can theoretically fit in an empty page
-    fn check_versioned_tuple_size_limit(&self, tuple_data_len: usize) -> Result<(), HeapError> {
+    fn check_versioned_tuple_size_limit(
+        &self,
+        tuple_data_len: usize,
+        has_prev_version: bool,
+    ) -> Result<(), HeapError> {
         // Create a dummy versioned page with one slot
         let dummy_page = VersionedSlottedPage {
             magic: VERSIONED_PAGE_MAGIC,
@@ -687,7 +692,14 @@ impl HeapFile {
                 length: tuple_data_len as u32,
                 xmin: crate::wal::TransactionId::new(0),
                 xmax: None,
-                prev_version: None,
+                prev_version: if has_prev_version {
+                    Some(TupleId {
+                        page_id: 0,
+                        slot: 0,
+                    })
+                } else {
+                    None
+                },
             })],
         };
 
@@ -1063,7 +1075,8 @@ impl HeapFile {
             bincode::serialize(new_tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
 
         // Check if new tuple is too large
-        self.check_versioned_tuple_size_limit(new_tuple_data.len())?;
+        // Updates link to previous version (prev_version = Some(...))
+        self.check_versioned_tuple_size_limit(new_tuple_data.len(), true)?;
 
         // Find a page with space for new version
         self.find_page_for_insertion(|heap, page_id| {
@@ -3505,6 +3518,80 @@ mod tests {
                 // Expected error
             }
             _ => panic!("Expected Serialization error, got {:?}", result),
+        }
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use relvar_core::tuple;
+    use relvar_core::types::{ScalarType, TupleType};
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_update_versioned_tuple_too_large_prevents_loop() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
+        let rel_type = RelationType::new(heading);
+
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // Find the critical payload size dynamically
+        let mut critical_payload = None;
+
+        // Loop through sizes that are close to page limit
+        // USABLE_PAGE_SIZE is 4088. Overhead roughly 40-60 bytes.
+        // We look for a size where it fits with 'None' but fails with 'Some'
+        for len in 3950..4050 {
+            let data = vec![0u8; len];
+            let tuple = tuple! { data: data.clone() };
+            // Serialize to get length
+            let tuple_data = bincode::serialize(&tuple).unwrap();
+            let tuple_data_len = tuple_data.len();
+
+            // Check if it fits with None (insert)
+            let fits_insert = heap
+                .check_versioned_tuple_size_limit(tuple_data_len, false)
+                .is_ok();
+
+            // Check if it fits with Some (update)
+            let fits_update = heap
+                .check_versioned_tuple_size_limit(tuple_data_len, true)
+                .is_ok();
+
+            if fits_insert && !fits_update {
+                println!("Found critical payload length: {}", len);
+                critical_payload = Some(len);
+                break;
+            }
+        }
+
+        let len = critical_payload.expect("Failed to find critical payload size");
+        let data = vec![0u8; len];
+        let tuple = tuple! { data: data };
+
+        // Insert should succeed
+        let tid = heap
+            .insert_tuple_versioned(&tuple, crate::wal::TransactionId::new(1))
+            .expect("Insert failed");
+
+        // Update should fail with TupleTooLarge, NOT loop forever
+        // If the bug exists, this call would loop forever (or timeout)
+        // With the fix, it should return TupleTooLarge
+        let result = heap.update_tuple_versioned(tid, &tuple, crate::wal::TransactionId::new(2));
+
+        assert!(result.is_err());
+        match result {
+            Err(HeapError::TupleTooLarge(_)) => {
+                println!("Caught TupleTooLarge as expected");
+            }
+            Err(HeapError::PageFull) => {
+                panic!("Got PageFull - vulnerability likely present");
+            }
+            _ => panic!("Expected TupleTooLarge, got {:?}", result),
         }
     }
 }

@@ -62,3 +62,14 @@ Modified insertion logic to clone the page structure, insert a dummy entry into 
 1.  Implemented `deserialize_bounded` helper function in `HeapFile`.
 2.  Configured `bincode::options()` with `.with_limit(PAGE_SIZE)` to reject any allocation request exceeding the page size (4KB). Since no tuple or structure within a page can validly exceed the page size, this prevents unbounded allocation.
 3.  Preserved legacy configuration (`LittleEndian`, `FixedIntEncoding`, `AllowTrailingBytes`) to maintain compatibility with existing disk format.
+
+## 2026-02-06 - HeapFile Infinite Loop DoS on Update
+**Threat:**
+`HeapFile::update_tuple_versioned` could enter an infinite loop (DoS) when attempting to update a tuple whose size is extremely close to the page capacity.
+The size check `check_versioned_tuple_size_limit` underestimated the required space by assuming `prev_version` is `None` (1 byte), whereas updates insert a version with `prev_version: Some(...)` (9 bytes).
+This discrepancy caused the size check to pass, but the actual insertion to fail with `PageFull`. The `find_page_for_insertion` loop would then retry infinitely, creating new empty pages until disk exhaustion.
+
+**Defense:**
+Modified `check_versioned_tuple_size_limit` to accept a `has_prev_version` boolean flag.
+Updated `insert_tuple_versioned` to pass `false` and `update_tuple_versioned` to pass `true`.
+This ensures the size check accurately accounts for the 8-byte overhead of the `prev_version` pointer during updates.
