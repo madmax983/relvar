@@ -1983,4 +1983,47 @@ mod tests {
 
         engine.commit_transaction(snapshot2).unwrap();
     }
+
+    #[test]
+    fn test_recovery_undoes_uncommitted_data() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // 1. Create database and perform uncommitted work
+        {
+            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            engine.create_relation("TEST", test_rel_type()).unwrap();
+
+            // Begin transaction
+            let _snapshot = engine.begin_transaction().unwrap();
+
+            // Insert tuple (written to WAL and Heap)
+            // insert_tuple uses the active transaction established by begin_transaction
+            engine
+                .insert_tuple("TEST", tuple! { id: 1i64, name: "Uncommitted" })
+                .unwrap();
+
+            // CRASH! (Drop engine without calling commit_transaction)
+            // WAL contains: Begin, Insert
+            // WAL does NOT contain: Commit
+        }
+
+        // 2. Reopen database (Trigger Recovery)
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+            // Recovery should:
+            // 1. See uncommitted transaction in WAL
+            // 2. Scan heap files and remove tuples created by that transaction
+            //    (via undo_uncommitted_inserts)
+
+            let relation = engine.load_relation("TEST").unwrap();
+
+            // Verify tuple is gone
+            assert_eq!(
+                relation.cardinality(),
+                0,
+                "Recovery failed to undo uncommitted insert"
+            );
+        }
+    }
 }
