@@ -47,9 +47,10 @@ Unlike SQL databases, Relvar adheres strictly to relational theory:
 - **Storage Layer**
   - Page-based persistent storage (4KB pages)
   - Slotted page architecture for variable-length tuples
-  - B-tree indexes for efficient lookups
   - System catalog for metadata
   - Heap files for tuple storage
+  - Concurrency control (MVCC) for snapshot isolation
+  - Write-Ahead Logging (WAL) for durability and crash recovery
 
 - **Database API**
   - Create/drop relation variables (relvars)
@@ -306,8 +307,6 @@ GitHub Actions automatically runs on every push:
 ### Future Enhancements
 
 - [ ] Query optimizer (cost-based optimization)
-- [ ] Concurrency control (MVCC or 2PL)
-- [ ] Write-Ahead Logging (WAL) for durability
 - [ ] Query language parser (Tutorial D or custom syntax)
 - [ ] Network protocol (client-server architecture)
 - [ ] REPL (Read-Eval-Print Loop) for interactive use
