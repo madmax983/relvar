@@ -21,3 +21,11 @@
 ## 2026-06-15 - Unnecessary Integer Overflow in Aggregation
 **Learning:** `Avg` aggregation was using `i64` accumulator, causing it to fail on large datasets where the sum exceeds `i64::MAX` even if the average is small.
 **Action:** Use `i128` (or larger type) accumulators for integer aggregations to prevent intermediate overflows.
+
+## 2026-10-24 - Inconsistent NaN Handling in Scalar Values
+**Learning:** Found that  relied on  for equality and hashing, causing different NaN payloads to be treated as distinct values (and distinct groups in ).
+**Action:** When implementing database types, always normalize NaNs in , , and  to ensure set semantics (all NaNs are equal), regardless of the underlying bit pattern.
+
+## 2026-10-24 - Inconsistent NaN Handling in Scalar Values
+**Learning:** Found that `ScalarValue::Float` relied on `f64::to_bits()` for equality and hashing, causing different NaN payloads to be treated as distinct values (and distinct groups in `summarize`).
+**Action:** When implementing database types, always normalize NaNs in `Eq`, `Hash`, and `Ord` to ensure set semantics (all NaNs are equal), regardless of the underlying bit pattern.
