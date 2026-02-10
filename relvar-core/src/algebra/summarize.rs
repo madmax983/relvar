@@ -94,12 +94,6 @@ pub enum AggregationFn {
     ///
     /// The string parameter specifies the attribute name.
     Max(String),
-
-    /// A custom aggregation function.
-    ///
-    /// Takes a slice of tuple references and returns a computed scalar value.
-    #[allow(clippy::type_complexity)]
-    Custom(Box<dyn Fn(&[&Tuple]) -> ScalarValue>),
 }
 
 /// Defines a single aggregation to compute in a summarize operation.
@@ -347,7 +341,6 @@ impl Aggregation {
                 }
                 Ok(max_value)
             }
-            AggregationFn::Custom(f) => Ok(f(tuples)),
         }
     }
 }
@@ -900,38 +893,6 @@ mod tests {
             result.unwrap_err(),
             SummarizeError::AggregationError(_)
         ));
-    }
-
-    #[test]
-    fn test_custom_aggregation() {
-        let heading = TupleType::new().with_attribute("value".to_string(), ScalarType::Int);
-
-        let rel_type = RelationType::new(heading);
-        let mut relation = Relation::new(rel_type);
-        relation.insert(tuple! { value: 10i64 }).unwrap();
-        relation.insert(tuple! { value: 20i64 }).unwrap();
-        relation.insert(tuple! { value: 30i64 }).unwrap();
-
-        // Custom aggregation: product of all values
-        let custom_agg = Aggregation {
-            result_name: "product".to_string(),
-            result_type: ScalarType::Int,
-            function: AggregationFn::Custom(Box::new(|tuples| {
-                let mut product = 1i64;
-                for tuple in tuples {
-                    if let Some(val) = tuple.get_typed::<i64>("value") {
-                        product *= val;
-                    }
-                }
-                ScalarValue::Int(product)
-            })),
-        };
-
-        let result = relation.summarize(&[], &[custom_agg]).unwrap();
-
-        assert_eq!(result.cardinality(), 1);
-        let tuple = result.tuples().next().unwrap();
-        assert_eq!(tuple.get_typed::<i64>("product").unwrap(), 6000); // 10 * 20 * 30
     }
 
     #[test]
