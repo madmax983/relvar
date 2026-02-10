@@ -136,33 +136,43 @@ impl PersistentEngine {
             let uncommitted_tuples: std::collections::HashSet<Vec<u8>> =
                 uncommitted_tuples_vec.into_iter().collect();
 
-            // Load all tuples
-            let relation = self.load_relation(&relation_name)?;
-
-            // Filter out uncommitted tuples (now O(n) with HashSet)
-            let mut committed_tuples = Vec::new();
-            for tuple in relation.tuples() {
-                let tuple_data = bincode::serialize(&tuple)
-                    .map_err(|e| StorageError::Other(format!("Serialization error: {}", e)))?;
-
-                if !uncommitted_tuples.contains(&tuple_data) {
-                    committed_tuples.push(tuple.clone());
-                }
-            }
-
-            // Rebuild relation with only committed tuples
-            let mut new_relation =
-                relvar_core::values::Relation::new(relation.relation_type().clone());
-
-            for tuple in committed_tuples {
-                new_relation
-                    .insert(tuple)
-                    .map_err(|e| StorageError::Relation(e.to_string()))?;
-            }
-
-            self.store_relation(&relation_name, &new_relation)?;
+            self.rebuild_relation_without_uncommitted(&relation_name, uncommitted_tuples)?;
         }
 
+        Ok(())
+    }
+
+    /// Rebuilds a relation excluding specified uncommitted tuples.
+    fn rebuild_relation_without_uncommitted(
+        &mut self,
+        relation_name: &str,
+        uncommitted_tuples: std::collections::HashSet<Vec<u8>>,
+    ) -> Result<(), StorageError> {
+        // Load all tuples
+        let relation = self.load_relation(relation_name)?;
+
+        // Filter out uncommitted tuples (now O(n) with HashSet)
+        let mut committed_tuples = Vec::new();
+        for tuple in relation.tuples() {
+            let tuple_data = bincode::serialize(&tuple)
+                .map_err(|e| StorageError::Other(format!("Serialization error: {}", e)))?;
+
+            if !uncommitted_tuples.contains(&tuple_data) {
+                committed_tuples.push(tuple.clone());
+            }
+        }
+
+        // Rebuild relation with only committed tuples
+        let mut new_relation =
+            relvar_core::values::Relation::new(relation.relation_type().clone());
+
+        for tuple in committed_tuples {
+            new_relation
+                .insert(tuple)
+                .map_err(|e| StorageError::Relation(e.to_string()))?;
+        }
+
+        self.store_relation(relation_name, &new_relation)?;
         Ok(())
     }
 
@@ -382,6 +392,32 @@ impl PersistentEngine {
             .save(&self.catalog_path)
             .map_err(Self::convert_catalog_error)
     }
+
+    /// Replaces the heap file for a relation with a new, empty one.
+    /// Returns the new HeapFile handle.
+    fn replace_heap_file_for_relation(
+        &mut self,
+        name: &str,
+        metadata: &crate::storage::catalog::RelationMetadata,
+    ) -> Result<HeapFile, StorageError> {
+        // Remove old heap file
+        if let Err(e) = std::fs::remove_file(&metadata.heap_file_path) {
+            // Only error if file exists but can't be removed
+            if Path::new(&metadata.heap_file_path).exists() {
+                return Err(StorageError::Other(format!(
+                    "Failed to remove old heap file: {}",
+                    e
+                )));
+            }
+        }
+
+        // Remove from cache
+        self.heap_files.remove(name);
+
+        // Create new heap file
+        HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())
+            .map_err(Self::convert_heap_error)
+    }
 }
 
 impl StorageEngine for PersistentEngine {
@@ -486,30 +522,15 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {
-        // Get metadata
+        // Get metadata (clone to avoid borrow conflict)
         let metadata = self
             .catalog
             .get_relation(name)
-            .map_err(Self::convert_catalog_error)?;
+            .map_err(Self::convert_catalog_error)?
+            .clone();
 
-        // Remove old heap file and create new one
-        if let Err(e) = std::fs::remove_file(&metadata.heap_file_path) {
-            // Only error if file exists but can't be removed
-            if Path::new(&metadata.heap_file_path).exists() {
-                return Err(StorageError::Other(format!(
-                    "Failed to remove old heap file: {}",
-                    e
-                )));
-            }
-        }
-
-        // Remove from cache
-        self.heap_files.remove(name);
-
-        // Create new heap file
-        let mut new_heap_file =
-            HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())
-                .map_err(Self::convert_heap_error)?;
+        // Replace heap file
+        let mut new_heap_file = self.replace_heap_file_for_relation(name, &metadata)?;
 
         // Auto-commit transaction if not in explicit transaction
         let auto_commit = self.current_txn.is_none();

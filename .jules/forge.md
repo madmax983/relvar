@@ -17,3 +17,7 @@
 ## 2024-05-26 - HeapFile Helper Extraction
 **Learning:** `HeapFile` still contained significant duplication in tuple extraction (`scan`) and slot allocation (`insert`). Extracting generic helpers (`find_or_allocate_slot`, `extract_tuples_from_slots`, `validate_slot_bounds`) simplified `scan` and `insert` logic, removing redundant loops and bounds checks.
 **Action:** Look for "copy-paste" logic in distinct but similar code paths (like versioned vs standard page handling) and try to unify them with generic helpers or traits, even if the data structures are slightly different.
+
+## 2024-05-27 - PersistentEngine Responsibilities
+**Learning:** `PersistentEngine` handles storage, recovery, and transaction management, leading to mixed levels of abstraction in methods like `undo_uncommitted_inserts` and `store_relation`. Extracting helper methods for specific tasks (like file replacement or relation rebuilding) clarified the high-level flow.
+**Action:** When a method mixes "what to do" (policy) with "how to do it" (file I/O, serialization), extract the "how" into private helper methods.
