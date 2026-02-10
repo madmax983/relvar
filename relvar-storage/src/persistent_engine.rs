@@ -163,8 +163,7 @@ impl PersistentEngine {
         }
 
         // Rebuild relation with only committed tuples
-        let mut new_relation =
-            relvar_core::values::Relation::new(relation.relation_type().clone());
+        let mut new_relation = relvar_core::values::Relation::new(relation.relation_type().clone());
 
         for tuple in committed_tuples {
             new_relation
