@@ -121,10 +121,7 @@ impl Pivot for Relation {
             // Store value
             let val = tuple.get(value_col).unwrap().clone();
 
-            groups
-                .entry(key)
-                .or_default()
-                .insert(attr_name, val);
+            groups.entry(key).or_default().insert(attr_name, val);
         }
 
         // 4. Construct new RelationType
@@ -166,10 +163,10 @@ impl Pivot for Relation {
             new_tuples.push(tuple);
         }
 
-        Ok(Relation::from_tuples(
-            RelationType::new(new_heading),
-            new_tuples,
-        ).expect("Pivoted tuples should conform to new relation type"))
+        Ok(
+            Relation::from_tuples(RelationType::new(new_heading), new_tuples)
+                .expect("Pivoted tuples should conform to new relation type"),
+        )
     }
 }
 
@@ -188,8 +185,8 @@ fn scalar_to_attr_name(val: &ScalarValue) -> Result<String, PivotError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use relvar_core::types::ScalarType;
     use relvar_core::tuple;
+    use relvar_core::types::ScalarType;
 
     #[test]
     fn test_pivot_basic() {
@@ -200,9 +197,12 @@ mod tests {
             .with_attribute("Grade", ScalarType::Int);
 
         let mut rel = Relation::new(RelationType::new(heading));
-        rel.insert(tuple! { Student: "Alice", Subject: "Math", Grade: 90i64 }).unwrap();
-        rel.insert(tuple! { Student: "Alice", Subject: "Science", Grade: 85i64 }).unwrap();
-        rel.insert(tuple! { Student: "Bob", Subject: "Math", Grade: 80i64 }).unwrap();
+        rel.insert(tuple! { Student: "Alice", Subject: "Math", Grade: 90i64 })
+            .unwrap();
+        rel.insert(tuple! { Student: "Alice", Subject: "Science", Grade: 85i64 })
+            .unwrap();
+        rel.insert(tuple! { Student: "Bob", Subject: "Math", Grade: 80i64 })
+            .unwrap();
         // Bob missing Science
 
         let pivoted = rel.pivot("Subject", "Grade", ScalarValue::Int(0)).unwrap();
@@ -211,12 +211,18 @@ mod tests {
         assert_eq!(pivoted.degree(), 3); // Student, Math, Science
 
         // Check Alice
-        let alice = pivoted.tuples().find(|t| t.get("Student") == Some(&ScalarValue::String("Alice".to_string()))).unwrap();
+        let alice = pivoted
+            .tuples()
+            .find(|t| t.get("Student") == Some(&ScalarValue::String("Alice".to_string())))
+            .unwrap();
         assert_eq!(alice.get_typed::<i64>("Math").unwrap(), 90);
         assert_eq!(alice.get_typed::<i64>("Science").unwrap(), 85);
 
         // Check Bob
-        let bob = pivoted.tuples().find(|t| t.get("Student") == Some(&ScalarValue::String("Bob".to_string()))).unwrap();
+        let bob = pivoted
+            .tuples()
+            .find(|t| t.get("Student") == Some(&ScalarValue::String("Bob".to_string())))
+            .unwrap();
         assert_eq!(bob.get_typed::<i64>("Math").unwrap(), 80);
         assert_eq!(bob.get_typed::<i64>("Science").unwrap(), 0); // Default value
     }
@@ -230,8 +236,10 @@ mod tests {
             .with_attribute("Sales", ScalarType::Int);
 
         let mut rel = Relation::new(RelationType::new(heading));
-        rel.insert(tuple! { Year: 2023i64, Quarter: 1i64, Sales: 100i64 }).unwrap();
-        rel.insert(tuple! { Year: 2023i64, Quarter: 2i64, Sales: 200i64 }).unwrap();
+        rel.insert(tuple! { Year: 2023i64, Quarter: 1i64, Sales: 100i64 })
+            .unwrap();
+        rel.insert(tuple! { Year: 2023i64, Quarter: 2i64, Sales: 200i64 })
+            .unwrap();
 
         let pivoted = rel.pivot("Quarter", "Sales", ScalarValue::Int(0)).unwrap();
 
@@ -266,7 +274,10 @@ mod tests {
 
         // Default value is String, but value column B is Int
         let result = rel.pivot("A", "B", ScalarValue::String("0".to_string()));
-        assert!(matches!(result, Err(PivotError::DefaultValueTypeMismatch(_, _))));
+        assert!(matches!(
+            result,
+            Err(PivotError::DefaultValueTypeMismatch(_, _))
+        ));
     }
 
     #[test]
@@ -276,8 +287,10 @@ mod tests {
             .with_attribute("Subject", ScalarType::String)
             .with_attribute("Grade", ScalarType::Int);
         let mut rel = Relation::new(RelationType::new(heading));
-        rel.insert(tuple! { Student: "Alice", Subject: "Math", Grade: 90i64 }).unwrap();
-        rel.insert(tuple! { Student: "Alice", Subject: "Math", Grade: 95i64 }).unwrap();
+        rel.insert(tuple! { Student: "Alice", Subject: "Math", Grade: 90i64 })
+            .unwrap();
+        rel.insert(tuple! { Student: "Alice", Subject: "Math", Grade: 95i64 })
+            .unwrap();
 
         let pivoted = rel.pivot("Subject", "Grade", ScalarValue::Int(0)).unwrap();
 
