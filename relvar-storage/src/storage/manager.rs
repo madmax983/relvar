@@ -364,7 +364,10 @@ mod tests {
 
         manager.create_relation("TEST", test_rel_type()).unwrap();
         let result = manager.create_relation("TEST", test_rel_type());
-        assert!(matches!(result, Err(StorageError::RelationAlreadyExists(_))));
+        assert!(matches!(
+            result,
+            Err(StorageError::RelationAlreadyExists(_))
+        ));
     }
 
     #[test]
@@ -428,10 +431,13 @@ mod tests {
 
         // Load with snapshot seeing txn 100
         // If txn 100 is committed and our snapshot is later, we see it
-        let snapshot = TransactionSnapshot::new(TransactionId::new(200), crate::wal::Lsn::new(1000), vec![]);
+        let snapshot =
+            TransactionSnapshot::new(TransactionId::new(200), crate::wal::Lsn::new(1000), vec![]);
         let committed = [txn_id].into_iter().collect();
 
-        let loaded = manager.load_relation("TEST", &snapshot, &committed).unwrap();
+        let loaded = manager
+            .load_relation("TEST", &snapshot, &committed)
+            .unwrap();
         assert_eq!(loaded.cardinality(), 1);
     }
 
@@ -444,24 +450,30 @@ mod tests {
 
         // Simulate an uncommitted insert by manually inserting with a txn_id
         let uncommitted_txn = TransactionId::new(999);
-        manager.insert_tuple_versioned("TEST", &tuple! { id: 1i64, name: "Ghost" }, uncommitted_txn).unwrap();
+        manager
+            .insert_tuple_versioned("TEST", &tuple! { id: 1i64, name: "Ghost" }, uncommitted_txn)
+            .unwrap();
 
         // Simulate flushing to disk
         manager.flush_all().unwrap();
 
         // Verify it exists physically but would be invisible if we checked properly
         // Here we simulate recovery where we identify it as uncommitted from WAL
-        let uncommitted_inserts = vec![
-            UncommittedInsert {
-                relation_name: "TEST".to_string(),
-                tuple_data: vec![], // Dummy data, as the new logic doesn't use it for byte comparison
-            }
-        ];
+        let uncommitted_inserts = vec![UncommittedInsert {
+            relation_name: "TEST".to_string(),
+            tuple_data: vec![], // Dummy data, as the new logic doesn't use it for byte comparison
+        }];
 
         let recovery_lsn = crate::wal::Lsn::new(2000);
         let committed_txns = HashSet::new(); // 999 is NOT committed
 
-        manager.undo_uncommitted_inserts_with_committed(uncommitted_inserts, recovery_lsn, &committed_txns).unwrap();
+        manager
+            .undo_uncommitted_inserts_with_committed(
+                uncommitted_inserts,
+                recovery_lsn,
+                &committed_txns,
+            )
+            .unwrap();
 
         // After undo, the relation should be rewritten without the uncommitted tuple
         // We verify this by loading with a snapshot that SHOULD see everything committed (which is nothing)
@@ -476,7 +488,9 @@ mod tests {
         let mut committed_system = HashSet::new();
         committed_system.insert(TransactionId::new(0));
 
-        let loaded = manager.load_relation("TEST", &snapshot, &committed_system).unwrap();
+        let loaded = manager
+            .load_relation("TEST", &snapshot, &committed_system)
+            .unwrap();
         assert_eq!(loaded.cardinality(), 0);
     }
 }
