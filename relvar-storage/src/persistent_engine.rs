@@ -76,9 +76,11 @@ impl PersistentEngine {
         // Open WAL Manager
         // Note: StorageManager ensures directory exists, so WAL open should be safe
         let mut wal = if wal_path.exists() {
-            WalManager::open(&wal_path).map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?
+            WalManager::open(&wal_path)
+                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?
         } else {
-            WalManager::create(&wal_path).map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?
+            WalManager::create(&wal_path)
+                .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?
         };
 
         // Perform crash recovery if needed
@@ -183,7 +185,8 @@ impl PersistentEngine {
     /// Garbage collect old versions.
     fn garbage_collect_versions(&mut self) -> Result<(), StorageError> {
         let gc_lsn = self.get_checkpoint_lsn();
-        self.storage.garbage_collect_versions(gc_lsn, &self.committed_txns)
+        self.storage
+            .garbage_collect_versions(gc_lsn, &self.committed_txns)
     }
 
     /// Get snapshot for the current transaction context.
@@ -242,7 +245,8 @@ impl StorageEngine for PersistentEngine {
         let snapshot = self.get_snapshot_for_current_context()?;
 
         // Use StorageManager's read-only load_relation (bypasses cache)
-        self.storage.load_relation(name, &snapshot, &self.committed_txns)
+        self.storage
+            .load_relation(name, &snapshot, &self.committed_txns)
     }
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {
@@ -408,7 +412,8 @@ impl PersistentEngine {
             .clone();
 
         // Use StorageManager's read-only load_relation (bypasses cache)
-        self.storage.load_relation(name, &snapshot, &self.committed_txns)
+        self.storage
+            .load_relation(name, &snapshot, &self.committed_txns)
     }
 
     /// Inserts a tuple with MVCC version tracking.
@@ -482,7 +487,9 @@ mod tests {
         {
             let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
             engine.create_relation("TEST", test_rel_type()).unwrap();
-            engine.insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" }).unwrap();
+            engine
+                .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+                .unwrap();
         }
         {
             let engine = PersistentEngine::open(temp_dir.path()).unwrap();
@@ -497,9 +504,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
         engine.create_relation("TEST", test_rel_type()).unwrap();
-        engine.insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" }).unwrap();
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
         let snapshot = engine.begin_transaction().unwrap();
-        engine.insert_tuple("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+        engine
+            .insert_tuple("TEST", tuple! { id: 2i64, name: "Bob" })
+            .unwrap();
         let relation = engine.load_relation("TEST").unwrap();
         assert_eq!(relation.cardinality(), 2);
         engine.rollback_transaction(snapshot).unwrap();
@@ -514,7 +525,9 @@ mod tests {
             let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
             engine.create_relation("TEST", test_rel_type()).unwrap();
             let _snapshot = engine.begin_transaction().unwrap();
-            engine.insert_tuple("TEST", tuple! { id: 1i64, name: "Uncommitted" }).unwrap();
+            engine
+                .insert_tuple("TEST", tuple! { id: 1i64, name: "Uncommitted" })
+                .unwrap();
         }
         {
             let engine = PersistentEngine::open(temp_dir.path()).unwrap();

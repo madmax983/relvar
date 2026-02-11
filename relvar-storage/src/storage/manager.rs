@@ -3,9 +3,9 @@
 //! This module encapsulates the management of the catalog and heap files,
 //! providing a cleaner interface for the PersistentEngine.
 
+use crate::mvcc::TransactionSnapshot;
 use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
 use crate::wal::{TransactionId, UncommittedInsert};
-use crate::mvcc::TransactionSnapshot;
 use relvar_core::storage_engine::{RelationMetadata, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
@@ -126,8 +126,9 @@ impl StorageManager {
             .map_err(Self::convert_catalog_error)?;
 
         // Bypassing cache since we only have &self
-        let mut heap_file = HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
-            .map_err(Self::convert_heap_error)?;
+        let mut heap_file =
+            HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
+                .map_err(Self::convert_heap_error)?;
 
         let tuples = heap_file
             .scan_visible(snapshot, committed_txns)
@@ -150,6 +151,7 @@ impl StorageManager {
             .get_relation(name)
             .map_err(Self::convert_catalog_error)?;
 
+        #[allow(clippy::collapsible_if)]
         if let Err(e) = std::fs::remove_file(&metadata.heap_file_path) {
             if Path::new(&metadata.heap_file_path).exists() {
                 return Err(StorageError::Other(format!(
@@ -229,11 +231,7 @@ impl StorageManager {
                 .push(insert.tuple_data);
         }
 
-        let snapshot = TransactionSnapshot::new(
-            TransactionId::new(0),
-            current_lsn,
-            vec![],
-        );
+        let snapshot = TransactionSnapshot::new(TransactionId::new(0), current_lsn, vec![]);
 
         for (relation_name, _) in by_relation {
             if !self.catalog.relation_exists(&relation_name) {
