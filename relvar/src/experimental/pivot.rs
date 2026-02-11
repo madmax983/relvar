@@ -322,7 +322,8 @@ mod tests {
             .with_attribute("Value", ScalarType::Int);
 
         let mut rel = Relation::new(RelationType::new(heading));
-        rel.insert(tuple! { Item: "A", Score: 1.5, Value: 10 }).unwrap();
+        rel.insert(tuple! { Item: "A", Score: 1.5, Value: 10 })
+            .unwrap();
 
         // Should fail because floats are not allowed as pivot keys
         let result = rel.pivot("Score", "Value", ScalarValue::Int(0));
@@ -339,7 +340,8 @@ mod tests {
             .with_attribute("Value", ScalarType::Int);
 
         let mut rel = Relation::new(RelationType::new(heading));
-        rel.insert(tuple! { Category: "Hardware", Type: "Category", Value: 100 }).unwrap();
+        rel.insert(tuple! { Category: "Hardware", Type: "Category", Value: 100 })
+            .unwrap();
 
         let result = rel.pivot("Type", "Value", ScalarValue::Int(0));
         assert!(matches!(result, Err(PivotError::AttributeCollision(name)) if name == "Category"));
