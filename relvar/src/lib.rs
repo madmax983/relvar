@@ -10,48 +10,65 @@
 //! - `relvar-core` - Pure TTM logical model (always available)
 //! - `relvar-storage` - Persistent storage (optional, via "storage" feature)
 //!
-//! ## Examples
+//! ## Features and Flags
 //!
-//! ### In-memory database (no I/O)
+//! - **`storage`** (default): Enables the persistent storage engine.
+//! - **Experimental Modules**: The [`experimental`] module contains features like data export
+//!   and transitive closure that are still in development.
+//!
+//! ## Quick Start
+//!
+//! ### In-Memory Database
+//!
+//! For testing or temporary data, use the [`in_memory()`] helper:
 //!
 //! ```
-//! use relvar::{Database, InMemoryEngine};
+//! use relvar::{self, tuple};
 //! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::tuple;
 //!
-//! let mut db = Database::new(InMemoryEngine::new());
+//! // Create an in-memory database
+//! let mut db = relvar::in_memory();
 //!
+//! // Define a relation type (heading)
 //! let rel_type = RelationType::new(
 //!     TupleType::new()
 //!         .with_attribute("id", ScalarType::Int)
 //!         .with_attribute("name", ScalarType::String)
 //! );
 //!
+//! // Create a relvar and insert data
 //! db.create_relvar("EMPLOYEES", rel_type).unwrap();
 //! db.insert("EMPLOYEES", tuple! { id: 1i64, name: "Alice" }).unwrap();
 //!
+//! // Query the relation
 //! let employees = db.query("EMPLOYEES").unwrap();
 //! assert_eq!(employees.cardinality(), 1);
 //! ```
 //!
-//! ### Persistent database (requires "storage" feature)
+//! ### Persistent Database
+//!
+//! Requires the `storage` feature. Use [`open()`] to create or open a database on disk:
 //!
 //! ```no_run
 //! # #[cfg(feature = "storage")]
 //! # {
-//! use relvar::{Database, PersistentEngine};
+//! use relvar::{self, tuple};
 //! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::tuple;
 //!
-//! let mut db = Database::new(PersistentEngine::open("my_db").unwrap());
+//! // Open database at path "my_db"
+//! let mut db = relvar::open("my_db").unwrap();
 //!
+//! // Relations persist across restarts
 //! let rel_type = RelationType::new(
 //!     TupleType::new()
 //!         .with_attribute("id", ScalarType::Int)
 //!         .with_attribute("name", ScalarType::String)
 //! );
 //!
-//! db.create_relvar("EMPLOYEES", rel_type).unwrap();
+//! if !db.relvar_exists("EMPLOYEES") {
+//!     db.create_relvar("EMPLOYEES", rel_type).unwrap();
+//! }
+//!
 //! db.insert("EMPLOYEES", tuple! { id: 1i64, name: "Alice" }).unwrap();
 //! # }
 //! ```

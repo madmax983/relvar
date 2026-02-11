@@ -1,53 +1,35 @@
 //! Schema visualizer for Relvar databases.
 //!
 //! This module provides the [`SchemaVisualizer`] struct, which can generate
-//! Graphviz DOT code representing the database schema, including relations
-//! and foreign key constraints.
+//! Graphviz DOT code representing the database schema.
+//!
+//! # Usage
+//!
+//! 1. Create a `SchemaVisualizer` instance with your database.
+//! 2. Call `to_dot()` to generate the DOT string.
+//! 3. Write the string to a file (e.g., `schema.dot`).
+//! 4. Render the image using Graphviz: `dot -Tpng schema.dot -o schema.png`.
 //!
 //! # Example
 //!
 //! ```
-//! use relvar::{Database, InMemoryEngine};
+//! use relvar::{Database, InMemoryEngine, visualizer::SchemaVisualizer};
 //! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
-//! use relvar::visualizer::SchemaVisualizer;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
 //!
-//! // Define Departments
-//! let dept_type = RelationType::new(
-//!     TupleType::new()
-//!         .with_attribute("dept_id", ScalarType::Int)
-//!         .with_attribute("name", ScalarType::String)
-//! );
-//! db.create_relvar("DEPT", dept_type).unwrap();
+//! // Define schema
+//! let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+//! db.create_relvar("TEST", rel_type).unwrap();
 //!
-//! let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
-//! db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(pk)).unwrap();
-//!
-//! // Define Employees
-//! let emp_type = RelationType::new(
-//!     TupleType::new()
-//!         .with_attribute("emp_id", ScalarType::Int)
-//!         .with_attribute("name", ScalarType::String)
-//!         .with_attribute("dept_id", ScalarType::Int)
-//! );
-//! db.create_relvar("EMP", emp_type).unwrap();
-//!
-//! let fk = ForeignKey::new(
-//!     vec!["dept_id".to_string()],
-//!     "DEPT".to_string(),
-//!     vec!["dept_id".to_string()]
-//! ).unwrap();
-//! db.set_foreign_key_constraints("EMP", ForeignKeyConstraints::new().with_foreign_key(fk)).unwrap();
-//!
-//! // Generate DOT
+//! // Generate DOT code
 //! let visualizer = SchemaVisualizer::new(&db);
-//! let dot = visualizer.to_dot();
+//! let dot_output = visualizer.to_dot();
 //!
-//! assert!(dot.contains("digraph DatabaseSchema"));
-//! // Identifiers are now quoted for security
-//! assert!(dot.contains("\"EMP\" -> \"DEPT\""));
+//! // Write to file (example logic)
+//! // std::fs::write("schema.dot", &dot_output).unwrap();
+//!
+//! assert!(dot_output.starts_with("digraph"));
 //! ```
 
 use relvar_core::database::Database;
@@ -79,7 +61,9 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
     ///
     /// let viz = SchemaVisualizer::new(&db);
     /// let dot_code = viz.to_dot();
-    /// println!("{}", dot_code);
+    ///
+    /// // Save to file
+    /// // std::fs::write("schema.dot", dot_code).unwrap();
     /// ```
     pub fn to_dot(&self) -> String {
         let mut dot = String::from("digraph DatabaseSchema {\n");

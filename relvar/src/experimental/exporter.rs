@@ -2,6 +2,25 @@
 //!
 //! This module provides functionality to export relations to various formats
 //! like CSV, JSON, and ASCII tables.
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::{tuple, experimental::exporter};
+//! use relvar::types::{RelationType, TupleType, ScalarType};
+//! use relvar::values::Relation;
+//!
+//! let rel_type = RelationType::new(
+//!     TupleType::new()
+//!         .with_attribute("id", ScalarType::Int)
+//!         .with_attribute("name", ScalarType::String)
+//! );
+//! let mut relation = Relation::new(rel_type);
+//! relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+//!
+//! let csv = exporter::to_csv(&relation, ',').unwrap();
+//! println!("{}", csv);
+//! ```
 
 use relvar_core::values::{Relation, ScalarValue, Tuple};
 use std::cmp::Ordering;
@@ -46,6 +65,26 @@ impl<'a> Ord for SortableTuple<'a> {
 ///
 /// * `relation` - The relation to export.
 /// * `delimiter` - The character to use as a delimiter (e.g., ',' or '\t').
+///
+/// # Example
+///
+/// ```
+/// use relvar::{tuple, experimental::exporter};
+/// use relvar::types::{RelationType, TupleType, ScalarType};
+/// use relvar::values::Relation;
+///
+/// let rel_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id", ScalarType::Int)
+///         .with_attribute("name", ScalarType::String)
+/// );
+/// let mut relation = Relation::new(rel_type);
+/// relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+///
+/// let csv = exporter::to_csv(&relation, ',').unwrap();
+/// assert!(csv.contains("id,name"));
+/// assert!(csv.contains("1,\"Alice\""));
+/// ```
 pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterError> {
     let headers: Vec<&String> = relation
         .relation_type()
@@ -85,20 +124,99 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
 
 /// Exports the relation to a JSON string.
 ///
-/// The result is a JSON array of objects.
+/// The result is a JSON array of objects, where each object represents a tuple.
+/// Scalar values are mapped to their JSON equivalents (Int/Float -> Number,
+/// String -> String, Bool -> Boolean).
+///
+/// # Example
+///
+/// ```
+/// use relvar::{tuple, experimental::exporter};
+/// use relvar::types::{RelationType, TupleType, ScalarType};
+/// use relvar::values::Relation;
+///
+/// let rel_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id", ScalarType::Int)
+///         .with_attribute("name", ScalarType::String)
+/// );
+/// let mut relation = Relation::new(rel_type);
+/// relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+///
+/// let json = exporter::to_json(&relation).unwrap();
+/// // Output: [ { "id": 1, "name": "Alice" } ]
+/// assert!(json.contains("\"id\": 1"));
+/// assert!(json.contains("\"name\": \"Alice\""));
+/// ```
 pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
     // Sort tuples first
     let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
     tuples.sort();
 
-    // Convert to a Vec of &Tuple for serialization
-    // Note: Tuple implements Serialize, so we can serialize the list directly
-    let sorted_tuples: Vec<&Tuple> = tuples.into_iter().map(|t| t.0).collect();
+    let mut json_rows = Vec::with_capacity(tuples.len());
 
-    serde_json::to_string_pretty(&sorted_tuples).map_err(ExporterError::JsonError)
+    for tuple in tuples {
+        let mut row = serde_json::Map::new();
+        // Values in BTreeMap are already sorted by key (attribute name)
+        for (key, val) in tuple.0.values() {
+            row.insert(key.clone(), scalar_to_json(val));
+        }
+        json_rows.push(serde_json::Value::Object(row));
+    }
+
+    serde_json::to_string_pretty(&json_rows).map_err(ExporterError::JsonError)
+}
+
+fn scalar_to_json(val: &ScalarValue) -> serde_json::Value {
+    match val {
+        ScalarValue::Int(v) => serde_json::Value::Number((*v).into()),
+        ScalarValue::Float(v) => {
+            if let Some(n) = serde_json::Number::from_f64(*v) {
+                serde_json::Value::Number(n)
+            } else {
+                serde_json::Value::Null // JSON doesn't support NaN/Infinity
+            }
+        }
+        ScalarValue::String(v) => serde_json::Value::String(v.clone()),
+        ScalarValue::Bool(v) => serde_json::Value::Bool(*v),
+        ScalarValue::Bytes(v) => serde_json::Value::Array(
+            v.iter()
+                .map(|b| serde_json::Value::Number((*b).into()))
+                .collect(),
+        ),
+        // For nested relations or user-defined types, fall back to string representation or simplified object
+        ScalarValue::Relation(_) => serde_json::Value::String("<Relation>".to_string()),
+        ScalarValue::UserDefined { .. } => serde_json::Value::String("<UserDefined>".to_string()),
+    }
 }
 
 /// Exports the relation to an ASCII table.
+///
+/// Generates a formatted text table suitable for terminal output or logging.
+///
+/// # Example
+///
+/// ```
+/// use relvar::{tuple, experimental::exporter};
+/// use relvar::types::{RelationType, TupleType, ScalarType};
+/// use relvar::values::Relation;
+///
+/// let rel_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id", ScalarType::Int)
+///         .with_attribute("name", ScalarType::String)
+/// );
+/// let mut relation = Relation::new(rel_type);
+/// relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+///
+/// let table = exporter::to_ascii_table(&relation);
+/// println!("{}", table);
+/// // +----+-------+
+/// // | id | name  |
+/// // +----+-------+
+/// // | 1  | Alice |
+/// // +----+-------+
+/// ```
 pub fn to_ascii_table(relation: &Relation) -> String {
     let headers: Vec<&String> = relation
         .relation_type()

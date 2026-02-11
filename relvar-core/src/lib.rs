@@ -10,6 +10,11 @@
 //! - StorageEngine trait and InMemoryEngine implementation
 //!
 //! This crate is 100% in-memory and testable without any file I/O.
+//!
+//! # Persistence
+//!
+//! For persistent storage and transaction management, see the `relvar-storage` crate
+//! or the main `relvar` crate which integrates both core logic and storage.
 
 #![warn(missing_docs)]
 

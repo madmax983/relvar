@@ -18,6 +18,29 @@
 //!    - If `new_tuples` is empty, terminate.
 //!    - Update `result = result UNION new_tuples`.
 //!    - Update `delta = new_tuples`.
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::{tuple, experimental::tclose::TransitiveClosure};
+//! use relvar::types::{RelationType, TupleType, ScalarType};
+//! use relvar::values::Relation;
+//!
+//! // Define a graph relation: A -> B -> C
+//! let heading = TupleType::new()
+//!     .with_attribute("from", ScalarType::Int)
+//!     .with_attribute("to", ScalarType::Int);
+//! let mut r = Relation::new(RelationType::new(heading));
+//!
+//! r.insert(tuple! { from: 1i64, to: 2i64 }).unwrap();
+//! r.insert(tuple! { from: 2i64, to: 3i64 }).unwrap();
+//!
+//! // Compute closure
+//! let closure = r.tclose("from", "to").unwrap();
+//!
+//! // Should contain (1,3) via transitive path
+//! assert!(closure.contains(&tuple! { from: 1i64, to: 3i64 }));
+//! ```
 
 use relvar_core::error::DatabaseError;
 use relvar_core::values::Relation;
