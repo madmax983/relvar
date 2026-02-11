@@ -3,7 +3,7 @@ use criterion::{
 };
 use relvar::Database;
 use relvar::constraints::{
-    CheckConstraint, CheckConstraints, ConstraintExpression, KeyConstraints, PrimaryKey,
+    CheckConstraint, CmpOp, ConstraintExpression, KeyConstraints, PrimaryKey,
     ValueOrRef,
 };
 use relvar::tuple;
@@ -492,16 +492,17 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
                 db.create_relvar("EMP", emp_type).unwrap();
 
                 // Add CHECK constraint: salary > 0
-                let constraints = CheckConstraints::new().with_constraint(
-                    CheckConstraint::from_expression(
+                let constraints = vec![
+                    CheckConstraint::new(
                         "positive_salary",
                         "Salary must be positive",
-                        ConstraintExpression::Gt(
-                            "salary".to_string(),
-                            ValueOrRef::Value(ScalarValue::Float(0.0)),
-                        ),
-                    ),
-                );
+                        ConstraintExpression::Cmp {
+                            left: "salary".to_string(),
+                            op: CmpOp::Gt,
+                            right: ValueOrRef::Value(ScalarValue::Float(0.0)),
+                        },
+                    )
+                ];
                 db.set_check_constraints("EMP", constraints).unwrap();
 
                 (temp_dir, db)
@@ -531,22 +532,24 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
                 db.create_relvar("EMP", emp_type).unwrap();
 
                 // Add CHECK constraint: salary > 0 AND salary < 1000000
-                let constraints = CheckConstraints::new().with_constraint(
-                    CheckConstraint::from_expression(
+                let constraints = vec![
+                    CheckConstraint::new(
                         "valid_salary_range",
                         "Salary must be between 0 and 1,000,000",
                         ConstraintExpression::And(
-                            Box::new(ConstraintExpression::Gt(
-                                "salary".to_string(),
-                                ValueOrRef::Value(ScalarValue::Float(0.0)),
-                            )),
-                            Box::new(ConstraintExpression::Lt(
-                                "salary".to_string(),
-                                ValueOrRef::Value(ScalarValue::Float(1000000.0)),
-                            )),
+                            Box::new(ConstraintExpression::Cmp {
+                                left: "salary".to_string(),
+                                op: CmpOp::Gt,
+                                right: ValueOrRef::Value(ScalarValue::Float(0.0)),
+                            }),
+                            Box::new(ConstraintExpression::Cmp {
+                                left: "salary".to_string(),
+                                op: CmpOp::Lt,
+                                right: ValueOrRef::Value(ScalarValue::Float(1000000.0)),
+                            }),
                         ),
-                    ),
-                );
+                    )
+                ];
                 db.set_check_constraints("EMP", constraints).unwrap();
 
                 (temp_dir, db)
@@ -602,38 +605,48 @@ fn bench_check_constraint_evaluation(c: &mut Criterion) {
                 || {
                     // Setup: create constraint
                     match *expr_type {
-                        "simple" => CheckConstraint::from_expression(
+                        "simple" => CheckConstraint::new(
                             "test",
                             "test",
-                            ConstraintExpression::Gt(
-                                "salary".to_string(),
-                                ValueOrRef::Value(ScalarValue::Float(0.0)),
-                            ),
+                            ConstraintExpression::Cmp {
+                                left: "salary".to_string(),
+                                op: CmpOp::Gt,
+                                right: ValueOrRef::Value(ScalarValue::Float(0.0)),
+                            },
                         ),
-                        "and" => CheckConstraint::from_expression(
+                        "and" => CheckConstraint::new(
                             "test",
                             "test",
                             ConstraintExpression::And(
-                                Box::new(ConstraintExpression::Gt(
-                                    "salary".to_string(),
-                                    ValueOrRef::Value(ScalarValue::Float(0.0)),
-                                )),
-                                Box::new(ConstraintExpression::Lt(
-                                    "salary".to_string(),
-                                    ValueOrRef::Value(ScalarValue::Float(1000000.0)),
-                                )),
+                                Box::new(ConstraintExpression::Cmp {
+                                    left: "salary".to_string(),
+                                    op: CmpOp::Gt,
+                                    right: ValueOrRef::Value(ScalarValue::Float(0.0)),
+                                }),
+                                Box::new(ConstraintExpression::Cmp {
+                                    left: "salary".to_string(),
+                                    op: CmpOp::Lt,
+                                    right: ValueOrRef::Value(ScalarValue::Float(1000000.0)),
+                                }),
                             ),
                         ),
-                        "between" => CheckConstraint::from_expression(
+                        "between" => CheckConstraint::new(
                             "test",
                             "test",
-                            ConstraintExpression::Between(
-                                "salary".to_string(),
-                                ScalarValue::Float(0.0),
-                                ScalarValue::Float(1000000.0),
+                            ConstraintExpression::And(
+                                Box::new(ConstraintExpression::Cmp {
+                                    left: "salary".to_string(),
+                                    op: CmpOp::Ge,
+                                    right: ValueOrRef::Value(ScalarValue::Float(0.0)),
+                                }),
+                                Box::new(ConstraintExpression::Cmp {
+                                    left: "salary".to_string(),
+                                    op: CmpOp::Le,
+                                    right: ValueOrRef::Value(ScalarValue::Float(1000000.0)),
+                                }),
                             ),
                         ),
-                        "in_small" => CheckConstraint::from_expression(
+                        "in_small" => CheckConstraint::new(
                             "test",
                             "test",
                             ConstraintExpression::In(
@@ -647,7 +660,7 @@ fn bench_check_constraint_evaluation(c: &mut Criterion) {
                                 ],
                             ),
                         ),
-                        "in_large" => CheckConstraint::from_expression(
+                        "in_large" => CheckConstraint::new(
                             "test",
                             "test",
                             ConstraintExpression::In(

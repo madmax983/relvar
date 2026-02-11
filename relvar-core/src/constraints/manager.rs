@@ -4,7 +4,7 @@
 //! storing and validating all database constraints (keys, foreign keys, types, CHECKs).
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraintError, CheckConstraints, ForeignKeyConstraints,
+    AttributeConstraints, CheckConstraint, CheckConstraintError, ForeignKeyConstraints,
     KeyConstraints,
 };
 use crate::storage_engine::{StorageEngine, StorageError};
@@ -77,7 +77,7 @@ pub struct ConstraintManager {
     /// Type constraints per relation, per attribute.
     type_constraints: HashMap<String, HashMap<String, AttributeConstraints>>,
     /// CHECK constraints (tuple-level predicates) per relation.
-    check_constraints: HashMap<String, CheckConstraints>,
+    check_constraints: HashMap<String, Vec<CheckConstraint>>,
 }
 
 impl ConstraintManager {
@@ -205,7 +205,7 @@ impl ConstraintManager {
         &mut self,
         engine: &mut E,
         relation_name: &str,
-        constraints: CheckConstraints,
+        constraints: Vec<CheckConstraint>,
     ) -> Result<(), ConstraintManagerError> {
         if !engine.relation_exists(relation_name) {
             return Err(ConstraintManagerError::RelationNotFound(
@@ -217,7 +217,15 @@ impl ConstraintManager {
         let relation = engine.load_relation(relation_name)?;
 
         for tuple in relation.tuples() {
-            constraints.are_all_satisfied_by(tuple)?;
+            for constraint in &constraints {
+                if !constraint.is_satisfied_by(tuple)? {
+                    return Err(CheckConstraintError::Violation {
+                        constraint_name: constraint.name().to_string(),
+                        description: constraint.description().to_string(),
+                    }
+                    .into());
+                }
+            }
         }
 
         self.check_constraints
@@ -270,7 +278,15 @@ impl ConstraintManager {
         tuple: &Tuple,
     ) -> Result<(), ConstraintManagerError> {
         if let Some(check_constraints) = self.check_constraints.get(relation_name) {
-            check_constraints.are_all_satisfied_by(tuple)?;
+            for constraint in check_constraints {
+                if !constraint.is_satisfied_by(tuple)? {
+                    return Err(CheckConstraintError::Violation {
+                        constraint_name: constraint.name().to_string(),
+                        description: constraint.description().to_string(),
+                    }
+                    .into());
+                }
+            }
         }
         Ok(())
     }

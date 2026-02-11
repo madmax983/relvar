@@ -4,8 +4,7 @@
 //! for all database operations.
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraints, ConstraintManager, ForeignKeyConstraints,
-    KeyConstraints,
+    AttributeConstraints, CheckConstraint, ConstraintManager, ForeignKeyConstraints, KeyConstraints,
 };
 pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
@@ -312,7 +311,7 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::constraints::{CheckConstraints, CheckConstraint, ConstraintExpression, CmpOp, ValueOrRef};
+    /// use relvar_core::constraints::{CheckConstraint, ConstraintExpression, CmpOp, ValueOrRef};
     /// use relvar_core::values::ScalarValue;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
@@ -323,8 +322,8 @@ impl<E: StorageEngine> Database<E> {
     /// db.create_relvar("PEOPLE", rel_type).unwrap();
     ///
     /// // Age must be >= 0
-    /// let constraints = CheckConstraints::new()
-    ///     .with_constraint(CheckConstraint::new(
+    /// let constraints = vec![
+    ///     CheckConstraint::new(
     ///         "valid_age",
     ///         "Age must be non-negative",
     ///         ConstraintExpression::Cmp {
@@ -332,14 +331,15 @@ impl<E: StorageEngine> Database<E> {
     ///             op: CmpOp::Gt,
     ///             right: ValueOrRef::Value(ScalarValue::Int(-1))
     ///         }
-    ///     ));
+    ///     )
+    /// ];
     ///
     /// db.set_check_constraints("PEOPLE", constraints).unwrap();
     /// ```
     pub fn set_check_constraints(
         &mut self,
         relation_name: &str,
-        constraints: CheckConstraints,
+        constraints: Vec<CheckConstraint>,
     ) -> Result<(), DatabaseError> {
         Ok(self
             .constraints
@@ -771,7 +771,7 @@ impl<E: StorageEngine> Database<E> {
 mod tests {
     use super::*;
     use crate::constraints::ConstraintManagerError;
-    use crate::constraints::check::{CheckConstraint, CheckConstraints};
+    use crate::constraints::check::CheckConstraint;
     use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
     use crate::storage_engine::{InMemoryEngine, StorageError};
     use crate::tuple;
@@ -1714,7 +1714,7 @@ mod tests {
         db.create_relvar("EMPLOYEES", rel_type).unwrap();
 
         // Create CHECK constraint: salary must be positive
-        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        let constraints = vec![CheckConstraint::new(
             "positive_salary",
             "Salary must be positive",
             ConstraintExpression::Cmp {
@@ -1722,7 +1722,7 @@ mod tests {
                 op: CmpOp::Gt,
                 right: ValueOrRef::Value(ScalarValue::Int(0)),
             },
-        ));
+        )];
 
         db.set_check_constraints("EMPLOYEES", constraints).unwrap();
     }
@@ -1743,7 +1743,7 @@ mod tests {
             .unwrap();
 
         // Try to add CHECK constraint - should fail because existing data violates it
-        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        let constraints = vec![CheckConstraint::new(
             "positive_salary",
             "Salary must be positive",
             ConstraintExpression::Cmp {
@@ -1751,7 +1751,7 @@ mod tests {
                 op: CmpOp::Gt,
                 right: ValueOrRef::Value(ScalarValue::Int(0)),
             },
-        ));
+        )];
 
         let result = db.set_check_constraints("EMPLOYEES", constraints);
         assert!(result.is_err());
@@ -1775,7 +1775,7 @@ mod tests {
         db.create_relvar("EMPLOYEES", rel_type).unwrap();
 
         // Add CHECK constraint: salary must be positive
-        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        let constraints = vec![CheckConstraint::new(
             "positive_salary",
             "Salary must be positive",
             ConstraintExpression::Cmp {
@@ -1783,7 +1783,7 @@ mod tests {
                 op: CmpOp::Gt,
                 right: ValueOrRef::Value(ScalarValue::Int(0)),
             },
-        ));
+        )];
         db.set_check_constraints("EMPLOYEES", constraints).unwrap();
 
         // Insert with positive salary should succeed
@@ -1813,7 +1813,7 @@ mod tests {
         db.create_relvar("PERSONS", rel_type).unwrap();
 
         // Add complex CHECK constraint: age between 0 and 150
-        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        let constraints = vec![CheckConstraint::new(
             "valid_age",
             "Age must be between 0 and 150",
             ConstraintExpression::And(
@@ -1828,7 +1828,7 @@ mod tests {
                     right: ValueOrRef::Value(ScalarValue::Int(150)),
                 }),
             ),
-        ));
+        )];
         db.set_check_constraints("PERSONS", constraints).unwrap();
 
         // Insert with valid age should succeed

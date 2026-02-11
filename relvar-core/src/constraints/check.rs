@@ -141,54 +141,6 @@ impl CheckConstraint {
     }
 }
 
-/// A collection of CHECK constraints for a relvar.
-///
-/// This manages multiple CHECK constraints and provides methods to check
-/// if all constraints are satisfied by a tuple.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct CheckConstraints {
-    constraints: Vec<CheckConstraint>,
-}
-
-impl CheckConstraints {
-    /// Creates a new empty collection of CHECK constraints.
-    pub fn new() -> Self {
-        Self {
-            constraints: Vec::new(),
-        }
-    }
-
-    /// Adds a constraint to the collection.
-    pub fn with_constraint(mut self, constraint: CheckConstraint) -> Self {
-        self.constraints.push(constraint);
-        self
-    }
-
-    /// Checks if all constraints are satisfied by the given tuple.
-    ///
-    /// Returns `Ok(true)` if all constraints are satisfied.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` with the first violated constraint or evaluation error.
-    pub fn are_all_satisfied_by(&self, tuple: &Tuple) -> Result<bool, CheckConstraintError> {
-        for constraint in &self.constraints {
-            if !constraint.is_satisfied_by(tuple)? {
-                return Err(CheckConstraintError::Violation {
-                    constraint_name: constraint.name.clone(),
-                    description: constraint.description.clone(),
-                });
-            }
-        }
-        Ok(true)
-    }
-
-    /// Returns all constraints.
-    pub fn constraints(&self) -> &[CheckConstraint] {
-        &self.constraints
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,9 +184,9 @@ mod tests {
     }
 
     #[test]
-    fn test_check_constraints_all_satisfied() {
-        let constraints = CheckConstraints::new()
-            .with_constraint(CheckConstraint::new(
+    fn test_check_constraints_list_validation() {
+        let constraints = vec![
+            CheckConstraint::new(
                 "c1",
                 "x > 0",
                 ConstraintExpression::Cmp {
@@ -242,8 +194,8 @@ mod tests {
                     op: CmpOp::Gt,
                     right: ValueOrRef::Value(ScalarValue::Int(0)),
                 },
-            ))
-            .with_constraint(CheckConstraint::new(
+            ),
+            CheckConstraint::new(
                 "c2",
                 "x < 100",
                 ConstraintExpression::Cmp {
@@ -251,15 +203,18 @@ mod tests {
                     op: CmpOp::Lt,
                     right: ValueOrRef::Value(ScalarValue::Int(100)),
                 },
-            ));
+            ),
+        ];
 
         let tuple = tuple! { x: 10i64 };
-        assert!(constraints.are_all_satisfied_by(&tuple).unwrap());
+        for constraint in &constraints {
+            assert!(constraint.is_satisfied_by(&tuple).unwrap());
+        }
     }
 
     #[test]
-    fn test_check_constraints_violation_returns_error() {
-        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+    fn test_check_constraints_list_violation() {
+        let constraints = vec![CheckConstraint::new(
             "must_fail",
             "always fails",
             ConstraintExpression::Cmp {
@@ -267,19 +222,17 @@ mod tests {
                 op: CmpOp::Lt,
                 right: ValueOrRef::Value(ScalarValue::Int(0)),
             },
-        ));
+        )];
 
         let tuple = tuple! { id: 1i64 };
-        let result = constraints.are_all_satisfied_by(&tuple);
-        assert!(result.is_err());
-        match result {
-            Err(CheckConstraintError::Violation {
-                constraint_name, ..
-            }) => {
-                assert_eq!(constraint_name, "must_fail");
+        let mut violated = false;
+        for constraint in &constraints {
+            if !constraint.is_satisfied_by(&tuple).unwrap() {
+                violated = true;
+                break;
             }
-            _ => panic!("Expected Violation error"),
         }
+        assert!(violated);
     }
 
     #[test]

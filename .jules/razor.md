@@ -37,3 +37,8 @@
 **Bloat:** `TypeConstraint::PositiveInt` and `NonNegativeInt`
 **Cut:** Replaced with `Range`.
 **Saved:** Removed redundant enum variants.
+
+## [Reduction]
+**Bloat:** `CheckConstraints` struct which was just a wrapper around `Vec<CheckConstraint>`.
+**Cut:** Replaced with `Vec<CheckConstraint>`.
+**Saved:** ~30 lines of code + cognitive load (removed unnecessary wrapper type).
