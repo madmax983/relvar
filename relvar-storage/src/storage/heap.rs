@@ -337,7 +337,6 @@ impl HeapFile {
     /// Helper to repack slots and calculate offsets.
     /// Iterates backward from the end of the available space.
     /// Assumes slots are already populated (Some) for valid tuples.
-    #[allow(clippy::collapsible_if)] // let_chains is unstable
     fn repack_slots<T: MutableSlot>(
         slots: &mut [Option<T>],
         tuples: &[Vec<u8>],
@@ -345,14 +344,16 @@ impl HeapFile {
     ) -> Result<(), HeapError> {
         let mut current_offset = usable_size;
         for (idx, tuple) in tuples.iter().enumerate().rev() {
-            if !tuple.is_empty() {
-                if let Some(slot) = slots.get_mut(idx).and_then(|s| s.as_mut()) {
-                    current_offset = current_offset
-                        .checked_sub(tuple.len())
-                        .ok_or(HeapError::PageFull)?;
-                    slot.set_offset(current_offset as u32);
-                    slot.set_length(tuple.len() as u32);
-                }
+            if tuple.is_empty() {
+                continue;
+            }
+
+            if let Some(slot) = slots.get_mut(idx).and_then(|s| s.as_mut()) {
+                current_offset = current_offset
+                    .checked_sub(tuple.len())
+                    .ok_or(HeapError::PageFull)?;
+                slot.set_offset(current_offset as u32);
+                slot.set_length(tuple.len() as u32);
             }
         }
         Ok(())
