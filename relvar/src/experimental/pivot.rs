@@ -12,11 +12,25 @@ use std::collections::{BTreeMap, BTreeSet};
 pub trait Pivot {
     /// Pivots a relation.
     ///
+    /// This operator transforms a "long" relation into a "wide" relation by turning the
+    /// unique values from `on_attr` into new column headers. The values from `value_attr`
+    /// populate the cells.
+    ///
+    /// # Collision Handling
+    ///
+    /// If multiple source tuples map to the same cell (same grouping key and same `on_attr` value),
+    /// the "Last Write Wins" strategy is used based on the tuple value sort order. This ensures deterministic results.
+    ///
+    /// # Sparse Data
+    ///
+    /// Since relations cannot contain NULL values, a `default_value` must be provided to fill
+    /// cells where no source tuple exists.
+    ///
     /// # Arguments
     ///
     /// * `on_attr` - The attribute whose values will become new columns.
     /// * `value_attr` - The attribute whose values will fill the new columns.
-    /// * `default_value` - The value to use for missing cells.
+    /// * `default_value` - The value to use for missing cells (must match `value_attr` type).
     ///
     /// # Returns
     ///
