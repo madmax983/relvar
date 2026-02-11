@@ -23,6 +23,10 @@ pub enum PivotError {
     #[error("Pivot column value cannot be converted to attribute name: {0:?}")]
     InvalidPivotValue(ScalarValue),
 
+    /// A generated pivot attribute name conflicts with an existing grouping attribute.
+    #[error("Pivot attribute name '{0}' conflicts with grouping attribute")]
+    AttributeCollision(String),
+
     /// Failed to create a tuple during the pivot operation.
     #[error("Failed to create pivoted tuple: {0}")]
     TupleCreation(String),
@@ -99,6 +103,8 @@ impl Pivot for Relation {
             .cloned()
             .collect();
 
+        let grouping_set: HashSet<&String> = grouping_cols.iter().collect();
+
         // 3. Scan for unique pivot values to determine new attributes
         let mut pivot_values = HashSet::new();
         // Also group tuples by key while we scan to avoid re-iterating too much
@@ -110,6 +116,12 @@ impl Pivot for Relation {
             // Extract pivot value and convert to attribute name
             let raw_pivot_val = tuple.get(pivot_col).unwrap();
             let attr_name = scalar_to_attr_name(raw_pivot_val)?;
+
+            // Check for collision with grouping attributes
+            if grouping_set.contains(&attr_name) {
+                return Err(PivotError::AttributeCollision(attr_name));
+            }
+
             pivot_values.insert(attr_name.clone());
 
             // Extract grouping key
@@ -176,8 +188,8 @@ fn scalar_to_attr_name(val: &ScalarValue) -> Result<String, PivotError> {
         ScalarValue::String(s) => Ok(s.clone()),
         ScalarValue::Int(i) => Ok(i.to_string()),
         ScalarValue::Bool(b) => Ok(b.to_string()),
-        // Floats are risky as keys due to precision printing, but we allow it for simple cases
-        ScalarValue::Float(f) => Ok(f.to_string()),
+        // Floats are risky as keys due to precision printing, we forbid them per review feedback
+        ScalarValue::Float(_) => Err(PivotError::InvalidPivotValue(val.clone())),
         _ => Err(PivotError::InvalidPivotValue(val.clone())),
     }
 }
@@ -300,5 +312,36 @@ mod tests {
         let math_grade = alice.get_typed::<i64>("Math").unwrap();
 
         assert!(math_grade == 90 || math_grade == 95);
+    }
+
+    #[test]
+    fn test_pivot_float_forbidden() {
+        let heading = TupleType::new()
+            .with_attribute("Item", ScalarType::String)
+            .with_attribute("Score", ScalarType::Float)
+            .with_attribute("Value", ScalarType::Int);
+
+        let mut rel = Relation::new(RelationType::new(heading));
+        rel.insert(tuple! { Item: "A", Score: 1.5, Value: 10 }).unwrap();
+
+        // Should fail because floats are not allowed as pivot keys
+        let result = rel.pivot("Score", "Value", ScalarValue::Int(0));
+        assert!(matches!(result, Err(PivotError::InvalidPivotValue(_))));
+    }
+
+    #[test]
+    fn test_pivot_collision_detection() {
+        // Schema: Category, Type, Value
+        // If Type contains "Category", we have a collision
+        let heading = TupleType::new()
+            .with_attribute("Category", ScalarType::String)
+            .with_attribute("Type", ScalarType::String)
+            .with_attribute("Value", ScalarType::Int);
+
+        let mut rel = Relation::new(RelationType::new(heading));
+        rel.insert(tuple! { Category: "Hardware", Type: "Category", Value: 100 }).unwrap();
+
+        let result = rel.pivot("Type", "Value", ScalarValue::Int(0));
+        assert!(matches!(result, Err(PivotError::AttributeCollision(name)) if name == "Category"));
     }
 }
