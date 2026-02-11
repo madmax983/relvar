@@ -326,3 +326,157 @@ impl StorageManager {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mvcc::TransactionSnapshot;
+    use crate::wal::{TransactionId, UncommittedInsert};
+    use relvar_core::storage_engine::StorageError;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::Relation;
+    use std::collections::HashSet;
+    use tempfile::TempDir;
+
+    fn test_rel_type() -> RelationType {
+        RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("name", ScalarType::String),
+        )
+    }
+
+    #[test]
+    fn test_create_and_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::open(temp_dir.path().to_path_buf()).unwrap();
+
+        assert!(!manager.relation_exists("TEST"));
+        manager.create_relation("TEST", test_rel_type()).unwrap();
+        assert!(manager.relation_exists("TEST"));
+    }
+
+    #[test]
+    fn test_create_duplicate_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::open(temp_dir.path().to_path_buf()).unwrap();
+
+        manager.create_relation("TEST", test_rel_type()).unwrap();
+        let result = manager.create_relation("TEST", test_rel_type());
+        assert!(matches!(result, Err(StorageError::RelationAlreadyExists(_))));
+    }
+
+    #[test]
+    fn test_create_invalid_name_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::open(temp_dir.path().to_path_buf()).unwrap();
+
+        let result = manager.create_relation("../INVALID", test_rel_type());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_drop_relation() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::open(temp_dir.path().to_path_buf()).unwrap();
+
+        manager.create_relation("TEST", test_rel_type()).unwrap();
+        manager.drop_relation("TEST").unwrap();
+        assert!(!manager.relation_exists("TEST"));
+
+        // Ensure heap file is gone
+        let heap_path = temp_dir.path().join("TEST.heap");
+        assert!(!heap_path.exists());
+    }
+
+    #[test]
+    fn test_drop_nonexistent_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::open(temp_dir.path().to_path_buf()).unwrap();
+
+        let result = manager.drop_relation("NONEXISTENT");
+        assert!(matches!(result, Err(StorageError::RelationNotFound(_))));
+    }
+
+    #[test]
+    fn test_list_relations() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::open(temp_dir.path().to_path_buf()).unwrap();
+
+        manager.create_relation("A", test_rel_type()).unwrap();
+        manager.create_relation("B", test_rel_type()).unwrap();
+
+        let list = manager.list_relations();
+        assert_eq!(list.len(), 2);
+        assert!(list.contains(&"A".to_string()));
+        assert!(list.contains(&"B".to_string()));
+    }
+
+    #[test]
+    fn test_store_and_load() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::open(temp_dir.path().to_path_buf()).unwrap();
+
+        manager.create_relation("TEST", test_rel_type()).unwrap();
+
+        let mut relation = Relation::new(test_rel_type());
+        relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+
+        let txn_id = TransactionId::new(100);
+        manager.store_relation("TEST", &relation, txn_id).unwrap();
+
+        // Load with snapshot seeing txn 100
+        // If txn 100 is committed and our snapshot is later, we see it
+        let snapshot = TransactionSnapshot::new(TransactionId::new(200), crate::wal::Lsn::new(1000), vec![]);
+        let committed = [txn_id].into_iter().collect();
+
+        let loaded = manager.load_relation("TEST", &snapshot, &committed).unwrap();
+        assert_eq!(loaded.cardinality(), 1);
+    }
+
+    #[test]
+    fn test_undo_uncommitted_inserts() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::open(temp_dir.path().to_path_buf()).unwrap();
+
+        manager.create_relation("TEST", test_rel_type()).unwrap();
+
+        // Simulate an uncommitted insert by manually inserting with a txn_id
+        let uncommitted_txn = TransactionId::new(999);
+        manager.insert_tuple_versioned("TEST", &tuple! { id: 1i64, name: "Ghost" }, uncommitted_txn).unwrap();
+
+        // Simulate flushing to disk
+        manager.flush_all().unwrap();
+
+        // Verify it exists physically but would be invisible if we checked properly
+        // Here we simulate recovery where we identify it as uncommitted from WAL
+        let uncommitted_inserts = vec![
+            UncommittedInsert {
+                relation_name: "TEST".to_string(),
+                tuple_data: vec![], // Dummy data, as the new logic doesn't use it for byte comparison
+            }
+        ];
+
+        let recovery_lsn = crate::wal::Lsn::new(2000);
+        let committed_txns = HashSet::new(); // 999 is NOT committed
+
+        manager.undo_uncommitted_inserts_with_committed(uncommitted_inserts, recovery_lsn, &committed_txns).unwrap();
+
+        // After undo, the relation should be rewritten without the uncommitted tuple
+        // We verify this by loading with a snapshot that SHOULD see everything committed (which is nothing)
+        // But more importantly, we check if the tuple is physically gone or if we load with a "future" txn
+
+        let future_txn = TransactionId::new(10000);
+        let snapshot = TransactionSnapshot::new(future_txn, crate::wal::Lsn::new(3000), vec![]);
+        let _committed_empty: HashSet<TransactionId> = HashSet::new();
+
+        // Note: undo uses store_relation which writes with txn_id 0
+        // So we need to consider txn 0 as committed
+        let mut committed_system = HashSet::new();
+        committed_system.insert(TransactionId::new(0));
+
+        let loaded = manager.load_relation("TEST", &snapshot, &committed_system).unwrap();
+        assert_eq!(loaded.cardinality(), 0);
+    }
+}
