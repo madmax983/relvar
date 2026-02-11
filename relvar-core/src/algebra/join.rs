@@ -44,6 +44,7 @@ use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 impl Relation {
     /// Performs a natural join with another relation.
@@ -127,6 +128,7 @@ impl Relation {
         }
 
         let result_rel_type = RelationType::new(result_heading.clone());
+        let result_heading_arc = Arc::new(result_heading);
 
         // Perform Hash Join
         let mut joined_tuples = Vec::new();
@@ -183,7 +185,7 @@ impl Relation {
                         }
                     }
 
-                    let combined_tuple = Tuple::new(result_heading.clone(), combined_values)
+                    let combined_tuple = Tuple::new(result_heading_arc.clone(), combined_values)
                         .map_err(|e| {
                             DatabaseError::AlgebraError(format!(
                                 "Failed to construct combined tuple: {}",
@@ -286,6 +288,7 @@ impl Relation {
         }
 
         let result_rel_type = RelationType::new(result_heading.clone());
+        let result_heading_arc = Arc::new(result_heading);
 
         // Perform theta join
         let mut joined_tuples = Vec::new();
@@ -306,7 +309,8 @@ impl Relation {
                         }
                     }
 
-                    if let Ok(combined_tuple) = Tuple::new(result_heading.clone(), combined_values)
+                    if let Ok(combined_tuple) =
+                        Tuple::new(result_heading_arc.clone(), combined_values)
                     {
                         joined_tuples.push(combined_tuple);
                     }

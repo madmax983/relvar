@@ -105,9 +105,10 @@ impl Relation {
         }
 
         let new_rel_type = RelationType::new(new_heading.clone());
+        let new_heading_arc = std::sync::Arc::new(new_heading);
 
         // Rename attributes in each tuple
-        let renamed_tuples = self.tuples().map(|tuple| {
+        let renamed_tuples = self.tuples().map(move |tuple| {
             let values_iter = tuple.values().iter().map(|(old_name, value)| {
                 let new_name = mappings
                     .iter()
@@ -117,7 +118,7 @@ impl Relation {
                 (new_name.to_string(), value.clone())
             });
 
-            Tuple::new(new_heading.clone(), values_iter)
+            Tuple::new(new_heading_arc.clone(), values_iter)
                 .expect("Rename should maintain type consistency")
         });
 

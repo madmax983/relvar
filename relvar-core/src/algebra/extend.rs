@@ -95,6 +95,9 @@ impl Relation {
         let mut new_heading = self.relation_type().tuple_type().clone();
         new_heading = new_heading.with_attribute(attr_name.to_string(), attr_type);
 
+        let new_rel_type = crate::types::RelationType::new(new_heading.clone());
+        let new_heading_arc = std::sync::Arc::new(new_heading);
+
         // Create extended tuples
         let mut extended_tuples = Vec::new();
         for tuple in self.tuples() {
@@ -102,16 +105,13 @@ impl Relation {
             let computed_value = compute(tuple);
             new_values.insert(attr_name.to_string(), computed_value);
 
-            let extended_tuple = Tuple::new(new_heading.clone(), new_values)
+            let extended_tuple = Tuple::new(new_heading_arc.clone(), new_values)
                 .map_err(|e| ExtendError::TupleCreation(e.to_string()))?;
             extended_tuples.push(extended_tuple);
         }
 
-        Ok(Relation::from_tuples(
-            crate::types::RelationType::new(new_heading),
-            extended_tuples,
-        )
-        .expect("Extended tuples should conform to new relation type"))
+        Ok(Relation::from_tuples(new_rel_type, extended_tuples)
+            .expect("Extended tuples should conform to new relation type"))
     }
 }
 
