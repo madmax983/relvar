@@ -337,6 +337,7 @@ impl HeapFile {
     /// Helper to repack slots and calculate offsets.
     /// Iterates backward from the end of the available space.
     /// Assumes slots are already populated (Some) for valid tuples.
+    #[allow(clippy::collapsible_if)] // let_chains is unstable
     fn repack_slots<T: MutableSlot>(
         slots: &mut [Option<T>],
         tuples: &[Vec<u8>],
