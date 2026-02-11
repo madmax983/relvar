@@ -155,10 +155,12 @@ impl Tuple {
     /// let tuple = Tuple::new(tuple_type, values).unwrap();
     /// assert_eq!(tuple.degree(), 2);
     /// ```
-    pub fn new<M>(tuple_type: TupleType, values: M) -> Result<Self, TupleError>
+    pub fn new<T, M>(tuple_type: T, values: M) -> Result<Self, TupleError>
     where
+        T: Into<Arc<TupleType>>,
         M: IntoIterator<Item = (String, ScalarValue)>,
     {
+        let tuple_type: Arc<TupleType> = tuple_type.into();
         let values_map: BTreeMap<String, ScalarValue> = values.into_iter().collect();
 
         // Verify all attributes have values
@@ -184,7 +186,7 @@ impl Tuple {
         }
 
         Ok(Self {
-            tuple_type: Arc::new(tuple_type),
+            tuple_type,
             values: values_map,
         })
     }
