@@ -1,6 +1,6 @@
-use relvar::{Database, InMemoryEngine};
-use relvar::types::{TupleType, RelationType, ScalarType};
+use relvar::types::{RelationType, ScalarType, TupleType};
 use relvar::visualizer::SchemaVisualizer;
+use relvar::{Database, InMemoryEngine};
 
 #[test]
 fn test_visualizer_injection() {
@@ -10,10 +10,7 @@ fn test_visualizer_injection() {
     // The goal is to break out of the node ID string or the HTML label
     let malicious_name = "Malicious\"; node_injection [label=\"INJECTED\"]; \"";
 
-    let rel_type = RelationType::new(
-        TupleType::new()
-            .with_attribute("id", ScalarType::Int)
-    );
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
 
     // We expect this to fail or result in a sanitized string, not a valid injection
     db.create_relvar(malicious_name, rel_type).unwrap();
@@ -28,7 +25,10 @@ fn test_visualizer_injection() {
     // outside of quotes.
     // If secured, the whole thing should be inside quotes or escaped.
 
-    assert!(!dot.contains("node_injection [label=\"INJECTED\"];"), "Injection successful!");
+    assert!(
+        !dot.contains("node_injection [label=\"INJECTED\"];"),
+        "Injection successful!"
+    );
 
     // Also verify that the malicious name is properly quoted/escaped
     assert!(dot.contains(&format!("\"{}\"", malicious_name.replace("\"", "\\\""))));
@@ -51,5 +51,7 @@ fn test_html_injection_attribute_name() {
 
     // If vulnerable, the DOT string will contain unescaped HTML tags that break the table structure
     // We check that the malicious string is HTML-escaped
-    assert!(dot.contains("id&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td bgcolor=&quot;red&quot;&gt;INJECTED"));
+    assert!(dot.contains(
+        "id&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td bgcolor=&quot;red&quot;&gt;INJECTED"
+    ));
 }

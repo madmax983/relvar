@@ -1,6 +1,6 @@
-use relvar::{PersistentEngine, Database};
-use relvar::types::{TupleType, RelationType, ScalarType};
 use relvar::tuple;
+use relvar::types::{RelationType, ScalarType, TupleType};
+use relvar::{Database, PersistentEngine};
 use tempfile::TempDir;
 
 #[test]
@@ -8,10 +8,7 @@ fn test_insert_huge_tuple_fails_gracefully() {
     let temp_dir = TempDir::new().unwrap();
     let mut db = Database::new(PersistentEngine::open(temp_dir.path()).unwrap());
 
-    let rel_type = RelationType::new(
-        TupleType::new()
-            .with_attribute("data", ScalarType::Bytes)
-    );
+    let rel_type = RelationType::new(TupleType::new().with_attribute("data", ScalarType::Bytes));
 
     db.create_relvar("TEST", rel_type).unwrap();
 
@@ -38,5 +35,9 @@ fn test_insert_huge_tuple_fails_gracefully() {
     // Let's print it to be sure.
     println!("WAL Size: {}", wal_size);
 
-    assert!(wal_size < 4000, "WAL size {} is too large! Invalid tuple was likely logged.", wal_size);
+    assert!(
+        wal_size < 4000,
+        "WAL size {} is too large! Invalid tuple was likely logged.",
+        wal_size
+    );
 }
