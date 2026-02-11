@@ -1,24 +1,37 @@
-use relvar::types::{RelationType, ScalarType, TupleType};
-use relvar::visualizer::SchemaVisualizer;
 use relvar::{Database, InMemoryEngine};
+use relvar::types::{TupleType, RelationType, ScalarType};
+use relvar::visualizer::SchemaVisualizer;
 
 #[test]
-fn test_dot_injection_relvar_name() {
+fn test_visualizer_injection() {
     let mut db = Database::new(InMemoryEngine::new());
 
-    // Malicious relvar name attempting to inject a new edge
-    let malicious_name = "Malicious\"; node_b -> node_c; \"";
+    // Attempt to inject a new node definition using a malicious relvar name
+    // The goal is to break out of the node ID string or the HTML label
+    let malicious_name = "Malicious\"; node_injection [label=\"INJECTED\"]; \"";
 
-    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    let rel_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+    );
+
+    // We expect this to fail or result in a sanitized string, not a valid injection
     db.create_relvar(malicious_name, rel_type).unwrap();
 
     let visualizer = SchemaVisualizer::new(&db);
     let dot = visualizer.to_dot();
 
-    println!("{}", dot);
+    println!("DOT Output:\n{}", dot);
 
-    // If vulnerable, the DOT string will contain the injected edge directly
-    // Ideally, the name should be quoted/escaped so it's treated as a single identifier
+    // Check if the injection worked
+    // If successful, we would see `node_injection [label="INJECTED"]` as a separate statement
+    // outside of quotes.
+    // If secured, the whole thing should be inside quotes or escaped.
+
+    assert!(!dot.contains("node_injection [label=\"INJECTED\"];"), "Injection successful!");
+
+    // Also verify that the malicious name is properly quoted/escaped
+    assert!(dot.contains(&format!("\"{}\"", malicious_name.replace("\"", "\\\""))));
 }
 
 #[test]
@@ -36,5 +49,7 @@ fn test_html_injection_attribute_name() {
 
     println!("{}", dot);
 
-    // If vulnerable, the DOT string will have broken HTML structure
+    // If vulnerable, the DOT string will contain unescaped HTML tags that break the table structure
+    // We check that the malicious string is HTML-escaped
+    assert!(dot.contains("id&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td bgcolor=&quot;red&quot;&gt;INJECTED"));
 }

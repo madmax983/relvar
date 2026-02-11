@@ -73,3 +73,15 @@ This discrepancy caused the size check to pass, but the actual insertion to fail
 Modified `check_versioned_tuple_size_limit` to accept a `has_prev_version` boolean flag.
 Updated `insert_tuple_versioned` to pass `false` and `update_tuple_versioned` to pass `true`.
 This ensures the size check accurately accounts for the 8-byte overhead of the `prev_version` pointer during updates.
+
+## 2026-02-07 - WAL DoS via Unbounded Logging
+**Threat:**
+`PersistentEngine::insert_tuple` was serializing and logging tuples to the WAL *before* checking if they could physically fit in a HeapFile page.
+This created two DoS vectors:
+1.  **WAL Spam:** An attacker could fill the disk with huge, invalid log records that would never be successfully applied to storage.
+2.  **Memory Exhaustion:** `bincode::serialize` allocates a buffer for the entire serialized tuple. An attacker sending a 1GB tuple would cause a 1GB allocation, potentially crashing the server (OOM), even though the tuple is invalid.
+
+**Defense:**
+1.  Modified `PersistentEngine::insert_tuple` to calculate the serialized size using `bincode::serialized_size` (which does not allocate) *before* attempting full serialization or logging.
+2.  Exposed `HeapFile::check_versioned_tuple_size_limit` as `pub(crate)` and invoked it to enforce strict page size limits (approx 4KB) on the calculated size.
+3.  This ensures invalid tuples are rejected early with minimal resource usage.

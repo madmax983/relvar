@@ -551,6 +551,19 @@ impl StorageEngine for PersistentEngine {
             self.current_txn.unwrap()
         };
 
+        // Pre-check tuple size against page limits BEFORE serialization/logging
+        {
+            let heap_file = self.get_or_open_heap_file(name)?;
+            let tuple_size = bincode::serialized_size(&tuple)
+                .map_err(|e| StorageError::Other(format!("Tuple size calculation error: {}", e)))?
+                as usize;
+
+            // New inserts have no previous version (has_prev_version = false)
+            heap_file
+                .check_versioned_tuple_size_limit(tuple_size, false)
+                .map_err(Self::convert_heap_error)?;
+        }
+
         // Serialize tuple for WAL
         let tuple_data = bincode::serialize(&tuple)
             .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
@@ -727,6 +740,19 @@ impl PersistentEngine {
         tuple: Tuple,
         txn_id: TransactionId,
     ) -> Result<(), StorageError> {
+        // Pre-check tuple size against page limits BEFORE serialization/logging
+        {
+            let heap_file = self.get_or_open_heap_file(name)?;
+            let tuple_size = bincode::serialized_size(&tuple)
+                .map_err(|e| StorageError::Other(format!("Tuple size calculation error: {}", e)))?
+                as usize;
+
+            // New inserts have no previous version (has_prev_version = false)
+            heap_file
+                .check_versioned_tuple_size_limit(tuple_size, false)
+                .map_err(Self::convert_heap_error)?;
+        }
+
         // Serialize tuple for WAL
         let tuple_data = bincode::serialize(&tuple)
             .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;

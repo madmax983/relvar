@@ -678,7 +678,7 @@ impl HeapFile {
     }
 
     /// Check if a versioned tuple can theoretically fit in an empty page
-    fn check_versioned_tuple_size_limit(
+    pub(crate) fn check_versioned_tuple_size_limit(
         &self,
         tuple_data_len: usize,
         has_prev_version: bool,
