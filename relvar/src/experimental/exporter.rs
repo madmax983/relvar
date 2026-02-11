@@ -395,4 +395,47 @@ mod tests {
         assert!(table.contains("| false  | 2  | Bob   |"));
         assert!(table.contains("| true   | 1  | Alice |"));
     }
+
+    #[test]
+    fn test_to_json_comprehensive() {
+        use relvar_core::types::{RelationType, ScalarType, TupleType};
+        use relvar_core::values::{Relation, ScalarValue};
+
+        // Create a tuple type with diverse types
+        let heading = TupleType::new()
+            .with_attribute("float_val", ScalarType::Float)
+            .with_attribute("nan_val", ScalarType::Float)
+            .with_attribute("bytes_val", ScalarType::Bytes)
+            .with_attribute("nested", ScalarType::Relation(Box::new(RelationType::new(TupleType::new()))))
+            .with_attribute("udt", ScalarType::user_defined("MyType", ScalarType::Int));
+
+        let mut relation = Relation::new(RelationType::new(heading));
+
+        // Create UDT value
+        let udt_type = ScalarType::user_defined("MyType", ScalarType::Int);
+        let udt_val = udt_type.selector(ScalarValue::Int(123)).unwrap();
+
+        // Create Nested Relation value
+        let nested_rel = Relation::new(RelationType::new(TupleType::new()));
+
+        relation.insert(tuple! {
+            float_val: 3.14,
+            nan_val: f64::NAN,
+            bytes_val: vec![1u8, 2u8],
+            nested: ScalarValue::Relation(nested_rel),
+            udt: udt_val
+        }).unwrap();
+
+        let json = to_json(&relation).unwrap();
+        println!("JSON: {}", json);
+
+        // Assertions covering all branches
+        assert!(json.contains("3.14")); // Float
+        assert!(json.contains("null")); // NaN -> null
+        // Check bytes content (serde pretty prints arrays)
+        assert!(json.contains("1"));
+        assert!(json.contains("2"));
+        assert!(json.contains("\"<Relation>\"")); // Nested relation fallback
+        assert!(json.contains("\"<UserDefined>\"")); // UDT fallback
+    }
 }

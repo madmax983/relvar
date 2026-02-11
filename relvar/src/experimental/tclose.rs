@@ -248,4 +248,24 @@ mod tests {
 
         assert!(r.tclose("x", "y").is_err());
     }
+
+    #[test]
+    fn test_tclose_attribute_not_found() {
+        let heading = TupleType::new()
+            .with_attribute("start", ScalarType::Int)
+            .with_attribute("end", ScalarType::Int);
+        let r = Relation::new(RelationType::new(heading));
+
+        // Missing from_attr
+        assert!(matches!(
+            r.tclose("missing", "end"),
+            Err(DatabaseError::AttributeNotFound(attr, _)) if attr == "missing"
+        ));
+
+        // Missing to_attr
+        assert!(matches!(
+            r.tclose("start", "missing"),
+            Err(DatabaseError::AttributeNotFound(attr, _)) if attr == "missing"
+        ));
+    }
 }
