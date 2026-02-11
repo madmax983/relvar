@@ -7,6 +7,7 @@
 //!
 //! - **Exporter**: Tools for exporting relations to CSV, JSON, and ASCII tables.
 //! - **Transitive Closure**: Implementation of the TCLOSE operator for graph queries.
+//! - **Pivot**: Operator to rotate unique values from one column into multiple columns.
 //!
 //! # Example: Using the Exporter
 //!
@@ -30,4 +31,5 @@
 
 pub mod exporter;
 pub mod mock;
+pub mod pivot;
 pub mod tclose;
