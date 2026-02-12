@@ -147,7 +147,8 @@ impl Relation {
         // Value: Vec<&Tuple> (tuples that have these values)
         // Note: We use &ScalarValue to avoid cloning the values for the key,
         // relying on ScalarValue's Hash implementation which works transitively.
-        let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> = HashMap::new();
+        let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> =
+            HashMap::with_capacity(build_rel.cardinality());
 
         for tuple in build_rel.tuples() {
             let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
@@ -171,7 +172,7 @@ impl Relation {
             if let Some(matching_tuples) = build_map.get(&key) {
                 for build_tuple in matching_tuples {
                     // Combine tuples
-                    let mut combined_values = HashMap::new();
+                    let mut combined_values = HashMap::with_capacity(result_heading_arc.degree());
 
                     // Add all values from build_tuple
                     for (attr_name, value) in build_tuple.values() {
@@ -297,7 +298,7 @@ impl Relation {
             for tuple2 in other.tuples() {
                 if predicate(tuple1, tuple2) {
                     // Combine tuples
-                    let mut combined_values = HashMap::new();
+                    let mut combined_values = HashMap::with_capacity(result_heading_arc.degree());
 
                     for (attr_name, value) in tuple1.values() {
                         combined_values.insert(attr_name.clone(), value.clone());

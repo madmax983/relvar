@@ -11,3 +11,7 @@
 ## 2026-02-05 - Pre-allocation in Collection Transformations
 **Learning:** Relational algebra operations often involve transforming one relation to another with preserved or predictable cardinality. Naively collecting into a `Vec` before building a `HashSet` (or other collection) incurs double allocation.
 **Action:** Use `Iterator::size_hint` in constructors (like `from_tuples`) and pass iterators directly instead of intermediate collections. Add `with_capacity` constructors to custom collection types.
+
+## 2026-02-05 - Pre-allocation in Hot Loops
+**Learning:** Relational operators like `join`, `theta_join`, and `extend` often construct new tuples in tight loops. Pre-allocating the `HashMap` or `Vec` for the new tuple's attributes using `with_capacity(degree)` significantly reduces reallocation overhead when the resulting size is known.
+**Action:** Always use `with_capacity` when constructing collections inside hot paths if the target size is known or can be estimated (e.g., from the relation heading).

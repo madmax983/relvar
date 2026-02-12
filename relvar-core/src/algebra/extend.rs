@@ -99,7 +99,7 @@ impl Relation {
         let new_heading_arc = std::sync::Arc::new(new_heading);
 
         // Create extended tuples
-        let mut extended_tuples = Vec::new();
+        let mut extended_tuples = Vec::with_capacity(self.cardinality());
         for tuple in self.tuples() {
             let mut new_values = tuple.values().clone();
             let computed_value = compute(tuple);
