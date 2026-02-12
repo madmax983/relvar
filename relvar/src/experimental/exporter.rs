@@ -122,27 +122,23 @@ pub fn to_ascii_table(relation: &Relation) -> String {
     // Calculate column widths
     let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
 
-    // Pass 1: Measure data widths
-    let rows: Vec<Vec<String>> = tuples
-        .iter()
-        .map(|t| {
-            headers
-                .iter()
-                .enumerate()
-                .map(|(i, h)| {
-                    let s = if let Some(val) = t.0.get(h) {
-                        format_scalar_table(val)
-                    } else {
-                        String::new()
-                    };
-                    if s.len() > widths[i] {
-                        widths[i] = s.len();
-                    }
-                    s
-                })
-                .collect()
-        })
-        .collect();
+    // Pass 1: Measure data widths and format rows
+    let mut rows: Vec<Vec<String>> = Vec::with_capacity(tuples.len());
+    for t in &tuples {
+        let mut row: Vec<String> = Vec::with_capacity(headers.len());
+        for (i, h) in headers.iter().enumerate() {
+            let s = if let Some(val) = t.0.get(h) {
+                format_scalar_table(val)
+            } else {
+                String::new()
+            };
+            if s.len() > widths[i] {
+                widths[i] = s.len();
+            }
+            row.push(s);
+        }
+        rows.push(row);
+    }
 
     let mut output = String::new();
 
