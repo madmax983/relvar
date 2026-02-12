@@ -73,3 +73,14 @@ This discrepancy caused the size check to pass, but the actual insertion to fail
 Modified `check_versioned_tuple_size_limit` to accept a `has_prev_version` boolean flag.
 Updated `insert_tuple_versioned` to pass `false` and `update_tuple_versioned` to pass `true`.
 This ensures the size check accurately accounts for the 8-byte overhead of the `prev_version` pointer during updates.
+
+## 2026-02-07 - Like Operator Memory Exhaustion DoS
+**Threat:**
+The `ConstraintExpression::Like` operator implementation used a dynamic programming table of size `O(N*M)` (where N is text length and M is pattern length).
+An attacker could supply a pattern and text both of large size (e.g., 1MB), causing a quadratic memory allocation (1 trillion bytes = 1TB) which would crash the process (OOM DoS).
+Even with moderate sizes (e.g., 50KB), concurrent requests could exhaust server memory.
+
+**Defense:**
+Refactored `matches_pattern` to use an optimized DP approach that only stores two rows (current and previous) instead of the full matrix.
+This reduces space complexity from `O(N*M)` to `O(M)`, preventing memory exhaustion even with large inputs.
+Added a regression test `relvar-core/tests/warden_exploit_like.rs` to verify the fix and prevent regression.
