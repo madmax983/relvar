@@ -198,36 +198,40 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
     tuples.sort();
 
     // Convert tuples to simplified JSON objects
-    let json_objects: Vec<serde_json::Map<String, serde_json::Value>> = tuples
-        .into_iter()
-        .map(|t| {
-            let mut map = serde_json::Map::new();
-            // Use explicit iteration to avoid ambiguity and help static analysis
-            for (key, val) in t.0.values().iter() {
-                let json_val = match val {
-                    ScalarValue::Int(v) => serde_json::Value::Number((*v).into()),
-                    ScalarValue::Float(v) => serde_json::Number::from_f64(*v)
-                        .map(serde_json::Value::Number)
-                        .unwrap_or(serde_json::Value::Null),
-                    ScalarValue::String(v) => serde_json::Value::String(v.clone()),
-                    ScalarValue::Bool(v) => serde_json::Value::Bool(*v),
-                    ScalarValue::Bytes(v) => serde_json::Value::Array(
-                        v.iter()
-                            .map(|b| serde_json::Value::Number((*b).into()))
-                            .collect(),
-                    ),
-                    ScalarValue::Relation(_) => serde_json::Value::String("<Relation>".to_string()),
-                    ScalarValue::UserDefined { .. } => {
-                        serde_json::Value::String("<UserDefined>".to_string())
-                    }
-                };
-                map.insert(key.clone(), json_val);
-            }
-            map
-        })
-        .collect();
+    let mut json_objects = Vec::with_capacity(tuples.len());
+
+    for t in tuples {
+        let mut map = serde_json::Map::new();
+        // Use explicit iteration to avoid ambiguity and help static analysis
+        // Note: t.0.values() returns &BTreeMap<String, ScalarValue>
+        for (key, val) in t.0.values() {
+            map.insert(key.clone(), scalar_to_json(val));
+        }
+        json_objects.push(map);
+    }
 
     serde_json::to_string_pretty(&json_objects).map_err(ExporterError::JsonError)
+}
+
+/// Helper function to convert Relvar ScalarValue to serde_json::Value.
+///
+/// Flattens type wrappers to standard JSON types.
+fn scalar_to_json(val: &ScalarValue) -> serde_json::Value {
+    match val {
+        ScalarValue::Int(v) => serde_json::Value::Number((*v).into()),
+        ScalarValue::Float(v) => serde_json::Number::from_f64(*v)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        ScalarValue::String(v) => serde_json::Value::String(v.clone()),
+        ScalarValue::Bool(v) => serde_json::Value::Bool(*v),
+        ScalarValue::Bytes(v) => serde_json::Value::Array(
+            v.iter()
+                .map(|b| serde_json::Value::Number((*b).into()))
+                .collect(),
+        ),
+        ScalarValue::Relation(_) => serde_json::Value::String("<Relation>".to_string()),
+        ScalarValue::UserDefined { .. } => serde_json::Value::String("<UserDefined>".to_string()),
+    }
 }
 
 /// Exports the relation to a formatted ASCII table.
