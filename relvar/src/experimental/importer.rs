@@ -599,8 +599,10 @@ mod tests {
     #[test]
     fn test_csv_nested_relation_error() {
         let inner_heading = TupleType::new().with_attribute("x", ScalarType::Int);
-        let heading = TupleType::new()
-            .with_attribute("rel", ScalarType::Relation(Box::new(RelationType::new(inner_heading))));
+        let heading = TupleType::new().with_attribute(
+            "rel",
+            ScalarType::Relation(Box::new(RelationType::new(inner_heading))),
+        );
         let rel_type = RelationType::new(heading);
 
         let csv = "rel\n[]";
