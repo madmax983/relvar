@@ -451,4 +451,61 @@ mod tests {
         assert!(table.contains("| false  | 2  | Bob   |"));
         assert!(table.contains("| true   | 1  | Alice |"));
     }
+
+    #[test]
+    fn test_json_export_all_types() {
+        use relvar_core::values::ScalarValue;
+
+        // Create a nested relation for the Relation type test
+        let nested_heading = TupleType::new().with_attribute("x", ScalarType::Int);
+        let mut nested_rel = Relation::new(RelationType::new(nested_heading.clone()));
+        nested_rel.insert(tuple! { x: 10i64 }).unwrap();
+
+        // Create a user defined type
+        let user_type = ScalarType::user_defined("MyInt", ScalarType::Int);
+        let user_val = user_type.selector(ScalarValue::Int(42)).unwrap();
+
+        let heading = TupleType::new()
+            .with_attribute("int_col", ScalarType::Int)
+            .with_attribute("float_col", ScalarType::Float)
+            .with_attribute("str_col", ScalarType::String)
+            .with_attribute("bool_col", ScalarType::Bool)
+            .with_attribute("bytes_col", ScalarType::Bytes)
+            .with_attribute(
+                "rel_col",
+                ScalarType::Relation(Box::new(RelationType::new(nested_heading))),
+            )
+            .with_attribute("user_col", user_type);
+
+        let mut relation = Relation::new(RelationType::new(heading));
+
+        // Note: Using HashMap directly because the tuple! macro doesn't support all complex types easily inline
+        use std::collections::HashMap;
+        let mut values = HashMap::new();
+        values.insert("int_col".to_string(), ScalarValue::Int(123));
+        values.insert("float_col".to_string(), ScalarValue::Float(12.34));
+        values.insert(
+            "str_col".to_string(),
+            ScalarValue::String("hello".to_string()),
+        );
+        values.insert("bool_col".to_string(), ScalarValue::Bool(true));
+        values.insert("bytes_col".to_string(), ScalarValue::Bytes(vec![1, 2, 3]));
+        values.insert("rel_col".to_string(), ScalarValue::Relation(nested_rel));
+        values.insert("user_col".to_string(), user_val);
+
+        let tuple = Tuple::new(relation.relation_type().heading().clone(), values).unwrap();
+        relation.insert(tuple).unwrap();
+
+        let json = to_json(&relation).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let obj = &parsed[0];
+
+        assert_eq!(obj["int_col"], 123);
+        assert_eq!(obj["float_col"], 12.34);
+        assert_eq!(obj["str_col"], "hello");
+        assert_eq!(obj["bool_col"], true);
+        assert_eq!(obj["bytes_col"], serde_json::json!([1, 2, 3]));
+        assert_eq!(obj["rel_col"], "<Relation>");
+        assert_eq!(obj["user_col"], "<UserDefined>");
+    }
 }
