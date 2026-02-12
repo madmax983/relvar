@@ -202,7 +202,8 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
         .into_iter()
         .map(|t| {
             let mut map = serde_json::Map::new();
-            for (key, val) in t.0.values() {
+            // Use explicit iteration to avoid ambiguity and help static analysis
+            for (key, val) in t.0.values().iter() {
                 let json_val = match val {
                     ScalarValue::Int(v) => serde_json::Value::Number((*v).into()),
                     ScalarValue::Float(v) => serde_json::Number::from_f64(*v)
