@@ -60,8 +60,9 @@
 //! assert!(fk.would_violate_on_insert(&invalid_employee, &departments).unwrap());
 //! ```
 
-use crate::values::{Relation, Tuple};
+use crate::values::{Relation, ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur with foreign key constraints.
@@ -189,9 +190,21 @@ impl ForeignKey {
             }
         }
 
+        // Extract referenced keys into a HashSet for O(1) lookups
+        let referenced_keys = extract_keys(referenced_relation, &self.referenced_attributes);
+
+        // Pre-allocate buffer for key construction to avoid repeated allocations
+        let mut key_buffer = Vec::with_capacity(self.foreign_key_attributes.len());
+
         // Check each tuple in referencing relation
         for tuple in referencing_relation.tuples() {
-            if !self.tuple_references_exist(tuple, referenced_relation) {
+            key_buffer.clear();
+            for attr in &self.foreign_key_attributes {
+                // We know attribute exists because of check above
+                key_buffer.push(tuple.get(attr).unwrap());
+            }
+
+            if !referenced_keys.contains(&key_buffer) {
                 return Ok(false);
             }
         }
@@ -205,15 +218,10 @@ impl ForeignKey {
         new_tuple: &Tuple,
         referenced_relation: &Relation,
     ) -> Result<bool, ForeignKeyError> {
-        Ok(!self.tuple_references_exist(new_tuple, referenced_relation))
-    }
-
-    /// Check if a tuple's foreign key values exist in the referenced relation
-    fn tuple_references_exist(&self, tuple: &Tuple, referenced_relation: &Relation) -> bool {
         let foreign_key_values: Vec<_> = self
             .foreign_key_attributes
             .iter()
-            .map(|attr| tuple.get(attr).unwrap())
+            .map(|attr| new_tuple.get(attr).unwrap())
             .collect();
 
         // Check if any tuple in referenced relation matches
@@ -225,11 +233,11 @@ impl ForeignKey {
                 .collect();
 
             if foreign_key_values == referenced_values {
-                return true;
+                return Ok(false); // Found a match, so no violation
             }
         }
 
-        false
+        Ok(true) // No match found, violation
     }
 
     /// Check if deleting a tuple from the referenced relation would violate this constraint
@@ -259,6 +267,26 @@ impl ForeignKey {
 
         Ok(false)
     }
+}
+
+/// Helper to extract a set of attribute value combinations from a relation.
+fn extract_keys<'a>(
+    relation: &'a Relation,
+    attributes: &[String],
+) -> HashSet<Vec<&'a ScalarValue>> {
+    relation
+        .tuples()
+        .map(|tuple| {
+            attributes
+                .iter()
+                .map(|attr| {
+                    tuple
+                        .get(attr)
+                        .expect("Attribute must exist in relation schema")
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// Collection of foreign key constraints for a relation

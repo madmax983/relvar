@@ -9,7 +9,7 @@ use crate::constraints::{
 };
 use crate::storage_engine::{StorageEngine, StorageError};
 use crate::values::relation::RelationError;
-use crate::values::{Relation, ScalarValue, Tuple};
+use crate::values::{Relation, Tuple};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -134,25 +134,14 @@ impl ConstraintManager {
 
         for fk in constraints.foreign_keys() {
             let referenced_relation = engine.load_relation(fk.referenced_relation_name())?;
-            // Build a HashSet of referenced keys for efficient O(1) lookups.
-            // We store references to avoid cloning potentially large values.
-            let referenced_keys =
-                Self::extract_attribute_values(&referenced_relation, fk.referenced_attributes());
 
-            // Pre-allocate buffer for key construction to avoid repeated allocations
-            let mut fk_key_buffer = Vec::with_capacity(fk.foreign_key_attributes().len());
-
-            for tuple in relation.tuples() {
-                fk_key_buffer.clear();
-                for attr in fk.foreign_key_attributes() {
-                    fk_key_buffer.push(tuple.get(attr).unwrap());
-                }
-
-                if !referenced_keys.contains(&fk_key_buffer) {
-                    return Err(ConstraintManagerError::ForeignKeyViolation(
-                        "Existing tuple violates foreign key".to_string(),
-                    ));
-                }
+            if !fk
+                .is_satisfied_by(&relation, &referenced_relation)
+                .map_err(|e| ConstraintManagerError::ForeignKeyViolation(e.to_string()))?
+            {
+                return Err(ConstraintManagerError::ForeignKeyViolation(
+                    "Existing tuple violates foreign key".to_string(),
+                ));
             }
         }
 
@@ -399,55 +388,18 @@ impl ConstraintManager {
                 if fk.referenced_relation_name() == relation_name {
                     let referencing_relation = engine.load_relation(ref_name)?;
 
-                    // Build a HashSet of keys from the relation after deletion for efficient lookups.
-                    // We store references to avoid cloning potentially large values (Strings, Blobs).
-                    let existing_keys = Self::extract_attribute_values(
-                        relation_after_delete,
-                        fk.referenced_attributes(),
-                    );
-
-                    // Pre-allocate buffer for key construction to avoid repeated allocations
-                    let mut ref_key_buffer = Vec::with_capacity(fk.foreign_key_attributes().len());
-
-                    // Check if any referencing tuples would be orphaned by looking up in the HashSet.
-                    for ref_tuple in referencing_relation.tuples() {
-                        ref_key_buffer.clear();
-                        for attr in fk.foreign_key_attributes() {
-                            if let Some(val) = ref_tuple.get(attr) {
-                                ref_key_buffer.push(val);
-                            }
-                        }
-
-                        if !existing_keys.contains(&ref_key_buffer) {
-                            return Err(ConstraintManagerError::ForeignKeyViolation(format!(
-                                "Deleting tuples would orphan referencing tuples in {}",
-                                ref_name
-                            )));
-                        }
+                    if !fk
+                        .is_satisfied_by(&referencing_relation, relation_after_delete)
+                        .map_err(|e| ConstraintManagerError::ForeignKeyViolation(e.to_string()))?
+                    {
+                        return Err(ConstraintManagerError::ForeignKeyViolation(format!(
+                            "Deleting tuples would orphan referencing tuples in {}",
+                            ref_name
+                        )));
                     }
                 }
             }
         }
         Ok(())
-    }
-
-    /// Helper to extract a set of attribute value combinations from a relation.
-    fn extract_attribute_values<'a>(
-        relation: &'a Relation,
-        attributes: &[String],
-    ) -> std::collections::HashSet<Vec<&'a ScalarValue>> {
-        relation
-            .tuples()
-            .map(|tuple| {
-                attributes
-                    .iter()
-                    .map(|attr| {
-                        tuple
-                            .get(attr)
-                            .expect("Attribute must exist in relation schema")
-                    })
-                    .collect()
-            })
-            .collect()
     }
 }

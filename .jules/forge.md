@@ -17,3 +17,7 @@
 ## 2024-05-26 - HeapFile Helper Extraction
 **Learning:** `HeapFile` still contained significant duplication in tuple extraction (`scan`) and slot allocation (`insert`). Extracting generic helpers (`find_or_allocate_slot`, `extract_tuples_from_slots`, `validate_slot_bounds`) simplified `scan` and `insert` logic, removing redundant loops and bounds checks.
 **Action:** Look for "copy-paste" logic in distinct but similar code paths (like versioned vs standard page handling) and try to unify them with generic helpers or traits, even if the data structures are slightly different.
+
+## 2024-05-27 - Foreign Key Validation Duplication
+**Learning:** `ConstraintManager` was manually re-implementing optimized foreign key validation (HashSet) because `ForeignKey`'s native method was O(N*M). This led to duplication and logic leaks.
+**Action:** Optimized the core domain method (`ForeignKey::is_satisfied_by`) to use the efficient algorithm, allowing `ConstraintManager` to delegate back to the domain object (Rich Domain Model).
