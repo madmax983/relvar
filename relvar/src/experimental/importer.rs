@@ -424,4 +424,190 @@ mod tests {
         let fields = parse_csv_line(line, ',');
         assert_eq!(fields, vec!["1", "Alice \"The Great\"", "3"]);
     }
+
+    #[test]
+    fn test_json_error_root_not_array() {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let json = r#"{"id": 1}"#; // Object, not array
+        let result = from_json(json.as_bytes(), rel_type);
+        assert!(matches!(
+            result.unwrap_err(),
+            ImporterError::FormatError(msg) if msg.contains("JSON root must be an array")
+        ));
+    }
+
+    #[test]
+    fn test_json_error_item_not_object() {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let json = r#"[1, 2]"#; // Array of ints, not objects
+        let result = from_json(json.as_bytes(), rel_type);
+        assert!(matches!(
+            result.unwrap_err(),
+            ImporterError::FormatError(msg) if msg.contains("is not an object")
+        ));
+    }
+
+    #[test]
+    fn test_json_error_missing_value() {
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String);
+        let rel_type = RelationType::new(heading);
+        let json = r#"[{"id": 1}]"#; // Missing "name"
+        let result = from_json(json.as_bytes(), rel_type);
+        assert!(matches!(
+            result.unwrap_err(),
+            ImporterError::MissingValue(attr) if attr == "name"
+        ));
+    }
+
+    #[test]
+    fn test_json_error_type_mismatch() {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let json = r#"[{"id": "one"}]"#; // String instead of Int
+        let result = from_json(json.as_bytes(), rel_type);
+        assert!(matches!(
+            result.unwrap_err(),
+            ImporterError::TypeError(attr, _, _) if attr == "id"
+        ));
+    }
+
+    #[test]
+    fn test_json_bytes_handling() {
+        let heading = TupleType::new().with_attribute("data", ScalarType::Bytes);
+        let rel_type = RelationType::new(heading);
+
+        // Valid bytes
+        let json_valid = r#"[{"data": [1, 2, 255]}]"#;
+        let result = from_json(json_valid.as_bytes(), rel_type.clone());
+        assert!(result.is_ok());
+        let rel = result.unwrap();
+        let tuple = rel.tuples().next().unwrap();
+        assert_eq!(
+            tuple.get("data"),
+            Some(&ScalarValue::Bytes(vec![1, 2, 255]))
+        );
+
+        // Invalid byte (out of range)
+        let json_invalid = r#"[{"data": [256]}]"#;
+        let result_invalid = from_json(json_invalid.as_bytes(), rel_type.clone());
+        assert!(matches!(
+            result_invalid.unwrap_err(),
+            ImporterError::TypeError(attr, _, _) if attr == "data"
+        ));
+
+        // Invalid byte type (string in array)
+        let json_invalid_type = r#"[{"data": ["bad"]}]"#;
+        let result_invalid_type = from_json(json_invalid_type.as_bytes(), rel_type);
+        assert!(matches!(
+            result_invalid_type.unwrap_err(),
+            ImporterError::TypeError(attr, _, _) if attr == "data"
+        ));
+    }
+
+    #[test]
+    fn test_json_nested_relation() {
+        let inner_heading = TupleType::new().with_attribute("val", ScalarType::Int);
+        let inner_rel_type = RelationType::new(inner_heading);
+
+        let outer_heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("items", ScalarType::Relation(Box::new(inner_rel_type)));
+        let outer_rel_type = RelationType::new(outer_heading);
+
+        let json = r#"[
+            {
+                "id": 1,
+                "items": [{"val": 10}, {"val": 20}]
+            }
+        ]"#;
+
+        let result = from_json(json.as_bytes(), outer_rel_type);
+        assert!(result.is_ok());
+        let rel = result.unwrap();
+        let tuple = rel.tuples().next().unwrap();
+
+        match tuple.get("items") {
+            Some(ScalarValue::Relation(inner)) => {
+                assert_eq!(inner.cardinality(), 2);
+            }
+            _ => panic!("Expected relation"),
+        }
+    }
+
+    #[test]
+    fn test_csv_error_header_missing() {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let csv = "name\nAlice"; // Header "name", expected "id"
+        let result = from_csv(csv.as_bytes(), rel_type, ',');
+        assert!(matches!(
+            result.unwrap_err(),
+            ImporterError::MissingValue(msg) if msg.contains("Header missing attribute 'id'")
+        ));
+    }
+
+    #[test]
+    fn test_csv_error_field_count() {
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String);
+        let rel_type = RelationType::new(heading);
+        let csv = "id,name\n1"; // Missing name value
+        let result = from_csv(csv.as_bytes(), rel_type, ',');
+        assert!(matches!(
+            result.unwrap_err(),
+            ImporterError::FormatError(msg) if msg.contains("Row 1 has 1 fields, expected 2")
+        ));
+    }
+
+    #[test]
+    fn test_csv_error_type_mismatch() {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let csv = "id\nnot_an_int";
+        let result = from_csv(csv.as_bytes(), rel_type, ',');
+        assert!(matches!(
+            result.unwrap_err(),
+            ImporterError::TypeError(attr, _, _) if attr == "id"
+        ));
+    }
+
+    #[test]
+    fn test_csv_bytes_and_user_defined() {
+        let user_type = ScalarType::user_defined("UserId", ScalarType::Int);
+        let heading = TupleType::new()
+            .with_attribute("uid", user_type.clone())
+            .with_attribute("data", ScalarType::Bytes);
+        let rel_type = RelationType::new(heading);
+
+        // CSV uses JSON array syntax for bytes
+        let csv = "uid,data\n100,\"[1, 2, 3]\"";
+
+        let result = from_csv(csv.as_bytes(), rel_type, ',');
+        assert!(result.is_ok());
+        let rel = result.unwrap();
+        let tuple = rel.tuples().next().unwrap();
+
+        assert_eq!(tuple.get("uid").unwrap().scalar_type(), user_type);
+        assert_eq!(tuple.get("data"), Some(&ScalarValue::Bytes(vec![1, 2, 3])));
+    }
+
+    #[test]
+    fn test_csv_nested_relation_error() {
+        let inner_heading = TupleType::new().with_attribute("x", ScalarType::Int);
+        let heading = TupleType::new()
+            .with_attribute("rel", ScalarType::Relation(Box::new(RelationType::new(inner_heading))));
+        let rel_type = RelationType::new(heading);
+
+        let csv = "rel\n[]";
+        let result = from_csv(csv.as_bytes(), rel_type, ',');
+        assert!(matches!(
+            result.unwrap_err(),
+            ImporterError::TypeError(attr, _, _) if attr == "rel"
+        ));
+    }
 }
