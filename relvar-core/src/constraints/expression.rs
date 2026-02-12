@@ -705,3 +705,103 @@ mod tests {
         assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
     }
 }
+
+#[cfg(test)]
+mod like_tests {
+    use super::*;
+    use crate::tuple;
+
+    #[test]
+    fn test_like_exact_match() {
+        let expr = ConstraintExpression::Like("name".to_string(), "Alice".to_string());
+        let tuple = tuple! { name: "Alice" };
+        assert!(expr.evaluate(&tuple).unwrap());
+
+        let tuple_bad = tuple! { name: "Bob" };
+        assert!(!expr.evaluate(&tuple_bad).unwrap());
+    }
+
+    #[test]
+    fn test_like_wildcard_percent() {
+        let expr = ConstraintExpression::Like("name".to_string(), "Al%".to_string());
+
+        assert!(expr.evaluate(&tuple! { name: "Alice" }).unwrap());
+        assert!(expr.evaluate(&tuple! { name: "Alan" }).unwrap());
+        assert!(expr.evaluate(&tuple! { name: "Al" }).unwrap()); // Empty match
+        assert!(!expr.evaluate(&tuple! { name: "Bob" }).unwrap());
+    }
+
+    #[test]
+    fn test_like_wildcard_underscore() {
+        let expr = ConstraintExpression::Like("code".to_string(), "A_C".to_string());
+
+        assert!(expr.evaluate(&tuple! { code: "ABC" }).unwrap());
+        assert!(expr.evaluate(&tuple! { code: "ADC" }).unwrap());
+        assert!(!expr.evaluate(&tuple! { code: "AC" }).unwrap());
+        assert!(!expr.evaluate(&tuple! { code: "ABBC" }).unwrap());
+    }
+
+    #[test]
+    fn test_like_mixed_wildcards() {
+        // Matches "data_" followed by anything, then ".csv"
+        // Note: "_" is a wildcard, so it matches any character, including "_"
+        let expr = ConstraintExpression::Like("file".to_string(), "data_%.csv".to_string());
+
+        assert!(expr.evaluate(&tuple! { file: "data_2024.csv" }).unwrap());
+        assert!(expr.evaluate(&tuple! { file: "data_final.csv" }).unwrap());
+
+        // "dataA.csv" should match: "data" matches "data", "_" matches "A", "%" matches empty, ".csv" matches
+        assert!(expr.evaluate(&tuple! { file: "dataA.csv" }).unwrap());
+
+        // "data.csv" should NOT match: "data" matches, "_" matches ".", "%" matches empty, ".csv" needs ".csv" but remaining is "csv". "." != "c"
+        assert!(!expr.evaluate(&tuple! { file: "data.csv" }).unwrap());
+    }
+
+    #[test]
+    fn test_like_unicode() {
+        let expr = ConstraintExpression::Like("word".to_string(), "caf_".to_string());
+
+        // 'é' is one char
+        assert!(expr.evaluate(&tuple! { word: "café" }).unwrap());
+        // "caff" is 4 chars, so it matches "caf_"
+        assert!(expr.evaluate(&tuple! { word: "caff" }).unwrap());
+        // "caf" is 3 chars, so it does NOT match "caf_"
+        assert!(!expr.evaluate(&tuple! { word: "caf" }).unwrap());
+
+        // Ensure we handle multibyte chars correctly in pattern too
+        let expr_unicode_pattern =
+            ConstraintExpression::Like("word".to_string(), "café%".to_string());
+        assert!(
+            expr_unicode_pattern
+                .evaluate(&tuple! { word: "café au lait" })
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_like_edge_cases() {
+        // Empty pattern matches only empty string
+        let expr_empty = ConstraintExpression::Like("text".to_string(), "".to_string());
+        assert!(expr_empty.evaluate(&tuple! { text: "" }).unwrap());
+        assert!(!expr_empty.evaluate(&tuple! { text: "a" }).unwrap());
+
+        // Pattern % matches everything
+        let expr_all = ConstraintExpression::Like("text".to_string(), "%".to_string());
+        assert!(expr_all.evaluate(&tuple! { text: "" }).unwrap());
+        assert!(expr_all.evaluate(&tuple! { text: "anything" }).unwrap());
+
+        // Pattern with just wildcards
+        let expr_wild = ConstraintExpression::Like("text".to_string(), "_%_".to_string());
+        assert!(expr_wild.evaluate(&tuple! { text: "ab" }).unwrap()); // min 2 chars
+        assert!(!expr_wild.evaluate(&tuple! { text: "a" }).unwrap());
+    }
+
+    #[test]
+    fn test_like_type_mismatch() {
+        let expr = ConstraintExpression::Like("age".to_string(), "1%".to_string());
+        let tuple = tuple! { age: 10i64 };
+        let result = expr.evaluate(&tuple);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
+    }
+}
