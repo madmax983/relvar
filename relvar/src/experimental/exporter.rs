@@ -91,11 +91,12 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
     let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
     tuples.sort();
 
-    let mut json_tuples = Vec::new();
+    let mut json_tuples = Vec::with_capacity(tuples.len());
     for tuple in tuples {
         let mut obj = serde_json::Map::new();
-        // Tuple values are BTreeMap, so iteration is already sorted by key (attribute name)
-        for (key, val) in tuple.0.values().iter() {
+        // Tuple::values() returns &BTreeMap, so iteration is already sorted by key
+        let map = tuple.0.values();
+        for (key, val) in map {
             obj.insert(key.clone(), scalar_to_json(val));
         }
         json_tuples.push(serde_json::Value::Object(obj));
