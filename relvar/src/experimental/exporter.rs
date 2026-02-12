@@ -197,41 +197,18 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
     let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
     tuples.sort();
 
-    // Convert tuples to simplified JSON objects
-    let mut json_objects = Vec::with_capacity(tuples.len());
-
-    for t in tuples {
-        let mut map = serde_json::Map::new();
-        // Use explicit iteration to avoid ambiguity and help static analysis
-        // Note: t.0.values() returns &BTreeMap<String, ScalarValue>
-        for (key, val) in t.0.values() {
-            map.insert(key.clone(), scalar_to_json(val));
+    let mut json_tuples = Vec::with_capacity(tuples.len());
+    for tuple in tuples {
+        let mut obj = serde_json::Map::new();
+        // Tuple::values() returns &BTreeMap, so iteration is already sorted by key
+        let map = tuple.0.values();
+        for (key, val) in map {
+            obj.insert(key.clone(), scalar_to_json(val));
         }
-        json_objects.push(map);
+        json_tuples.push(serde_json::Value::Object(obj));
     }
 
-    serde_json::to_string_pretty(&json_objects).map_err(ExporterError::JsonError)
-}
-
-/// Helper function to convert Relvar ScalarValue to serde_json::Value.
-///
-/// Flattens type wrappers to standard JSON types.
-fn scalar_to_json(val: &ScalarValue) -> serde_json::Value {
-    match val {
-        ScalarValue::Int(v) => serde_json::Value::Number((*v).into()),
-        ScalarValue::Float(v) => serde_json::Number::from_f64(*v)
-            .map(serde_json::Value::Number)
-            .unwrap_or(serde_json::Value::Null),
-        ScalarValue::String(v) => serde_json::Value::String(v.clone()),
-        ScalarValue::Bool(v) => serde_json::Value::Bool(*v),
-        ScalarValue::Bytes(v) => serde_json::Value::Array(
-            v.iter()
-                .map(|b| serde_json::Value::Number((*b).into()))
-                .collect(),
-        ),
-        ScalarValue::Relation(_) => serde_json::Value::String("<Relation>".to_string()),
-        ScalarValue::UserDefined { .. } => serde_json::Value::String("<UserDefined>".to_string()),
-    }
+    serde_json::to_string_pretty(&json_tuples).map_err(ExporterError::JsonError)
 }
 
 /// Exports the relation to a formatted ASCII table.
@@ -286,27 +263,23 @@ pub fn to_ascii_table(relation: &Relation) -> String {
     // Calculate column widths
     let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
 
-    // Pass 1: Measure data widths
-    let rows: Vec<Vec<String>> = tuples
-        .iter()
-        .map(|t| {
-            headers
-                .iter()
-                .enumerate()
-                .map(|(i, h)| {
-                    let s = if let Some(val) = t.0.get(h) {
-                        format_scalar_table(val)
-                    } else {
-                        String::new()
-                    };
-                    if s.len() > widths[i] {
-                        widths[i] = s.len();
-                    }
-                    s
-                })
-                .collect()
-        })
-        .collect();
+    // Pass 1: Measure data widths and format rows
+    let mut rows: Vec<Vec<String>> = Vec::with_capacity(tuples.len());
+    for t in &tuples {
+        let mut row: Vec<String> = Vec::with_capacity(headers.len());
+        for (i, h) in headers.iter().enumerate() {
+            let s = if let Some(val) = t.0.get(h) {
+                format_scalar_table(val)
+            } else {
+                String::new()
+            };
+            if s.len() > widths[i] {
+                widths[i] = s.len();
+            }
+            row.push(s);
+        }
+        rows.push(row);
+    }
 
     let mut output = String::new();
 
@@ -367,6 +340,18 @@ fn format_scalar_csv(val: &ScalarValue) -> String {
         ScalarValue::Bytes(v) => format!("{:?}", v),
         ScalarValue::Relation(_) => "<Relation>".to_string(),
         ScalarValue::UserDefined { .. } => "<UserDefined>".to_string(),
+    }
+}
+
+fn scalar_to_json(val: &ScalarValue) -> serde_json::Value {
+    match val {
+        ScalarValue::Int(v) => serde_json::json!(v),
+        ScalarValue::Float(v) => serde_json::json!(v),
+        ScalarValue::String(v) => serde_json::json!(v),
+        ScalarValue::Bool(v) => serde_json::json!(v),
+        ScalarValue::Bytes(v) => serde_json::json!(v),
+        ScalarValue::Relation(_) => serde_json::json!("<Relation>"),
+        ScalarValue::UserDefined { .. } => serde_json::json!("<UserDefined>"),
     }
 }
 

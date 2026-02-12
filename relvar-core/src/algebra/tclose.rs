@@ -19,11 +19,10 @@
 //!    - Update `result = result UNION new_tuples`.
 //!    - Update `delta = new_tuples`.
 
-use relvar_core::error::DatabaseError;
-use relvar_core::values::Relation;
+use crate::error::DatabaseError;
+use crate::values::Relation;
 
-/// Trait extending Relation with transitive closure capabilities.
-pub trait TransitiveClosure {
+impl Relation {
     /// Computes the transitive closure of a binary relation.
     ///
     /// The relation must have exactly two attributes of the same type.
@@ -46,11 +45,7 @@ pub trait TransitiveClosure {
     /// - The specified attributes do not exist.
     /// - The attributes have different types.
     /// - An algebraic operation fails.
-    fn tclose(&self, from_attr: &str, to_attr: &str) -> Result<Relation, DatabaseError>;
-}
-
-impl TransitiveClosure for Relation {
-    fn tclose(&self, from_attr: &str, to_attr: &str) -> Result<Relation, DatabaseError> {
+    pub fn tclose(&self, from_attr: &str, to_attr: &str) -> Result<Relation, DatabaseError> {
         // 1. Validation
         if self.degree() != 2 {
             return Err(DatabaseError::AlgebraError(format!(
@@ -145,9 +140,9 @@ impl TransitiveClosure for Relation {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use relvar_core::tuple;
-    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::values::Relation;
 
     #[test]
     fn test_tclose_simple_chain() {

@@ -40,6 +40,7 @@
 //! | Group | [`group()`](crate::values::Relation::group) | Creates relation-valued attributes |
 //! | Ungroup | [`ungroup()`](crate::values::Relation::ungroup) | Flattens relation-valued attributes |
 //! | Summarize | [`summarize()`](crate::values::Relation::summarize) | Aggregation with grouping |
+//! | TClose | [`tclose()`](crate::values::Relation::tclose) | Transitive closure of binary relation |
 //!
 //! # Example
 //!
@@ -112,3 +113,6 @@ pub use summarize::{Aggregation, AggregationFn};
 
 /// Set union operator.
 pub mod union;
+
+/// Transitive closure operator (TCLOSE).
+pub mod tclose;
