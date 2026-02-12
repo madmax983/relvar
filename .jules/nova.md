@@ -14,3 +14,8 @@
 **Concept:** A builder (`relvar::experimental::mock::MockRelation`) to generate random `Relation` data from a `RelationType` for testing and prototyping.
 **Fate:** Merged
 **Lesson:** Testing databases requires data. Generating it programmatically is faster than manual inserts. Used `rand` (isolated in experimental).
+
+## [Pivot Operator]
+**Concept:** A `pivot(on_attr, value_attr, default)` operator that transforms row values into column headers.
+**Fate:** Merged
+**Lesson:** Relational strictness (no NULLs) makes pivot tricky. Solution: Require a default value for sparse data.

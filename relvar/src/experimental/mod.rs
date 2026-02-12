@@ -6,6 +6,7 @@
 //! # Included Features
 //!
 //! - **Exporter**: Tools for exporting relations to CSV, JSON, and ASCII tables.
+//! - **Pivot**: Operator to rotate unique values from one column into multiple columns.
 //!
 //! # Example: Using the Exporter
 //!
@@ -29,3 +30,4 @@
 
 pub mod exporter;
 pub mod mock;
+pub mod pivot;
