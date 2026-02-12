@@ -91,11 +91,17 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
     let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
     tuples.sort();
 
-    // Convert to a Vec of &Tuple for serialization
-    // Note: Tuple implements Serialize, so we can serialize the list directly
-    let sorted_tuples: Vec<&Tuple> = tuples.into_iter().map(|t| t.0).collect();
+    let mut json_tuples = Vec::new();
+    for tuple in tuples {
+        let mut obj = serde_json::Map::new();
+        // Tuple values are BTreeMap, so iteration is already sorted by key (attribute name)
+        for (key, val) in tuple.0.values().iter() {
+            obj.insert(key.clone(), scalar_to_json(val));
+        }
+        json_tuples.push(serde_json::Value::Object(obj));
+    }
 
-    serde_json::to_string_pretty(&sorted_tuples).map_err(ExporterError::JsonError)
+    serde_json::to_string_pretty(&json_tuples).map_err(ExporterError::JsonError)
 }
 
 /// Exports the relation to an ASCII table.
@@ -197,6 +203,18 @@ fn format_scalar_csv(val: &ScalarValue) -> String {
         ScalarValue::Bytes(v) => format!("{:?}", v),
         ScalarValue::Relation(_) => "<Relation>".to_string(),
         ScalarValue::UserDefined { .. } => "<UserDefined>".to_string(),
+    }
+}
+
+fn scalar_to_json(val: &ScalarValue) -> serde_json::Value {
+    match val {
+        ScalarValue::Int(v) => serde_json::json!(v),
+        ScalarValue::Float(v) => serde_json::json!(v),
+        ScalarValue::String(v) => serde_json::json!(v),
+        ScalarValue::Bool(v) => serde_json::json!(v),
+        ScalarValue::Bytes(v) => serde_json::json!(v),
+        ScalarValue::Relation(_) => serde_json::json!("<Relation>"),
+        ScalarValue::UserDefined { .. } => serde_json::json!("<UserDefined>"),
     }
 }
 
