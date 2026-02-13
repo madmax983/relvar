@@ -2,7 +2,7 @@ use relvar::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
 use relvar::experimental::query::{Query, QueryAggregation, QueryAggregationFn};
 use relvar::types::{RelationType, ScalarType, TupleType};
 use relvar::values::ScalarValue;
-use relvar::{tuple, Database, InMemoryEngine};
+use relvar::{Database, InMemoryEngine, tuple};
 
 #[test]
 fn test_query_builder_e2e() {
@@ -48,11 +48,8 @@ fn test_query_builder_e2e() {
         tuple! { dept_id: 10i64, dept_name: "Engineering" },
     )
     .unwrap();
-    db.insert(
-        "DEPARTMENTS",
-        tuple! { dept_id: 20i64, dept_name: "Sales" },
-    )
-    .unwrap();
+    db.insert("DEPARTMENTS", tuple! { dept_id: 20i64, dept_name: "Sales" })
+        .unwrap();
 
     // 2. Build Query
     // Query: Get Engineering employees (dept_id=10), show name and salary
@@ -126,11 +123,8 @@ fn test_query_join_summarize() {
         tuple! { dept_id: 10i64, dept_name: "Engineering" },
     )
     .unwrap();
-    db.insert(
-        "DEPARTMENTS",
-        tuple! { dept_id: 20i64, dept_name: "Sales" },
-    )
-    .unwrap();
+    db.insert("DEPARTMENTS", tuple! { dept_id: 20i64, dept_name: "Sales" })
+        .unwrap();
 
     // Query: Join Emp + Dept, Summarize by Dept Name, Count and Avg Salary
     let query = Query::scan("EMPLOYEES")
