@@ -126,8 +126,10 @@ pub use relvar_core::*;
 #[cfg(feature = "storage")]
 pub use relvar_storage::PersistentEngine;
 
-/// Experimental features that may be unstable or subject to change.
-pub mod experimental;
+/// Tools for exporting relations to various formats.
+pub mod exporter;
+/// Mock data generation.
+pub mod mock;
 pub mod visualizer;
 
 /// Create an in-memory database.

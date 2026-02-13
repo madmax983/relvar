@@ -2,13 +2,12 @@
 //!
 //! PIVOT transforms row values into column headers.
 
-use relvar_core::error::DatabaseError;
-use relvar_core::types::{RelationType, TupleType};
-use relvar_core::values::{Relation, ScalarValue, Tuple};
+use crate::error::DatabaseError;
+use crate::types::{RelationType, TupleType};
+use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Trait extending Relation with pivot capabilities.
-pub trait Pivot {
+impl Relation {
     /// Pivots a relation.
     ///
     /// Transforms unique values from `on_attr` into new columns,
@@ -19,16 +18,7 @@ pub trait Pivot {
     /// * `on_attr` - Attribute for new column headers.
     /// * `value_attr` - Attribute for cell values.
     /// * `default_value` - Value for missing cells (must match `value_attr` type).
-    fn pivot(
-        &self,
-        on_attr: &str,
-        value_attr: &str,
-        default_value: ScalarValue,
-    ) -> Result<Relation, DatabaseError>;
-}
-
-impl Pivot for Relation {
-    fn pivot(
+    pub fn pivot(
         &self,
         on_attr: &str,
         value_attr: &str,
@@ -153,8 +143,8 @@ fn scalar_to_string_key(val: &ScalarValue) -> Result<String, DatabaseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use relvar_core::tuple;
-    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
 
     #[test]
     fn test_pivot_basic() {

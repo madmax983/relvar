@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 /// # Example
 ///
 /// ```
-/// use relvar::experimental::mock::MockRelation;
+/// use relvar::mock::MockRelation;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 ///
 /// let rel_type = RelationType::new(

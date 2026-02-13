@@ -21,7 +21,7 @@
 //! use relvar_core::values::Relation;
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use relvar_core::tuple;
-//! use relvar::experimental::exporter;
+//! use relvar::exporter;
 //!
 //! // Create a sample relation
 //! let heading = TupleType::new()
@@ -104,7 +104,7 @@ impl<'a> Ord for SortableTuple<'a> {
 /// use relvar_core::values::Relation;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use relvar_core::tuple;
-/// use relvar::experimental::exporter::to_csv;
+/// use relvar::exporter::to_csv;
 ///
 /// let heading = TupleType::new()
 ///     .with_attribute("col1", ScalarType::Int)
@@ -178,7 +178,7 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
 /// use relvar_core::values::Relation;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use relvar_core::tuple;
-/// use relvar::experimental::exporter::to_json;
+/// use relvar::exporter::to_json;
 ///
 /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
 /// let mut relation = Relation::new(RelationType::new(heading));
@@ -230,7 +230,7 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
 /// use relvar_core::values::Relation;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use relvar_core::tuple;
-/// use relvar::experimental::exporter::to_ascii_table;
+/// use relvar::exporter::to_ascii_table;
 ///
 /// let heading = TupleType::new()
 ///     .with_attribute("name", ScalarType::String)

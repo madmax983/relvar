@@ -95,6 +95,9 @@ pub mod intersect;
 /// Natural join and theta join operators.
 pub mod join;
 
+/// Pivot operator (row to column transformation).
+pub mod pivot;
+
 /// Project operator for attribute selection (π).
 pub mod project;
 
