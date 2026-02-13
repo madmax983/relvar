@@ -9,6 +9,7 @@
 //! - **Importer**: Tools for importing relations from CSV and JSON.
 //! - **Pivot**: Operator to rotate unique values from one column into multiple columns.
 //! - **Mock**: Tools for generating random relations for testing.
+//! - **Query**: A serializable AST and query builder for relational queries.
 //!
 //! # Example: Using the Exporter
 //!
@@ -34,3 +35,4 @@ pub mod exporter;
 pub mod importer;
 pub mod mock;
 pub mod pivot;
+pub mod query;
