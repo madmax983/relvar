@@ -84,3 +84,13 @@ Even with moderate sizes (e.g., 50KB), concurrent requests could exhaust server 
 Refactored `matches_pattern` to use an optimized DP approach that only stores two rows (current and previous) instead of the full matrix.
 This reduces space complexity from `O(N*M)` to `O(M)`, preventing memory exhaustion even with large inputs.
 Added a regression test `relvar-core/tests/warden_exploit_like.rs` to verify the fix and prevent regression.
+
+## 2026-02-08 - Like Operator Large Input DoS
+**Threat:**
+The `ConstraintExpression::Like` operator implementation previously collected the input text into a `Vec<char>` for pattern matching.
+An attacker could supply a very large text string (e.g., 100MB), causing a linear memory allocation of 4 bytes per character (400MB total), potentially leading to memory exhaustion (DoS).
+
+**Defense:**
+Refactored `matches_pattern` to iterate over `text.chars()` directly instead of collecting into a vector.
+This reduces space complexity from $O(N+M)$ to $O(M)$ (where $M$ is pattern length), eliminating the DoS vector for large text inputs.
+Added verification test `relvar-core/tests/warden_exploit_like_memory.rs`.

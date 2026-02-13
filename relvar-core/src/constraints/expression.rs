@@ -236,10 +236,8 @@ impl ConstraintExpression {
     /// Time complexity: O(n*m) where n = text length, m = pattern length
     /// Space complexity: O(m) optimized (was O(n*m))
     fn matches_pattern(text: &str, pattern: &str) -> bool {
-        let text_chars: Vec<char> = text.chars().collect();
+        // Collect pattern chars for random access (usually small)
         let pattern_chars: Vec<char> = pattern.chars().collect();
-
-        let text_len = text_chars.len();
         let pattern_len = pattern_chars.len();
 
         // DP state: only need previous row and current row
@@ -259,8 +257,8 @@ impl ConstraintExpression {
             }
         }
 
-        // Iterate through text characters
-        for i in 1..=text_len {
+        // Iterate through text characters directly (avoids O(N) allocation)
+        for text_char in text.chars() {
             // New row starts with false (non-empty text doesn't match empty pattern)
             curr_dp[0] = false;
 
@@ -280,7 +278,7 @@ impl ConstraintExpression {
                     c => {
                         // Literal char match
                         // dp[i][j] = dp[i-1][j-1] && char_match
-                        curr_dp[j] = prev_dp[j - 1] && text_chars[i - 1] == c;
+                        curr_dp[j] = prev_dp[j - 1] && text_char == c;
                     }
                 }
             }
