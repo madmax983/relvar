@@ -317,7 +317,33 @@ impl Ord for ScalarValue {
                             (true, true) => Ordering::Equal,
                             (true, false) => Ordering::Greater,
                             (false, true) => Ordering::Less,
-                            (false, false) => a.to_bits().cmp(&b.to_bits()),
+                            (false, false) => {
+                                // Correctly order floating point numbers using their bit representation
+                                // This handles signed zeros (-0.0 < 0.0) and negative numbers correctly
+                                let a_bits = a.to_bits();
+                                let b_bits = b.to_bits();
+                                let a_sign = a_bits >> 63;
+                                let b_sign = b_bits >> 63;
+
+                                if a_sign != b_sign {
+                                    // Different signs: negative < positive
+                                    if a_sign == 1 {
+                                        Ordering::Less
+                                    } else {
+                                        Ordering::Greater
+                                    }
+                                } else {
+                                    // Same signs
+                                    if a_sign == 0 {
+                                        // Both positive: larger magnitude is larger
+                                        a_bits.cmp(&b_bits)
+                                    } else {
+                                        // Both negative: larger magnitude is smaller (more negative)
+                                        // e.g., -10.0 has larger bit representation than -1.0
+                                        b_bits.cmp(&a_bits)
+                                    }
+                                }
+                            }
                         }
                     }
                     (ScalarValue::String(a), ScalarValue::String(b)) => a.cmp(b),
@@ -768,5 +794,57 @@ mod nan_fix_tests {
         set.insert(nan2.clone());
 
         assert_eq!(set.len(), 1, "Set should contain only one NaN");
+    }
+}
+
+#[cfg(test)]
+mod float_ord_tests {
+    use super::*;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn test_float_negative_ordering() {
+        let neg_ten = ScalarValue::Float(-10.0);
+        let neg_one = ScalarValue::Float(-1.0);
+        let zero = ScalarValue::Float(0.0);
+
+        assert_eq!(neg_ten.cmp(&neg_one), Ordering::Less);
+        assert_eq!(neg_one.cmp(&zero), Ordering::Less);
+
+        // Transitivity
+        assert_eq!(neg_ten.cmp(&zero), Ordering::Less);
+    }
+
+    #[test]
+    fn test_float_signed_zero_ordering() {
+        let neg_zero = ScalarValue::Float(-0.0);
+        let pos_zero = ScalarValue::Float(0.0);
+
+        assert_eq!(neg_zero.cmp(&pos_zero), Ordering::Less);
+
+        // Verify they are still distinct in Eq (due to bitwise equality)
+        assert_ne!(neg_zero, pos_zero);
+    }
+
+    #[test]
+    fn test_float_mixed_sign_ordering() {
+        let neg = ScalarValue::Float(-5.0);
+        let pos = ScalarValue::Float(5.0);
+
+        assert_eq!(neg.cmp(&pos), Ordering::Less);
+    }
+
+    #[test]
+    fn test_nan_ordering() {
+        let nan = ScalarValue::Float(f64::NAN);
+        let num = ScalarValue::Float(100.0);
+
+        // NaNs should be greater than any number
+        assert_eq!(nan.cmp(&num), Ordering::Greater);
+        assert_eq!(num.cmp(&nan), Ordering::Less);
+
+        // NaNs equal each other
+        let nan2 = ScalarValue::Float(f64::NAN);
+        assert_eq!(nan.cmp(&nan2), Ordering::Equal);
     }
 }
