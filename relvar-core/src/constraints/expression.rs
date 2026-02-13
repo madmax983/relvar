@@ -116,8 +116,11 @@ pub enum ConstraintExpression {
     /// - `_`: Matches exactly one character.
     ///
     /// # Complexity
-    /// Uses a dynamic programming approach with **O(N*M)** time and space complexity,
+    /// Uses a dynamic programming approach with **O(N*M)** time complexity and **O(M)** space complexity,
     /// where N is the string length and M is the pattern length.
+    ///
+    /// # Case Sensitivity
+    /// The matching is **case-sensitive**. "A" does not match "a".
     ///
     /// # Example
     /// ```
@@ -127,6 +130,11 @@ pub enum ConstraintExpression {
     /// // Matches "data_2024.csv", "data_final.csv", etc.
     /// let expr = ConstraintExpression::Like("filename".to_string(), "data_%.csv".to_string());
     /// assert!(expr.evaluate(&tuple! { filename: "data_2024.csv" }).unwrap());
+    ///
+    /// // Case-sensitive matching
+    /// let case_expr = ConstraintExpression::Like("code".to_string(), "ABC".to_string());
+    /// assert!(case_expr.evaluate(&tuple! { code: "ABC" }).unwrap());
+    /// assert!(!case_expr.evaluate(&tuple! { code: "abc" }).unwrap());
     /// ```
     Like(String, String),
 }
