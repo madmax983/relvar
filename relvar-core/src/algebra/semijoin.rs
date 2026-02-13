@@ -96,7 +96,8 @@ impl Relation {
 
         // Build HashSet of keys from other relation
         // We use Vec<&ScalarValue> as key to avoid cloning values
-        let mut other_keys: HashSet<Vec<&ScalarValue>> = HashSet::with_capacity(other.cardinality());
+        let mut other_keys: HashSet<Vec<&ScalarValue>> =
+            HashSet::with_capacity(other.cardinality());
         for tuple in other.tuples() {
             let mut key = Vec::with_capacity(common_attrs.len());
             for attr in &common_attrs {
@@ -206,7 +207,8 @@ impl Relation {
         }
 
         // Build HashSet of keys from other relation
-        let mut other_keys: HashSet<Vec<&ScalarValue>> = HashSet::with_capacity(other.cardinality());
+        let mut other_keys: HashSet<Vec<&ScalarValue>> =
+            HashSet::with_capacity(other.cardinality());
         for tuple in other.tuples() {
             let mut key = Vec::with_capacity(common_attrs.len());
             for attr in &common_attrs {
