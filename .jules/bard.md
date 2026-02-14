@@ -26,3 +26,7 @@ This ensures the map matches the territory.
 ## 2024-05-24 - Implemented Features Listed as Future
 **Confusion:** The README listed MVCC and WAL as "Future Enhancements", but they are fully implemented in `relvar-storage`.
 **Clarification:** I updated the README to reflect the current state of the codebase. The `relvar-storage` crate implements full MVCC snapshot isolation and Write-Ahead Logging.
+
+## 2024-05-25 - Implemented Features Hidden in Roadmap
+**Confusion:** The README listed "Views (virtual relvars)" and "Derived types (POSSREP)" as "Future Enhancements", but they are fully implemented and functional in `relvar-core`.
+**Clarification:** I verified these features with executable examples and moved them to the "Implemented Features" section of the README to accurately reflect the project's capabilities.
