@@ -532,7 +532,8 @@ mod incremental_scan_tests {
                 txn_id,
                 relation_name: "test_rel".to_string(),
                 tuple_data: vec![i as u8; 100], // 100 bytes each
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         wal.log(WalRecord::Commit { txn_id }).unwrap();
@@ -554,7 +555,7 @@ mod incremental_scan_tests {
                 WalRecord::Insert { tuple_data, .. } => {
                     assert_eq!(tuple_data.len(), 100);
                     assert_eq!(tuple_data[0], i as u8);
-                },
+                }
                 _ => panic!("Expected Insert at index {}", i),
             }
         }
