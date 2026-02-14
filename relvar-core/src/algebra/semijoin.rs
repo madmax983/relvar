@@ -14,7 +14,8 @@
 //! - Result heading always equals self's heading
 //! - Set semantics maintained (no duplicates, no ordering)
 
-use crate::values::Relation;
+use crate::values::{Relation, ScalarValue};
+use std::collections::HashSet;
 
 /// Finds common attribute names between two relations' headings.
 fn common_attributes(a: &Relation, b: &Relation) -> Vec<String> {
@@ -24,18 +25,6 @@ fn common_attributes(a: &Relation, b: &Relation) -> Vec<String> {
         .filter(|attr| b.relation_type().heading().has_attribute(attr))
         .cloned()
         .collect()
-}
-
-/// Checks whether `tuple` has a matching tuple in `other` on the given common attributes.
-///
-/// Returns `true` if any tuple in `other` agrees with `tuple` on all `common_attrs`.
-/// If `common_attrs` is empty, returns `true` when `other` is non-empty (vacuous match).
-fn has_match(tuple: &crate::values::Tuple, other: &Relation, common_attrs: &[String]) -> bool {
-    other.tuples().any(|other_tuple| {
-        common_attrs
-            .iter()
-            .all(|attr| tuple.get(attr) == other_tuple.get(attr))
-    })
 }
 
 impl Relation {
@@ -65,7 +54,8 @@ impl Relation {
     ///
     /// # Complexity
     ///
-    /// O(n * m) where n and m are the cardinalities of the two relations.
+    /// O(n + m) where n and m are the cardinalities of the two relations.
+    /// Optimized using a hash-based lookup.
     ///
     /// # Example
     ///
@@ -92,11 +82,55 @@ impl Relation {
     /// ```
     pub fn semijoin(&self, other: &Relation) -> Self {
         let common_attrs = common_attributes(self, other);
-        let matched: Vec<_> = self
-            .tuples()
-            .filter(|tuple| has_match(tuple, other, &common_attrs))
-            .cloned()
-            .collect();
+
+        // If no common attributes, we have a degenerate case (Cartesian product projection)
+        if common_attrs.is_empty() {
+            if !other.is_empty() {
+                // If B is not empty, A MATCHING B = A (vacuous match)
+                return self.clone();
+            } else {
+                // If B is empty, A MATCHING B = {}
+                return Relation::new(self.relation_type().clone());
+            }
+        }
+
+        // Build HashSet of keys from other relation
+        // We use Vec<&ScalarValue> as key to avoid cloning values
+        let mut other_keys: HashSet<Vec<&ScalarValue>> =
+            HashSet::with_capacity(other.cardinality());
+        for tuple in other.tuples() {
+            let mut key = Vec::with_capacity(common_attrs.len());
+            for attr in &common_attrs {
+                // We know the attribute exists because we filtered for common attributes
+                // and tuples must conform to the relation heading.
+                key.push(
+                    tuple
+                        .get(attr)
+                        .expect("Common attribute must exist in other tuple"),
+                );
+            }
+            other_keys.insert(key);
+        }
+
+        let mut matched = Vec::new();
+        // Reusable key vector to avoid allocations in the loop
+        let mut key_buf: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
+
+        for tuple in self.tuples() {
+            key_buf.clear();
+            for attr in &common_attrs {
+                key_buf.push(
+                    tuple
+                        .get(attr)
+                        .expect("Common attribute must exist in self tuple"),
+                );
+            }
+
+            if other_keys.contains(&key_buf) {
+                matched.push(tuple.clone());
+            }
+        }
+
         Relation::from_tuples(self.relation_type().clone(), matched)
             .expect("Semijoin tuples conform to self's relation type")
     }
@@ -132,7 +166,8 @@ impl Relation {
     ///
     /// # Complexity
     ///
-    /// O(n * m) where n and m are the cardinalities of the two relations.
+    /// O(n + m) where n and m are the cardinalities of the two relations.
+    /// Optimized using a hash-based lookup.
     ///
     /// # Example
     ///
@@ -159,11 +194,51 @@ impl Relation {
     /// ```
     pub fn semidifference(&self, other: &Relation) -> Self {
         let common_attrs = common_attributes(self, other);
-        let non_matched: Vec<_> = self
-            .tuples()
-            .filter(|tuple| !has_match(tuple, other, &common_attrs))
-            .cloned()
-            .collect();
+
+        // Degenerate case handling
+        if common_attrs.is_empty() {
+            if !other.is_empty() {
+                // If B is not empty, A MATCHING B = A, so A MINUS A = {}
+                return Relation::new(self.relation_type().clone());
+            } else {
+                // If B is empty, A MATCHING B = {}, so A MINUS {} = A
+                return self.clone();
+            }
+        }
+
+        // Build HashSet of keys from other relation
+        let mut other_keys: HashSet<Vec<&ScalarValue>> =
+            HashSet::with_capacity(other.cardinality());
+        for tuple in other.tuples() {
+            let mut key = Vec::with_capacity(common_attrs.len());
+            for attr in &common_attrs {
+                key.push(
+                    tuple
+                        .get(attr)
+                        .expect("Common attribute must exist in other tuple"),
+                );
+            }
+            other_keys.insert(key);
+        }
+
+        let mut non_matched = Vec::new();
+        let mut key_buf: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
+
+        for tuple in self.tuples() {
+            key_buf.clear();
+            for attr in &common_attrs {
+                key_buf.push(
+                    tuple
+                        .get(attr)
+                        .expect("Common attribute must exist in self tuple"),
+                );
+            }
+
+            if !other_keys.contains(&key_buf) {
+                non_matched.push(tuple.clone());
+            }
+        }
+
         Relation::from_tuples(self.relation_type().clone(), non_matched)
             .expect("Semidifference tuples conform to self's relation type")
     }
