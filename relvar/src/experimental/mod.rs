@@ -10,6 +10,7 @@
 //! - **Pivot**: Operator to rotate unique values from one column into multiple columns.
 //! - **Mock**: Tools for generating random relations for testing.
 //! - **Query**: A serializable AST and query builder for relational queries.
+//! - **Spatial**: Spatial data types (Point) implemented via relational composition.
 //!
 //! # Example: Using the Exporter
 //!
@@ -36,3 +37,4 @@ pub mod importer;
 pub mod mock;
 pub mod pivot;
 pub mod query;
+pub mod spatial;
