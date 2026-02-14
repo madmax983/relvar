@@ -209,25 +209,12 @@ impl Relation {
 
         for tuple1 in self.tuples() {
             for tuple2 in other.tuples() {
-                if predicate(tuple1, tuple2) {
-                    // Combine tuples
-                    let mut combined_values = HashMap::with_capacity(result_heading_arc.degree());
+                if !predicate(tuple1, tuple2) {
+                    continue;
+                }
 
-                    for (attr_name, value) in tuple1.values() {
-                        combined_values.insert(attr_name.clone(), value.clone());
-                    }
-
-                    for (attr_name, value) in tuple2.values() {
-                        if !combined_values.contains_key(attr_name) {
-                            combined_values.insert(attr_name.clone(), value.clone());
-                        }
-                    }
-
-                    if let Ok(combined_tuple) =
-                        Tuple::new(result_heading_arc.clone(), combined_values)
-                    {
-                        joined_tuples.push(combined_tuple);
-                    }
+                if let Ok(combined_tuple) = combine_tuples(tuple1, tuple2, &result_heading_arc) {
+                    joined_tuples.push(combined_tuple);
                 }
             }
         }
@@ -278,12 +265,7 @@ fn build_join_map<'a>(
         HashMap::with_capacity(build_rel.cardinality());
 
     for tuple in build_rel.tuples() {
-        let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
-        for attr in common_attrs {
-            key.push(tuple.get(attr).ok_or_else(|| {
-                DatabaseError::AttributeNotFound(attr.clone(), "build relation".to_string())
-            })?);
-        }
+        let key = extract_join_key(tuple, common_attrs, "build relation")?;
         build_map.entry(key).or_default().push(tuple);
     }
     Ok(build_map)
@@ -299,43 +281,57 @@ fn probe_and_combine<'a>(
     let mut joined_tuples = Vec::new();
 
     for probe_tuple in probe_rel.tuples() {
-        let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
-        for attr in common_attrs {
-            key.push(probe_tuple.get(attr).ok_or_else(|| {
-                DatabaseError::AttributeNotFound(attr.clone(), "probe relation".to_string())
-            })?);
-        }
+        let key = extract_join_key(probe_tuple, common_attrs, "probe relation")?;
 
         if let Some(matching_tuples) = build_map.get(&key) {
             for build_tuple in matching_tuples {
-                // Combine tuples
-                let mut combined_values = HashMap::with_capacity(result_heading.degree());
-
-                // Add all values from build_tuple
-                for (attr_name, value) in build_tuple.values() {
-                    combined_values.insert(attr_name.clone(), value.clone());
-                }
-
-                // Add values from probe_tuple (skipping common ones which are already in)
-                for (attr_name, value) in probe_tuple.values() {
-                    if !combined_values.contains_key(attr_name) {
-                        combined_values.insert(attr_name.clone(), value.clone());
-                    }
-                }
-
-                let combined_tuple =
-                    Tuple::new(result_heading.clone(), combined_values).map_err(|e| {
-                        DatabaseError::AlgebraError(format!(
-                            "Failed to construct combined tuple: {}",
-                            e
-                        ))
-                    })?;
-
-                joined_tuples.push(combined_tuple);
+                joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
             }
         }
     }
     Ok(joined_tuples)
+}
+
+/// Helper to extract key values from a tuple for the join operation.
+fn extract_join_key<'a>(
+    tuple: &'a Tuple,
+    attrs: &[String],
+    source_name: &str,
+) -> Result<Vec<&'a ScalarValue>, DatabaseError> {
+    let mut key = Vec::with_capacity(attrs.len());
+    for attr in attrs {
+        key.push(tuple.get(attr).ok_or_else(|| {
+            DatabaseError::AttributeNotFound(attr.clone(), source_name.to_string())
+        })?);
+    }
+    Ok(key)
+}
+
+/// Helper to combine two tuples into a single tuple.
+///
+/// Attributes from `primary` take precedence over `secondary` if there are collisions.
+fn combine_tuples(
+    primary: &Tuple,
+    secondary: &Tuple,
+    result_heading: &Arc<TupleType>,
+) -> Result<Tuple, DatabaseError> {
+    let mut combined_values = HashMap::with_capacity(result_heading.degree());
+
+    // Add all values from primary
+    for (attr_name, value) in primary.values() {
+        combined_values.insert(attr_name.clone(), value.clone());
+    }
+
+    // Add values from secondary (skipping common ones which are already in)
+    for (attr_name, value) in secondary.values() {
+        if !combined_values.contains_key(attr_name) {
+            combined_values.insert(attr_name.clone(), value.clone());
+        }
+    }
+
+    Tuple::new(result_heading.clone(), combined_values).map_err(|e| {
+        DatabaseError::AlgebraError(format!("Failed to construct combined tuple: {}", e))
+    })
 }
 
 #[cfg(test)]
