@@ -1,13 +1,14 @@
 //! Persistent storage engine implementation using heap files and catalog.
 
 use crate::mvcc::ActiveTransactionTable;
-use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
+use crate::storage::StorageManager;
 use crate::wal::{TransactionId, TransactionIdGenerator, WalManager, WalRecord, recover};
 use relvar_core::storage_engine::{RelationMetadata, StorageEngine, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::RwLock;
 
 /// Snapshot for persistent transactions.
 ///
@@ -42,14 +43,8 @@ pub struct PersistentSnapshot {
 /// engine.create_relation("EMPLOYEES", rel_type).unwrap();
 /// ```
 pub struct PersistentEngine {
-    /// Base directory for database files.
-    db_path: PathBuf,
-    /// Path to the catalog file.
-    catalog_path: PathBuf,
-    /// System catalog containing relation metadata.
-    catalog: Catalog,
-    /// Open heap files, keyed by relation name.
-    heap_files: HashMap<String, HeapFile>,
+    /// Storage Manager for physical data handling.
+    storage_manager: RwLock<StorageManager>,
     /// Write-Ahead Log manager.
     wal: WalManager,
     /// Transaction ID generator.
@@ -74,24 +69,20 @@ impl PersistentEngine {
     /// Returns an error if I/O operations fail.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
         let db_path = path.as_ref().to_path_buf();
-        let catalog_path = db_path.join("catalog.json");
         let wal_path = db_path.join("wal.log");
 
-        Self::ensure_db_directory(&db_path)?;
+        // Initialize StorageManager (handles DB dir and catalog)
+        let storage_manager = StorageManager::new(&db_path)?;
 
-        let catalog = Self::load_catalog_from_disk(&catalog_path)?;
         let mut wal = Self::open_wal_manager(&wal_path)?;
 
         // Perform crash recovery if needed
         let recovery_result =
             recover(&mut wal).map_err(|e| StorageError::Other(format!("Recovery error: {}", e)))?;
 
-        // Create engine instance first (we need catalog access)
+        // Create engine instance
         let mut engine = Self {
-            db_path: db_path.clone(),
-            catalog_path,
-            catalog,
-            heap_files: HashMap::new(),
+            storage_manager: RwLock::new(storage_manager),
             wal,
             // Seed transaction ID generator with max ID from WAL + 1 to avoid reuse
             txn_id_gen: TransactionIdGenerator::from_start(TransactionId::new(
@@ -127,19 +118,28 @@ impl PersistentEngine {
         // For each relation, rebuild without uncommitted tuples
         for (relation_name, uncommitted_tuples_vec) in by_relation {
             // Skip if relation doesn't exist
-            if !self.catalog.relation_exists(&relation_name) {
+            if !self
+                .storage_manager
+                .write()
+                .unwrap()
+                .relation_exists(&relation_name)
+            {
                 continue;
             }
 
-            // Convert to HashSet for O(1) lookup instead of O(n) Vec::contains
-            // This makes recovery O(n) instead of O(n²)
+            // Convert to HashSet for O(1) lookup
             let uncommitted_tuples: std::collections::HashSet<Vec<u8>> =
                 uncommitted_tuples_vec.into_iter().collect();
 
-            // Load all tuples
-            let relation = self.load_relation(&relation_name)?;
+            // Load all tuples using current snapshot (txn=0, committed_txns set from recovery)
+            let snapshot = self.get_snapshot_for_current_context()?;
+            let relation = self.storage_manager.write().unwrap().scan_relation(
+                &relation_name,
+                &snapshot,
+                &self.committed_txns,
+            )?;
 
-            // Filter out uncommitted tuples (now O(n) with HashSet)
+            // Filter out uncommitted tuples
             let mut committed_tuples = Vec::new();
             for tuple in relation.tuples() {
                 let tuple_data = bincode::serialize(&tuple)
@@ -160,6 +160,7 @@ impl PersistentEngine {
                     .map_err(|e| StorageError::Relation(e.to_string()))?;
             }
 
+            // Store back (effectively removing uncommitted garbage)
             self.store_relation(&relation_name, &new_relation)?;
         }
 
@@ -179,11 +180,10 @@ impl PersistentEngine {
     /// Returns an error if flushing or WAL operations fail.
     pub fn checkpoint(&mut self) -> Result<(), StorageError> {
         // CRITICAL: Flush WAL first to ensure all prior modifications are logged
-        // This upholds the WAL protocol: log must be on disk before data pages
         self.flush_wal()?;
 
         // Now safe to flush heap files (dirty pages to disk)
-        self.flush_heap_files()?;
+        self.storage_manager.write().unwrap().flush_heap_files()?;
 
         // Determine minimum active LSN
         let min_active_lsn = self.get_checkpoint_lsn();
@@ -195,10 +195,11 @@ impl PersistentEngine {
         self.flush_wal()?;
 
         // Garbage collect old versions
-        self.garbage_collect_versions()?;
-
-        // TODO: Truncate old WAL records before min_active_lsn
-        // This would require WalManager.truncate(lsn) method
+        let gc_lsn = self.get_checkpoint_lsn();
+        self.storage_manager
+            .write()
+            .unwrap()
+            .garbage_collect_versions(gc_lsn, &self.committed_txns)?;
 
         Ok(())
     }
@@ -208,16 +209,6 @@ impl PersistentEngine {
         self.wal
             .flush()
             .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))
-    }
-
-    /// Flush all heap files to disk.
-    fn flush_heap_files(&mut self) -> Result<(), StorageError> {
-        for heap_file in self.heap_files.values_mut() {
-            heap_file
-                .sync()
-                .map_err(|e| StorageError::Other(format!("Heap sync error: {}", e)))?;
-        }
-        Ok(())
     }
 
     /// Get the LSN to checkpoint from (oldest active or current).
@@ -232,13 +223,9 @@ impl PersistentEngine {
         &mut self,
         min_active_lsn: crate::wal::Lsn,
     ) -> Result<(), StorageError> {
-        // Collect dirty pages (simplified - all open heap files are considered dirty)
-        let mut dirty_pages = std::collections::HashMap::new();
-        for name in self.heap_files.keys() {
-            // For now, mark all pages as dirty (conservative)
-            // A real implementation would track which pages are actually modified
-            dirty_pages.insert(name.clone(), vec![]);
-        }
+        // Collect dirty pages logic is simplified - assume all managed files are potentially dirty
+        // A real implementation would track dirty pages in StorageManager
+        let dirty_pages = std::collections::HashMap::new();
 
         self.wal
             .log(WalRecord::Checkpoint {
@@ -246,17 +233,6 @@ impl PersistentEngine {
                 dirty_pages,
             })
             .map_err(|e| StorageError::Other(format!("WAL checkpoint error: {}", e)))?;
-        Ok(())
-    }
-
-    /// Garbage collect old versions.
-    fn garbage_collect_versions(&mut self) -> Result<(), StorageError> {
-        let gc_lsn = self.get_checkpoint_lsn();
-
-        for heap_file in self.heap_files.values_mut() {
-            crate::mvcc::gc::collect_garbage(heap_file, gc_lsn, &self.committed_txns)
-                .map_err(|e| StorageError::Other(format!("GC error: {}", e)))?;
-        }
         Ok(())
     }
 
@@ -274,67 +250,11 @@ impl PersistentEngine {
                 })
         } else {
             // Outside transaction - see all committed data
-            // Create ad-hoc snapshot with no active transactions
             Ok(crate::mvcc::TransactionSnapshot::new(
                 TransactionId::new(0),
                 self.wal.current_lsn(),
                 vec![],
             ))
-        }
-    }
-
-    /// Get or open a heap file for a relation.
-    fn get_or_open_heap_file(&mut self, name: &str) -> Result<&mut HeapFile, StorageError> {
-        if !self.heap_files.contains_key(name) {
-            let metadata = self
-                .catalog
-                .get_relation(name)
-                .map_err(Self::convert_catalog_error)?;
-
-            let heap_file =
-                HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
-                    .map_err(Self::convert_heap_error)?;
-
-            self.heap_files.insert(name.to_string(), heap_file);
-        }
-
-        Ok(self.heap_files.get_mut(name).unwrap())
-    }
-
-    /// Convert HeapError to StorageError.
-    fn convert_heap_error(e: HeapError) -> StorageError {
-        StorageError::Other(format!("Heap error: {}", e))
-    }
-
-    /// Convert CatalogError to StorageError.
-    fn convert_catalog_error(e: CatalogError) -> StorageError {
-        match e {
-            CatalogError::Io(io_err) => {
-                StorageError::Other(format!("Catalog I/O error: {}", io_err))
-            }
-            CatalogError::Serialization(s) => {
-                StorageError::Other(format!("Catalog serialization error: {}", s))
-            }
-            CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
-            CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
-        }
-    }
-
-    /// Ensure the database directory exists.
-    fn ensure_db_directory(path: &Path) -> Result<(), StorageError> {
-        if !path.exists() {
-            std::fs::create_dir_all(path)
-                .map_err(|e| StorageError::Other(format!("Failed to create directory: {}", e)))?;
-        }
-        Ok(())
-    }
-
-    /// Load catalog from disk or create a new one.
-    fn load_catalog_from_disk(catalog_path: &Path) -> Result<Catalog, StorageError> {
-        if catalog_path.exists() {
-            Catalog::load(catalog_path).map_err(Self::convert_catalog_error)
-        } else {
-            Ok(Catalog::new())
         }
     }
 
@@ -347,41 +267,6 @@ impl PersistentEngine {
                 .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))
         }
     }
-
-    /// Validate that a relvar name is safe for use in file paths.
-    ///
-    /// Rejects names containing path separators or parent directory references
-    /// to prevent path traversal attacks.
-    fn validate_relvar_name(name: &str) -> Result<(), StorageError> {
-        if name.is_empty() {
-            return Err(StorageError::Other(
-                "Relvar name cannot be empty".to_string(),
-            ));
-        }
-
-        if name.contains('/') || name.contains('\\') {
-            return Err(StorageError::Other(format!(
-                "Relvar name '{}' cannot contain path separators",
-                name
-            )));
-        }
-
-        if name == "." || name == ".." || name.contains("..") {
-            return Err(StorageError::Other(format!(
-                "Relvar name '{}' cannot contain parent directory references",
-                name
-            )));
-        }
-
-        Ok(())
-    }
-
-    /// Save the catalog to disk.
-    fn save_catalog(&self) -> Result<(), StorageError> {
-        self.catalog
-            .save(&self.catalog_path)
-            .map_err(Self::convert_catalog_error)
-    }
 }
 
 impl StorageEngine for PersistentEngine {
@@ -392,126 +277,42 @@ impl StorageEngine for PersistentEngine {
         name: &str,
         relation_type: RelationType,
     ) -> Result<(), StorageError> {
-        // Validate relvar name for filesystem safety
-        Self::validate_relvar_name(name)?;
-
-        if self.catalog.relation_exists(name) {
-            return Err(StorageError::RelationAlreadyExists(name.to_string()));
-        }
-
-        // Create heap file path
-        let heap_file_path = self.db_path.join(format!("{}.heap", name));
-
-        // Create the heap file
-        let heap_file = HeapFile::create(&heap_file_path, relation_type.clone())
-            .map_err(Self::convert_heap_error)?;
-
-        // Add to catalog
-        self.catalog
-            .create_relation(name.to_string(), relation_type, heap_file_path.clone())
-            .map_err(Self::convert_catalog_error)?;
-
-        // Save catalog
-        self.save_catalog()?;
-
-        // Cache the heap file
-        self.heap_files.insert(name.to_string(), heap_file);
-
-        Ok(())
+        self.storage_manager
+            .write()
+            .unwrap()
+            .create_relation(name, relation_type)
     }
 
     fn drop_relation(&mut self, name: &str) -> Result<(), StorageError> {
-        // Remove from catalog
-        let metadata = self
-            .catalog
-            .drop_relation(name)
-            .map_err(Self::convert_catalog_error)?;
-
-        // Save catalog
-        self.save_catalog()?;
-
-        // Remove heap file from cache
-        self.heap_files.remove(name);
-
-        // Delete heap file
-        if Path::new(&metadata.heap_file_path).exists() {
-            std::fs::remove_file(&metadata.heap_file_path)
-                .map_err(|e| StorageError::Other(format!("Failed to delete heap file: {}", e)))?;
-        }
-
-        Ok(())
+        self.storage_manager.write().unwrap().drop_relation(name)
     }
 
     fn relation_exists(&self, name: &str) -> bool {
-        self.catalog.relation_exists(name)
+        self.storage_manager.read().unwrap().relation_exists(name)
     }
 
     fn get_relation_metadata(&self, name: &str) -> Result<RelationMetadata, StorageError> {
-        let metadata = self
-            .catalog
-            .get_relation(name)
-            .map_err(Self::convert_catalog_error)?;
-
-        Ok(RelationMetadata {
-            name: name.to_string(),
-            relation_type: metadata.relation_type.clone(),
-        })
+        self.storage_manager
+            .read()
+            .unwrap()
+            .get_relation_metadata(name)
     }
 
     fn list_relations(&self) -> Vec<String> {
-        self.catalog.list_relations()
+        self.storage_manager.read().unwrap().list_relations()
     }
 
     fn load_relation(&self, name: &str) -> Result<Relation, StorageError> {
-        // Get metadata
-        let metadata = self
-            .catalog
-            .get_relation(name)
-            .map_err(Self::convert_catalog_error)?;
-
-        let mut heap_file =
-            HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
-                .map_err(Self::convert_heap_error)?;
-
         // Use MVCC visibility if in a transaction, otherwise see all committed data
         let snapshot = self.get_snapshot_for_current_context()?;
-
-        let tuples = heap_file
-            .scan_visible(&snapshot, &self.committed_txns)
-            .map_err(Self::convert_heap_error)?;
-
-        // Build relation from visible tuples
-        Relation::from_tuples(metadata.relation_type.clone(), tuples)
-            .map_err(|e| StorageError::Other(format!("Failed to build relation: {}", e)))
+        self.storage_manager
+            .write()
+            .unwrap()
+            .scan_relation(name, &snapshot, &self.committed_txns)
     }
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {
-        // Get metadata
-        let metadata = self
-            .catalog
-            .get_relation(name)
-            .map_err(Self::convert_catalog_error)?;
-
-        // Remove old heap file and create new one
-        if let Err(e) = std::fs::remove_file(&metadata.heap_file_path) {
-            // Only error if file exists but can't be removed
-            if Path::new(&metadata.heap_file_path).exists() {
-                return Err(StorageError::Other(format!(
-                    "Failed to remove old heap file: {}",
-                    e
-                )));
-            }
-        }
-
-        // Remove from cache
-        self.heap_files.remove(name);
-
-        // Create new heap file
-        let mut new_heap_file =
-            HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())
-                .map_err(Self::convert_heap_error)?;
-
-        // Auto-commit transaction if not in explicit transaction
+        // Auto-commit logic
         let auto_commit = self.current_txn.is_none();
         let txn_id = if auto_commit {
             let snapshot = self.begin_transaction()?;
@@ -520,31 +321,22 @@ impl StorageEngine for PersistentEngine {
             self.current_txn.unwrap()
         };
 
-        // Insert all tuples with MVCC versioning
-        for tuple in relation.tuples() {
-            new_heap_file
-                .insert_tuple_versioned(tuple, txn_id)
-                .map_err(Self::convert_heap_error)?;
-        }
+        self.storage_manager
+            .write()
+            .unwrap()
+            .store_relation(name, relation, txn_id)?;
 
-        // Auto-commit if needed
         if auto_commit {
             let snapshot = PersistentSnapshot { txn_id };
             self.commit_transaction(snapshot)?;
         }
 
-        // Cache the new heap file
-        self.heap_files.insert(name.to_string(), new_heap_file);
-
         Ok(())
     }
 
     fn insert_tuple(&mut self, name: &str, tuple: Tuple) -> Result<(), StorageError> {
-        // Auto-commit if not in explicit transaction
         let auto_commit = self.current_txn.is_none();
-
         let txn_id = if auto_commit {
-            // Start auto-commit transaction
             let snapshot = self.begin_transaction()?;
             snapshot.txn_id
         } else {
@@ -555,7 +347,7 @@ impl StorageEngine for PersistentEngine {
         let tuple_data = bincode::serialize(&tuple)
             .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
 
-        // Log INSERT record to WAL (before data modification)
+        // Log INSERT record to WAL
         self.wal
             .log(WalRecord::Insert {
                 txn_id,
@@ -564,13 +356,11 @@ impl StorageEngine for PersistentEngine {
             })
             .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
 
-        // Insert into heap file with MVCC versioning
-        let heap_file = self.get_or_open_heap_file(name)?;
-        heap_file
-            .insert_tuple_versioned(&tuple, txn_id)
-            .map_err(Self::convert_heap_error)?;
+        self.storage_manager
+            .write()
+            .unwrap()
+            .insert_tuple(name, tuple, txn_id)?;
 
-        // Auto-commit if needed
         if auto_commit {
             let snapshot = PersistentSnapshot { txn_id };
             self.commit_transaction(snapshot)?;
@@ -580,104 +370,61 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError> {
-        // Generate transaction ID
         let txn_id = self.txn_id_gen.generate();
-
-        // Get current LSN from WAL
         let current_lsn = self.wal.current_lsn();
 
-        // Log BEGIN record to WAL
         self.wal
             .log(WalRecord::Begin { txn_id })
             .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
 
-        // Add to active transaction table (creates snapshot)
         let _snapshot = self.active_txns.begin(txn_id, current_lsn);
-
-        // Set as current transaction context
         self.current_txn = Some(txn_id);
 
-        // MVCC handles rollback via visibility - no need to save relations
         Ok(PersistentSnapshot { txn_id })
     }
 
     fn commit_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
-        // Log COMMIT record to WAL
         self.wal
             .log(WalRecord::Commit {
                 txn_id: snapshot.txn_id,
             })
             .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
 
-        // Flush WAL to ensure durability
         self.wal
             .flush()
             .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
 
-        // Flush all open heap files to disk
-        for heap_file in self.heap_files.values_mut() {
-            heap_file
-                .sync()
-                .map_err(|e| StorageError::Other(format!("Heap sync error: {}", e)))?;
-        }
+        self.storage_manager.write().unwrap().flush_heap_files()?;
 
-        // Add to committed transactions set
         self.committed_txns.insert(snapshot.txn_id);
-
-        // Remove from active transactions
         self.active_txns.commit(snapshot.txn_id);
-
-        // Clear current transaction context
         self.current_txn = None;
 
         Ok(())
     }
 
     fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
-        // Log ABORT record to WAL
         self.wal
             .log(WalRecord::Abort {
                 txn_id: snapshot.txn_id,
             })
             .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
 
-        // Do NOT flush WAL - aborted transactions are not durable
-
-        // MVCC rollback: Uncommitted versions are automatically invisible
-        // No physical data restoration needed - visibility rules handle it
-
-        // Remove from active transactions
         self.active_txns.abort(snapshot.txn_id);
-
-        // Clear current transaction context
         self.current_txn = None;
 
         Ok(())
     }
 }
 
-// MVCC-specific methods (internal, not part of StorageEngine trait)
+// MVCC methods (internal)
 impl PersistentEngine {
-    /// Loads a relation with MVCC visibility filtering.
-    ///
-    /// Only returns tuples visible to the given transaction according to
-    /// MVCC snapshot isolation rules.
-    ///
-    /// # Arguments
-    /// * `name` - Relation name
-    /// * `txn_id` - Transaction ID to determine visibility
-    ///
-    /// # Errors
-    /// Returns error if relation doesn't exist or visibility check fails.
-    ///
-    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
     #[allow(dead_code)]
     pub(crate) fn load_relation_for_txn(
         &mut self,
         name: &str,
         txn_id: TransactionId,
     ) -> Result<Relation, StorageError> {
-        // Get transaction snapshot
         let snapshot = self
             .active_txns
             .get_snapshot(txn_id)
@@ -686,40 +433,12 @@ impl PersistentEngine {
             })?
             .clone();
 
-        // Get relation type from catalog
-        let rel_metadata = self
-            .catalog
-            .get_relation(name)
-            .map_err(Self::convert_catalog_error)?;
-        let rel_type = rel_metadata.relation_type.clone();
-
-        // Clone committed set to avoid borrow conflict
-        let committed = self.committed_txns.clone();
-
-        // Get or open heap file
-        let heap_file = self.get_or_open_heap_file(name)?;
-
-        // Scan with visibility filtering
-        let tuples = heap_file
-            .scan_visible(&snapshot, &committed)
-            .map_err(Self::convert_heap_error)?;
-
-        // Build relation from visible tuples
-        Relation::from_tuples(rel_type, tuples)
-            .map_err(|e| StorageError::Other(format!("Failed to build relation: {}", e)))
+        self.storage_manager
+            .write()
+            .unwrap()
+            .scan_relation(name, &snapshot, &self.committed_txns)
     }
 
-    /// Inserts a tuple with MVCC version tracking.
-    ///
-    /// # Arguments
-    /// * `name` - Relation name
-    /// * `tuple` - Tuple to insert
-    /// * `txn_id` - Transaction ID creating this version
-    ///
-    /// # Errors
-    /// Returns error if relation doesn't exist or insert fails.
-    ///
-    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
     #[allow(dead_code)]
     pub(crate) fn insert_tuple_in_txn(
         &mut self,
@@ -727,11 +446,10 @@ impl PersistentEngine {
         tuple: Tuple,
         txn_id: TransactionId,
     ) -> Result<(), StorageError> {
-        // Serialize tuple for WAL
+        // Log WAL
         let tuple_data = bincode::serialize(&tuple)
             .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
 
-        // Log INSERT record to WAL (before data modification)
         self.wal
             .log(WalRecord::Insert {
                 txn_id,
@@ -740,13 +458,10 @@ impl PersistentEngine {
             })
             .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
 
-        // Insert tuple with version metadata
-        let heap_file = self.get_or_open_heap_file(name)?;
-        heap_file
-            .insert_tuple_versioned(&tuple, txn_id)
-            .map_err(Self::convert_heap_error)?;
-
-        Ok(())
+        self.storage_manager
+            .write()
+            .unwrap()
+            .insert_tuple(name, tuple, txn_id)
     }
 }
 
