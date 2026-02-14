@@ -220,50 +220,42 @@ impl WalManager {
             .seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
 
         let mut records = Vec::new();
-        let mut buffer = Vec::new();
+        let mut valid_end_pos = WAL_MAGIC.len() as u64;
 
-        // Read entire file into buffer
-        self.log_file.read_to_end(&mut buffer)?;
+        loop {
+            // Check if we hit EOF or partial header (treat as end of log)
+            let (lsn, record_len) = match Self::read_header(&mut self.log_file) {
+                Ok(Some(val)) => val,
+                Ok(None) => break, // Clean EOF
+                Err(WalError::Corrupted(_, msg)) if msg.contains("Unexpected EOF") => {
+                    // Partial header at end of file - treat as end of log for recovery
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
 
-        let mut offset = 0;
-        while offset < buffer.len() {
-            // Need at least 16 bytes for LSN + length
-            if offset + 16 > buffer.len() {
-                break;
-            }
-
-            // Read LSN (8 bytes)
-            let lsn_bytes: [u8; 8] = buffer[offset..offset + 8]
-                .try_into()
-                .map_err(|_| WalError::Corrupted(Lsn::new(0), "Invalid LSN".to_string()))?;
-            let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
-            offset += 8;
-
-            // Read record length (8 bytes)
-            let len_bytes: [u8; 8] = buffer[offset..offset + 8]
-                .try_into()
-                .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
-            let record_len = u64::from_le_bytes(len_bytes) as usize;
-            offset += 8;
+            // Allocate buffer for record data
+            let mut record_buffer = vec![0u8; record_len as usize];
 
             // Read record data
-            if offset + record_len > buffer.len() {
-                return Err(WalError::Corrupted(
-                    lsn,
-                    "Record extends beyond file".to_string(),
-                ));
+            match self.log_file.read_exact(&mut record_buffer) {
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    // Partial record data at end of file - treat as end of log
+                    break;
+                }
+                Err(e) => return Err(WalError::Io(e)),
             }
 
-            let record_bytes = &buffer[offset..offset + record_len];
-            let record = WalRecord::deserialize(record_bytes)
+            let record = WalRecord::deserialize(&record_buffer)
                 .map_err(|e| WalError::Corrupted(lsn, format!("Deserialization failed: {}", e)))?;
 
             records.push((lsn, record));
-            offset += record_len;
+            valid_end_pos = self.log_file.stream_position()?;
         }
 
-        // Seek back to end for future writes
-        self.log_file.seek(SeekFrom::End(0))?;
+        // Seek back to end of valid data for future writes
+        self.log_file.seek(SeekFrom::Start(valid_end_pos))?;
 
         Ok(records)
     }
@@ -273,45 +265,43 @@ impl WalManager {
     /// Returns (next_lsn, last_flushed_lsn) by parsing the entire WAL.
     /// This is necessary because WAL records are variable-length.
     fn scan_for_last_lsn(log_file: &mut File) -> Result<(Lsn, Lsn), WalError> {
-        use std::io::Read;
-
         // Seek to start of records (after magic header)
         log_file.seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
 
-        let mut buffer = Vec::new();
-        log_file.read_to_end(&mut buffer)?;
-
         let mut last_lsn = Lsn::new(0);
-        let mut offset = 0;
+        let mut valid_end_pos = WAL_MAGIC.len() as u64;
+        let file_len = log_file.metadata()?.len();
 
-        while offset < buffer.len() {
-            // Need at least 16 bytes for LSN + length
-            if offset + 16 > buffer.len() {
+        loop {
+            // Check if we hit EOF or partial header (treat as end of log)
+            let (lsn, record_len) = match Self::read_header(log_file) {
+                Ok(Some(val)) => val,
+                Ok(None) => break, // Clean EOF
+                Err(WalError::Corrupted(_, msg)) if msg.contains("Unexpected EOF") => {
+                    // Partial header at end of file - treat as end of log
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
+
+            // Validate payload existence before seeking to avoid creating holes
+            let current_pos = log_file.stream_position()?;
+
+            if current_pos + record_len > file_len {
+                // Partial record extends beyond file - treat as end of log
                 break;
             }
-
-            // Read LSN (8 bytes)
-            let lsn_bytes: [u8; 8] = buffer[offset..offset + 8]
-                .try_into()
-                .map_err(|_| WalError::Corrupted(Lsn::new(0), "Invalid LSN".to_string()))?;
-            let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
-            last_lsn = lsn;
-            offset += 8;
-
-            // Read record length (8 bytes)
-            let len_bytes: [u8; 8] = buffer[offset..offset + 8]
-                .try_into()
-                .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
-            let record_len = u64::from_le_bytes(len_bytes) as usize;
-            offset += 8;
 
             // Skip record data
-            if offset + record_len > buffer.len() {
-                // Partial record at end - ignore it
-                break;
-            }
-            offset += record_len;
+            log_file.seek(SeekFrom::Current(record_len as i64))?;
+
+            // Update last valid state
+            last_lsn = lsn;
+            valid_end_pos = current_pos + record_len;
         }
+
+        // Seek to the end of the last valid record to overwrite any partial garbage
+        log_file.seek(SeekFrom::Start(valid_end_pos))?;
 
         // Next LSN is last_lsn + 1
         let next_lsn = last_lsn.next();
@@ -320,6 +310,54 @@ impl WalManager {
         let flush_lsn = last_lsn;
 
         Ok((next_lsn, flush_lsn))
+    }
+
+    /// Helper to read a record header from the file.
+    fn read_header(file: &mut File) -> Result<Option<(Lsn, u64)>, WalError> {
+        use std::io::Read;
+        let mut header_buffer = [0u8; 16];
+
+        // Read potentially partial header
+        let mut bytes_read = 0;
+        while bytes_read < 16 {
+            match file.read(&mut header_buffer[bytes_read..]) {
+                Ok(0) => {
+                    if bytes_read == 0 {
+                        return Ok(None); // Clean EOF
+                    } else {
+                        return Err(WalError::Corrupted(
+                            Lsn::new(0),
+                            "Unexpected EOF in header".to_string(),
+                        ));
+                    }
+                }
+                Ok(n) => bytes_read += n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(WalError::Io(e)),
+            }
+        }
+
+        // Parse LSN (8 bytes)
+        let lsn_bytes: [u8; 8] = header_buffer[0..8].try_into().unwrap();
+        let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
+
+        // Parse record length (8 bytes)
+        let len_bytes: [u8; 8] = header_buffer[8..16].try_into().unwrap();
+        let record_len = u64::from_le_bytes(len_bytes);
+
+        // Sanity check length
+        if record_len > super::record::MAX_RECORD_SIZE as u64 {
+            return Err(WalError::Corrupted(
+                lsn,
+                format!(
+                    "Record too large: {} bytes (max: {})",
+                    record_len,
+                    super::record::MAX_RECORD_SIZE
+                ),
+            ));
+        }
+
+        Ok(Some((lsn, record_len)))
     }
 }
 
@@ -467,5 +505,60 @@ mod tests {
         assert!(matches!(records[0].1, WalRecord::Begin { .. }));
         assert!(matches!(records[1].1, WalRecord::Insert { .. }));
         assert!(matches!(records[2].1, WalRecord::Commit { .. }));
+    }
+}
+
+#[cfg(test)]
+mod incremental_scan_tests {
+    use super::*;
+    use crate::wal::TransactionId;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_wal_scan_incremental_read_logic() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path();
+
+        // 1. Create WAL and write multiple records
+        let mut wal = WalManager::create(path).unwrap();
+        let txn_id = TransactionId::new(1);
+
+        // Write a sequence of records
+        wal.log(WalRecord::Begin { txn_id }).unwrap();
+
+        // Write enough records to verify loop correctness
+        for i in 0..100 {
+            wal.log(WalRecord::Insert {
+                txn_id,
+                relation_name: "test_rel".to_string(),
+                tuple_data: vec![i as u8; 100], // 100 bytes each
+            }).unwrap();
+        }
+
+        wal.log(WalRecord::Commit { txn_id }).unwrap();
+        wal.flush().unwrap();
+
+        // 2. Open and Scan (new instance)
+        let mut wal_scan = WalManager::open(path).unwrap();
+        let records = wal_scan.scan().unwrap();
+
+        // Verify count: 1 Begin + 100 Inserts + 1 Commit = 102
+        assert_eq!(records.len(), 102);
+
+        // Verify content
+        assert!(matches!(records[0].1, WalRecord::Begin { .. }));
+
+        for i in 0..100 {
+            let record = &records[i + 1].1;
+            match record {
+                WalRecord::Insert { tuple_data, .. } => {
+                    assert_eq!(tuple_data.len(), 100);
+                    assert_eq!(tuple_data[0], i as u8);
+                },
+                _ => panic!("Expected Insert at index {}", i),
+            }
+        }
+
+        assert!(matches!(records[101].1, WalRecord::Commit { .. }));
     }
 }

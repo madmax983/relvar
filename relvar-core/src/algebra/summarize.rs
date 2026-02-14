@@ -258,7 +258,15 @@ impl Aggregation {
 
     fn compute(&self, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
         match &self.function {
-            AggregationFn::Count => Ok(ScalarValue::Int(tuples.len() as i64)),
+            AggregationFn::Count => {
+                let count = tuples.len();
+                if count > i64::MAX as usize {
+                    return Err(SummarizeError::AggregationError(
+                        "Count overflow: too many tuples".to_string(),
+                    ));
+                }
+                Ok(ScalarValue::Int(count as i64))
+            }
             AggregationFn::Sum(attr_name) => {
                 let mut sum = 0i64;
                 for tuple in tuples {
