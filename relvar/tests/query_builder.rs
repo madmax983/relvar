@@ -2,7 +2,7 @@ use relvar::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
 use relvar::experimental::query::{Query, QueryAggregation, QueryAggregationFn};
 use relvar::types::{RelationType, ScalarType, TupleType};
 use relvar::values::ScalarValue;
-use relvar::{Database, InMemoryEngine, tuple};
+use relvar::{tuple, Database, InMemoryEngine};
 
 #[test]
 fn test_query_builder_e2e() {
@@ -157,4 +157,64 @@ fn test_query_join_summarize() {
 
     assert_eq!(eng_tuple.get_typed::<i64>("count").unwrap(), 2);
     assert_eq!(eng_tuple.get_typed::<f64>("avg_salary").unwrap(), 55000.0);
+}
+
+#[test]
+fn test_query_rename_aggregations() {
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let heading = TupleType::new()
+        .with_attribute("id", ScalarType::Int)
+        .with_attribute("score", ScalarType::Int);
+
+    db.create_relvar("SCORES", RelationType::new(heading))
+        .unwrap();
+    db.insert("SCORES", tuple! { id: 1i64, score: 10i64 })
+        .unwrap();
+    db.insert("SCORES", tuple! { id: 1i64, score: 20i64 })
+        .unwrap();
+    db.insert("SCORES", tuple! { id: 2i64, score: 5i64 })
+        .unwrap();
+
+    // Query: Rename id -> player_id, Summarize by player_id, Min(score), Max(score), Sum(score)
+    let query = Query::scan("SCORES")
+        .rename(vec![("id", "player_id")])
+        .summarize(
+            vec!["player_id"],
+            vec![
+                QueryAggregation {
+                    result_name: "min_score".to_string(),
+                    result_type: ScalarType::Int,
+                    function: QueryAggregationFn::Min("score".to_string()),
+                },
+                QueryAggregation {
+                    result_name: "max_score".to_string(),
+                    result_type: ScalarType::Int,
+                    function: QueryAggregationFn::Max("score".to_string()),
+                },
+                QueryAggregation {
+                    result_name: "total_score".to_string(),
+                    result_type: ScalarType::Int,
+                    function: QueryAggregationFn::Sum("score".to_string()),
+                },
+            ],
+        );
+
+    let result = query.execute(&mut db).unwrap();
+    assert_eq!(result.cardinality(), 2);
+
+    let p1 = result
+        .tuples()
+        .find(|t| t.get_typed::<i64>("player_id").unwrap() == 1)
+        .unwrap();
+    assert_eq!(p1.get_typed::<i64>("min_score").unwrap(), 10);
+    assert_eq!(p1.get_typed::<i64>("max_score").unwrap(), 20);
+    assert_eq!(p1.get_typed::<i64>("total_score").unwrap(), 30);
+
+    // Explain check for Rename coverage
+    let explanation = query.explain();
+    assert!(explanation.contains("Rename"));
+    assert!(explanation.contains("Min"));
+    assert!(explanation.contains("Max"));
+    assert!(explanation.contains("Sum"));
 }
