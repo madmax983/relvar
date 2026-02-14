@@ -32,11 +32,19 @@ impl StorageManager {
     /// Create a new StorageManager instance.
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
         let db_path = path.as_ref().to_path_buf();
+
+        if !db_path.exists() {
+            std::fs::create_dir_all(&db_path)
+                .map_err(|e| StorageError::Other(format!("Failed to create directory: {}", e)))?;
+        }
+
         let catalog_path = db_path.join("catalog.json");
 
-        Self::ensure_db_directory(&db_path)?;
-
-        let catalog = Self::load_catalog_from_disk(&catalog_path)?;
+        let catalog = if catalog_path.exists() {
+            Catalog::load(&catalog_path).map_err(Self::convert_catalog_error)?
+        } else {
+            Catalog::new()
+        };
 
         Ok(Self {
             db_path,
@@ -44,24 +52,6 @@ impl StorageManager {
             catalog,
             heap_files: HashMap::new(),
         })
-    }
-
-    /// Ensure the database directory exists.
-    fn ensure_db_directory(path: &Path) -> Result<(), StorageError> {
-        if !path.exists() {
-            std::fs::create_dir_all(path)
-                .map_err(|e| StorageError::Other(format!("Failed to create directory: {}", e)))?;
-        }
-        Ok(())
-    }
-
-    /// Load catalog from disk or create a new one.
-    fn load_catalog_from_disk(catalog_path: &Path) -> Result<Catalog, StorageError> {
-        if catalog_path.exists() {
-            Catalog::load(catalog_path).map_err(Self::convert_catalog_error)
-        } else {
-            Ok(Catalog::new())
-        }
     }
 
     /// Save the catalog to disk.

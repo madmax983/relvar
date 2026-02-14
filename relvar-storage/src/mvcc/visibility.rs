@@ -18,34 +18,6 @@ pub struct VersionMetadata {
     pub xmax: Option<TransactionId>,
 }
 
-impl VersionMetadata {
-    /// Creates new version metadata.
-    ///
-    /// # Arguments
-    /// * `xmin` - Transaction that created this version
-    ///
-    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
-    #[allow(dead_code)]
-    pub fn new(xmin: TransactionId) -> Self {
-        Self { xmin, xmax: None }
-    }
-
-    /// Creates version metadata with deletion marker.
-    ///
-    /// # Arguments
-    /// * `xmin` - Transaction that created this version
-    /// * `xmax` - Transaction that deleted/updated this version
-    ///
-    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
-    #[allow(dead_code)]
-    pub fn new_with_xmax(xmin: TransactionId, xmax: TransactionId) -> Self {
-        Self {
-            xmin,
-            xmax: Some(xmax),
-        }
-    }
-}
-
 /// Determines if a tuple version is visible to a transaction.
 ///
 /// # Arguments
@@ -129,10 +101,21 @@ mod tests {
         Lsn::new(value)
     }
 
+    fn new_version(xmin: TransactionId) -> VersionMetadata {
+        VersionMetadata { xmin, xmax: None }
+    }
+
+    fn new_version_with_xmax(xmin: TransactionId, xmax: TransactionId) -> VersionMetadata {
+        VersionMetadata {
+            xmin,
+            xmax: Some(xmax),
+        }
+    }
+
     #[test]
     fn test_version_metadata_new() {
         let xmin = test_txn(1);
-        let version = VersionMetadata::new(xmin);
+        let version = new_version(xmin);
 
         assert_eq!(version.xmin, xmin);
         assert_eq!(version.xmax, None);
@@ -142,7 +125,7 @@ mod tests {
     fn test_version_metadata_new_with_xmax() {
         let xmin = test_txn(1);
         let xmax = test_txn(2);
-        let version = VersionMetadata::new_with_xmax(xmin, xmax);
+        let version = new_version_with_xmax(xmin, xmax);
 
         assert_eq!(version.xmin, xmin);
         assert_eq!(version.xmax, Some(xmax));
@@ -152,7 +135,7 @@ mod tests {
     fn test_version_visible_to_creator() {
         // Transaction creates a version and should see it
         let txn_id = test_txn(1);
-        let version = VersionMetadata::new(txn_id);
+        let version = new_version(txn_id);
 
         let snapshot = TransactionSnapshot::new(txn_id, test_lsn(100), vec![]);
         let committed = HashSet::new(); // txn not committed yet
@@ -167,7 +150,7 @@ mod tests {
         let t1 = test_txn(1);
         let t2 = test_txn(2);
 
-        let version = VersionMetadata::new(t1);
+        let version = new_version(t1);
 
         // T2's snapshot shows T1 as active (concurrent)
         let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![t1]);
@@ -182,7 +165,7 @@ mod tests {
         let t1 = test_txn(1);
         let t2 = test_txn(2);
 
-        let version = VersionMetadata::new(t1);
+        let version = new_version(t1);
 
         // T2 starts after T1 committed (T1 not in active list)
         let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
@@ -199,7 +182,7 @@ mod tests {
         let t2 = test_txn(2);
         let t3 = test_txn(3);
 
-        let version = VersionMetadata::new_with_xmax(t1, t2);
+        let version = new_version_with_xmax(t1, t2);
 
         // T3 starts after both T1 and T2 committed
         let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![]);
@@ -217,7 +200,7 @@ mod tests {
         let t2 = test_txn(2);
         let t3 = test_txn(3);
 
-        let version = VersionMetadata::new_with_xmax(t1, t2);
+        let version = new_version_with_xmax(t1, t2);
 
         // T3 starts, sees T2 as active
         let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![t2]);
@@ -234,7 +217,7 @@ mod tests {
         let t1 = test_txn(1);
         let t2 = test_txn(2);
 
-        let version = VersionMetadata::new(t1);
+        let version = new_version(t1);
 
         let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
         let committed = HashSet::new(); // T1 NOT in committed set (aborted)
@@ -250,7 +233,7 @@ mod tests {
         let t2 = test_txn(2);
         let t3 = test_txn(3);
 
-        let version = VersionMetadata::new_with_xmax(t1, t2);
+        let version = new_version_with_xmax(t1, t2);
 
         // T3's snapshot shows T2 as active
         let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![t2]);
@@ -268,7 +251,7 @@ mod tests {
         let t1 = test_txn(1);
         let t2 = test_txn(2);
 
-        let version = VersionMetadata::new(t1);
+        let version = new_version(t1);
 
         let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
         let committed = HashSet::new(); // T1 not committed
@@ -282,7 +265,7 @@ mod tests {
         // T1 creates and deletes in same txn (uncommitted)
         let t1 = test_txn(1);
 
-        let version = VersionMetadata::new_with_xmax(t1, t1);
+        let version = new_version_with_xmax(t1, t1);
 
         let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
         let committed = HashSet::new();
@@ -297,7 +280,7 @@ mod tests {
         let t1 = test_txn(1);
         let t2 = test_txn(2);
 
-        let version = VersionMetadata::new(t1);
+        let version = new_version(t1);
 
         let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![]);
         let committed = HashSet::new();
@@ -313,7 +296,7 @@ mod tests {
         let t3 = test_txn(3);
         let t4 = test_txn(4);
 
-        let version = VersionMetadata::new(t1);
+        let version = new_version(t1);
 
         // T4 sees T2 and T3 as active, but not T1 (T1 committed before T4 started)
         let snapshot = TransactionSnapshot::new(t4, test_lsn(400), vec![t2, t3]);
@@ -329,7 +312,7 @@ mod tests {
         let t1 = test_txn(1);
         let t1_new = test_txn(10); // Different txn by same "user"
 
-        let version = VersionMetadata::new_with_xmax(t1, t1_new);
+        let version = new_version_with_xmax(t1, t1_new);
 
         let snapshot = TransactionSnapshot::new(t1_new, test_lsn(200), vec![]);
         let mut committed = HashSet::new();
@@ -347,7 +330,7 @@ mod tests {
         let t1 = test_txn(1);
         let t2 = test_txn(2);
 
-        let version = VersionMetadata::new(t2);
+        let version = new_version(t2);
 
         // T1's snapshot captured T2 as active
         let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![t2]);
@@ -368,8 +351,8 @@ mod tests {
         let t2 = test_txn(2);
         let t3 = test_txn(3);
 
-        let v1 = VersionMetadata::new_with_xmax(t1, t2);
-        let v2 = VersionMetadata::new(t2);
+        let v1 = new_version_with_xmax(t1, t2);
+        let v2 = new_version(t2);
 
         let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![]);
         let mut committed = HashSet::new();
