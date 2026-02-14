@@ -2,7 +2,7 @@ use relvar::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
 use relvar::experimental::query::{Query, QueryAggregation, QueryAggregationFn};
 use relvar::types::{RelationType, ScalarType, TupleType};
 use relvar::values::ScalarValue;
-use relvar::{tuple, Database, InMemoryEngine};
+use relvar::{Database, InMemoryEngine, tuple};
 
 #[test]
 fn test_query_builder_e2e() {
