@@ -167,12 +167,8 @@ impl Query {
                 // We use evaluate() inside, but we must handle errors.
                 // Currently, we treat evaluation errors as false (exclude tuple).
                 let predicate = predicate.clone();
-                let result = relation.restrict(move |tuple| {
-                    match predicate.evaluate(tuple) {
-                        Ok(matches) => matches,
-                        Err(_) => false, // Treat error as non-match
-                    }
-                });
+                let result = relation
+                    .restrict(move |tuple| predicate.evaluate(tuple).unwrap_or_default());
                 Ok(result)
             }
             Query::Project { input, attributes } => {
