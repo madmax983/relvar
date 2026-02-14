@@ -563,3 +563,117 @@ mod incremental_scan_tests {
         assert!(matches!(records[101].1, WalRecord::Commit { .. }));
     }
 }
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+    use crate::wal::TransactionId;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_scan_partial_header() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path();
+
+        // Write magic header + 8 bytes (LSN but no length)
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(WAL_MAGIC).unwrap();
+        file.write_all(&1u64.to_le_bytes()).unwrap(); // Valid LSN
+        file.sync_all().unwrap();
+
+        let mut wal = WalManager::open(path).unwrap();
+        let records = wal.scan().unwrap();
+
+        // Should return empty list (partial header treated as clean EOF for recovery)
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn test_scan_partial_body() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path();
+
+        // Write magic header + header (len=100) + 50 bytes data
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(WAL_MAGIC).unwrap();
+
+        let lsn = 1u64;
+        let len = 100u64;
+        file.write_all(&lsn.to_le_bytes()).unwrap();
+        file.write_all(&len.to_le_bytes()).unwrap();
+        file.write_all(&[0u8; 50]).unwrap(); // Incomplete body
+        file.sync_all().unwrap();
+
+        let mut wal = WalManager::open(path).unwrap();
+        let records = wal.scan().unwrap();
+
+        // Should return empty (incomplete body treated as clean EOF)
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn test_scan_huge_record() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path();
+
+        // Write magic header + header with Huge length
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(WAL_MAGIC).unwrap();
+
+        let lsn = 1u64;
+        let len = (super::super::record::MAX_RECORD_SIZE + 1) as u64;
+        file.write_all(&lsn.to_le_bytes()).unwrap();
+        file.write_all(&len.to_le_bytes()).unwrap();
+        file.sync_all().unwrap();
+
+        // WalManager::open calls scan_for_last_lsn which reads headers
+        // It should fail immediately on the huge record
+        match WalManager::open(path) {
+            Ok(mut wal) => {
+                // If open somehow succeeded (e.g. implementation change), scan must fail
+                match wal.scan() {
+                    Err(WalError::Corrupted(_, msg)) => assert!(msg.contains("Record too large")),
+                    _ => panic!("Expected corrupted error due to huge record"),
+                }
+            }
+            Err(WalError::Corrupted(_, msg)) => {
+                // This is the expected behavior for `open`
+                assert!(msg.contains("Record too large"));
+            }
+            Err(e) => panic!("Expected Corrupted error, got {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_scan_valid_records_then_partial() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path();
+
+        // 1. Create valid WAL
+        {
+            let mut wal = WalManager::create(path).unwrap();
+            let txn_id = TransactionId::new(1);
+            wal.log(WalRecord::Begin { txn_id }).unwrap();
+            wal.flush().unwrap();
+        }
+
+        // 2. Append partial garbage
+        {
+            let mut file = OpenOptions::new().append(true).open(path).unwrap();
+            file.write_all(&[0u8; 10]).unwrap(); // Partial header
+            file.sync_all().unwrap();
+        }
+
+        // 3. Scan
+        let mut wal = WalManager::open(path).unwrap();
+        let records = wal.scan().unwrap();
+
+        // Should recover the 1 valid record and ignore the trailing garbage
+        assert_eq!(records.len(), 1);
+        match &records[0].1 {
+            WalRecord::Begin { .. } => {}
+            _ => panic!("Expected Begin"),
+        }
+    }
+}
