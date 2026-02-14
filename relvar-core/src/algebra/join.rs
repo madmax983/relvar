@@ -103,35 +103,13 @@ impl Relation {
     /// assert_eq!(result.cardinality(), 1);  // Only emp 1 matches (dept 10)
     /// ```
     pub fn join(&self, other: &Relation) -> Result<Self, DatabaseError> {
-        // Find common attributes
-        let common_attrs: Vec<String> = self
-            .relation_type()
-            .heading()
-            .attribute_names()
-            .filter(|attr| other.relation_type().heading().has_attribute(attr))
-            .cloned()
-            .collect();
-
-        // Build result heading (union of both headings)
-        let mut result_heading = TupleType::new();
-
-        // Add all attributes from self
-        for (attr_name, attr_type) in self.relation_type().heading().attributes() {
-            result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-        }
-
-        // Add attributes from other that aren't already in result
-        for (attr_name, attr_type) in other.relation_type().heading().attributes() {
-            if !result_heading.has_attribute(attr_name) {
-                result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-            }
-        }
+        let common_attrs = compute_common_attributes(self, other);
+        let result_heading = compute_natural_join_heading(self, other);
 
         let result_rel_type = RelationType::new(result_heading.clone());
         let result_heading_arc = Arc::new(result_heading);
 
         // Perform Hash Join
-        let mut joined_tuples = Vec::new();
 
         // Determine Build and Probe sides
         // We want the smaller relation to be the build side to minimize hash map size.
@@ -142,62 +120,9 @@ impl Relation {
             (other, self)
         };
 
-        // Build Phase: Create a hash map from common attribute values to tuples
-        // Key: Vec<&ScalarValue> (values of common attributes)
-        // Value: Vec<&Tuple> (tuples that have these values)
-        // Note: We use &ScalarValue to avoid cloning the values for the key,
-        // relying on ScalarValue's Hash implementation which works transitively.
-        let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> =
-            HashMap::with_capacity(build_rel.cardinality());
-
-        for tuple in build_rel.tuples() {
-            let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
-            for attr in &common_attrs {
-                key.push(tuple.get(attr).ok_or_else(|| {
-                    DatabaseError::AttributeNotFound(attr.clone(), "build relation".to_string())
-                })?);
-            }
-            build_map.entry(key).or_default().push(tuple);
-        }
-
-        // Probe Phase: Iterate through probe relation and look up matches
-        for probe_tuple in probe_rel.tuples() {
-            let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
-            for attr in &common_attrs {
-                key.push(probe_tuple.get(attr).ok_or_else(|| {
-                    DatabaseError::AttributeNotFound(attr.clone(), "probe relation".to_string())
-                })?);
-            }
-
-            if let Some(matching_tuples) = build_map.get(&key) {
-                for build_tuple in matching_tuples {
-                    // Combine tuples
-                    let mut combined_values = HashMap::with_capacity(result_heading_arc.degree());
-
-                    // Add all values from build_tuple
-                    for (attr_name, value) in build_tuple.values() {
-                        combined_values.insert(attr_name.clone(), value.clone());
-                    }
-
-                    // Add values from probe_tuple (skipping common ones which are already in)
-                    for (attr_name, value) in probe_tuple.values() {
-                        if !combined_values.contains_key(attr_name) {
-                            combined_values.insert(attr_name.clone(), value.clone());
-                        }
-                    }
-
-                    let combined_tuple = Tuple::new(result_heading_arc.clone(), combined_values)
-                        .map_err(|e| {
-                            DatabaseError::AlgebraError(format!(
-                                "Failed to construct combined tuple: {}",
-                                e
-                            ))
-                        })?;
-
-                    joined_tuples.push(combined_tuple);
-                }
-            }
-        }
+        let build_map = build_join_map(build_rel, &common_attrs)?;
+        let joined_tuples =
+            probe_and_combine(probe_rel, &build_map, &common_attrs, &result_heading_arc)?;
 
         Ok(Relation::from_tuples(result_rel_type, joined_tuples)?)
     }
@@ -273,20 +198,8 @@ impl Relation {
         F: Fn(&Tuple, &Tuple) -> bool,
     {
         // Build result heading (union of both headings, but must handle conflicts)
-        let mut result_heading = TupleType::new();
-
-        // Add all attributes from self
-        for (attr_name, attr_type) in self.relation_type().heading().attributes() {
-            result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-        }
-
-        // Add attributes from other, renaming if there's a conflict
-        for (attr_name, attr_type) in other.relation_type().heading().attributes() {
-            if !result_heading.has_attribute(attr_name) {
-                result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-            }
-            // Note: In a production system, we'd want to handle conflicts more explicitly
-        }
+        // Note: In a production system, we'd want to handle conflicts more explicitly
+        let result_heading = compute_natural_join_heading(self, other);
 
         let result_rel_type = RelationType::new(result_heading.clone());
         let result_heading_arc = Arc::new(result_heading);
@@ -322,6 +235,107 @@ impl Relation {
         Relation::from_tuples(result_rel_type, joined_tuples)
             .expect("Joined tuples should conform to result relation type")
     }
+}
+
+/// Helper to compute common attributes between two relations.
+fn compute_common_attributes(left: &Relation, right: &Relation) -> Vec<String> {
+    left.relation_type()
+        .heading()
+        .attribute_names()
+        .filter(|attr| right.relation_type().heading().has_attribute(attr))
+        .cloned()
+        .collect()
+}
+
+/// Helper to compute the heading for a natural join (or theta join).
+///
+/// Result is the union of attributes from both relations.
+/// Attributes present in both are included only once (from the left relation).
+fn compute_natural_join_heading(left: &Relation, right: &Relation) -> TupleType {
+    let mut result_heading = TupleType::new();
+
+    // Add all attributes from left
+    for (attr_name, attr_type) in left.relation_type().heading().attributes() {
+        result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
+    }
+
+    // Add attributes from right that aren't already in result
+    for (attr_name, attr_type) in right.relation_type().heading().attributes() {
+        if !result_heading.has_attribute(attr_name) {
+            result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
+        }
+    }
+
+    result_heading
+}
+
+/// Helper to build the hash map for the join operation (Build Phase).
+fn build_join_map<'a>(
+    build_rel: &'a Relation,
+    common_attrs: &[String],
+) -> Result<HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>>, DatabaseError> {
+    let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> =
+        HashMap::with_capacity(build_rel.cardinality());
+
+    for tuple in build_rel.tuples() {
+        let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
+        for attr in common_attrs {
+            key.push(tuple.get(attr).ok_or_else(|| {
+                DatabaseError::AttributeNotFound(attr.clone(), "build relation".to_string())
+            })?);
+        }
+        build_map.entry(key).or_default().push(tuple);
+    }
+    Ok(build_map)
+}
+
+/// Helper to probe the hash map and combine tuples (Probe Phase).
+fn probe_and_combine<'a>(
+    probe_rel: &'a Relation,
+    build_map: &HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>>,
+    common_attrs: &[String],
+    result_heading: &Arc<TupleType>,
+) -> Result<Vec<Tuple>, DatabaseError> {
+    let mut joined_tuples = Vec::new();
+
+    for probe_tuple in probe_rel.tuples() {
+        let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
+        for attr in common_attrs {
+            key.push(probe_tuple.get(attr).ok_or_else(|| {
+                DatabaseError::AttributeNotFound(attr.clone(), "probe relation".to_string())
+            })?);
+        }
+
+        if let Some(matching_tuples) = build_map.get(&key) {
+            for build_tuple in matching_tuples {
+                // Combine tuples
+                let mut combined_values = HashMap::with_capacity(result_heading.degree());
+
+                // Add all values from build_tuple
+                for (attr_name, value) in build_tuple.values() {
+                    combined_values.insert(attr_name.clone(), value.clone());
+                }
+
+                // Add values from probe_tuple (skipping common ones which are already in)
+                for (attr_name, value) in probe_tuple.values() {
+                    if !combined_values.contains_key(attr_name) {
+                        combined_values.insert(attr_name.clone(), value.clone());
+                    }
+                }
+
+                let combined_tuple =
+                    Tuple::new(result_heading.clone(), combined_values).map_err(|e| {
+                        DatabaseError::AlgebraError(format!(
+                            "Failed to construct combined tuple: {}",
+                            e
+                        ))
+                    })?;
+
+                joined_tuples.push(combined_tuple);
+            }
+        }
+    }
+    Ok(joined_tuples)
 }
 
 #[cfg(test)]
