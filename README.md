@@ -26,6 +26,7 @@ Unlike SQL databases, Relvar adheres strictly to relational theory:
   - Tuple types with named, typed attributes
   - Relation types (headings)
   - Relation-valued attributes (RVAs)
+  - **User-defined types** (POSSREP/selector/observer pattern)
   - User-defined type constraints (Range, Enum, StringLength, etc.)
 
 - **Relational Algebra**
@@ -54,18 +55,58 @@ Unlike SQL databases, Relvar adheres strictly to relational theory:
 
 - **Database API**
   - Create/drop relation variables (relvars)
+  - **Views** (virtual relvars) defined by relational expressions
   - Insert, delete, update operations
   - Query with full relational algebra
   - Transactions (begin/commit/rollback)
 
 - **Tools**
-  - **Schema Visualizer**: Generate Graphviz DOT diagrams of database schema and foreign keys
-  - **Exporter**: Export relations to CSV, JSON, and ASCII tables (Experimental)
+  - **Schema Visualizer**: Generate Graphviz DOT diagrams (`.dot`) of database schema and foreign keys
+  - **Exporter** (Experimental): Export relations to CSV, JSON, and ASCII tables
+  - **Importer** (Experimental): Import relations from CSV and JSON
+  - **Pivot** (Experimental): Reshape data by rotating column values into headers
 
 - **CI/CD**
   - Automated formatting checks (`cargo fmt`)
   - Linting with zero warnings (`cargo clippy`)
   - Cross-platform testing (Ubuntu, Windows, macOS)
+
+## New Features in Depth
+
+### Views (Virtual Relvars)
+
+Relvar supports virtual relvars (views), which are defined by a relational expression rather than stored tuples. They are re-evaluated on every query, ensuring they always reflect the current state of the base variables.
+
+```rust
+// Define a view that projects only the name and id
+db.define_virtual_relvar(
+    "ACTIVE_USERS",
+    active_users_type,
+    |db| {
+        db.query("USERS")?
+          .restrict(|t| t.get_typed::<bool>("active").unwrap_or(false))
+    }
+)?;
+
+// Querying the view behaves exactly like querying a base relvar
+let active = db.query("ACTIVE_USERS")?;
+```
+
+### User-Defined Types
+
+Relvar implements "The Third Manifesto" Prescription 1, allowing users to define their own scalar types using the POSSREP (Possible Representation) pattern. This provides strong type safety and encapsulation.
+
+```rust
+// Define a custom type 'WidgetId' backed by an Int
+let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
+
+// Create a value of this type using a selector
+// Note: This is distinct from a raw Int and from other user-defined types
+let id = widget_id_type.selector(ScalarValue::Int(42))?;
+
+// Extract the representation using an observer
+let raw_val = id.observer()?; // ScalarValue::Int(42)
+```
 
 ## Installation
 
@@ -311,9 +352,7 @@ GitHub Actions automatically runs on every push:
 - [ ] Network protocol (client-server architecture)
 - [ ] REPL (Read-Eval-Print Loop) for interactive use
 - [ ] More aggregate functions (MEDIAN, MODE, etc.)
-- [ ] Views (virtual relvars)
 - [ ] Integrity constraints (domain constraints, assertions)
-- [ ] Derived types (POSSREP/selector/observer pattern)
 
 ## References
 
