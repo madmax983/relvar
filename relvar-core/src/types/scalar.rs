@@ -2,14 +2,12 @@
 //!
 //! This module defines [`ScalarType`], which represents the atomic types that
 //! can appear as attribute values in tuples. It includes built-in types
-//! (Int, Float, String, Bool, Bytes) and user-defined types.
+//! (Int, Float, String, Bool, Bytes).
 //!
 //! # TTM Compliance
 //!
-//! - **Prescription 1**: User-defined scalar types are supported via the POSSREP
-//!   (possible representation) pattern
-//! - Type identity for user-defined types is structural (name + representation)
-//! - Built-in types provide the foundation for user-defined types
+//! - **Proscription 4**: No attribute ordering (attributes identified by name)
+//! - Type equality is structural, not physical
 //!
 //! # Example
 //!
@@ -19,33 +17,9 @@
 //! // Built-in types
 //! let int_type = ScalarType::Int;
 //! let string_type = ScalarType::String;
-//!
-//! // User-defined types with distinct identity
-//! let widget_id = ScalarType::user_defined("WidgetId", ScalarType::Int);
-//! let supplier_id = ScalarType::user_defined("SupplierId", ScalarType::Int);
-//!
-//! // Same representation, but different types!
-//! assert_ne!(widget_id, supplier_id);
 //! ```
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
-/// Errors that can occur during scalar type operations.
-#[derive(Debug, Error)]
-pub enum ScalarTypeError {
-    /// A value's type doesn't match the expected type.
-    ///
-    /// This typically occurs when using a selector with a value of the
-    /// wrong representation type.
-    #[error("Type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch {
-        /// The expected type name.
-        expected: String,
-        /// The actual type name of the provided value.
-        actual: String,
-    },
-}
 
 /// Represents a scalar (atomic) type in the relational model.
 ///
@@ -63,35 +37,6 @@ pub enum ScalarTypeError {
 /// # Advanced Types
 ///
 /// - [`Relation`](ScalarType::Relation) - Nested relation (relation-valued attribute)
-/// - [`UserDefined`](ScalarType::UserDefined) - Custom type with POSSREP pattern
-///
-/// # TTM Prescription 1
-///
-/// Users can define their own scalar types using the POSSREP (possible
-/// representation) pattern. A user-defined type has:
-///
-/// - A **name** that provides type identity
-/// - A **representation** type for storage
-///
-/// Two user-defined types with the same representation but different names
-/// are considered distinct types.
-///
-/// # Example
-///
-/// ```
-/// use relvar_core::types::ScalarType;
-///
-/// // Built-in types
-/// let age_type = ScalarType::Int;
-/// let name_type = ScalarType::String;
-///
-/// // User-defined type for type safety
-/// let employee_id = ScalarType::user_defined("EmployeeId", ScalarType::Int);
-/// let department_id = ScalarType::user_defined("DepartmentId", ScalarType::Int);
-///
-/// // These are different types despite same representation
-/// assert_ne!(employee_id, department_id);
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScalarType {
     /// 64-bit signed integer.
@@ -124,27 +69,6 @@ pub enum ScalarType {
     /// Contains a nested relation, enabling hierarchical data modeling.
     /// The boxed `RelationType` specifies the heading of the nested relation.
     Relation(Box<crate::types::RelationType>),
-
-    /// User-defined scalar type.
-    ///
-    /// Implements the POSSREP (possible representation) pattern from TTM.
-    /// The type has a unique name (providing type identity) and a base
-    /// representation type (defining storage and valid values).
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use relvar_core::types::ScalarType;
-    ///
-    /// let currency = ScalarType::user_defined("Currency", ScalarType::Float);
-    /// assert_eq!(currency.name(), "Currency");
-    /// ```
-    UserDefined {
-        /// The unique name identifying this type.
-        name: String,
-        /// The underlying representation type.
-        representation: Box<ScalarType>,
-    },
 }
 
 impl ScalarType {
@@ -157,91 +81,6 @@ impl ScalarType {
             ScalarType::Bool => "Bool".to_string(),
             ScalarType::Bytes => "Bytes".to_string(),
             ScalarType::Relation(_) => "Relation".to_string(),
-            ScalarType::UserDefined { name, .. } => name.clone(),
-        }
-    }
-
-    /// Creates a user-defined type with the given name and representation type.
-    ///
-    /// TTM Prescription 1: Users can define their own scalar types.
-    /// TTM: This implements the POSSREP pattern - the type has a name (identity)
-    /// and a representation type (storage).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar_core::types::ScalarType;
-    ///
-    /// let widget_id = ScalarType::user_defined("WidgetId", ScalarType::Int);
-    /// let supplier_id = ScalarType::user_defined("SupplierId", ScalarType::Int);
-    ///
-    /// // Same representation, but different types
-    /// assert_ne!(widget_id, supplier_id);
-    /// ```
-    pub fn user_defined(name: impl Into<String>, representation: ScalarType) -> Self {
-        ScalarType::UserDefined {
-            name: name.into(),
-            representation: Box::new(representation),
-        }
-    }
-
-    /// POSSREP selector: constructs a value of this type from its representation.
-    ///
-    /// TTM: The selector takes a value of the representation type and produces
-    /// a value of this user-defined type.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use relvar_core::types::ScalarType;
-    /// use relvar_core::values::ScalarValue;
-    ///
-    /// // Define a user-defined type backed by Int
-    /// let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
-    ///
-    /// // Successful selection
-    /// let widget = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
-    /// assert_eq!(widget.scalar_type().name(), "WidgetId");
-    ///
-    /// // Type mismatch error
-    /// let result = widget_id_type.selector(ScalarValue::String("not an int".into()));
-    /// assert!(result.is_err());
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if the provided value's type doesn't match the expected
-    /// representation type.
-    pub fn selector(
-        &self,
-        value: crate::values::ScalarValue,
-    ) -> Result<crate::values::ScalarValue, ScalarTypeError> {
-        use crate::values::ScalarValue;
-
-        match self {
-            ScalarType::UserDefined { representation, .. } => {
-                // Check that the value matches the representation type
-                if !value.is_type(representation) {
-                    return Err(ScalarTypeError::TypeMismatch {
-                        expected: representation.name(),
-                        actual: value.scalar_type().name(),
-                    });
-                }
-                Ok(ScalarValue::UserDefined {
-                    type_def: self.clone(),
-                    value: Box::new(value),
-                })
-            }
-            // For built-in types, the value must already be of this type
-            ty => {
-                if !value.is_type(ty) {
-                    return Err(ScalarTypeError::TypeMismatch {
-                        expected: ty.name(),
-                        actual: value.scalar_type().name(),
-                    });
-                }
-                Ok(value)
-            }
         }
     }
 }
@@ -261,13 +100,6 @@ impl std::hash::Hash for ScalarType {
             ScalarType::Relation(rel_type) => {
                 // Hash the relation type's heading
                 rel_type.heading().hash(state);
-            }
-            ScalarType::UserDefined {
-                name,
-                representation,
-            } => {
-                name.hash(state);
-                representation.hash(state);
             }
         }
     }
@@ -291,7 +123,6 @@ impl Ord for ScalarType {
             ScalarType::Bool => 3,
             ScalarType::Bytes => 4,
             ScalarType::Relation(_) => 5,
-            ScalarType::UserDefined { .. } => 6,
         };
 
         match disc_value(self).cmp(&disc_value(other)) {
@@ -341,19 +172,6 @@ impl Ord for ScalarType {
                             other => other,
                         }
                     }
-                    (
-                        ScalarType::UserDefined {
-                            name: a_name,
-                            representation: a_rep,
-                        },
-                        ScalarType::UserDefined {
-                            name: b_name,
-                            representation: b_rep,
-                        },
-                    ) => match a_name.cmp(b_name) {
-                        Ordering::Equal => a_rep.cmp(b_rep),
-                        other => other,
-                    },
                     _ => unreachable!("Discriminants matched but variants don't"),
                 }
             }
@@ -433,30 +251,12 @@ mod tests {
         assert!(set.contains(&ScalarType::Float));
     }
 
-    #[test]
-    fn test_builtin_selector_validates_type() {
-        use crate::values::ScalarValue;
-
-        // Selector for built-in types should reject values of wrong type
-        let int_type = ScalarType::Int;
-        let string_value = ScalarValue::String("not an int".to_string());
-
-        let result = int_type.selector(string_value);
-        assert!(result.is_err());
-
-        // Should accept correct type
-        let int_value = ScalarValue::Int(42);
-        let result = int_type.selector(int_value.clone());
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), int_value);
-    }
-
     // Tests for Ord/PartialOrd implementations (for coverage)
     #[test]
     fn test_scalar_type_ord_basic_types() {
         use std::cmp::Ordering;
 
-        // Test discriminant ordering: Int < Float < String < Bool < Bytes < Relation < UserDefined
+        // Test discriminant ordering: Int < Float < String < Bool < Bytes < Relation
         assert_eq!(ScalarType::Int.cmp(&ScalarType::Float), Ordering::Less);
         assert_eq!(ScalarType::Float.cmp(&ScalarType::String), Ordering::Less);
         assert_eq!(ScalarType::String.cmp(&ScalarType::Bool), Ordering::Less);
@@ -516,37 +316,6 @@ mod tests {
     }
 
     #[test]
-    fn test_scalar_type_ord_user_defined_by_name() {
-        use std::cmp::Ordering;
-
-        let widget_id = ScalarType::user_defined("WidgetId", ScalarType::Int);
-        let supplier_id = ScalarType::user_defined("SupplierId", ScalarType::Int);
-        let widget_id_copy = ScalarType::user_defined("WidgetId", ScalarType::Int);
-
-        // Same name and representation should be equal
-        assert_eq!(widget_id.cmp(&widget_id_copy), Ordering::Equal);
-
-        // Different names should have consistent ordering
-        let result = widget_id.cmp(&supplier_id);
-        assert_ne!(result, Ordering::Equal);
-        assert_eq!(supplier_id.cmp(&widget_id), result.reverse());
-    }
-
-    #[test]
-    fn test_scalar_type_ord_user_defined_by_representation() {
-        use std::cmp::Ordering;
-
-        // Same name but different representation
-        let widget_id_int = ScalarType::user_defined("WidgetId", ScalarType::Int);
-        let widget_id_string = ScalarType::user_defined("WidgetId", ScalarType::String);
-
-        // Different representations should have consistent ordering
-        let result = widget_id_int.cmp(&widget_id_string);
-        assert_ne!(result, Ordering::Equal);
-        assert_eq!(widget_id_string.cmp(&widget_id_int), result.reverse());
-    }
-
-    #[test]
     fn test_scalar_type_ord_mixed_variants() {
         use crate::types::{RelationType, TupleType};
         use std::cmp::Ordering;
@@ -555,16 +324,9 @@ mod tests {
         let relation_type = ScalarType::Relation(Box::new(RelationType::new(
             TupleType::new().with_attribute("a", ScalarType::Int),
         )));
-        let user_type = ScalarType::user_defined("CustomType", ScalarType::Int);
 
         // Relation comes after basic types
         assert_eq!(int_type.cmp(&relation_type), Ordering::Less);
-
-        // UserDefined comes after Relation
-        assert_eq!(relation_type.cmp(&user_type), Ordering::Less);
-
-        // Transitive property
-        assert_eq!(int_type.cmp(&user_type), Ordering::Less);
     }
 
     #[test]
@@ -592,7 +354,6 @@ mod tests {
             ScalarType::String,
             ScalarType::Bool,
             ScalarType::Bytes,
-            ScalarType::user_defined("Test", ScalarType::Int),
         ];
 
         for ty in types {

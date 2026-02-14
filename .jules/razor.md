@@ -37,3 +37,8 @@
 **Bloat:** `TypeConstraint::PositiveInt` and `NonNegativeInt`
 **Cut:** Replaced with `Range`.
 **Saved:** Removed redundant enum variants.
+
+## [Reduction]
+**Bloat:** `ScalarType::UserDefined` and `ScalarValue::UserDefined` variants and related "POSSREP" pattern support methods (`selector`, `observer`).
+**Cut:** Removed the speculative generality for user-defined types that was only used in tests.
+**Saved:** ~300 lines of code, simplified `ScalarType` and `ScalarValue` enums, removed `ScalarTypeError` and `ScalarValueError`.

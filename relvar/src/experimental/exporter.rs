@@ -162,7 +162,7 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
 /// - `String` -> JSON String
 /// - `Bool` -> JSON Boolean
 /// - `Bytes` -> JSON Array of numbers
-/// - `Relation`, `UserDefined` -> String representation (simplification)
+/// - `Relation` -> String representation (simplification)
 ///
 /// # Arguments
 ///
@@ -339,7 +339,6 @@ fn format_scalar_csv(val: &ScalarValue) -> String {
         ScalarValue::Bool(v) => v.to_string(),
         ScalarValue::Bytes(v) => format!("{:?}", v),
         ScalarValue::Relation(_) => "<Relation>".to_string(),
-        ScalarValue::UserDefined { .. } => "<UserDefined>".to_string(),
     }
 }
 
@@ -351,7 +350,6 @@ fn scalar_to_json(val: &ScalarValue) -> serde_json::Value {
         ScalarValue::Bool(v) => serde_json::json!(v),
         ScalarValue::Bytes(v) => serde_json::json!(v),
         ScalarValue::Relation(_) => serde_json::json!("<Relation>"),
-        ScalarValue::UserDefined { .. } => serde_json::json!("<UserDefined>"),
     }
 }
 
@@ -363,7 +361,6 @@ fn format_scalar_table(val: &ScalarValue) -> String {
         ScalarValue::Bool(v) => v.to_string(),
         ScalarValue::Bytes(_) => "<Bytes>".to_string(),
         ScalarValue::Relation(_) => "<Relation>".to_string(),
-        ScalarValue::UserDefined { .. } => "<UserDefined>".to_string(),
     }
 }
 
@@ -446,10 +443,6 @@ mod tests {
         let mut nested_rel = Relation::new(RelationType::new(nested_heading.clone()));
         nested_rel.insert(tuple! { x: 10i64 }).unwrap();
 
-        // Create a user defined type
-        let user_type = ScalarType::user_defined("MyInt", ScalarType::Int);
-        let user_val = user_type.selector(ScalarValue::Int(42)).unwrap();
-
         let heading = TupleType::new()
             .with_attribute("int_col", ScalarType::Int)
             .with_attribute("float_col", ScalarType::Float)
@@ -459,8 +452,7 @@ mod tests {
             .with_attribute(
                 "rel_col",
                 ScalarType::Relation(Box::new(RelationType::new(nested_heading))),
-            )
-            .with_attribute("user_col", user_type);
+            );
 
         let mut relation = Relation::new(RelationType::new(heading));
 
@@ -476,7 +468,6 @@ mod tests {
         values.insert("bool_col".to_string(), ScalarValue::Bool(true));
         values.insert("bytes_col".to_string(), ScalarValue::Bytes(vec![1, 2, 3]));
         values.insert("rel_col".to_string(), ScalarValue::Relation(nested_rel));
-        values.insert("user_col".to_string(), user_val);
 
         let tuple = Tuple::new(relation.relation_type().heading().clone(), values).unwrap();
         relation.insert(tuple).unwrap();
@@ -491,6 +482,5 @@ mod tests {
         assert_eq!(obj["bool_col"], true);
         assert_eq!(obj["bytes_col"], serde_json::json!([1, 2, 3]));
         assert_eq!(obj["rel_col"], "<Relation>");
-        assert_eq!(obj["user_col"], "<UserDefined>");
     }
 }

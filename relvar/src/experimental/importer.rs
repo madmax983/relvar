@@ -187,15 +187,6 @@ fn json_value_to_scalar(
                 from_json(inner_json.as_bytes(), *inner_type.clone()).map_err(|e| e.to_string())?;
             Ok(ScalarValue::Relation(rel))
         }
-        // UserDefined (recursive wrapper)
-        (val, ScalarType::UserDefined { representation, .. }) => {
-            let inner_val = json_value_to_scalar(val, representation)?;
-            // We need to wrap it. But ScalarValue doesn't expose a raw constructor easily?
-            // It has ScalarType::selector().
-            expected_type
-                .selector(inner_val)
-                .map_err(|e| format!("Selector error: {:?}", e)) // generic debug error
-        }
         _ => Err(format!(
             "Incompatible value {:?} for type {:?}",
             value, expected_type
@@ -347,12 +338,6 @@ fn str_to_scalar(s: &str, expected_type: &ScalarType) -> Result<ScalarValue, Str
             Ok(ScalarValue::Bytes(v))
         }
         ScalarType::Relation(_) => Err("Cannot import nested relations from CSV".to_string()),
-        ScalarType::UserDefined { representation, .. } => {
-            let inner_val = str_to_scalar(s, representation)?;
-            expected_type
-                .selector(inner_val)
-                .map_err(|e| format!("{:?}", e))
-        }
     }
 }
 
@@ -375,29 +360,6 @@ mod tests {
 
         let relation = from_json(json.as_bytes(), rel_type).unwrap();
         assert_eq!(relation.cardinality(), 2);
-    }
-
-    #[test]
-    fn test_from_json_nested() {
-        // Define UserType
-        let user_id_type = ScalarType::user_defined("UserId", ScalarType::Int);
-
-        let heading = TupleType::new()
-            .with_attribute("uid", user_id_type.clone())
-            .with_attribute("score", ScalarType::Float);
-        let rel_type = RelationType::new(heading);
-
-        let json = r#"[
-            {"uid": 100, "score": 99.5},
-            {"uid": 101, "score": 88.0}
-        ]"#;
-
-        let relation = from_json(json.as_bytes(), rel_type).unwrap();
-        assert_eq!(relation.cardinality(), 2);
-
-        let tuple = relation.tuples().next().unwrap();
-        let val = tuple.get("uid").unwrap();
-        assert_eq!(val.scalar_type(), user_id_type);
     }
 
     #[test]
@@ -574,26 +536,6 @@ mod tests {
             result.unwrap_err(),
             ImporterError::TypeError(attr, _, _) if attr == "id"
         ));
-    }
-
-    #[test]
-    fn test_csv_bytes_and_user_defined() {
-        let user_type = ScalarType::user_defined("UserId", ScalarType::Int);
-        let heading = TupleType::new()
-            .with_attribute("uid", user_type.clone())
-            .with_attribute("data", ScalarType::Bytes);
-        let rel_type = RelationType::new(heading);
-
-        // CSV uses JSON array syntax for bytes
-        let csv = "uid,data\n100,\"[1, 2, 3]\"";
-
-        let result = from_csv(csv.as_bytes(), rel_type, ',');
-        assert!(result.is_ok());
-        let rel = result.unwrap();
-        let tuple = rel.tuples().next().unwrap();
-
-        assert_eq!(tuple.get("uid").unwrap().scalar_type(), user_type);
-        assert_eq!(tuple.get("data"), Some(&ScalarValue::Bytes(vec![1, 2, 3])));
     }
 
     #[test]

@@ -113,14 +113,6 @@ impl MockRelation {
                 // Nested relation: return empty for now to avoid infinite recursion
                 ScalarValue::Relation(Relation::new(*rel_type.clone()))
             }
-            ScalarType::UserDefined { representation, .. } => {
-                // Recursively generate value for the representation
-                let inner_value = self.generate_value(representation, rng);
-                ScalarValue::UserDefined {
-                    type_def: scalar_type.clone(),
-                    value: Box::new(inner_value),
-                }
-            }
         }
     }
 }
