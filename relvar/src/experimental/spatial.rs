@@ -61,16 +61,10 @@ pub fn distance(p1: &ScalarValue, p2: &ScalarValue) -> Result<f64, String> {
 
     // Type check
     if !p1.is_type(&pt_type) {
-        return Err(format!(
-            "Expected Point, got {:?}",
-            p1.scalar_type().name()
-        ));
+        return Err(format!("Expected Point, got {:?}", p1.scalar_type().name()));
     }
     if !p2.is_type(&pt_type) {
-        return Err(format!(
-            "Expected Point, got {:?}",
-            p2.scalar_type().name()
-        ));
+        return Err(format!("Expected Point, got {:?}", p2.scalar_type().name()));
     }
 
     // Extract coordinates
@@ -97,12 +91,8 @@ fn extract_coords(p: &ScalarValue) -> Result<(f64, f64), String> {
                 return Err("Point relation must have exactly 1 tuple".to_string());
             }
             let tuple = rel.tuples().next().unwrap();
-            let x = tuple
-                .get_typed::<f64>("x")
-                .ok_or("Missing x coordinate")?;
-            let y = tuple
-                .get_typed::<f64>("y")
-                .ok_or("Missing y coordinate")?;
+            let x = tuple.get_typed::<f64>("x").ok_or("Missing x coordinate")?;
+            let y = tuple.get_typed::<f64>("y").ok_or("Missing y coordinate")?;
             Ok((x, y))
         }
         _ => Err("Point representation must be a Relation".to_string()),
