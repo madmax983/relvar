@@ -29,3 +29,7 @@
 ## 2026-10-24 - Inconsistent NaN Handling in Scalar Values
 **Learning:** Found that `ScalarValue::Float` relied on `f64::to_bits()` for equality and hashing, causing different NaN payloads to be treated as distinct values (and distinct groups in `summarize`).
 **Action:** When implementing database types, always normalize NaNs in `Eq`, `Hash`, and `Ord` to ensure set semantics (all NaNs are equal), regardless of the underlying bit pattern.
+
+## 2027-02-27 - Slot Reuse Data Corruption
+**Learning:** `HeapFile::try_insert_into_page` (and versioned variants) caused data corruption when reusing a freed slot (e.g. from deletion). It was calling `vec.insert()` which shifts subsequent elements, but the `slots` vector was not shifted (since we reused an index). This misaligned slots and tuple data, causing subsequent tuples to be lost or corrupted during page repack.
+**Action:** When managing parallel vectors (slots and data), ensure modifications are symmetric. If reusing a slot index, use index assignment (`vec[i] = val`) instead of insertion (`vec.insert(i, val)`).
