@@ -20,9 +20,15 @@ pub enum PreparedConstraintExpression {
     },
 
     /// Logical AND: both expressions must be true
-    And(Box<PreparedConstraintExpression>, Box<PreparedConstraintExpression>),
+    And(
+        Box<PreparedConstraintExpression>,
+        Box<PreparedConstraintExpression>,
+    ),
     /// Logical OR: at least one expression must be true
-    Or(Box<PreparedConstraintExpression>, Box<PreparedConstraintExpression>),
+    Or(
+        Box<PreparedConstraintExpression>,
+        Box<PreparedConstraintExpression>,
+    ),
     /// Logical NOT: inverts the expression
     Not(Box<PreparedConstraintExpression>),
 
@@ -93,11 +99,9 @@ impl PreparedConstraintExpression {
 impl From<ConstraintExpression> for PreparedConstraintExpression {
     fn from(expr: ConstraintExpression) -> Self {
         match expr {
-            ConstraintExpression::Cmp { left, op, right } => PreparedConstraintExpression::Cmp {
-                left,
-                op,
-                right,
-            },
+            ConstraintExpression::Cmp { left, op, right } => {
+                PreparedConstraintExpression::Cmp { left, op, right }
+            }
             ConstraintExpression::And(left, right) => PreparedConstraintExpression::And(
                 Box::new((*left).into()),
                 Box::new((*right).into()),
