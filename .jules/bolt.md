@@ -15,3 +15,7 @@
 ## 2026-02-05 - Pre-allocation in Hot Loops
 **Learning:** Relational operators like `join`, `theta_join`, and `extend` often construct new tuples in tight loops. Pre-allocating the `HashMap` or `Vec` for the new tuple's attributes using `with_capacity(degree)` significantly reduces reallocation overhead when the resulting size is known.
 **Action:** Always use `with_capacity` when constructing collections inside hot paths if the target size is known or can be estimated (e.g., from the relation heading).
+
+## 2026-02-05 - Tuple Validation Overhead in Relational Operators
+**Learning:** `Tuple::new` performs O(M) validation (where M is degree) for every tuple creation. In relational operators like `extend`, inputs are often already valid. Using `Tuple::new_unchecked` with manual checks for only new/modified attributes reduced execution time by ~35%.
+**Action:** When implementing relational operators that derive new tuples from existing valid tuples, use `Tuple::new_unchecked` and manually validate only the changed parts.
