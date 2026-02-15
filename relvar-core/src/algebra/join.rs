@@ -43,7 +43,7 @@
 use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 impl Relation {
@@ -264,7 +264,6 @@ fn build_join_map<'a>(
     let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> =
         HashMap::with_capacity(build_rel.cardinality());
 
-    let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
     for tuple in build_rel.tuples() {
         let key = extract_join_key(tuple, common_attrs, "build relation")?;
         build_map.entry(key).or_default().push(tuple);
@@ -280,19 +279,6 @@ fn probe_and_combine<'a>(
     result_heading: &Arc<TupleType>,
 ) -> Result<Vec<Tuple>, DatabaseError> {
     let mut joined_tuples = Vec::new();
-
-    // Pre-calculate which attributes to copy from probe tuple
-    // We only need attributes that are NOT in common_attrs, because common ones
-    // are already provided by the build tuple (and they are equal by definition of join).
-    let probe_attrs_to_copy: Vec<&String> = probe_rel
-        .relation_type()
-        .heading()
-        .attribute_names()
-        .filter(|attr| !common_attrs.contains(attr))
-        .collect();
-
-    // Reusable key buffer to avoid allocation in loop
-    let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
 
     for probe_tuple in probe_rel.tuples() {
         let key = extract_join_key(probe_tuple, common_attrs, "probe relation")?;

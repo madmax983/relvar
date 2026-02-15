@@ -25,58 +25,18 @@ use crate::values::Relation;
 impl Relation {
     /// Computes the transitive closure of a binary relation.
     ///
-    /// The transitive closure operator (TCLOSE) finds all reachable paths in a graph
-    /// represented by a binary relation. If tuple `(x, y)` exists (meaning there is
-    /// an edge from x to y), and `(y, z)` exists, TCLOSE will infer `(x, z)`.
-    ///
-    /// # Requirements
-    ///
-    /// - The relation must be **binary** (exactly two attributes).
-    /// - Both attributes must have the **same type** (homogenous).
-    /// - The attributes represent the "from" and "to" nodes of a directed graph.
+    /// The relation must have exactly two attributes of the same type.
+    /// The `from_attr` represents the source node and `to_attr` represents the target node
+    /// of the edges in the graph.
     ///
     /// # Arguments
     ///
-    /// * `from_attr` - The attribute name representing the source node (start of edge).
-    /// * `to_attr` - The attribute name representing the target node (end of edge).
+    /// * `from_attr` - The attribute name representing the source node.
+    /// * `to_attr` - The attribute name representing the target node.
     ///
     /// # Returns
     ///
-    /// A new relation containing the original edges plus all inferred transitive paths.
-    ///
-    /// # Complexity
-    ///
-    /// Uses a semi-naive algorithm that iteratively joins the relation with itself
-    /// until no new paths are found. Performance depends on the graph's diameter and density.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::values::Relation;
-    /// use relvar_core::tuple;
-    ///
-    /// // Define a graph of direct flights: Origin -> Destination
-    /// let heading = TupleType::new()
-    ///     .with_attribute("origin", ScalarType::String)
-    ///     .with_attribute("dest", ScalarType::String);
-    ///
-    /// let mut flights = Relation::new(RelationType::new(heading));
-    ///
-    /// // Direct flights: NY -> London -> Paris
-    /// flights.insert(tuple! { origin: "NY", dest: "London" }).unwrap();
-    /// flights.insert(tuple! { origin: "London", dest: "Paris" }).unwrap();
-    ///
-    /// // Compute all reachable destinations (transitive closure)
-    /// let reachable = flights.tclose("origin", "dest").unwrap();
-    ///
-    /// // Result contains 3 tuples:
-    /// // 1. NY -> London (original)
-    /// // 2. London -> Paris (original)
-    /// // 3. NY -> Paris (inferred)
-    /// assert_eq!(reachable.cardinality(), 3);
-    /// assert!(reachable.contains(&tuple! { origin: "NY", dest: "Paris" }));
-    /// ```
+    /// A new relation containing the transitive closure of the graph.
     ///
     /// # Errors
     ///
