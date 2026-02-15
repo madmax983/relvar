@@ -17,6 +17,7 @@ pub mod algebra;
 pub mod constraints;
 pub mod database;
 pub mod error;
+pub mod query;
 pub mod storage_engine;
 pub mod types;
 pub mod values;
