@@ -29,6 +29,3 @@
 ## 2026-10-24 - Inconsistent NaN Handling in Scalar Values
 **Learning:** Found that `ScalarValue::Float` relied on `f64::to_bits()` for equality and hashing, causing different NaN payloads to be treated as distinct values (and distinct groups in `summarize`).
 **Action:** When implementing database types, always normalize NaNs in `Eq`, `Hash`, and `Ord` to ensure set semantics (all NaNs are equal), regardless of the underlying bit pattern.
-## 2026-02-14 - [Testing ConstraintManager with InMemoryEngine]
-**Learning:** Logic components that depend on persistence traits (like `StorageEngine`) can be unit tested effectively by using an in-memory implementation (like `InMemoryEngine`) rather than mocking. This avoids the pain of setting up mock expectations for complex stateful interactions (like loading relations) and tests the actual orchestration logic.
-**Action:** When testing components that orchestrate storage operations, prefer using a real in-memory engine over a mock object to verify state transitions and complex integrity checks naturally.

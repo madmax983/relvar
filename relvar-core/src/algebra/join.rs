@@ -43,7 +43,7 @@
 use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 impl Relation {
@@ -209,25 +209,12 @@ impl Relation {
 
         for tuple1 in self.tuples() {
             for tuple2 in other.tuples() {
-                if predicate(tuple1, tuple2) {
-                    // Combine tuples
-                    let mut combined_values = HashMap::with_capacity(result_heading_arc.degree());
+                if !predicate(tuple1, tuple2) {
+                    continue;
+                }
 
-                    for (attr_name, value) in tuple1.values() {
-                        combined_values.insert(attr_name.clone(), value.clone());
-                    }
-
-                    for (attr_name, value) in tuple2.values() {
-                        if !combined_values.contains_key(attr_name) {
-                            combined_values.insert(attr_name.clone(), value.clone());
-                        }
-                    }
-
-                    if let Ok(combined_tuple) =
-                        Tuple::new(result_heading_arc.clone(), combined_values)
-                    {
-                        joined_tuples.push(combined_tuple);
-                    }
+                if let Ok(combined_tuple) = combine_tuples(tuple1, tuple2, &result_heading_arc) {
+                    joined_tuples.push(combined_tuple);
                 }
             }
         }
@@ -277,16 +264,9 @@ fn build_join_map<'a>(
     let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> =
         HashMap::with_capacity(build_rel.cardinality());
 
-    let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
     for tuple in build_rel.tuples() {
-        key.clear();
-        for attr in common_attrs {
-            key.push(tuple.get(attr).ok_or_else(|| {
-                DatabaseError::AttributeNotFound(attr.clone(), "build relation".to_string())
-            })?);
-        }
-        // Clone the key for storage in the map, since we're reusing the buffer
-        build_map.entry(key.clone()).or_default().push(tuple);
+        let key = extract_join_key(tuple, common_attrs, "build relation")?;
+        build_map.entry(key).or_default().push(tuple);
     }
     Ok(build_map)
 }
@@ -300,54 +280,58 @@ fn probe_and_combine<'a>(
 ) -> Result<Vec<Tuple>, DatabaseError> {
     let mut joined_tuples = Vec::new();
 
-    // Pre-calculate which attributes to copy from probe tuple
-    // We only need attributes that are NOT in common_attrs, because common ones
-    // are already provided by the build tuple (and they are equal by definition of join).
-    let probe_attrs_to_copy: Vec<&String> = probe_rel
-        .relation_type()
-        .heading()
-        .attribute_names()
-        .filter(|attr| !common_attrs.contains(attr))
-        .collect();
-
-    // Reusable key buffer to avoid allocation in loop
-    let mut key: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
-
     for probe_tuple in probe_rel.tuples() {
-        key.clear();
-        for attr in common_attrs {
-            key.push(probe_tuple.get(attr).ok_or_else(|| {
-                DatabaseError::AttributeNotFound(attr.clone(), "probe relation".to_string())
-            })?);
-        }
+        let key = extract_join_key(probe_tuple, common_attrs, "probe relation")?;
 
         if let Some(matching_tuples) = build_map.get(&key) {
             for build_tuple in matching_tuples {
-                // Combine tuples directly into BTreeMap
-                let mut combined_values = BTreeMap::new();
-
-                // Add all values from build_tuple
-                for (attr_name, value) in build_tuple.values() {
-                    combined_values.insert(attr_name.clone(), value.clone());
-                }
-
-                // Add selected values from probe_tuple (skipping common ones)
-                for attr_name in &probe_attrs_to_copy {
-                    if let Some(value) = probe_tuple.get(attr_name) {
-                        combined_values.insert((*attr_name).clone(), value.clone());
-                    }
-                }
-
-                // Use unchecked construction to skip validation and HashMap -> BTreeMap conversion.
-                // This is safe because we are constructing a valid tuple from two valid tuples
-                // according to the join definition.
-                let combined_tuple = Tuple::new_unchecked(result_heading.clone(), combined_values);
-
-                joined_tuples.push(combined_tuple);
+                joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
             }
         }
     }
     Ok(joined_tuples)
+}
+
+/// Helper to extract key values from a tuple for the join operation.
+fn extract_join_key<'a>(
+    tuple: &'a Tuple,
+    attrs: &[String],
+    source_name: &str,
+) -> Result<Vec<&'a ScalarValue>, DatabaseError> {
+    let mut key = Vec::with_capacity(attrs.len());
+    for attr in attrs {
+        key.push(tuple.get(attr).ok_or_else(|| {
+            DatabaseError::AttributeNotFound(attr.clone(), source_name.to_string())
+        })?);
+    }
+    Ok(key)
+}
+
+/// Helper to combine two tuples into a single tuple.
+///
+/// Attributes from `primary` take precedence over `secondary` if there are collisions.
+fn combine_tuples(
+    primary: &Tuple,
+    secondary: &Tuple,
+    result_heading: &Arc<TupleType>,
+) -> Result<Tuple, DatabaseError> {
+    let mut combined_values = HashMap::with_capacity(result_heading.degree());
+
+    // Add all values from primary
+    for (attr_name, value) in primary.values() {
+        combined_values.insert(attr_name.clone(), value.clone());
+    }
+
+    // Add values from secondary (skipping common ones which are already in)
+    for (attr_name, value) in secondary.values() {
+        if !combined_values.contains_key(attr_name) {
+            combined_values.insert(attr_name.clone(), value.clone());
+        }
+    }
+
+    Tuple::new(result_heading.clone(), combined_values).map_err(|e| {
+        DatabaseError::AlgebraError(format!("Failed to construct combined tuple: {}", e))
+    })
 }
 
 #[cfg(test)]

@@ -40,7 +40,6 @@
 
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -71,7 +70,6 @@ pub enum SummarizeError {
 ///
 /// Each variant represents a different aggregate computation that can
 /// be performed over a group of tuples.
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AggregationFn {
     /// Counts the number of tuples in the group.
     Count,
@@ -118,7 +116,6 @@ pub enum AggregationFn {
 /// // Average the "age" attribute, store in "avg_age" as Float
 /// let avg_agg = Aggregation::avg("avg_age", "age");
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Aggregation {
     /// The name for the computed result attribute.
     pub result_name: String,

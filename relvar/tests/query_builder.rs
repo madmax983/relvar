@@ -1,6 +1,5 @@
-use relvar::algebra::summarize::{Aggregation, AggregationFn};
 use relvar::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
-use relvar::query::Query;
+use relvar::experimental::query::{Query, QueryAggregation, QueryAggregationFn};
 use relvar::types::{RelationType, ScalarType, TupleType};
 use relvar::values::ScalarValue;
 use relvar::{Database, InMemoryEngine, tuple};
@@ -133,15 +132,15 @@ fn test_query_join_summarize() {
         .summarize(
             vec!["dept_name"],
             vec![
-                Aggregation {
+                QueryAggregation {
                     result_name: "count".to_string(),
                     result_type: ScalarType::Int,
-                    function: AggregationFn::Count,
+                    function: QueryAggregationFn::Count,
                 },
-                Aggregation {
+                QueryAggregation {
                     result_name: "avg_salary".to_string(),
                     result_type: ScalarType::Float,
-                    function: AggregationFn::Avg("salary".to_string()),
+                    function: QueryAggregationFn::Avg("salary".to_string()),
                 },
             ],
         );
@@ -183,20 +182,20 @@ fn test_query_rename_aggregations() {
         .summarize(
             vec!["player_id"],
             vec![
-                Aggregation {
+                QueryAggregation {
                     result_name: "min_score".to_string(),
                     result_type: ScalarType::Int,
-                    function: AggregationFn::Min("score".to_string()),
+                    function: QueryAggregationFn::Min("score".to_string()),
                 },
-                Aggregation {
+                QueryAggregation {
                     result_name: "max_score".to_string(),
                     result_type: ScalarType::Int,
-                    function: AggregationFn::Max("score".to_string()),
+                    function: QueryAggregationFn::Max("score".to_string()),
                 },
-                Aggregation {
+                QueryAggregation {
                     result_name: "total_score".to_string(),
                     result_type: ScalarType::Int,
-                    function: AggregationFn::Sum("score".to_string()),
+                    function: QueryAggregationFn::Sum("score".to_string()),
                 },
             ],
         );
