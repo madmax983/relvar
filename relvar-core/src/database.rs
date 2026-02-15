@@ -1874,7 +1874,7 @@ mod tests {
         let result = db.update(
             "EMPLOYEES",
             |t| t.get_typed::<i64>("id").unwrap() == 1,
-            |t| tuple! { id: 1i64, salary: -100i64 },
+            |_t| tuple! { id: 1i64, salary: -100i64 },
         );
 
         // Should fail due to constraint violation in the try_for_each loop
