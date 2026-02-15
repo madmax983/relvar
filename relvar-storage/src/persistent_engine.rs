@@ -1797,4 +1797,57 @@ mod tests {
             assert!(!engine.relation_exists("DROPPED_REL"));
         }
     }
+
+    #[test]
+    fn test_recovery_retains_valid_data_during_cleanup() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // 1. Create database and insert committed data
+        {
+            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            engine.create_relation("TEST", test_rel_type()).unwrap();
+
+            // Committed transaction
+            let snapshot = engine.begin_transaction().unwrap();
+            engine
+                .insert_tuple("TEST", tuple! { id: 1i64, name: "Committed" })
+                .unwrap();
+            engine.commit_transaction(snapshot).unwrap();
+
+            // Uncommitted transaction (simulating crash)
+            let _snapshot = engine.begin_transaction().unwrap();
+            engine
+                .insert_tuple("TEST", tuple! { id: 2i64, name: "Uncommitted" })
+                .unwrap();
+
+            // CRASH! (Drop engine)
+        }
+
+        // 2. Reopen database (Trigger Recovery)
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            let relation = engine.load_relation("TEST").unwrap();
+
+            // Verify committed tuple exists
+            assert_eq!(
+                relation.cardinality(),
+                1,
+                "Recovery should retain committed data"
+            );
+            assert!(
+                relation
+                    .tuples()
+                    .any(|t| t.get_typed::<i64>("id").unwrap() == 1),
+                "Committed tuple should persist"
+            );
+
+            // Verify uncommitted tuple is gone
+            assert!(
+                !relation
+                    .tuples()
+                    .any(|t| t.get_typed::<i64>("id").unwrap() == 2),
+                "Uncommitted tuple should be removed"
+            );
+        }
+    }
 }
