@@ -1762,7 +1762,9 @@ mod tests {
         // 1. Create database, insert, then drop relation, then crash before commit
         {
             let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
-            engine.create_relation("DROPPED_REL", test_rel_type()).unwrap();
+            engine
+                .create_relation("DROPPED_REL", test_rel_type())
+                .unwrap();
 
             // Begin transaction
             let _snapshot = engine.begin_transaction().unwrap();
