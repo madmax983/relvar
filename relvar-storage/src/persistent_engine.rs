@@ -1754,4 +1754,45 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_recovery_ignores_dropped_relation() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // 1. Create database, insert, then drop relation, then crash before commit
+        {
+            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            engine.create_relation("DROPPED_REL", test_rel_type()).unwrap();
+
+            // Begin transaction
+            let _snapshot = engine.begin_transaction().unwrap();
+
+            // Insert tuple (written to WAL)
+            engine
+                .insert_tuple("DROPPED_REL", tuple! { id: 1i64, name: "ToDrop" })
+                .unwrap();
+
+            // Drop relation (removes from catalog and heap file)
+            // Note: In a real crash scenario, the catalog drop might not be durable if not WAL-logged,
+            // but here we simulate the state where the catalog update persisted but the txn didn't commit.
+            engine.drop_relation("DROPPED_REL").unwrap();
+
+            // CRASH! (Drop engine)
+        }
+
+        // 2. Reopen database
+        {
+            // Recovery runs. It sees uncommitted insert for "DROPPED_REL".
+            // It should check if "DROPPED_REL" exists. It doesn't.
+            // It should skip cleanup and open successfully.
+            let engine = PersistentEngine::open(temp_dir.path());
+            assert!(
+                engine.is_ok(),
+                "Engine should open successfully despite uncommitted inserts for dropped relation"
+            );
+
+            let engine = engine.unwrap();
+            assert!(!engine.relation_exists("DROPPED_REL"));
+        }
+    }
 }
