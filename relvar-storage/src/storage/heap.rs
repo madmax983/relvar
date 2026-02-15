@@ -3553,7 +3553,9 @@ mod tests {
 
             // Repack and write back
             HeapFile::repack_slots(&mut sp.slots, &existing_tuples, USABLE_PAGE_SIZE_V1).unwrap();
-            let new_page_data = heap.serialize_slotted_page_with_tuples(&sp, &existing_tuples).unwrap();
+            let new_page_data = heap
+                .serialize_slotted_page_with_tuples(&sp, &existing_tuples)
+                .unwrap();
             let new_page = Page::from_data(0, new_page_data).unwrap();
             heap.page_file.write_page(&new_page).unwrap();
         }
@@ -3576,7 +3578,10 @@ mod tests {
 
         assert!(tuples.contains(&tuple_a), "Missing tuple A");
         assert!(tuples.contains(&tuple_d), "Missing tuple D");
-        assert!(tuples.contains(&tuple_c), "Missing tuple C - CORRUPTION DETECTED!");
+        assert!(
+            tuples.contains(&tuple_c),
+            "Missing tuple C - CORRUPTION DETECTED!"
+        );
     }
 }
 
