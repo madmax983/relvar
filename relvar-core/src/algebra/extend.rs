@@ -59,8 +59,8 @@ impl Relation {
     /// Extends the relation with a new computed attribute.
     ///
     /// This operator adds a new attribute to each tuple, where the value
-    /// is computed from the tuple's existing attribute values using the
-    /// provided function.
+    /// is computed from the tuple's existing attribute values using a user-provided
+    /// function.
     ///
     /// # Arguments
     ///
@@ -93,20 +93,37 @@ impl Relation {
 
         // Create new heading with the additional attribute
         let mut new_heading = self.relation_type().tuple_type().clone();
-        new_heading = new_heading.with_attribute(attr_name.to_string(), attr_type);
+        new_heading = new_heading.with_attribute(attr_name.to_string(), attr_type.clone());
 
         let new_rel_type = crate::types::RelationType::new(new_heading.clone());
         let new_heading_arc = std::sync::Arc::new(new_heading);
 
         // Create extended tuples
         let mut extended_tuples = Vec::with_capacity(self.cardinality());
-        for tuple in self.tuples() {
-            let mut new_values = tuple.values().clone();
-            let computed_value = compute(tuple);
-            new_values.insert(attr_name.to_string(), computed_value);
+        let attr_name_string = attr_name.to_string();
 
-            let extended_tuple = Tuple::new(new_heading_arc.clone(), new_values)
-                .map_err(|e| ExtendError::TupleCreation(e.to_string()))?;
+        for tuple in self.tuples() {
+            let computed_value = compute(tuple);
+
+            // Manual type check for the new value
+            // We only need to check this one value because the existing values
+            // come from a valid tuple and are guaranteed to match the rest of the heading.
+            if !computed_value.is_type(&attr_type) {
+                return Err(ExtendError::TupleCreation(format!(
+                    "Type mismatch for attribute '{}': expected {}, got {}",
+                    attr_name,
+                    attr_type.name(),
+                    computed_value.scalar_type().name()
+                )));
+            }
+
+            let mut new_values = tuple.values().clone();
+            new_values.insert(attr_name_string.clone(), computed_value);
+
+            // Safety: We verified the new value's type above, and existing values
+            // are known to be valid because they come from a valid Tuple.
+            // Using new_unchecked avoids O(N) validation per tuple where N is degree.
+            let extended_tuple = Tuple::new_unchecked(new_heading_arc.clone(), new_values);
             extended_tuples.push(extended_tuple);
         }
 
@@ -237,6 +254,33 @@ mod tests {
             let last = tuple.get_typed::<String>("last_name").unwrap();
             let full = tuple.get_typed::<String>("full_name").unwrap();
             assert_eq!(full, format!("{} {}", first, last));
+        }
+    }
+
+    #[test]
+    fn test_extend_type_mismatch_fails() {
+        let heading = TupleType::new().with_attribute("emp_id".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation.insert(tuple! { emp_id: 1i64 }).unwrap();
+
+        // Try to extend with a type mismatch
+        // Expected: String, Computed: Int
+        let result = relation.extend("name_length", ScalarType::String, |_| {
+            // Return an Int instead of String
+            ScalarValue::Int(10)
+        });
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ExtendError::TupleCreation(msg) => {
+                assert!(msg.contains("Type mismatch"));
+                assert!(msg.contains("expected String"));
+                assert!(msg.contains("got Int"));
+            }
+            _ => panic!("Expected TupleCreation error"),
         }
     }
 }
