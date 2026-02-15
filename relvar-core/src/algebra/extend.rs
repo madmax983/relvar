@@ -259,21 +259,18 @@ mod tests {
 
     #[test]
     fn test_extend_type_mismatch_fails() {
-        let heading = TupleType::new()
-            .with_attribute("emp_id".to_string(), ScalarType::Int);
+        let heading = TupleType::new().with_attribute("emp_id".to_string(), ScalarType::Int);
 
         let rel_type = RelationType::new(heading);
         let mut relation = Relation::new(rel_type);
 
-        relation
-            .insert(tuple! { emp_id: 1i64 })
-            .unwrap();
+        relation.insert(tuple! { emp_id: 1i64 }).unwrap();
 
         // Try to extend with a type mismatch
         // Expected: String, Computed: Int
         let result = relation.extend("name_length", ScalarType::String, |_| {
-             // Return an Int instead of String
-             ScalarValue::Int(10)
+            // Return an Int instead of String
+            ScalarValue::Int(10)
         });
 
         assert!(result.is_err());
