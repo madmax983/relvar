@@ -560,13 +560,13 @@ impl<E: StorageEngine> Database<E> {
         // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
         // NOTE: In a production system we'd only validate changed tuples, but for now
         // we validate everything to ensure total consistency.
-        for tuple in new_relation.tuples() {
+        new_relation.tuples().try_for_each(|tuple| {
             self.constraints.validate_tuple_content_constraints(
                 &mut self.engine,
                 relation_name,
                 tuple,
-            )?;
-        }
+            )
+        })?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
