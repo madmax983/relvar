@@ -29,13 +29,13 @@
 //! // Register relation in catalog
 //! catalog.create_relation(
 //!     "employees".to_string(),
-//!     rel_type,
+//!     rel_type.clone(),
 //!     PathBuf::from("employees.heap"),
 //! ).unwrap();
 //!
 //! // Look up relation metadata
 //! let metadata = catalog.get_relation("employees").unwrap();
-//! assert_eq!(metadata.name, "employees");
+//! assert_eq!(metadata.relation_type, rel_type);
 //! ```
 
 use relvar_core::types::RelationType;
@@ -75,13 +75,10 @@ const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 ///
 /// # Fields
 ///
-/// - `name` - The unique name identifying this relation
 /// - `relation_type` - The type (heading) defining attribute names and types
 /// - `heap_file_path` - Path to the heap file containing the relation's tuples
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationMetadata {
-    /// The unique name of the relation.
-    pub name: String,
     /// The relation's type (heading).
     pub relation_type: RelationType,
     /// Path to the heap file storing the relation's data.
@@ -228,7 +225,6 @@ impl Catalog {
         }
 
         let metadata = RelationMetadata {
-            name: name.clone(),
             relation_type,
             heap_file_path,
         };
@@ -336,7 +332,6 @@ mod tests {
             .unwrap();
 
         let metadata = catalog.get_relation("employees").unwrap();
-        assert_eq!(metadata.name, "employees");
         assert_eq!(metadata.relation_type, rel_type);
     }
 

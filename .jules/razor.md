@@ -37,3 +37,18 @@
 **Bloat:** `TypeConstraint::PositiveInt` and `NonNegativeInt`
 **Cut:** Replaced with `Range`.
 **Saved:** Removed redundant enum variants.
+
+## [Reduction]
+**Bloat:** `VersionMetadata::new` and `new_with_xmax` methods in public API but only used in tests.
+**Cut:** Moved methods to `#[cfg(test)]` module as helper functions.
+**Saved:** Cleaned up public API, removed `#[allow(dead_code)]` clutter.
+
+## [Reduction]
+**Bloat:** `RelationMetadata` struct in `storage/catalog.rs` duplicated the `name` field which was already the key in `Catalog::relations` HashMap.
+**Cut:** Removed `name` field from `RelationMetadata`.
+**Saved:** Removed data duplication, reduced struct size, simplified initialization.
+
+## [Reduction]
+**Bloat:** `StorageManager::ensure_db_directory` and `load_catalog_from_disk` private helpers called only once.
+**Cut:** Inlined logic into `StorageManager::new`.
+**Saved:** Reduced indirection, improved code locality.
