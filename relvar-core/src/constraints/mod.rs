@@ -40,6 +40,8 @@ pub mod foreign_key;
 pub mod key;
 pub mod manager;
 pub mod type_constraint;
+/// Prepared constraint expressions for optimized evaluation.
+pub mod prepared;
 
 pub use check::{CheckConstraint, CheckConstraintError, CheckConstraints};
 pub use expression::{CmpOp, ConstraintExpression, ExpressionError, ValueOrRef};
@@ -47,3 +49,4 @@ pub use foreign_key::{ForeignKey, ForeignKeyConstraints, ForeignKeyError};
 pub use key::{CandidateKey, KeyConstraintError, KeyConstraints, PrimaryKey};
 pub use manager::{ConstraintManager, ConstraintManagerError};
 pub use type_constraint::{AttributeConstraints, TypeConstraint, TypeConstraintError};
+pub use prepared::PreparedConstraintExpression;
