@@ -35,4 +35,3 @@ pub mod exporter;
 pub mod importer;
 pub mod mock;
 pub mod pivot;
-pub mod query;

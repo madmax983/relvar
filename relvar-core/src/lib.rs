@@ -17,11 +17,13 @@ pub mod algebra;
 pub mod constraints;
 pub mod database;
 pub mod error;
+pub mod query;
 pub mod storage_engine;
 pub mod types;
 pub mod values;
 
 pub use database::{Database, DatabaseError};
+pub use query::{Query, QueryError};
 pub use types::{RelationType, ScalarType, TupleType};
 pub use values::{Relation, ScalarValue, Tuple};
 

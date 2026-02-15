@@ -52,3 +52,8 @@
 **Bloat:** `StorageManager::ensure_db_directory` and `load_catalog_from_disk` private helpers called only once.
 **Cut:** Inlined logic into `StorageManager::new`.
 **Saved:** Reduced indirection, improved code locality.
+
+## [Reduction]
+**Bloat:** `relvar/src/experimental/query.rs` duplicated `Aggregation` types solely for serialization, and the `Query` AST was isolated from the core library.
+**Cut:** Moved `Query` to `relvar-core`, derived `Serialize`/`Deserialize` on core `Aggregation` types, and deleted the duplicate definitions and conversion logic.
+**Saved:** ~50 lines of duplicate code, unified query logic with core primitives.
