@@ -1233,7 +1233,7 @@ mod tests {
 
     #[test]
     fn test_error_relvar_not_found() {
-        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        let db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
         let result = db.query("NONEXISTENT");
         assert!(result.is_err());
