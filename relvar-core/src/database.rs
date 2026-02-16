@@ -560,13 +560,13 @@ impl<E: StorageEngine> Database<E> {
         // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
         // NOTE: In a production system we'd only validate changed tuples, but for now
         // we validate everything to ensure total consistency.
-        for tuple in new_relation.tuples() {
+        new_relation.tuples().try_for_each(|tuple| {
             self.constraints.validate_tuple_content_constraints(
                 &mut self.engine,
                 relation_name,
                 tuple,
-            )?;
-        }
+            )
+        })?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -1842,5 +1842,48 @@ mod tests {
         // Insert with invalid age (too high) should fail
         let result = db.insert("PERSONS", tuple! { id: 3i64, age: 200i64 });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_constraint_violation_in_loop() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("salary", ScalarType::Int),
+        );
+
+        db.create_relvar("EMPLOYEES", rel_type).unwrap();
+
+        // CHECK constraint: salary > 0
+        let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+            "positive_salary",
+            "Salary must be positive",
+            ConstraintExpression::Cmp {
+                left: "salary".to_string(),
+                op: CmpOp::Gt,
+                right: ValueOrRef::Value(ScalarValue::Int(0)),
+            },
+        ));
+        db.set_check_constraints("EMPLOYEES", constraints).unwrap();
+
+        db.insert("EMPLOYEES", tuple! { id: 1i64, salary: 50000i64 })
+            .unwrap();
+
+        // Update to set salary to -100 (violation)
+        let result = db.update(
+            "EMPLOYEES",
+            |t| t.get_typed::<i64>("id").unwrap() == 1,
+            |_t| tuple! { id: 1i64, salary: -100i64 },
+        );
+
+        // Should fail due to constraint violation in the try_for_each loop
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DatabaseError::Constraint(
+                ConstraintManagerError::CheckConstraintViolation(_)
+            ))
+        ));
     }
 }

@@ -104,66 +104,80 @@ impl PersistentEngine {
         &mut self,
         uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
     ) -> Result<(), StorageError> {
-        use std::collections::HashMap;
+        let by_relation = self.group_uncommitted_inserts(uncommitted_inserts);
 
-        // Group by relation name
-        let mut by_relation: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+        // For each relation, rebuild without uncommitted tuples
+        for (relation_name, uncommitted_tuples) in by_relation {
+            if self
+                .storage_manager
+                .read()
+                .unwrap()
+                .relation_exists(&relation_name)
+            {
+                self.cleanup_relation_uncommitted_inserts(&relation_name, uncommitted_tuples)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Groups uncommitted inserts by relation name.
+    fn group_uncommitted_inserts(
+        &self,
+        uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
+    ) -> std::collections::HashMap<String, Vec<Vec<u8>>> {
+        let mut by_relation: std::collections::HashMap<String, Vec<Vec<u8>>> =
+            std::collections::HashMap::new();
         for insert in uncommitted_inserts {
             by_relation
                 .entry(insert.relation_name)
                 .or_default()
                 .push(insert.tuple_data);
         }
+        by_relation
+    }
 
-        // For each relation, rebuild without uncommitted tuples
-        for (relation_name, uncommitted_tuples_vec) in by_relation {
-            // Skip if relation doesn't exist
-            if !self
-                .storage_manager
-                .write()
-                .unwrap()
-                .relation_exists(&relation_name)
-            {
-                continue;
+    /// Rebuilds a relation excluding uncommitted tuples and stores it back.
+    fn cleanup_relation_uncommitted_inserts(
+        &mut self,
+        relation_name: &str,
+        uncommitted_tuples_vec: Vec<Vec<u8>>,
+    ) -> Result<(), StorageError> {
+        // Convert to HashSet for O(1) lookup
+        let uncommitted_tuples: std::collections::HashSet<Vec<u8>> =
+            uncommitted_tuples_vec.into_iter().collect();
+
+        // Load all tuples using current snapshot (txn=0, committed_txns set from recovery)
+        let snapshot = self.get_snapshot_for_current_context()?;
+
+        let relation = self.storage_manager.write().unwrap().scan_relation(
+            relation_name,
+            &snapshot,
+            &self.committed_txns,
+        )?;
+
+        // Filter out uncommitted tuples
+        let mut committed_tuples = Vec::new();
+        for tuple in relation.tuples() {
+            let tuple_data = bincode::serialize(&tuple)
+                .map_err(|e| StorageError::Other(format!("Serialization error: {}", e)))?;
+
+            if !uncommitted_tuples.contains(&tuple_data) {
+                committed_tuples.push(tuple.clone());
             }
-
-            // Convert to HashSet for O(1) lookup
-            let uncommitted_tuples: std::collections::HashSet<Vec<u8>> =
-                uncommitted_tuples_vec.into_iter().collect();
-
-            // Load all tuples using current snapshot (txn=0, committed_txns set from recovery)
-            let snapshot = self.get_snapshot_for_current_context()?;
-            let relation = self.storage_manager.write().unwrap().scan_relation(
-                &relation_name,
-                &snapshot,
-                &self.committed_txns,
-            )?;
-
-            // Filter out uncommitted tuples
-            let mut committed_tuples = Vec::new();
-            for tuple in relation.tuples() {
-                let tuple_data = bincode::serialize(&tuple)
-                    .map_err(|e| StorageError::Other(format!("Serialization error: {}", e)))?;
-
-                if !uncommitted_tuples.contains(&tuple_data) {
-                    committed_tuples.push(tuple.clone());
-                }
-            }
-
-            // Rebuild relation with only committed tuples
-            let mut new_relation =
-                relvar_core::values::Relation::new(relation.relation_type().clone());
-
-            for tuple in committed_tuples {
-                new_relation
-                    .insert(tuple)
-                    .map_err(|e| StorageError::Relation(e.to_string()))?;
-            }
-
-            // Store back (effectively removing uncommitted garbage)
-            self.store_relation(&relation_name, &new_relation)?;
         }
 
+        // Rebuild relation with only committed tuples
+        let mut new_relation = relvar_core::values::Relation::new(relation.relation_type().clone());
+
+        for tuple in committed_tuples {
+            new_relation
+                .insert(tuple)
+                .map_err(|e| StorageError::Relation(e.to_string()))?;
+        }
+
+        // Store back (effectively removing uncommitted garbage)
+        self.store_relation(relation_name, &new_relation)?;
         Ok(())
     }
 
@@ -312,14 +326,7 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {
-        // Auto-commit logic
-        let auto_commit = self.current_txn.is_none();
-        let txn_id = if auto_commit {
-            let snapshot = self.begin_transaction()?;
-            snapshot.txn_id
-        } else {
-            self.current_txn.unwrap()
-        };
+        let (txn_id, auto_commit) = self.ensure_transaction()?;
 
         self.storage_manager
             .write()
@@ -335,13 +342,7 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn insert_tuple(&mut self, name: &str, tuple: Tuple) -> Result<(), StorageError> {
-        let auto_commit = self.current_txn.is_none();
-        let txn_id = if auto_commit {
-            let snapshot = self.begin_transaction()?;
-            snapshot.txn_id
-        } else {
-            self.current_txn.unwrap()
-        };
+        let (txn_id, auto_commit) = self.ensure_transaction()?;
 
         // Serialize tuple for WAL
         let tuple_data = bincode::serialize(&tuple)
@@ -419,6 +420,18 @@ impl StorageEngine for PersistentEngine {
 
 // MVCC methods (internal)
 impl PersistentEngine {
+    /// Ensures a transaction is active.
+    ///
+    /// Returns the transaction ID and a boolean indicating if a new transaction was started (auto-commit).
+    fn ensure_transaction(&mut self) -> Result<(TransactionId, bool), StorageError> {
+        if let Some(txn_id) = self.current_txn {
+            Ok((txn_id, false))
+        } else {
+            let snapshot = self.begin_transaction()?;
+            Ok((snapshot.txn_id, true))
+        }
+    }
+
     #[allow(dead_code)]
     pub(crate) fn load_relation_for_txn(
         &mut self,
@@ -1738,6 +1751,102 @@ mod tests {
                 relation.cardinality(),
                 0,
                 "Recovery failed to undo uncommitted insert"
+            );
+        }
+    }
+
+    #[test]
+    fn test_recovery_ignores_dropped_relation() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // 1. Create database, insert, then drop relation, then crash before commit
+        {
+            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            engine
+                .create_relation("DROPPED_REL", test_rel_type())
+                .unwrap();
+
+            // Begin transaction
+            let _snapshot = engine.begin_transaction().unwrap();
+
+            // Insert tuple (written to WAL)
+            engine
+                .insert_tuple("DROPPED_REL", tuple! { id: 1i64, name: "ToDrop" })
+                .unwrap();
+
+            // Drop relation (removes from catalog and heap file)
+            // Note: In a real crash scenario, the catalog drop might not be durable if not WAL-logged,
+            // but here we simulate the state where the catalog update persisted but the txn didn't commit.
+            engine.drop_relation("DROPPED_REL").unwrap();
+
+            // CRASH! (Drop engine)
+        }
+
+        // 2. Reopen database
+        {
+            // Recovery runs. It sees uncommitted insert for "DROPPED_REL".
+            // It should check if "DROPPED_REL" exists. It doesn't.
+            // It should skip cleanup and open successfully.
+            let engine = PersistentEngine::open(temp_dir.path());
+            assert!(
+                engine.is_ok(),
+                "Engine should open successfully despite uncommitted inserts for dropped relation"
+            );
+
+            let engine = engine.unwrap();
+            assert!(!engine.relation_exists("DROPPED_REL"));
+        }
+    }
+
+    #[test]
+    fn test_recovery_retains_valid_data_during_cleanup() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // 1. Create database and insert committed data
+        {
+            let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            engine.create_relation("TEST", test_rel_type()).unwrap();
+
+            // Committed transaction
+            let snapshot = engine.begin_transaction().unwrap();
+            engine
+                .insert_tuple("TEST", tuple! { id: 1i64, name: "Committed" })
+                .unwrap();
+            engine.commit_transaction(snapshot).unwrap();
+
+            // Uncommitted transaction (simulating crash)
+            let _snapshot = engine.begin_transaction().unwrap();
+            engine
+                .insert_tuple("TEST", tuple! { id: 2i64, name: "Uncommitted" })
+                .unwrap();
+
+            // CRASH! (Drop engine)
+        }
+
+        // 2. Reopen database (Trigger Recovery)
+        {
+            let engine = PersistentEngine::open(temp_dir.path()).unwrap();
+            let relation = engine.load_relation("TEST").unwrap();
+
+            // Verify committed tuple exists
+            assert_eq!(
+                relation.cardinality(),
+                1,
+                "Recovery should retain committed data"
+            );
+            assert!(
+                relation
+                    .tuples()
+                    .any(|t| t.get_typed::<i64>("id").unwrap() == 1),
+                "Committed tuple should persist"
+            );
+
+            // Verify uncommitted tuple is gone
+            assert!(
+                !relation
+                    .tuples()
+                    .any(|t| t.get_typed::<i64>("id").unwrap() == 2),
+                "Uncommitted tuple should be removed"
             );
         }
     }
