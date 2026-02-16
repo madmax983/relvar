@@ -24,3 +24,8 @@
 **Concept:** A module (`relvar::experimental::importer`) to import Relations from JSON and CSV, strictly conforming to a `RelationType`.
 **Fate:** Merged
 **Lesson:** Symmetry is beautiful. If we have `exporter`, we need `importer`. Strict typing requires parsing intermediate JSON/String values against the schema, not just relying on `serde` defaults.
+
+## [Spatial Types]
+**Concept:** A module (`relvar::experimental::spatial`) implementing a `Point` type using `ScalarType::UserDefined` backed by `ScalarType::Relation`.
+**Fate:** Proposed
+**Lesson:** The relational model is powerful enough to represent complex types like Points without opaque blobs. By treating a Point as a relation `{x: Float, y: Float}`, we maintain purity and allow future extensibility while providing a familiar `Point` interface.
