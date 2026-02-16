@@ -171,13 +171,15 @@ impl PersistentEngine {
         let mut new_relation = relvar_core::values::Relation::new(relation.relation_type().clone());
 
         for tuple in relation.tuples() {
-            let tuple_data = bincode::serialize(&tuple)
-                .map_err(|e| StorageError::Other(format!("Serialization error: {}", e)))?;
+            // Serialization should never fail for a valid in-memory tuple
+            let tuple_data =
+                bincode::serialize(&tuple).expect("Failed to serialize tuple during cleanup");
 
             if !uncommitted_tuples.contains(&tuple_data) {
+                // Insertion into a new relation with the same type should never fail
                 new_relation
                     .insert(tuple.clone())
-                    .map_err(|e| StorageError::Relation(e.to_string()))?;
+                    .expect("Failed to insert tuple into clean relation");
             }
         }
 
