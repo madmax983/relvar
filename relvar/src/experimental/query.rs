@@ -166,9 +166,12 @@ impl Query {
                 // Note: Relation::restrict takes a closure that returns bool.
                 // We use evaluate() inside, but we must handle errors.
                 // Currently, we treat evaluation errors as false (exclude tuple).
-                let predicate = predicate.clone();
+
+                // Pre-compute optimized structures (HashSet for IN, Vec<char> for LIKE)
+                // This prevents O(N*M) behavior for large IN lists or LIKE patterns
+                let prepared = predicate.prepare();
                 let result =
-                    relation.restrict(move |tuple| predicate.evaluate(tuple).unwrap_or_default());
+                    relation.restrict(move |tuple| prepared.evaluate(tuple).unwrap_or_default());
                 Ok(result)
             }
             Query::Project { input, attributes } => {

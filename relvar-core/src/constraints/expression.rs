@@ -29,6 +29,7 @@
 //! assert!(!expr.evaluate(&invalid_tuple).unwrap());
 //! ```
 
+use super::prepared::PreparedConstraintExpression;
 use crate::values::{ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -238,6 +239,10 @@ impl ConstraintExpression {
     fn matches_pattern(text: &str, pattern: &str) -> bool {
         // Collect pattern chars for random access (usually small)
         let pattern_chars: Vec<char> = pattern.chars().collect();
+        Self::matches_pattern_chars(text, &pattern_chars)
+    }
+
+    pub(crate) fn matches_pattern_chars(text: &str, pattern_chars: &[char]) -> bool {
         let pattern_len = pattern_chars.len();
 
         // DP state: only need previous row and current row
@@ -289,8 +294,17 @@ impl ConstraintExpression {
         prev_dp[pattern_len]
     }
 
+    /// Prepares the constraint expression for efficient repeated evaluation.
+    ///
+    /// Optimizations:
+    /// - `IN`: Converts `Vec` to `HashSet` for O(1) lookup.
+    /// - `LIKE`: Pre-parses pattern string to `Vec<char>`.
+    pub fn prepare(&self) -> PreparedConstraintExpression {
+        PreparedConstraintExpression::from(self.clone())
+    }
+
     /// Helper to resolve a ValueOrRef to a concrete ScalarValue from the tuple.
-    fn resolve_value_or_ref<'a>(
+    pub(crate) fn resolve_value_or_ref<'a>(
         tuple: &'a Tuple,
         value_or_ref: &'a ValueOrRef,
     ) -> Result<&'a ScalarValue, ExpressionError> {
@@ -306,7 +320,7 @@ impl ConstraintExpression {
     ///
     /// Fetches both operands and ensures they are of compatible types
     /// before performing comparison operations.
-    fn get_comparison_operands<'a>(
+    pub(crate) fn get_comparison_operands<'a>(
         tuple: &'a Tuple,
         attr: &str,
         value_or_ref: &'a ValueOrRef,
