@@ -279,11 +279,12 @@ fn probe_and_combine<'a>(
     result_heading: &Arc<TupleType>,
 ) -> Result<Vec<Tuple>, DatabaseError> {
     let mut joined_tuples = Vec::new();
+    let mut key_buffer = Vec::with_capacity(common_attrs.len());
 
     for probe_tuple in probe_rel.tuples() {
-        let key = extract_join_key(probe_tuple, common_attrs, "probe relation")?;
+        extract_join_key_into(probe_tuple, common_attrs, "probe relation", &mut key_buffer)?;
 
-        if let Some(matching_tuples) = build_map.get(&key) {
+        if let Some(matching_tuples) = build_map.get(key_buffer.as_slice()) {
             for build_tuple in matching_tuples {
                 joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
             }
@@ -299,12 +300,24 @@ fn extract_join_key<'a>(
     source_name: &str,
 ) -> Result<Vec<&'a ScalarValue>, DatabaseError> {
     let mut key = Vec::with_capacity(attrs.len());
+    extract_join_key_into(tuple, attrs, source_name, &mut key)?;
+    Ok(key)
+}
+
+/// Helper to extract key values into a provided buffer.
+fn extract_join_key_into<'a>(
+    tuple: &'a Tuple,
+    attrs: &[String],
+    source_name: &str,
+    key: &mut Vec<&'a ScalarValue>,
+) -> Result<(), DatabaseError> {
+    key.clear();
     for attr in attrs {
         key.push(tuple.get(attr).ok_or_else(|| {
             DatabaseError::AttributeNotFound(attr.clone(), source_name.to_string())
         })?);
     }
-    Ok(key)
+    Ok(())
 }
 
 /// Helper to combine two tuples into a single tuple.
