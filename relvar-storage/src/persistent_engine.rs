@@ -116,17 +116,17 @@ impl PersistentEngine {
         &mut self,
         uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
     ) -> Result<(), StorageError> {
-        let by_relation = self.group_uncommitted_inserts(uncommitted_inserts);
+        let relations_to_cleanup = self.group_uncommitted_inserts(uncommitted_inserts);
 
         // For each relation, rebuild without uncommitted tuples
-        for (relation_name, uncommitted_tuples) in by_relation {
+        for relation_name in relations_to_cleanup {
             if self
                 .storage_manager
                 .read()
                 .unwrap()
                 .relation_exists(&relation_name)
             {
-                self.cleanup_relation_uncommitted_inserts(&relation_name, uncommitted_tuples)?;
+                self.cleanup_relation_uncommitted_inserts(&relation_name)?;
             }
         }
 
@@ -137,54 +137,30 @@ impl PersistentEngine {
     fn group_uncommitted_inserts(
         &self,
         uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
-    ) -> std::collections::HashMap<String, Vec<Vec<u8>>> {
+    ) -> std::collections::HashSet<String> {
         uncommitted_inserts
             .into_iter()
-            .fold(std::collections::HashMap::new(), |mut acc, insert| {
-                acc.entry(insert.relation_name)
-                    .or_default()
-                    .push(insert.tuple_data);
-                acc
-            })
+            .map(|insert| insert.relation_name)
+            .collect()
     }
 
     /// Rebuilds a relation excluding uncommitted tuples and stores it back.
     fn cleanup_relation_uncommitted_inserts(
         &mut self,
         relation_name: &str,
-        uncommitted_tuples_vec: Vec<Vec<u8>>,
     ) -> Result<(), StorageError> {
-        // Convert to HashSet for O(1) lookup
-        let uncommitted_tuples: std::collections::HashSet<Vec<u8>> =
-            uncommitted_tuples_vec.into_iter().collect();
-
         // Load all tuples using current snapshot (txn=0, committed_txns set from recovery)
         let snapshot = self.get_snapshot_for_current_context()?;
 
+        // scan_relation implicitly filters out uncommitted tuples because they are not in committed_txns
         let relation = self.storage_manager.write().unwrap().scan_relation(
             relation_name,
             &snapshot,
             &self.committed_txns,
         )?;
 
-        // Rebuild relation with only committed tuples
-        let mut new_relation = relvar_core::values::Relation::new(relation.relation_type().clone());
-
-        for tuple in relation.tuples() {
-            // Serialization should never fail for a valid in-memory tuple
-            let tuple_data =
-                bincode::serialize(&tuple).expect("Failed to serialize tuple during cleanup");
-
-            if !uncommitted_tuples.contains(&tuple_data) {
-                // Insertion into a new relation with the same type should never fail
-                new_relation
-                    .insert(tuple.clone())
-                    .expect("Failed to insert tuple into clean relation");
-            }
-        }
-
-        // Store back (effectively removing uncommitted garbage)
-        self.store_relation(relation_name, &new_relation)?;
+        // Store back (effectively removing uncommitted garbage from the heap file)
+        self.store_relation(relation_name, &relation)?;
         Ok(())
     }
 
