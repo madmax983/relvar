@@ -1,7 +1,8 @@
+use relvar::algebra::{Aggregation, AggregationFn};
 use relvar::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
-use relvar::experimental::query::{Query, QueryAggregation, QueryAggregationFn};
+use relvar::query::Query;
 use relvar::types::{RelationType, ScalarType, TupleType};
-use relvar::values::ScalarValue;
+use relvar::values::{ScalarValue, Tuple};
 use relvar::{Database, InMemoryEngine, tuple};
 
 #[test]
@@ -132,15 +133,15 @@ fn test_query_join_summarize() {
         .summarize(
             vec!["dept_name"],
             vec![
-                QueryAggregation {
+                Aggregation {
                     result_name: "count".to_string(),
                     result_type: ScalarType::Int,
-                    function: QueryAggregationFn::Count,
+                    function: AggregationFn::Count,
                 },
-                QueryAggregation {
+                Aggregation {
                     result_name: "avg_salary".to_string(),
                     result_type: ScalarType::Float,
-                    function: QueryAggregationFn::Avg("salary".to_string()),
+                    function: AggregationFn::Avg("salary".to_string()),
                 },
             ],
         );
@@ -152,7 +153,7 @@ fn test_query_join_summarize() {
     // Verify Engineering (dept_id 10) -> count 2, avg 55000
     let eng_tuple = result
         .tuples()
-        .find(|t| t.get_typed::<String>("dept_name").unwrap() == "Engineering")
+        .find(|t: &&Tuple| t.get_typed::<String>("dept_name").unwrap() == "Engineering")
         .unwrap();
 
     assert_eq!(eng_tuple.get_typed::<i64>("count").unwrap(), 2);
@@ -182,20 +183,20 @@ fn test_query_rename_aggregations() {
         .summarize(
             vec!["player_id"],
             vec![
-                QueryAggregation {
+                Aggregation {
                     result_name: "min_score".to_string(),
                     result_type: ScalarType::Int,
-                    function: QueryAggregationFn::Min("score".to_string()),
+                    function: AggregationFn::Min("score".to_string()),
                 },
-                QueryAggregation {
+                Aggregation {
                     result_name: "max_score".to_string(),
                     result_type: ScalarType::Int,
-                    function: QueryAggregationFn::Max("score".to_string()),
+                    function: AggregationFn::Max("score".to_string()),
                 },
-                QueryAggregation {
+                Aggregation {
                     result_name: "total_score".to_string(),
                     result_type: ScalarType::Int,
-                    function: QueryAggregationFn::Sum("score".to_string()),
+                    function: AggregationFn::Sum("score".to_string()),
                 },
             ],
         );
@@ -205,7 +206,7 @@ fn test_query_rename_aggregations() {
 
     let p1 = result
         .tuples()
-        .find(|t| t.get_typed::<i64>("player_id").unwrap() == 1)
+        .find(|t: &&Tuple| t.get_typed::<i64>("player_id").unwrap() == 1)
         .unwrap();
     assert_eq!(p1.get_typed::<i64>("min_score").unwrap(), 10);
     assert_eq!(p1.get_typed::<i64>("max_score").unwrap(), 20);
