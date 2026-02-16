@@ -59,8 +59,8 @@ pub struct VirtualRelvarDefinition<E: StorageEngine> {
     pub relation_type: RelationType,
     /// The evaluation function that computes the virtual relvar's contents.
     ///
-    /// Takes a mutable reference to the database and returns the computed relation.
-    pub evaluator: fn(&mut Database<E>) -> Result<Relation, DatabaseError>,
+    /// Takes an immutable reference to the database and returns the computed relation.
+    pub evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
 }
 
 /// A relational database instance.
@@ -442,7 +442,7 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
-    pub fn query(&mut self, relation_name: &str) -> Result<Relation, DatabaseError> {
+    pub fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Check if this is a virtual relvar
         if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
             return (virtual_relvar.evaluator)(self);
@@ -673,7 +673,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&mut Database<E>) -> Result<Relation, DatabaseError>,
+        evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -1100,7 +1100,7 @@ mod tests {
         db.define_virtual_relvar(
             "NAMES",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &Database<InMemoryEngine>| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1357,7 +1357,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &Database<InMemoryEngine>| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1393,7 +1393,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-            |db: &mut Database<InMemoryEngine>| {
+            |db: &Database<InMemoryEngine>| {
                 let test = db.query("TEST")?;
                 Ok(test.project(&["name"]))
             },
@@ -1417,7 +1417,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("TEST"),
+            |db: &Database<InMemoryEngine>| db.query("TEST"),
         )
         .unwrap();
 
@@ -1438,7 +1438,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("TEST"),
+            |db: &Database<InMemoryEngine>| db.query("TEST"),
         )
         .unwrap();
 
@@ -1465,7 +1465,7 @@ mod tests {
         db.define_virtual_relvar(
             "VIRT",
             test_rel_type(),
-            |db: &mut Database<InMemoryEngine>| db.query("NONEXISTENT"),
+            |db: &Database<InMemoryEngine>| db.query("NONEXISTENT"),
         )
         .unwrap();
 
@@ -1918,5 +1918,34 @@ mod tests {
                 ConstraintManagerError::CheckConstraintViolation(_)
             ))
         ));
+    }
+
+    #[test]
+    fn test_virtual_relvar_immutability_enforcement() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        // Create a log relation
+        let log_type = RelationType::new(
+            TupleType::new().with_attribute("count", ScalarType::Int)
+        );
+        db.create_relvar("LOG", log_type).unwrap();
+
+        // Define a view. The compiler enforces that we cannot call mutable methods
+        // like insert() inside the evaluator because it receives &Database, not &mut Database.
+        db.define_virtual_relvar(
+            "SAFE_VIEW",
+            test_rel_type(),
+            |db: &Database<InMemoryEngine>| {
+                // db.insert("LOG", ...); // This would cause compilation error!
+
+                // Read operations are allowed
+                let _ = db.query("LOG")?;
+
+                Ok(Relation::new(test_rel_type()))
+            },
+        ).unwrap();
+
+        // Query the view
+        assert!(db.query("SAFE_VIEW").is_ok());
     }
 }
