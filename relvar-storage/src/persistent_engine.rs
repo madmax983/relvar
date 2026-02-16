@@ -138,15 +138,14 @@ impl PersistentEngine {
         &self,
         uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
     ) -> std::collections::HashMap<String, Vec<Vec<u8>>> {
-        let mut by_relation: std::collections::HashMap<String, Vec<Vec<u8>>> =
-            std::collections::HashMap::new();
-        for insert in uncommitted_inserts {
-            by_relation
-                .entry(insert.relation_name)
-                .or_default()
-                .push(insert.tuple_data);
-        }
-        by_relation
+        uncommitted_inserts
+            .into_iter()
+            .fold(std::collections::HashMap::new(), |mut acc, insert| {
+                acc.entry(insert.relation_name)
+                    .or_default()
+                    .push(insert.tuple_data);
+                acc
+            })
     }
 
     /// Rebuilds a relation excluding uncommitted tuples and stores it back.
@@ -168,24 +167,18 @@ impl PersistentEngine {
             &self.committed_txns,
         )?;
 
-        // Filter out uncommitted tuples
-        let mut committed_tuples = Vec::new();
+        // Rebuild relation with only committed tuples
+        let mut new_relation = relvar_core::values::Relation::new(relation.relation_type().clone());
+
         for tuple in relation.tuples() {
             let tuple_data = bincode::serialize(&tuple)
                 .map_err(|e| StorageError::Other(format!("Serialization error: {}", e)))?;
 
             if !uncommitted_tuples.contains(&tuple_data) {
-                committed_tuples.push(tuple.clone());
+                new_relation
+                    .insert(tuple.clone())
+                    .map_err(|e| StorageError::Relation(e.to_string()))?;
             }
-        }
-
-        // Rebuild relation with only committed tuples
-        let mut new_relation = relvar_core::values::Relation::new(relation.relation_type().clone());
-
-        for tuple in committed_tuples {
-            new_relation
-                .insert(tuple)
-                .map_err(|e| StorageError::Relation(e.to_string()))?;
         }
 
         // Store back (effectively removing uncommitted garbage)
