@@ -1319,12 +1319,12 @@ impl HeapFile {
                     }
 
                     // 2. Undo Delete/Update: If deleter (xmax) is aborted, restore the tuple
-                    if let Some(xmax) = slot.xmax {
-                        if txn_ids.contains(&xmax) {
-                            slot.xmax = None;
-                            modifications += 1;
-                            page_modified = true;
-                        }
+                    if let Some(xmax) = slot.xmax
+                        && txn_ids.contains(&xmax)
+                    {
+                        slot.xmax = None;
+                        modifications += 1;
+                        page_modified = true;
                     }
                 }
             }

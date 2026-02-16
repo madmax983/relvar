@@ -81,7 +81,7 @@ impl PersistentEngine {
             recover(&mut wal).map_err(|e| StorageError::Other(format!("Recovery error: {}", e)))?;
 
         // Create engine instance
-        let mut engine = Self {
+        let engine = Self {
             storage_manager: RwLock::new(storage_manager),
             wal,
             // Seed transaction ID generator with max ID from WAL + 1 to avoid reuse
