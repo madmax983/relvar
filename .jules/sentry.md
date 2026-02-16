@@ -33,3 +33,7 @@
 ## 2027-02-27 - Slot Reuse Data Corruption
 **Learning:** `HeapFile::try_insert_into_page` (and versioned variants) caused data corruption when reusing a freed slot (e.g. from deletion). It was calling `vec.insert()` which shifts subsequent elements, but the `slots` vector was not shifted (since we reused an index). This misaligned slots and tuple data, causing subsequent tuples to be lost or corrupted during page repack.
 **Action:** When managing parallel vectors (slots and data), ensure modifications are symmetric. If reusing a slot index, use index assignment (`vec[i] = val`) instead of insertion (`vec.insert(i, val)`).
+
+## 2027-05-22 - Virtual Relvar Side-Effect Vulnerability
+**Learning:** `VirtualRelvarDefinition` passes `&mut Database` to the evaluator closure, allowing "read-only" views to perform writes (insert/update/delete) as side effects.
+**Action:** When designing extension points or callback APIs, strictly enforce immutability (`&self`) if the operation is conceptually read-only. Avoid passing mutable context unless mutation is the explicit goal.
