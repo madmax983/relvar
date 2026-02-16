@@ -38,6 +38,31 @@ impl Relation {
     ///
     /// A new relation containing the transitive closure of the graph.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// // Define a graph: node -> node
+    /// let heading = TupleType::new()
+    ///     .with_attribute("start", ScalarType::Int)
+    ///     .with_attribute("end", ScalarType::Int);
+    /// let mut graph = Relation::new(RelationType::new(heading));
+    ///
+    /// // Add edges: 1 -> 2 -> 3
+    /// graph.insert(tuple! { start: 1i64, end: 2i64 }).unwrap();
+    /// graph.insert(tuple! { start: 2i64, end: 3i64 }).unwrap();
+    ///
+    /// // Compute transitive closure
+    /// let closure = graph.tclose("start", "end").unwrap();
+    ///
+    /// // Should contain 1->2, 2->3 (original edges) and 1->3 (inferred path)
+    /// assert_eq!(closure.cardinality(), 3);
+    /// assert!(closure.contains(&tuple! { start: 1i64, end: 3i64 }));
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns `DatabaseError` if:

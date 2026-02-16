@@ -2,6 +2,39 @@
 //!
 //! This module provides the [`Database`] struct, which is the main entry point
 //! for all database operations.
+//!
+//! # System Architecture
+//!
+//! The `Database` struct acts as the orchestrator of the system, delegating responsibilities
+//! to specialized components while maintaining the logical consistency of the relational model.
+//!
+//! ```text
+//! ┌───────────────────────────────────────────────────────────────────┐
+//! │                           Database                                │
+//! │                                                                   │
+//! │  ┌───────────────────┐   ┌─────────────────────────────────────┐  │
+//! │  │ ConstraintManager │   │            StorageEngine            │  │
+//! │  │                   │   │                                     │  │
+//! │  │ - Key Constraints │   │  ┌──────────────┐  ┌─────────────┐  │  │
+//! │  │ - Foreign Keys    │   │  │ InMemory     │  │ Persistent  │  │  │
+//! │  │ - Type Constraints│   │  │              │  │ (Optional)  │  │  │
+//! │  │ - Check Const.    │   │  └──────────────┘  └─────────────┘  │  │
+//! │  └─────────┬─────────┘   └──────────────────┬──────────────────┘  │
+//! │            │                                │                     │
+//! └────────────┼────────────────────────────────┼─────────────────────┘
+//!              ▼                                ▼
+//!        Validates Data                   Persists Data
+//! ```
+//!
+//! ## Key Interactions
+//!
+//! 1.  **Operation Request**: User calls methods like `insert`, `update`, `delete`.
+//! 2.  **Constraint Validation**: `Database` consults `ConstraintManager` to ensure
+//!     the operation violates no integrity rules.
+//! 3.  **Persistence**: If valid, `Database` delegates the physical data modification
+//!     to the configured `StorageEngine`.
+//! 4.  **Transaction Management**: `Database` coordinates with `StorageEngine` to begin,
+//!     commit, or rollback transactions.
 
 use crate::constraints::{
     AttributeConstraints, CheckConstraints, ConstraintManager, ForeignKeyConstraints,
