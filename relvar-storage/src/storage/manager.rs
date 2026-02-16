@@ -313,6 +313,25 @@ impl StorageManager {
         }
         Ok(())
     }
+
+    /// Undoes changes made by specific transactions across all relations.
+    ///
+    /// This iterates through all relations in the database and removes/restores
+    /// versions modified by the specified transactions.
+    pub fn undo_transactions(
+        &mut self,
+        txn_ids: &HashSet<TransactionId>,
+    ) -> Result<(), StorageError> {
+        // Iterate all relations (not just cached ones)
+        let relations = self.list_relations();
+        for name in relations {
+            let heap_file = self.get_or_open_heap_file(&name)?;
+            heap_file
+                .undo_transactions(txn_ids)
+                .map_err(Self::convert_heap_error)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

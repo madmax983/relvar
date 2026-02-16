@@ -93,78 +93,22 @@ impl PersistentEngine {
             current_txn: None,
         };
 
-        // Undo uncommitted transactions
-        engine.undo_uncommitted_inserts(recovery_result.uncommitted_inserts)?;
+        // Identify transactions to undo (active + aborted)
+        let txns_to_undo: HashSet<TransactionId> = recovery_result
+            .active_txns
+            .union(&recovery_result.aborted_txns)
+            .cloned()
+            .collect();
 
-        Ok(engine)
-    }
-
-    /// Undoes uncommitted inserts identified during recovery.
-    fn undo_uncommitted_inserts(
-        &mut self,
-        uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
-    ) -> Result<(), StorageError> {
-        use std::collections::HashMap;
-
-        // Group by relation name
-        let mut by_relation: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
-        for insert in uncommitted_inserts {
-            by_relation
-                .entry(insert.relation_name)
-                .or_default()
-                .push(insert.tuple_data);
-        }
-
-        // For each relation, rebuild without uncommitted tuples
-        for (relation_name, uncommitted_tuples_vec) in by_relation {
-            // Skip if relation doesn't exist
-            if !self
+        if !txns_to_undo.is_empty() {
+            engine
                 .storage_manager
                 .write()
                 .unwrap()
-                .relation_exists(&relation_name)
-            {
-                continue;
-            }
-
-            // Convert to HashSet for O(1) lookup
-            let uncommitted_tuples: std::collections::HashSet<Vec<u8>> =
-                uncommitted_tuples_vec.into_iter().collect();
-
-            // Load all tuples using current snapshot (txn=0, committed_txns set from recovery)
-            let snapshot = self.get_snapshot_for_current_context()?;
-            let relation = self.storage_manager.write().unwrap().scan_relation(
-                &relation_name,
-                &snapshot,
-                &self.committed_txns,
-            )?;
-
-            // Filter out uncommitted tuples
-            let mut committed_tuples = Vec::new();
-            for tuple in relation.tuples() {
-                let tuple_data = bincode::serialize(&tuple)
-                    .map_err(|e| StorageError::Other(format!("Serialization error: {}", e)))?;
-
-                if !uncommitted_tuples.contains(&tuple_data) {
-                    committed_tuples.push(tuple.clone());
-                }
-            }
-
-            // Rebuild relation with only committed tuples
-            let mut new_relation =
-                relvar_core::values::Relation::new(relation.relation_type().clone());
-
-            for tuple in committed_tuples {
-                new_relation
-                    .insert(tuple)
-                    .map_err(|e| StorageError::Relation(e.to_string()))?;
-            }
-
-            // Store back (effectively removing uncommitted garbage)
-            self.store_relation(&relation_name, &new_relation)?;
+                .undo_transactions(&txns_to_undo)?;
         }
 
-        Ok(())
+        Ok(engine)
     }
 
     /// Performs a checkpoint to enable WAL truncation and faster recovery.

@@ -1260,6 +1260,96 @@ impl HeapFile {
     ///
     /// # Errors
     /// Returns `HeapError` if page I/O fails
+    /// Undoes changes made by specific transactions (aborted inserts/updates/deletes).
+    ///
+    /// This is used during crash recovery to clean up effects of transactions
+    /// that were active or aborted at the time of crash.
+    ///
+    /// # Logic
+    /// - If a version was created by an undone txn (xmin in txn_ids): remove it.
+    /// - If a version was deleted by an undone txn (xmax in txn_ids): un-delete it (clear xmax).
+    ///
+    /// # Arguments
+    /// * `txn_ids` - Set of Transaction IDs to undo
+    ///
+    /// # Returns
+    /// Number of modifications made (slots cleared or restored)
+    pub(crate) fn undo_transactions(
+        &mut self,
+        txn_ids: &std::collections::HashSet<crate::wal::TransactionId>,
+    ) -> Result<usize, HeapError> {
+        let mut modifications = 0;
+        let mut page_id = 0;
+
+        loop {
+            let page = self.page_file.read_page(page_id)?;
+
+            if page.is_empty() {
+                break;
+            }
+
+            if !self.is_versioned_page(&page) {
+                page_id += 1;
+                continue;
+            }
+
+            // Try to deserialize as versioned page
+            let mut versioned_page = match self.deserialize_versioned_page(&page) {
+                Ok(vp) => vp,
+                Err(_) => {
+                    page_id += 1;
+                    continue;
+                }
+            };
+
+            // Extract existing tuple data
+            let mut existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
+
+            let mut page_modified = false;
+
+            for (idx, slot_option) in versioned_page.slots.iter_mut().enumerate() {
+                if let Some(slot) = slot_option {
+                    // 1. Undo Insert: If creator (xmin) is aborted, remove the tuple
+                    if txn_ids.contains(&slot.xmin) {
+                        *slot_option = None;
+                        existing_tuples[idx] = Vec::new();
+                        modifications += 1;
+                        page_modified = true;
+                        continue;
+                    }
+
+                    // 2. Undo Delete/Update: If deleter (xmax) is aborted, restore the tuple
+                    if let Some(xmax) = slot.xmax {
+                        if txn_ids.contains(&xmax) {
+                            slot.xmax = None;
+                            modifications += 1;
+                            page_modified = true;
+                        }
+                    }
+                }
+            }
+
+            // Write page back if modified
+            if page_modified {
+                // Repack slots
+                Self::repack_slots(
+                    &mut versioned_page.slots,
+                    &existing_tuples,
+                    USABLE_PAGE_SIZE_V2,
+                )?;
+
+                let page_data =
+                    self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+                let updated_page = Page::from_data(page_id, page_data)?;
+                self.page_file.write_page(&updated_page)?;
+            }
+
+            page_id += 1;
+        }
+
+        Ok(modifications)
+    }
+
     pub(crate) fn gc_remove_dead_versions(
         &mut self,
         oldest_active_lsn: crate::wal::Lsn,
@@ -3496,6 +3586,59 @@ mod tests {
             }
             _ => panic!("Expected Serialization error, got {:?}", result),
         }
+    }
+
+    #[test]
+    fn test_undo_transactions() {
+        use crate::mvcc::TransactionSnapshot;
+        use crate::wal::Lsn;
+
+        fn test_lsn(value: u64) -> Lsn {
+            Lsn::new(value)
+        }
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // 1. T1 inserts and commits
+        let t1 = tuple! { id: 1i64, name: "Committed" };
+        heap.insert_tuple_versioned(&t1, test_txn(1)).unwrap();
+
+        // 2. T2 inserts (will be undone)
+        let t2 = tuple! { id: 2i64, name: "ToUndo" };
+        heap.insert_tuple_versioned(&t2, test_txn(2)).unwrap();
+
+        // 3. T3 deletes T1 (will be undone)
+        // Need T1's tuple ID. We know it's page 0, slot 0
+        let tid1 = TupleId {
+            page_id: 0,
+            slot: 0,
+        };
+        heap.delete_tuple_versioned(tid1, test_txn(3)).unwrap();
+
+        // 4. Undo T2 and T3
+        let mut to_undo = std::collections::HashSet::new();
+        to_undo.insert(test_txn(2));
+        to_undo.insert(test_txn(3));
+
+        let modifications = heap.undo_transactions(&to_undo).unwrap();
+        assert!(modifications >= 2, "Should have undone insert and delete");
+
+        // Verify state:
+        // T2's insert should be gone (invisible to everyone)
+        // T1 should be visible again (undeleted)
+
+        let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
+        let mut committed = std::collections::HashSet::new();
+        committed.insert(test_txn(1));
+        // T2 and T3 are NOT committed
+
+        let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0], t1);
     }
 }
 
