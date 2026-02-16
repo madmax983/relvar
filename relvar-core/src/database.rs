@@ -1414,11 +1414,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
         db.create_relvar("TEST", test_rel_type()).unwrap();
 
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &Database<InMemoryEngine>| db.query("TEST"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &Database<InMemoryEngine>| {
+            db.query("TEST")
+        })
         .unwrap();
 
         // Try to delete
@@ -1435,11 +1433,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
         db.create_relvar("TEST", test_rel_type()).unwrap();
 
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &Database<InMemoryEngine>| db.query("TEST"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &Database<InMemoryEngine>| {
+            db.query("TEST")
+        })
         .unwrap();
 
         // Try to update
@@ -1462,11 +1458,9 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
         // Define virtual relvar that queries nonexistent base
-        db.define_virtual_relvar(
-            "VIRT",
-            test_rel_type(),
-            |db: &Database<InMemoryEngine>| db.query("NONEXISTENT"),
-        )
+        db.define_virtual_relvar("VIRT", test_rel_type(), |db: &Database<InMemoryEngine>| {
+            db.query("NONEXISTENT")
+        })
         .unwrap();
 
         // Querying it should fail
@@ -1925,9 +1919,7 @@ mod tests {
         let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
         // Create a log relation
-        let log_type = RelationType::new(
-            TupleType::new().with_attribute("count", ScalarType::Int)
-        );
+        let log_type = RelationType::new(TupleType::new().with_attribute("count", ScalarType::Int));
         db.create_relvar("LOG", log_type).unwrap();
 
         // Define a view. The compiler enforces that we cannot call mutable methods
@@ -1943,7 +1935,8 @@ mod tests {
 
                 Ok(Relation::new(test_rel_type()))
             },
-        ).unwrap();
+        )
+        .unwrap();
 
         // Query the view
         assert!(db.query("SAFE_VIEW").is_ok());
