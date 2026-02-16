@@ -457,8 +457,12 @@ impl HeapFile {
         let slot_number =
             Self::find_or_allocate_slot(&mut slotted_page.slots, &mut slotted_page.slot_count);
 
-        // Add new tuple to the list
-        existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
+        // Add new tuple to the list (overwrite if reusing slot, append if new)
+        if (slot_number as usize) < existing_tuples.len() {
+            existing_tuples[slot_number as usize] = tuple_data.to_vec();
+        } else {
+            existing_tuples.push(tuple_data.to_vec());
+        }
 
         // Initialize the slot (needed for size calc and repacking)
         slotted_page.slots[slot_number as usize] = Some(SlotEntry {
@@ -799,8 +803,12 @@ impl HeapFile {
         let slot_number =
             Self::find_or_allocate_slot(&mut versioned_page.slots, &mut versioned_page.slot_count);
 
-        // Add new tuple to the list
-        existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
+        // Add new tuple to the list (overwrite if reusing slot, append if new)
+        if (slot_number as usize) < existing_tuples.len() {
+            existing_tuples[slot_number as usize] = tuple_data.to_vec();
+        } else {
+            existing_tuples.push(tuple_data.to_vec());
+        }
 
         // Initialize the new slot
         versioned_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
@@ -1148,8 +1156,12 @@ impl HeapFile {
         let slot_number =
             Self::find_or_allocate_slot(&mut versioned_page.slots, &mut versioned_page.slot_count);
 
-        // Add new tuple to the list
-        existing_tuples.insert(slot_number as usize, tuple_data.to_vec());
+        // Add new tuple to the list (overwrite if reusing slot, append if new)
+        if (slot_number as usize) < existing_tuples.len() {
+            existing_tuples[slot_number as usize] = tuple_data.to_vec();
+        } else {
+            existing_tuples.push(tuple_data.to_vec());
+        }
 
         // Initialize the new slot
         versioned_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
@@ -3496,6 +3508,80 @@ mod tests {
             }
             _ => panic!("Expected Serialization error, got {:?}", result),
         }
+    }
+
+    #[test]
+    fn test_heap_slot_reuse_corruption() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let rel_type = create_test_relation_type();
+        let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+        // 1. Insert 3 tuples: A, B, C
+        let tuple_a = tuple! { id: 1i64, name: "A" };
+        let tuple_b = tuple! { id: 2i64, name: "B" };
+        let tuple_c = tuple! { id: 3i64, name: "C" };
+
+        heap.insert_tuple(&tuple_a).unwrap();
+        heap.insert_tuple(&tuple_b).unwrap();
+        heap.insert_tuple(&tuple_c).unwrap();
+
+        // Verify initial state
+        let tuples = heap.scan().unwrap();
+        assert_eq!(tuples.len(), 3);
+
+        // 2. Manually simulate deletion of B (slot 1) to force reuse
+        // We do this by modifying the page directly since we don't have a public delete yet
+        {
+            let page = heap.page_file.read_page(0).unwrap();
+            let mut sp = heap.deserialize_slotted_page(&page).unwrap();
+
+            // Delete slot 1 (B)
+            sp.slots[1] = None;
+
+            // Extract existing tuples (A, B, C)
+            // Note: extract_all_tuples returns Vec<Vec<u8>> corresponding to slots
+            // But we just modified slots[1] to None!
+            // So we need to be careful.
+            // Let's re-read the page as it was on disk to get the data
+            let original_sp = heap.deserialize_slotted_page(&page).unwrap();
+            let mut existing_tuples = heap.extract_all_tuples(&page, &original_sp.slots).unwrap();
+
+            // Mark tuple B as empty
+            existing_tuples[1] = Vec::new();
+
+            // Repack and write back
+            HeapFile::repack_slots(&mut sp.slots, &existing_tuples, USABLE_PAGE_SIZE_V1).unwrap();
+            let new_page_data = heap
+                .serialize_slotted_page_with_tuples(&sp, &existing_tuples)
+                .unwrap();
+            let new_page = Page::from_data(0, new_page_data).unwrap();
+            heap.page_file.write_page(&new_page).unwrap();
+        }
+
+        // Verify B is gone
+        let tuples = heap.scan().unwrap();
+        assert_eq!(tuples.len(), 2);
+        assert!(tuples.contains(&tuple_a));
+        assert!(tuples.contains(&tuple_c));
+
+        // 3. Insert tuple D. Should reuse slot 1.
+        let tuple_d = tuple! { id: 4i64, name: "D" };
+        heap.insert_tuple(&tuple_d).unwrap();
+
+        // 4. Verify all tuples are present and correct
+        let tuples = heap.scan().unwrap();
+
+        // If corruption happened, C might be lost or corrupted
+        assert_eq!(tuples.len(), 3, "Expected 3 tuples (A, C, D)");
+
+        assert!(tuples.contains(&tuple_a), "Missing tuple A");
+        assert!(tuples.contains(&tuple_d), "Missing tuple D");
+        assert!(
+            tuples.contains(&tuple_c),
+            "Missing tuple C - CORRUPTION DETECTED!"
+        );
     }
 }
 
