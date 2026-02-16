@@ -30,6 +30,15 @@ impl Relation {
     ///
     /// Result heading: R1.attributes - R2.attributes (set difference)
     ///
+    /// # Edge Case: Empty Divisor
+    ///
+    /// If the divisor (R2) is empty, the result contains **all unique combinations** of the
+    /// remainder attributes found in the dividend (R1).
+    ///
+    /// *Reasoning:* The condition "for all s in R2, (t ∪ s) ∈ R1" is trivially true because
+    /// there are no `s` in R2. Thus, every candidate `t` (from the projection of R1 onto
+    /// the remainder attributes) satisfies the condition.
+    ///
     /// # Examples
     ///
     /// ```

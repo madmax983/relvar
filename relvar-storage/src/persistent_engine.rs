@@ -25,6 +25,18 @@ pub struct PersistentSnapshot {
 /// - Heap files for tuple storage (one file per relation)
 /// - JSON catalog for metadata
 ///
+/// # Persistence & Concurrency
+///
+/// The engine implements ACID properties using standard techniques:
+///
+/// - **Durability (WAL):** A Write-Ahead Log ensures that all changes are recorded
+///   before being applied to the data files. In the event of a crash, the engine
+///   replays committed transactions and undoes uncommitted ones during recovery.
+/// - **Isolation (MVCC):** Multi-Version Concurrency Control allows multiple
+///   transactions to read and write simultaneously without locking. Each transaction
+///   sees a consistent snapshot of the database as of its start time. Writes create
+///   new versions of tuples rather than overwriting them in place.
+///
 /// # Example
 ///
 /// ```no_run
