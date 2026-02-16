@@ -5,6 +5,7 @@
 //!
 //! # Included Features
 //!
+//! - **Delta**: Tools for computing and applying differences between relations.
 //! - **Exporter**: Tools for exporting relations to CSV, JSON, and ASCII tables.
 //! - **Importer**: Tools for importing relations from CSV and JSON.
 //! - **Pivot**: Operator to rotate unique values from one column into multiple columns.
@@ -31,6 +32,7 @@
 //! println!("JSON:\n{}", exporter::to_json(&relation).unwrap());
 //! ```
 
+pub mod delta;
 pub mod exporter;
 pub mod importer;
 pub mod mock;
