@@ -30,3 +30,7 @@ This ensures the map matches the territory.
 ## 2024-05-25 - Implemented Features Hidden in Roadmap
 **Confusion:** The README listed "Views (virtual relvars)" and "Derived types (POSSREP)" as "Future Enhancements", but they are fully implemented and functional in `relvar-core`.
 **Clarification:** I verified these features with executable examples and moved them to the "Implemented Features" section of the README to accurately reflect the project's capabilities.
+
+## 2024-05-27 - The Ghost Variants
+**Confusion:** The `ScalarValueError` and `RelationError` enums had variants that were technically public but lacked documentation explaining *when* they occur or *what* they mean. This forced users to guess based on the variant name.
+**Clarification:** I've added detailed documentation to these enum variants, explaining the specific conditions that trigger them (e.g., `NotUserDefined` only happens when calling `observer()` on a built-in type).

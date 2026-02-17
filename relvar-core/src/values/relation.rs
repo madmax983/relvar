@@ -45,14 +45,18 @@ pub enum RelationError {
     /// A tuple doesn't conform to the relation's type (heading).
     ///
     /// This occurs when attempting to insert a tuple with a different
-    /// structure than what the relation expects.
+    /// structure (different attribute names or types) than what the
+    /// relation expects. The tuple must have exactly the same attributes
+    /// with the same types as defined in the relation's heading.
     #[error("Tuple does not conform to relation type")]
     TypeMismatch,
 
     /// A duplicate tuple was detected.
     ///
-    /// Note: This error is not typically returned during insert operations
-    /// since duplicates are silently ignored per set semantics.
+    /// This error is used in contexts where uniqueness is strictly enforced
+    /// and silent deduplication is not desired (e.g., bulk loading with strict validation).
+    /// Standard insert operations typically return `Ok(false)` for duplicates
+    /// rather than this error, adhering to set semantics.
     #[error("Duplicate tuple")]
     DuplicateTuple,
 }
