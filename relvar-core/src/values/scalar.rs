@@ -35,7 +35,9 @@ use thiserror::Error;
 pub enum ScalarValueError {
     /// Attempted to use an observer on a built-in type.
     ///
-    /// The observer operation is only valid for user-defined types.
+    /// The observer operation is only valid for user-defined types (POSSREP pattern).
+    /// Built-in types like `Int`, `String`, etc., do not have observers because
+    /// their representation is their value.
     #[error("Cannot extract observer from built-in type")]
     NotUserDefined,
 }
@@ -98,7 +100,8 @@ pub enum ScalarValue {
 
     /// Relation value (for relation-valued attributes).
     ///
-    /// Enables nested relations within tuples.
+    /// Enables nested relations within tuples, allowing attributes to contain
+    /// entire relations as their values (RVA).
     Relation(crate::values::Relation),
 
     /// User-defined type value.
@@ -147,7 +150,18 @@ impl ScalarValue {
         }
     }
 
-    /// Checks if this value is of the given type
+    /// Checks if this value is of the given type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::values::ScalarValue;
+    /// use relvar_core::types::ScalarType;
+    ///
+    /// let value = ScalarValue::Int(42);
+    /// assert!(value.is_type(&ScalarType::Int));
+    /// assert!(!value.is_type(&ScalarType::String));
+    /// ```
     pub fn is_type(&self, ty: &ScalarType) -> bool {
         &self.scalar_type() == ty
     }

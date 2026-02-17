@@ -32,7 +32,7 @@ pub enum PreparedConstraintExpression {
     /// Logical NOT: inverts the expression
     Not(Box<PreparedConstraintExpression>),
 
-    /// Set membership: attribute IN (HashSet<ScalarValue>)
+    /// Set membership: attribute IN (`HashSet<ScalarValue>`)
     /// Optimized for O(1) lookup.
     In(String, HashSet<ScalarValue>),
 
