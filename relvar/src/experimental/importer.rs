@@ -37,8 +37,10 @@
 
 use relvar_core::types::{RelationType, ScalarType};
 use relvar_core::values::{Relation, ScalarValue, Tuple};
+use serde::de::{DeserializeSeed, Deserializer, SeqAccess, Visitor};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::io::BufRead;
 use thiserror::Error;
 
@@ -83,55 +85,86 @@ pub fn from_json<R: std::io::Read>(
     reader: R,
     relation_type: RelationType,
 ) -> Result<Relation, ImporterError> {
-    let root: JsonValue = serde_json::from_reader(reader)?;
+    let mut deserializer = serde_json::Deserializer::from_reader(reader);
+    let seed = RelationSeed { relation_type };
+    seed.deserialize(&mut deserializer)
+        .map_err(ImporterError::JsonError)
+}
 
-    let array = root
-        .as_array()
-        .ok_or_else(|| ImporterError::FormatError("JSON root must be an array".to_string()))?;
+struct RelationSeed {
+    relation_type: RelationType,
+}
 
-    let mut relation = Relation::new(relation_type.clone());
-    let heading = relation_type.heading();
+impl<'de> DeserializeSeed<'de> for RelationSeed {
+    type Value = Relation;
 
-    for (idx, item) in array.iter().enumerate() {
-        let obj = item.as_object().ok_or_else(|| {
-            ImporterError::FormatError(format!("Item at index {} is not an object", idx))
-        })?;
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(RelationVisitor {
+            relation_type: self.relation_type,
+        })
+    }
+}
 
-        let mut values = BTreeMap::new();
+struct RelationVisitor {
+    relation_type: RelationType,
+}
 
-        for attr_name in heading.attribute_names() {
-            let attr_type = heading.get_attribute_type(attr_name).unwrap();
+impl<'de> Visitor<'de> for RelationVisitor {
+    type Value = Relation;
 
-            if let Some(json_val) = obj.get(attr_name) {
-                let scalar_val = json_value_to_scalar(json_val, attr_type).map_err(|e| {
-                    ImporterError::TypeError(
-                        attr_name.clone(),
-                        format!("{:?}", attr_type),
-                        e.to_string(),
-                    )
-                })?;
-                values.insert(attr_name.clone(), scalar_val);
-            } else {
-                return Err(ImporterError::MissingValue(attr_name.clone()));
-            }
-        }
-
-        let tuple = Tuple::new(heading.clone(), values)
-            .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
-
-        // We ignore duplicate tuples as relations are sets, but we could warn or error.
-        // For now, we just insert and ignore the result (Ok/Err).
-        // Actually, insert returns Result, we should propagate error if it's not a duplicate error?
-        // insert returns Result<bool, DatabaseError>. If it returns Ok(false), it was a duplicate.
-        // If it returns Err, it's a constraint violation.
-        // Relation::insert returns Result<bool, TupleError> or similar.
-        // Let's check relation.rs, but typically it returns Result.
-        let _ = relation
-            .insert(tuple)
-            .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a JSON array of objects")
     }
 
-    Ok(relation)
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut relation = Relation::new(self.relation_type.clone());
+        let heading = self.relation_type.heading();
+        let mut idx = 0;
+
+        while let Some(item) = seq.next_element::<JsonValue>()? {
+            let obj = item.as_object().ok_or_else(|| {
+                serde::de::Error::custom(format!("Item at index {} is not an object", idx))
+            })?;
+
+            let mut values = BTreeMap::new();
+
+            for attr_name in heading.attribute_names() {
+                let attr_type = heading.get_attribute_type(attr_name).unwrap();
+
+                if let Some(json_val) = obj.get(attr_name) {
+                    let scalar_val = json_value_to_scalar(json_val, attr_type).map_err(|e| {
+                        serde::de::Error::custom(format!(
+                            "Type error for attribute '{}': {}",
+                            attr_name, e
+                        ))
+                    })?;
+                    values.insert(attr_name.clone(), scalar_val);
+                } else {
+                    return Err(serde::de::Error::custom(format!(
+                        "Missing value for attribute '{}'",
+                        attr_name
+                    )));
+                }
+            }
+
+            let tuple = Tuple::new(heading.clone(), values)
+                .map_err(|e| serde::de::Error::custom(format!("Relvar error: {}", e)))?;
+
+            let _ = relation
+                .insert(tuple)
+                .map_err(|e| serde::de::Error::custom(format!("Relvar error: {}", e)))?;
+
+            idx += 1;
+        }
+
+        Ok(relation)
+    }
 }
 
 fn json_value_to_scalar(
@@ -431,10 +464,8 @@ mod tests {
         let rel_type = RelationType::new(heading);
         let json = r#"{"id": 1}"#; // Object, not array
         let result = from_json(json.as_bytes(), rel_type);
-        assert!(matches!(
-            result.unwrap_err(),
-            ImporterError::FormatError(msg) if msg.contains("JSON root must be an array")
-        ));
+        // Deserializer error for wrong type
+        assert!(matches!(result.unwrap_err(), ImporterError::JsonError(_)));
     }
 
     #[test]
@@ -445,7 +476,7 @@ mod tests {
         let result = from_json(json.as_bytes(), rel_type);
         assert!(matches!(
             result.unwrap_err(),
-            ImporterError::FormatError(msg) if msg.contains("is not an object")
+            ImporterError::JsonError(e) if e.to_string().contains("is not an object")
         ));
     }
 
@@ -459,7 +490,7 @@ mod tests {
         let result = from_json(json.as_bytes(), rel_type);
         assert!(matches!(
             result.unwrap_err(),
-            ImporterError::MissingValue(attr) if attr == "name"
+            ImporterError::JsonError(e) if e.to_string().contains("Missing value for attribute 'name'")
         ));
     }
 
@@ -471,7 +502,7 @@ mod tests {
         let result = from_json(json.as_bytes(), rel_type);
         assert!(matches!(
             result.unwrap_err(),
-            ImporterError::TypeError(attr, _, _) if attr == "id"
+            ImporterError::JsonError(e) if e.to_string().contains("Type error for attribute 'id'")
         ));
     }
 
@@ -496,7 +527,7 @@ mod tests {
         let result_invalid = from_json(json_invalid.as_bytes(), rel_type.clone());
         assert!(matches!(
             result_invalid.unwrap_err(),
-            ImporterError::TypeError(attr, _, _) if attr == "data"
+            ImporterError::JsonError(e) if e.to_string().contains("Type error for attribute 'data'")
         ));
 
         // Invalid byte type (string in array)
@@ -504,7 +535,7 @@ mod tests {
         let result_invalid_type = from_json(json_invalid_type.as_bytes(), rel_type);
         assert!(matches!(
             result_invalid_type.unwrap_err(),
-            ImporterError::TypeError(attr, _, _) if attr == "data"
+            ImporterError::JsonError(e) if e.to_string().contains("Type error for attribute 'data'")
         ));
     }
 

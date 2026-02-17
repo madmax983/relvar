@@ -94,3 +94,12 @@ An attacker could supply a very large text string (e.g., 100MB), causing a linea
 Refactored `matches_pattern` to iterate over `text.chars()` directly instead of collecting into a vector.
 This reduces space complexity from $O(N+M)$ to $O(M)$ (where $M$ is pattern length), eliminating the DoS vector for large text inputs.
 Added verification test `relvar-core/tests/warden_exploit_like_memory.rs`.
+
+## 2026-02-09 - JSON Importer OOM DoS
+**Threat:**
+`importer::from_json` used `serde_json::from_reader` which deserialized the entire JSON input into a DOM (`Value`) before processing. An attacker could supply a very large JSON array (e.g., 10GB), causing the server to exhaust memory (OOM DoS) trying to represent the entire structure in memory.
+
+**Defense:**
+1. Replaced `from_json` implementation with a streaming parser using `serde::de::DeserializeSeed` and `Visitor`.
+2. The new implementation iterates over the JSON array element-by-element, processing and inserting each tuple individually.
+3. This ensures memory usage is proportional to the size of a single tuple (plus the accumulating `Relation` result), preventing the "double memory usage" (DOM + Result) and allowing for future optimizations (e.g. streaming to disk).
