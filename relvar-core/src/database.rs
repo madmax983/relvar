@@ -800,7 +800,6 @@ impl<E: StorageEngine> Database<E> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
