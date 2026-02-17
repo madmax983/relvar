@@ -87,7 +87,21 @@ impl RelationType {
     /// let rel_type = RelationType::new(heading);
     /// ```
     pub fn new(heading: TupleType) -> Self {
+        if heading.depth() + 1 > crate::types::MAX_TYPE_DEPTH {
+            panic!(
+                "Type nesting too deep: {} (limit: {})",
+                heading.depth() + 1,
+                crate::types::MAX_TYPE_DEPTH
+            );
+        }
         Self { heading }
+    }
+
+    /// Returns the nesting depth of this relation type.
+    ///
+    /// This is 1 + the depth of its heading.
+    pub fn depth(&self) -> usize {
+        1 + self.heading.depth()
     }
 
     /// Returns the heading (tuple type) of this relation type.
