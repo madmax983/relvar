@@ -130,6 +130,9 @@ pub use relvar_storage::PersistentEngine;
 pub mod experimental;
 pub mod visualizer;
 
+/// Data import and export functionality.
+pub mod data;
+
 /// Create an in-memory database.
 ///
 /// This is a convenience function for creating a database with an in-memory storage engine.
