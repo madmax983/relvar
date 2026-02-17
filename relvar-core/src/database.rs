@@ -42,6 +42,7 @@ use crate::constraints::{
 };
 pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
+use crate::traits::RelationSource;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 
@@ -797,6 +798,12 @@ impl<E: StorageEngine> Database<E> {
         )?;
 
         Ok(())
+    }
+}
+
+impl<S: StorageEngine> RelationSource for Database<S> {
+    fn query(&self, name: &str) -> Result<Relation, DatabaseError> {
+        self.query(name)
     }
 }
 

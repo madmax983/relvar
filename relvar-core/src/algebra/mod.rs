@@ -77,6 +77,9 @@
 //! - Tuple ordering is not guaranteed
 //! - Results are always valid relations
 
+/// Relational Delta operator.
+pub mod delta;
+
 /// Set difference operator (A MINUS B).
 pub mod difference;
 

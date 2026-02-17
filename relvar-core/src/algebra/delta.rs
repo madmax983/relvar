@@ -13,7 +13,7 @@
 //! use relvar_core::values::Relation;
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use relvar_core::tuple;
-//! use relvar::experimental::delta::Delta;
+//! use relvar_core::algebra::delta::Delta;
 //!
 //! let heading = TupleType::new().with_attribute("x", ScalarType::Int);
 //! let rel_type = RelationType::new(heading);
@@ -33,8 +33,8 @@
 //! assert_eq!(r3, r2);
 //! ```
 
-use relvar_core::error::DatabaseError;
-use relvar_core::values::Relation;
+use crate::error::DatabaseError;
+use crate::values::Relation;
 
 /// Represents the difference between two relations.
 ///
@@ -194,8 +194,8 @@ impl Delta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use relvar_core::tuple;
-    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
 
     fn test_type() -> RelationType {
         RelationType::new(TupleType::new().with_attribute("x", ScalarType::Int))
