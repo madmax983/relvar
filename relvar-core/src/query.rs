@@ -8,14 +8,16 @@
 //! # Example
 //!
 //! ```
-//! use relvar::experimental::query::{Query, QueryAggregation, QueryAggregationFn};
-//! use relvar::constraints::{ConstraintExpression, CmpOp, ValueOrRef};
-//! use relvar::values::ScalarValue;
-//! use relvar::types::ScalarType;
-//! use relvar::{Database, InMemoryEngine, tuple};
+//! use relvar_core::query::Query;
+//! use relvar_core::constraints::{ConstraintExpression, CmpOp, ValueOrRef};
+//! use relvar_core::values::ScalarValue;
+//! use relvar_core::types::ScalarType;
+//! use relvar_core::database::Database;
+//! use relvar_core::storage_engine::InMemoryEngine;
+//! use relvar_core::tuple;
 //!
 //! # let mut db = Database::new(InMemoryEngine::new());
-//! # use relvar::types::{RelationType, TupleType};
+//! # use relvar_core::types::{RelationType, TupleType};
 //! # let heading = TupleType::new()
 //! #    .with_attribute("id", ScalarType::Int)
 //! #    .with_attribute("name", ScalarType::String);
@@ -31,17 +33,18 @@
 //!     .project(vec!["name"]);
 //!
 //! // Execute
-//! let result = query.execute(&mut db).unwrap();
+//! let result = query.execute(&db).unwrap();
 //!
 //! // Explain
 //! println!("{}", query.explain());
 //! ```
 
-use crate::algebra::summarize::{Aggregation, AggregationFn};
+use crate::algebra::summarize::Aggregation;
 use crate::constraints::{ConstraintExpression, ExpressionError};
+use crate::database::Database;
 use crate::error::DatabaseError;
-use crate::types::ScalarType;
-use crate::{Database, Relation, StorageEngine};
+use crate::storage_engine::StorageEngine;
+use crate::values::Relation;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -93,51 +96,8 @@ pub enum Query {
         /// Attributes to group by.
         group_by: Vec<String>,
         /// Aggregations to perform.
-        aggregations: Vec<QueryAggregation>,
+        aggregations: Vec<Aggregation>,
     },
-}
-
-/// Serializable representation of an aggregation function.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum QueryAggregationFn {
-    /// Count the number of tuples.
-    Count,
-    /// Sum an integer attribute.
-    Sum(String),
-    /// Average an integer attribute.
-    Avg(String),
-    /// Minimum value of an attribute.
-    Min(String),
-    /// Maximum value of an attribute.
-    Max(String),
-}
-
-/// Serializable representation of an aggregation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QueryAggregation {
-    /// The name of the resulting attribute.
-    pub result_name: String,
-    /// The type of the resulting attribute.
-    pub result_type: ScalarType,
-    /// The aggregation function to apply.
-    pub function: QueryAggregationFn,
-}
-
-impl From<QueryAggregation> for Aggregation {
-    fn from(q: QueryAggregation) -> Self {
-        let function = match q.function {
-            QueryAggregationFn::Count => AggregationFn::Count,
-            QueryAggregationFn::Sum(attr) => AggregationFn::Sum(attr),
-            QueryAggregationFn::Avg(attr) => AggregationFn::Avg(attr),
-            QueryAggregationFn::Min(attr) => AggregationFn::Min(attr),
-            QueryAggregationFn::Max(attr) => AggregationFn::Max(attr),
-        };
-        Aggregation {
-            result_name: q.result_name,
-            result_type: q.result_type,
-            function,
-        }
-    }
 }
 
 /// Errors that can occur during query execution.
@@ -158,7 +118,7 @@ pub enum QueryError {
 
 impl Query {
     /// Executes the query plan against the given database.
-    pub fn execute<S: StorageEngine>(&self, db: &mut Database<S>) -> Result<Relation, QueryError> {
+    pub fn execute<S: StorageEngine>(&self, db: &Database<S>) -> Result<Relation, QueryError> {
         match self {
             Query::Scan(table_name) => Ok(db.query(table_name)?),
             Query::Restrict { input, predicate } => {
@@ -198,10 +158,10 @@ impl Query {
                 aggregations,
             } => {
                 let relation = input.execute(db)?;
-                let aggs: Vec<Aggregation> = aggregations.iter().cloned().map(Into::into).collect();
+                // aggregations is already Vec<Aggregation>, so no conversion needed
                 let group_by_ref: Vec<&str> = group_by.iter().map(|s| s.as_str()).collect();
                 Ok(relation
-                    .summarize(&group_by_ref, &aggs)
+                    .summarize(&group_by_ref, aggregations)
                     .map_err(|e| QueryError::Algebra(e.to_string()))?)
             }
         }
@@ -308,7 +268,7 @@ impl Query {
     pub fn summarize<S: Into<String>>(
         self,
         group_by: Vec<S>,
-        aggregations: Vec<QueryAggregation>,
+        aggregations: Vec<Aggregation>,
     ) -> Self {
         Query::Summarize {
             input: Box::new(self),
