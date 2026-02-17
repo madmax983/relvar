@@ -657,12 +657,9 @@ mod tests {
     #[test]
     fn test_foreign_key_float_strictness() {
         // Referenced relation has Float ID with 0.0
-        let dept_heading = TupleType::new()
-            .with_attribute("dept_id", ScalarType::Float);
+        let dept_heading = TupleType::new().with_attribute("dept_id", ScalarType::Float);
         let mut departments = Relation::new(RelationType::new(dept_heading));
-        departments
-            .insert(tuple! { dept_id: 0.0 })
-            .unwrap();
+        departments.insert(tuple! { dept_id: 0.0 }).unwrap();
 
         // Referencing relation has Float ID with -0.0
         let emp_heading = TupleType::new()
