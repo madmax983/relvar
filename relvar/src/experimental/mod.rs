@@ -5,9 +5,12 @@
 //!
 //! # Included Features
 //!
-//! - **Pivot**: Operator to rotate unique values from one column into multiple columns.
-//! - **Mock**: Tools for generating random relations for testing.
-//! - **Spatial**: Spatial data types.
+//! - **[`pivot`]**: Operator to rotate unique values from one column into multiple columns.
+//!   Useful for creating cross-tabulation reports.
+//! - **[`mock`]**: Tools for generating random relations for testing.
+//!   Helps in performance testing and fuzzing.
+//! - **[`spatial`]**: Experimental spatial data types (`Point`) implemented using
+//!   Relation-Valued Attributes (RVAs) and User-Defined Types (UDTs).
 
 pub mod mock;
 pub mod pivot;

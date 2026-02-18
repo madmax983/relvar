@@ -1,6 +1,33 @@
 //! Pivot operator implementation.
 //!
-//! PIVOT transforms row values into column headers.
+//! PIVOT transforms row values into column headers, rotating data from a "tall"
+//! format to a "wide" format.
+//!
+//! # Visual Example
+//!
+//! **Input Relation (Tall):**
+//!
+//! | Product | Month | Sales |
+//! |---------|-------|-------|
+//! | A       | Jan   | 100   |
+//! | A       | Feb   | 200   |
+//! | B       | Jan   | 300   |
+//!
+//! **Pivoted Relation (Wide):**
+//!
+//! `pivot("Month", "Sales", 0)`
+//!
+//! | Product | Jan | Feb |
+//! |---------|-----|-----|
+//! | A       | 100 | 200 |
+//! | B       | 300 | 0   |
+//!
+//! # Conflict Resolution
+//!
+//! If multiple source tuples map to the same cell in the pivoted table (e.g.
+//! same Product and Month), the value from the **last** tuple (in sorted order)
+//! determines the cell value. This is a "Last Write Wins" strategy based on
+//! tuple sorting order.
 
 use relvar_core::error::DatabaseError;
 use relvar_core::types::{RelationType, TupleType};
@@ -14,11 +41,21 @@ pub trait Pivot {
     /// Transforms unique values from `on_attr` into new columns,
     /// filling cells with values from `value_attr`.
     ///
+    /// The remaining attributes (those not used for `on_attr` or `value_attr`)
+    /// become the grouping key (identifying the rows).
+    ///
     /// # Arguments
     ///
-    /// * `on_attr` - Attribute for new column headers.
-    /// * `value_attr` - Attribute for cell values.
-    /// * `default_value` - Value for missing cells (must match `value_attr` type).
+    /// * `on_attr` - Attribute whose values will become new column headers.
+    /// * `value_attr` - Attribute whose values will fill the cells.
+    /// * `default_value` - Value to use for missing cells (must match `value_attr` type).
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError` if:
+    /// - Attributes don't exist.
+    /// - Default value type mismatch.
+    /// - Pivoted column name conflicts with existing attribute.
     fn pivot(
         &self,
         on_attr: &str,
@@ -28,6 +65,20 @@ pub trait Pivot {
 }
 
 impl Pivot for Relation {
+    /// Implementation of pivot for [`Relation`].
+    ///
+    /// # Algorithm
+    ///
+    /// 1. Scan `on_attr` to determine new column names.
+    /// 2. Construct new relation heading: grouping attributes + new columns.
+    /// 3. Sort input tuples (for deterministic conflict resolution).
+    /// 4. Iterate tuples, filling a map of `group_key -> {col_name -> value}`.
+    /// 5. Flatten map into new tuples.
+    ///
+    /// # Conflict Resolution
+    ///
+    /// "Last Write Wins": If multiple tuples have the same grouping key and
+    /// pivot value, the one appearing later in the sorted order overwrites previous ones.
     fn pivot(
         &self,
         on_attr: &str,

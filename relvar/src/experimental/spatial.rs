@@ -4,9 +4,31 @@
 //! the Relational Model's support for Relation-Valued Attributes (RVAs) and
 //! User-Defined Types (UDTs).
 //!
-//! A `Point` is defined as a relation with a heading `{x: Float, y: Float}`
-//! and cardinality 1. This "pure" representation allows points to be treated
-//! as first-class relational values without opaque binary blobs.
+//! # Implementation Details
+//!
+//! A `Point` is not an opaque blob. Instead, it is a User-Defined Type (UDT)
+//! that wraps a Relation with a specific heading `{x: Float, y: Float}` and
+//! a cardinality constraint of exactly 1.
+//!
+//! This "pure" representation allows points to be treated as first-class
+//! relational values. The internal structure is fully visible to the database engine,
+//! allowing for standard relational operators to be used on the components if needed.
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::experimental::spatial::{point, distance, within};
+//!
+//! let p1 = point(0.0, 0.0);
+//! let p2 = point(3.0, 4.0);
+//!
+//! // Calculate distance
+//! let dist = distance(&p1, &p2).unwrap();
+//! assert_eq!(dist, 5.0);
+//!
+//! // Check if within radius
+//! assert!(within(&p2, &p1, 5.0).unwrap());
+//! ```
 
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
@@ -18,6 +40,15 @@ pub const POINT_TYPE_NAME: &str = "Point";
 /// Returns the scalar type definition for a Point.
 ///
 /// A Point is a User-Defined Type wrapping a Relation with heading `{x: Float, y: Float}`.
+///
+/// # Example
+///
+/// ```
+/// use relvar::experimental::spatial::point_type;
+///
+/// let type_def = point_type();
+/// assert_eq!(type_def.name(), "Point");
+/// ```
 pub fn point_type() -> ScalarType {
     let heading = TupleType::new()
         .with_attribute("x", ScalarType::Float)
@@ -32,6 +63,19 @@ pub fn point_type() -> ScalarType {
 ///
 /// Creates a relation with a single tuple `{x: x, y: y}` and wraps it in the
 /// Point user-defined type.
+///
+/// # Arguments
+///
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+///
+/// # Example
+///
+/// ```
+/// use relvar::experimental::spatial::point;
+///
+/// let p = point(10.5, 20.0);
+/// ```
 pub fn point(x: f64, y: f64) -> ScalarValue {
     let pt_type = point_type();
 
@@ -56,6 +100,32 @@ pub fn point(x: f64, y: f64) -> ScalarValue {
 }
 
 /// Calculates the Euclidean distance between two Points.
+///
+/// # Arguments
+///
+/// * `p1` - The first point.
+/// * `p2` - The second point.
+///
+/// # Returns
+///
+/// The distance as a `f64`.
+///
+/// # Errors
+///
+/// Returns an error string if:
+/// - Either argument is not of type `Point`.
+/// - The internal structure of the point is invalid (e.g., missing coordinates).
+///
+/// # Example
+///
+/// ```
+/// use relvar::experimental::spatial::{point, distance};
+///
+/// let p1 = point(0.0, 0.0);
+/// let p2 = point(3.0, 4.0);
+///
+/// assert_eq!(distance(&p1, &p2).unwrap(), 5.0);
+/// ```
 pub fn distance(p1: &ScalarValue, p2: &ScalarValue) -> Result<f64, String> {
     let pt_type = point_type();
 
@@ -75,6 +145,32 @@ pub fn distance(p1: &ScalarValue, p2: &ScalarValue) -> Result<f64, String> {
 }
 
 /// Checks if a point is within a given radius of a center point.
+///
+/// # Arguments
+///
+/// * `p` - The point to check.
+/// * `center` - The center point.
+/// * `radius` - The radius distance.
+///
+/// # Returns
+///
+/// `true` if the distance between `p` and `center` is less than or equal to `radius`.
+///
+/// # Errors
+///
+/// Returns an error string if arguments are not valid Points.
+///
+/// # Example
+///
+/// ```
+/// use relvar::experimental::spatial::{point, within};
+///
+/// let center = point(0.0, 0.0);
+/// let p = point(3.0, 4.0); // distance is 5.0
+///
+/// assert!(within(&p, &center, 5.0).unwrap());
+/// assert!(!within(&p, &center, 4.9).unwrap());
+/// ```
 pub fn within(p: &ScalarValue, center: &ScalarValue, radius: f64) -> Result<bool, String> {
     let dist = distance(p, center)?;
     Ok(dist <= radius)
