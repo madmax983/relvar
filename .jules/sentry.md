@@ -37,3 +37,7 @@
 ## 2027-05-22 - Virtual Relvar Side-Effect Vulnerability
 **Learning:** `VirtualRelvarDefinition` passes `&mut Database` to the evaluator closure, allowing "read-only" views to perform writes (insert/update/delete) as side effects.
 **Action:** When designing extension points or callback APIs, strictly enforce immutability (`&self`) if the operation is conceptually read-only. Avoid passing mutable context unless mutation is the explicit goal.
+
+## 2026-02-17 - Strict Float Equality in Foreign Keys
+**Learning:** Foreign Keys on floating-point columns enforce strict bit-pattern equality (e.g., `-0.0` != `0.0`), rejecting references even if numerically equal.
+**Action:** Avoid using floating-point columns as foreign keys unless strict bitwise identity is guaranteed, or implement fuzzy matching logic explicitly.

@@ -589,4 +589,96 @@ mod tests {
             ForeignKeyError::InvalidReferencedAttributes(_)
         ));
     }
+
+    #[test]
+    fn test_foreign_key_type_mismatch_int_string() {
+        // Referenced relation has String ID
+        let dept_heading = TupleType::new()
+            .with_attribute("dept_id", ScalarType::String)
+            .with_attribute("dept_name", ScalarType::String);
+        let mut departments = Relation::new(RelationType::new(dept_heading));
+        departments
+            .insert(tuple! { dept_id: "10", dept_name: "Engineering" })
+            .unwrap();
+
+        // Referencing relation has Int ID
+        let emp_heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("dept_id", ScalarType::Int);
+        let mut employees = Relation::new(RelationType::new(emp_heading));
+        employees
+            .insert(tuple! { emp_id: 1i64, dept_id: 10i64 })
+            .unwrap();
+
+        let fk = ForeignKey::new(
+            vec!["dept_id".to_string()],
+            "DEPT".to_string(),
+            vec!["dept_id".to_string()],
+        )
+        .unwrap();
+
+        // Should fail because Int(10) != String("10")
+        // Currently returns Ok(false) (Violation), but ideally should be Err(TypeMismatch)
+        // For now, we assert the current behavior (Violation) to prevent regression/undefined behavior
+        assert!(!fk.is_satisfied_by(&employees, &departments).unwrap());
+    }
+
+    #[test]
+    fn test_foreign_key_type_mismatch_int_float() {
+        // Referenced relation has Float ID
+        let dept_heading = TupleType::new()
+            .with_attribute("dept_id", ScalarType::Float)
+            .with_attribute("dept_name", ScalarType::String);
+        let mut departments = Relation::new(RelationType::new(dept_heading));
+        departments
+            .insert(tuple! { dept_id: 10.0, dept_name: "Engineering" })
+            .unwrap();
+
+        // Referencing relation has Int ID
+        let emp_heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("dept_id", ScalarType::Int);
+        let mut employees = Relation::new(RelationType::new(emp_heading));
+        employees
+            .insert(tuple! { emp_id: 1i64, dept_id: 10i64 })
+            .unwrap();
+
+        let fk = ForeignKey::new(
+            vec!["dept_id".to_string()],
+            "DEPT".to_string(),
+            vec!["dept_id".to_string()],
+        )
+        .unwrap();
+
+        // Should fail because Int(10) != Float(10.0)
+        assert!(!fk.is_satisfied_by(&employees, &departments).unwrap());
+    }
+
+    #[test]
+    fn test_foreign_key_float_strictness() {
+        // Referenced relation has Float ID with 0.0
+        let dept_heading = TupleType::new().with_attribute("dept_id", ScalarType::Float);
+        let mut departments = Relation::new(RelationType::new(dept_heading));
+        departments.insert(tuple! { dept_id: 0.0 }).unwrap();
+
+        // Referencing relation has Float ID with -0.0
+        let emp_heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("dept_id", ScalarType::Float);
+        let mut employees = Relation::new(RelationType::new(emp_heading));
+        employees
+            .insert(tuple! { emp_id: 1i64, dept_id: -0.0 })
+            .unwrap();
+
+        let fk = ForeignKey::new(
+            vec!["dept_id".to_string()],
+            "DEPT".to_string(),
+            vec!["dept_id".to_string()],
+        )
+        .unwrap();
+
+        // Should fail because -0.0 != 0.0 in ScalarValue equality logic
+        // This confirms strict bit-pattern matching for FKs on floats
+        assert!(!fk.is_satisfied_by(&employees, &departments).unwrap());
+    }
 }
