@@ -19,13 +19,11 @@ pub mod database;
 pub mod error;
 pub mod query;
 pub mod storage_engine;
-pub mod traits;
 pub mod types;
 pub mod values;
 
 pub use database::{Database, DatabaseError};
 pub use query::{Query, QueryError};
-pub use traits::RelationSource;
 pub use types::{RelationType, ScalarType, TupleType};
 pub use values::{Relation, ScalarValue, Tuple};
 
