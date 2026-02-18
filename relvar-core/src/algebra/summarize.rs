@@ -1128,12 +1128,8 @@ mod overflow_tests {
         let rel_type = RelationType::new(heading);
         let mut relation = Relation::new(rel_type);
 
-        relation
-            .insert(tuple! { id: 1i64, price: 10.5 })
-            .unwrap();
-        relation
-            .insert(tuple! { id: 2i64, price: 20.5 })
-            .unwrap();
+        relation.insert(tuple! { id: 1i64, price: 10.5 }).unwrap();
+        relation.insert(tuple! { id: 2i64, price: 20.5 }).unwrap();
 
         // Use new helper for Float Sum
         let sum_agg = Aggregation::sum_float("total_price", "price");
@@ -1157,12 +1153,8 @@ mod overflow_tests {
         let rel_type = RelationType::new(heading);
         let mut relation = Relation::new(rel_type);
 
-        relation
-            .insert(tuple! { id: 1i64, price: 10.0 })
-            .unwrap();
-        relation
-            .insert(tuple! { id: 2i64, price: 20.0 })
-            .unwrap();
+        relation.insert(tuple! { id: 1i64, price: 10.0 }).unwrap();
+        relation.insert(tuple! { id: 2i64, price: 20.0 }).unwrap();
 
         // Avg helper sets result_type to Float
         let avg_agg = Aggregation::avg("avg_price", "price");
