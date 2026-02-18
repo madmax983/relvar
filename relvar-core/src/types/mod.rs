@@ -49,3 +49,8 @@ pub mod tuple_type;
 pub use relation_type::RelationType;
 pub use scalar::ScalarType;
 pub use tuple_type::TupleType;
+
+/// Maximum nesting depth for types to prevent stack overflow.
+/// This limits recursion in type definitions (UserDefined, Relation)
+/// and prevents Denial of Service attacks via deep nesting.
+pub const MAX_TYPE_DEPTH: usize = 64;

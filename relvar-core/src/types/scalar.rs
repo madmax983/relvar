@@ -161,6 +161,20 @@ impl ScalarType {
         }
     }
 
+    /// Returns the nesting depth of this type.
+    ///
+    /// - Primitive types have depth 1.
+    /// - Recursive types (UserDefined, Relation) have 1 + depth of inner type.
+    ///
+    /// This is used to enforce `MAX_TYPE_DEPTH` to prevent stack overflow.
+    pub fn depth(&self) -> usize {
+        match self {
+            ScalarType::Relation(rel_type) => 1 + rel_type.depth(),
+            ScalarType::UserDefined { representation, .. } => 1 + representation.depth(),
+            _ => 1,
+        }
+    }
+
     /// Creates a user-defined type with the given name and representation type.
     ///
     /// TTM Prescription 1: Users can define their own scalar types.
@@ -179,6 +193,13 @@ impl ScalarType {
     /// assert_ne!(widget_id, supplier_id);
     /// ```
     pub fn user_defined(name: impl Into<String>, representation: ScalarType) -> Self {
+        if representation.depth() + 1 > crate::types::MAX_TYPE_DEPTH {
+            panic!(
+                "Type nesting too deep: {} (limit: {})",
+                representation.depth() + 1,
+                crate::types::MAX_TYPE_DEPTH
+            );
+        }
         ScalarType::UserDefined {
             name: name.into(),
             representation: Box::new(representation),

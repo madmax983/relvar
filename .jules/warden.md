@@ -103,3 +103,15 @@ Added verification test `relvar-core/tests/warden_exploit_like_memory.rs`.
 1. Replaced `from_json` implementation with a streaming parser using `serde::de::DeserializeSeed` and `Visitor`.
 2. The new implementation iterates over the JSON array element-by-element, processing and inserting each tuple individually.
 3. This ensures memory usage is proportional to the size of a single tuple (plus the accumulating `Relation` result), preventing the "double memory usage" (DOM + Result) and allowing for future optimizations (e.g. streaming to disk).
+
+## 2026-02-10 - Recursive Type Definition Stack Overflow
+**Threat:**
+`ScalarType` and `TupleType` definitions allow for infinite recursion in type definitions (e.g., a user-defined type wrapping itself, or a tuple containing a relation of itself).
+An attacker could define a deeply nested type structure programmatically or via API, causing the application to crash with a stack overflow during type comparison, hashing, or dropping (DoS).
+Since `ScalarType` variants are public and `serde` deserialization bypasses constructors, this vulnerability could also be exploited via malicious payloads if strict depth limits aren't enforced during deserialization or usage.
+
+**Defense:**
+1. Added `MAX_TYPE_DEPTH` constant (64) to `relvar-core/src/types/mod.rs`.
+2. Implemented recursive `depth()` method for `ScalarType`, `TupleType`, and `RelationType`.
+3. Added panic checks in `ScalarType::user_defined`, `TupleType::with_attribute`, and `RelationType::new` to enforce the depth limit during construction.
+4. While this primarily protects programmatic construction, it establishes a clear limit that should be respected by all future parsers and deserializers.

@@ -114,6 +114,13 @@ impl TupleType {
     /// assert_eq!(person_type.degree(), 2);
     /// ```
     pub fn with_attribute(mut self, name: impl Into<String>, ty: ScalarType) -> Self {
+        if ty.depth() + 1 > crate::types::MAX_TYPE_DEPTH {
+            panic!(
+                "Type nesting too deep: {} (limit: {})",
+                ty.depth() + 1,
+                crate::types::MAX_TYPE_DEPTH
+            );
+        }
         self.attributes.insert(name.into(), ty);
         self
     }
@@ -181,6 +188,18 @@ impl TupleType {
     /// ```
     pub fn attribute_names(&self) -> impl Iterator<Item = &String> {
         self.attributes.keys()
+    }
+
+    /// Returns the maximum depth of any attribute type + 1.
+    ///
+    /// If there are no attributes, returns 1.
+    pub fn depth(&self) -> usize {
+        self.attributes
+            .values()
+            .map(|ty| ty.depth())
+            .max()
+            .unwrap_or(0)
+            + 1
     }
 
     /// Returns the degree (number of attributes) of this tuple type.
