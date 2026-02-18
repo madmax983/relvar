@@ -261,90 +261,90 @@ impl Aggregation {
 
     fn compute(&self, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
         match &self.function {
-            AggregationFn::Count => Ok(ScalarValue::Int(tuples.len() as i64)),
-            AggregationFn::Sum(attr_name) => {
-                let mut sum = 0i64;
-                for tuple in tuples {
-                    let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Failed to get attribute {} as i64",
-                            attr_name
-                        ))
-                    })?;
-                    sum = sum.checked_add(value).ok_or_else(|| {
-                        SummarizeError::AggregationError("Integer overflow in SUM".to_string())
-                    })?;
-                }
-                Ok(ScalarValue::Int(sum))
-            }
-            AggregationFn::Avg(attr_name) => {
-                if tuples.is_empty() {
-                    return Ok(ScalarValue::Float(0.0));
-                }
-                let mut sum = 0i128;
-                for tuple in tuples {
-                    let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Failed to get attribute {} as i64",
-                            attr_name
-                        ))
-                    })?;
-                    sum = sum.checked_add(value as i128).ok_or_else(|| {
-                        SummarizeError::AggregationError("Integer overflow in AVG".to_string())
-                    })?;
-                }
-                let avg = sum as f64 / tuples.len() as f64;
-                Ok(ScalarValue::Float(avg))
-            }
-            AggregationFn::Min(attr_name) => {
-                if tuples.is_empty() {
-                    return Err(SummarizeError::AggregationError(
-                        "Cannot compute MIN on empty set".to_string(),
-                    ));
-                }
-                let first = tuples[0].get(attr_name).ok_or_else(|| {
-                    SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
-                })?;
-                let mut min_value = first.clone();
+            AggregationFn::Count => Ok(Self::compute_count(tuples)),
+            AggregationFn::Sum(attr_name) => Self::compute_sum(attr_name, tuples),
+            AggregationFn::Avg(attr_name) => Self::compute_avg(attr_name, tuples),
+            AggregationFn::Min(attr_name) => Self::compute_extremum(
+                attr_name,
+                tuples,
+                "Cannot compute MIN on empty set",
+                |val, min| val < min,
+            ),
+            AggregationFn::Max(attr_name) => Self::compute_extremum(
+                attr_name,
+                tuples,
+                "Cannot compute MAX on empty set",
+                |val, max| val > max,
+            ),
+        }
+    }
 
-                for tuple in tuples.iter().skip(1) {
-                    let value = tuple.get(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Attribute {} not found",
-                            attr_name
-                        ))
-                    })?;
-                    if value < &min_value {
-                        min_value = value.clone();
-                    }
-                }
-                Ok(min_value)
-            }
-            AggregationFn::Max(attr_name) => {
-                if tuples.is_empty() {
-                    return Err(SummarizeError::AggregationError(
-                        "Cannot compute MAX on empty set".to_string(),
-                    ));
-                }
-                let first = tuples[0].get(attr_name).ok_or_else(|| {
-                    SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
-                })?;
-                let mut max_value = first.clone();
+    fn compute_count(tuples: &[&Tuple]) -> ScalarValue {
+        ScalarValue::Int(tuples.len() as i64)
+    }
 
-                for tuple in tuples.iter().skip(1) {
-                    let value = tuple.get(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Attribute {} not found",
-                            attr_name
-                        ))
-                    })?;
-                    if value > &max_value {
-                        max_value = value.clone();
-                    }
-                }
-                Ok(max_value)
+    fn compute_sum(attr_name: &str, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
+        let mut sum = 0i64;
+        for tuple in tuples {
+            let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!(
+                    "Failed to get attribute {} as i64",
+                    attr_name
+                ))
+            })?;
+            sum = sum.checked_add(value).ok_or_else(|| {
+                SummarizeError::AggregationError("Integer overflow in SUM".to_string())
+            })?;
+        }
+        Ok(ScalarValue::Int(sum))
+    }
+
+    fn compute_avg(attr_name: &str, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
+        if tuples.is_empty() {
+            return Ok(ScalarValue::Float(0.0));
+        }
+        let mut sum = 0i128;
+        for tuple in tuples {
+            let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!(
+                    "Failed to get attribute {} as i64",
+                    attr_name
+                ))
+            })?;
+            sum = sum.checked_add(value as i128).ok_or_else(|| {
+                SummarizeError::AggregationError("Integer overflow in AVG".to_string())
+            })?;
+        }
+        let avg = sum as f64 / tuples.len() as f64;
+        Ok(ScalarValue::Float(avg))
+    }
+
+    fn compute_extremum<F>(
+        attr_name: &str,
+        tuples: &[&Tuple],
+        empty_error: &str,
+        should_update: F,
+    ) -> Result<ScalarValue, SummarizeError>
+    where
+        F: Fn(&ScalarValue, &ScalarValue) -> bool,
+    {
+        if tuples.is_empty() {
+            return Err(SummarizeError::AggregationError(empty_error.to_string()));
+        }
+        let first = tuples[0].get(attr_name).ok_or_else(|| {
+            SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+        })?;
+        let mut extremum = first.clone();
+
+        for tuple in tuples.iter().skip(1) {
+            let value = tuple.get(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+            })?;
+            if should_update(value, &extremum) {
+                extremum = value.clone();
             }
         }
+        Ok(extremum)
     }
 }
 
