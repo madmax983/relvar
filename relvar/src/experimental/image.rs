@@ -315,7 +315,7 @@ mod tests {
         let height = 3;
         let mut data = vec![0u8; width * height * 3];
         // Set center (1, 1) to White
-        let center_idx = (1 * width + 1) * 3;
+        let center_idx = (width + 1) * 3;
         data[center_idx] = 255;
         data[center_idx + 1] = 255;
         data[center_idx + 2] = 255;
@@ -348,9 +348,13 @@ mod tests {
         for tuple in relevant_tuples {
             count += 1;
             let r = tuple.get_typed::<i64>("r").unwrap();
-            assert_eq!(r, 28, "Pixel at ({}, {}) should be 255/9 = 28",
+            assert_eq!(
+                r,
+                28,
+                "Pixel at ({}, {}) should be 255/9 = 28",
                 tuple.get_typed::<i64>("x").unwrap(),
-                tuple.get_typed::<i64>("y").unwrap());
+                tuple.get_typed::<i64>("y").unwrap()
+            );
         }
         assert_eq!(count, 9, "Should have 9 pixels in the 3x3 grid");
     }
