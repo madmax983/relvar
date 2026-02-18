@@ -34,7 +34,11 @@ fn test_scalar_type_deserialization_coverage() {
     }
 
     // UserDefined type check
-    if let ScalarType::UserDefined { name, representation } = &types[6] {
+    if let ScalarType::UserDefined {
+        name,
+        representation,
+    } = &types[6]
+    {
         assert_eq!(name, "MyType");
         assert_eq!(**representation, ScalarType::Int);
     } else {
