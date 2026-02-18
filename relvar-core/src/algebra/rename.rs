@@ -31,6 +31,8 @@
 
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 impl Relation {
     /// Renames attributes in this relation according to the provided mapping.
@@ -93,6 +95,11 @@ impl Relation {
         // Build new heading with renamed attributes
         let mut new_heading = TupleType::new();
 
+        // Also pre-calculate the new names in the sorted order of attributes
+        // This vector will align perfectly with tuple.values().values() iteration
+        // because both follow BTreeMap's sorted key order.
+        let mut new_names = Vec::with_capacity(self.relation_type().heading().degree());
+
         for (old_name, attr_type) in self.relation_type().heading().attributes() {
             // Check if this attribute should be renamed
             let new_name = mappings
@@ -102,28 +109,39 @@ impl Relation {
                 .unwrap_or(old_name.as_str());
 
             new_heading = new_heading.with_attribute(new_name, attr_type.clone());
+            new_names.push(new_name.to_string());
         }
 
         let new_rel_type = RelationType::new(new_heading.clone());
-        let new_heading_arc = std::sync::Arc::new(new_heading);
+        let new_heading_arc = Arc::new(new_heading);
+        let new_names_arc = Arc::new(new_names);
 
         // Rename attributes in each tuple
         let renamed_tuples = self.tuples().map(move |tuple| {
-            let values_iter = tuple.values().iter().map(|(old_name, value)| {
-                let new_name = mappings
-                    .iter()
-                    .find(|(from, _)| from == old_name)
-                    .map(|(_, to)| *to)
-                    .unwrap_or(old_name.as_str());
-                (new_name.to_string(), value.clone())
-            });
+            // Optimization: Zip pre-calculated new names with values.
+            // Both iterators follow the sorted order of old attribute names.
+            // - new_names_arc was built by iterating heading().attributes() (sorted by old_name)
+            // - tuple.values().values() iterates values sorted by old_name (BTreeMap keys)
+            let values_map: BTreeMap<String, _> = new_names_arc
+                .iter()
+                .zip(tuple.values().values())
+                .map(|(new_name, value)| (new_name.clone(), value.clone()))
+                .collect();
 
-            Tuple::new(new_heading_arc.clone(), values_iter)
-                .expect("Rename should maintain type consistency")
+            // Safety:
+            // 1. We constructed new_heading directly from old_heading with renames applied.
+            // 2. We constructed values_map by zipping new names with old values in the same order.
+            // 3. Types are preserved (we clone the type from old heading to new heading).
+            // 4. "Last Write Wins" logic for duplicate target names is handled by BTreeMap::collect
+            //    overwriting previous entries, matching the behavior of new_heading construction.
+            Tuple::new_unchecked(new_heading_arc.clone(), values_map)
         });
 
-        Relation::from_tuples(new_rel_type, renamed_tuples)
-            .expect("Renamed tuples should conform to new relation type")
+        // Safety:
+        // We guarantee that renamed_tuples conform to new_rel_type because:
+        // - new_rel_type uses new_heading
+        // - Tuples are created with new_heading
+        Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
     }
 }
 
