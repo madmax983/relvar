@@ -29,3 +29,8 @@
 **Concept:** A module (`relvar::experimental::spatial`) implementing a `Point` type using `ScalarType::UserDefined` backed by `ScalarType::Relation`.
 **Fate:** Proposed
 **Lesson:** The relational model is powerful enough to represent complex types like Points without opaque blobs. By treating a Point as a relation `{x: Float, y: Float}`, we maintain purity and allow future extensibility while providing a familiar `Point` interface.
+
+## [Relational Search]
+**Concept:** A module (`relvar::experimental::search`) implementing Full-Text Search using an inverted index stored as a Relation.
+**Fate:** Merged
+**Lesson:** Search is just a join. By treating the inverted index as a relation `(term, doc_id, count)`, we can express search queries using standard relational algebra (Restrict -> Summarize), eliminating the need for a separate search engine for basic use cases.

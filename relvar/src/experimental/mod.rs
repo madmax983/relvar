@@ -8,7 +8,9 @@
 //! - **Pivot**: Operator to rotate unique values from one column into multiple columns.
 //! - **Mock**: Tools for generating random relations for testing.
 //! - **Spatial**: Spatial data types.
+//! - **Search**: Relational Full-Text Search.
 
 pub mod mock;
 pub mod pivot;
+pub mod search;
 pub mod spatial;
