@@ -128,10 +128,19 @@ pub use relvar_storage::PersistentEngine;
 
 /// Experimental features that may be unstable or subject to change.
 pub mod experimental;
-pub mod visualizer;
+
+/// Developer tools and utilities.
+pub mod tools;
+
+#[deprecated(note = "Use `relvar::tools::visualizer` instead")]
+pub use tools::visualizer;
 
 /// Data import and export functionality.
-pub mod data;
+#[deprecated(note = "Use `relvar::tools` instead")]
+pub mod data {
+    pub use crate::tools::exporter;
+    pub use crate::tools::importer;
+}
 
 /// Create an in-memory database.
 ///

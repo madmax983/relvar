@@ -19,6 +19,7 @@ pub mod database;
 pub mod error;
 pub mod query;
 pub mod storage_engine;
+pub mod traits;
 pub mod types;
 pub mod values;
 
@@ -37,3 +38,6 @@ pub use constraints::{
 
 // Re-export storage engine types
 pub use storage_engine::{InMemoryEngine, StorageEngine, StorageError};
+
+// Re-export traits
+pub use traits::QueryExecutor;
