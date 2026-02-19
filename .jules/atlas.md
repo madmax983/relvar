@@ -15,3 +15,7 @@
 **Blueprint:**
 - Moved `Delta` to `relvar-core/src/algebra/delta.rs` (high cohesion with other operators).
 - Moved `Importer` and `Exporter` to `relvar/src/data/` (clear domain boundary for I/O).
+
+## 2025-05-24 - Decouple Query from Database (Again)
+**Tangle:** `Query` depended on `Database` concrete type, creating a hard coupling. `Database` implementation of `QueryExecutor` existed but wasn't used by `Query`.
+**Blueprint:** Updated `Query::execute` to depend on `QueryExecutor` trait instead of `Database` struct. This reuses the existing abstraction used by virtual relvars and fully decouples the query definition from the database implementation.
