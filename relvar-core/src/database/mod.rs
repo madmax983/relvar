@@ -1910,14 +1910,18 @@ mod tests {
 
         // Define a view. The compiler enforces that we cannot call mutable methods
         // like insert() inside the evaluator because it receives &Database, not &mut Database.
-        db.define_virtual_relvar("SAFE_VIEW", test_rel_type(), |db: &Database<InMemoryEngine>| {
-            // db.insert("LOG", ...); // This would cause compilation error!
+        db.define_virtual_relvar(
+            "SAFE_VIEW",
+            test_rel_type(),
+            |db: &Database<InMemoryEngine>| {
+                // db.insert("LOG", ...); // This would cause compilation error!
 
-            // Read operations are allowed
-            let _ = db.query("LOG")?;
+                // Read operations are allowed
+                let _ = db.query("LOG")?;
 
-            Ok(Relation::new(test_rel_type()))
-        })
+                Ok(Relation::new(test_rel_type()))
+            },
+        )
         .unwrap();
 
         // Query the view
