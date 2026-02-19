@@ -155,7 +155,7 @@ impl Aggregation {
         }
     }
 
-    /// Creates a SUM aggregation.
+    /// Creates a SUM aggregation for integer values.
     ///
     /// Computes the sum of an integer attribute across all tuples in each group.
     /// The result type is [`ScalarType::Int`].
@@ -176,6 +176,31 @@ impl Aggregation {
         Self {
             result_name: result_name.to_string(),
             result_type: ScalarType::Int,
+            function: AggregationFn::Sum(attr_name.to_string()),
+        }
+    }
+
+    /// Creates a SUM aggregation for floating-point values.
+    ///
+    /// Computes the sum of a float attribute across all tuples in each group.
+    /// The result type is [`ScalarType::Float`].
+    ///
+    /// # Arguments
+    ///
+    /// * `result_name` - The name for the sum result attribute
+    /// * `attr_name` - The attribute to sum (must be Float type)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::algebra::summarize::Aggregation;
+    ///
+    /// let agg = Aggregation::sum_float("total_price", "price");
+    /// ```
+    pub fn sum_float(result_name: &str, attr_name: &str) -> Self {
+        Self {
+            result_name: result_name.to_string(),
+            result_type: ScalarType::Float,
             function: AggregationFn::Sum(attr_name.to_string()),
         }
     }
@@ -263,38 +288,83 @@ impl Aggregation {
         match &self.function {
             AggregationFn::Count => Ok(ScalarValue::Int(tuples.len() as i64)),
             AggregationFn::Sum(attr_name) => {
-                let mut sum = 0i64;
-                for tuple in tuples {
-                    let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Failed to get attribute {} as i64",
-                            attr_name
-                        ))
-                    })?;
-                    sum = sum.checked_add(value).ok_or_else(|| {
-                        SummarizeError::AggregationError("Integer overflow in SUM".to_string())
-                    })?;
+                if self.result_type == ScalarType::Float {
+                    let mut sum = 0.0;
+                    for tuple in tuples {
+                        let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
+                            SummarizeError::AggregationError(format!(
+                                "Failed to get attribute {} as f64",
+                                attr_name
+                            ))
+                        })?;
+                        sum += value;
+                    }
+                    Ok(ScalarValue::Float(sum))
+                } else {
+                    let mut sum = 0i64;
+                    for tuple in tuples {
+                        let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
+                            SummarizeError::AggregationError(format!(
+                                "Failed to get attribute {} as i64",
+                                attr_name
+                            ))
+                        })?;
+                        sum = sum.checked_add(value).ok_or_else(|| {
+                            SummarizeError::AggregationError("Integer overflow in SUM".to_string())
+                        })?;
+                    }
+                    Ok(ScalarValue::Int(sum))
                 }
-                Ok(ScalarValue::Int(sum))
             }
             AggregationFn::Avg(attr_name) => {
                 if tuples.is_empty() {
                     return Ok(ScalarValue::Float(0.0));
                 }
-                let mut sum = 0i128;
-                for tuple in tuples {
-                    let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Failed to get attribute {} as i64",
-                            attr_name
-                        ))
-                    })?;
-                    sum = sum.checked_add(value as i128).ok_or_else(|| {
-                        SummarizeError::AggregationError("Integer overflow in AVG".to_string())
-                    })?;
+
+                // Check the type of the first tuple to decide implementation
+                // We assume all tuples have the same type (enforced by Relation)
+                let first_val = tuples[0].get(attr_name).ok_or_else(|| {
+                    SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+                })?;
+
+                match first_val.scalar_type() {
+                    ScalarType::Int => {
+                        let mut sum = 0i128;
+                        for tuple in tuples {
+                            let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
+                                SummarizeError::AggregationError(format!(
+                                    "Failed to get attribute {} as i64",
+                                    attr_name
+                                ))
+                            })?;
+                            sum = sum.checked_add(value as i128).ok_or_else(|| {
+                                SummarizeError::AggregationError(
+                                    "Integer overflow in AVG".to_string(),
+                                )
+                            })?;
+                        }
+                        let avg = sum as f64 / tuples.len() as f64;
+                        Ok(ScalarValue::Float(avg))
+                    }
+                    ScalarType::Float => {
+                        let mut sum = 0.0;
+                        for tuple in tuples {
+                            let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
+                                SummarizeError::AggregationError(format!(
+                                    "Failed to get attribute {} as f64",
+                                    attr_name
+                                ))
+                            })?;
+                            sum += value;
+                        }
+                        let avg = sum / tuples.len() as f64;
+                        Ok(ScalarValue::Float(avg))
+                    }
+                    _ => Err(SummarizeError::AggregationError(format!(
+                        "Avg requires Int or Float attribute, got {:?}",
+                        first_val.scalar_type()
+                    ))),
                 }
-                let avg = sum as f64 / tuples.len() as f64;
-                Ok(ScalarValue::Float(avg))
             }
             AggregationFn::Min(attr_name) => {
                 if tuples.is_empty() {
@@ -1047,5 +1117,55 @@ mod overflow_tests {
         let tuple = result.tuples().next().unwrap();
         // Average of MAX and MAX is MAX
         assert_eq!(tuple.get_typed::<f64>("average").unwrap(), i64::MAX as f64);
+    }
+
+    #[test]
+    fn test_sum_float() {
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("price", ScalarType::Float);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation.insert(tuple! { id: 1i64, price: 10.5 }).unwrap();
+        relation.insert(tuple! { id: 2i64, price: 20.5 }).unwrap();
+
+        // Use new helper for Float Sum
+        let sum_agg = Aggregation::sum_float("total_price", "price");
+
+        let result = relation.summarize(&[], &[sum_agg]);
+
+        assert!(result.is_ok(), "Sum on Float failed: {:?}", result.err());
+
+        let result = result.unwrap();
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<f64>("total_price").unwrap(), 31.0);
+    }
+
+    #[test]
+    fn test_avg_float() {
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("price", ScalarType::Float);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation.insert(tuple! { id: 1i64, price: 10.0 }).unwrap();
+        relation.insert(tuple! { id: 2i64, price: 20.0 }).unwrap();
+
+        // Avg helper sets result_type to Float
+        let avg_agg = Aggregation::avg("avg_price", "price");
+
+        let result = relation.summarize(&[], &[avg_agg]);
+
+        assert!(result.is_ok(), "Avg on Float failed: {:?}", result.err());
+
+        let result = result.unwrap();
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<f64>("avg_price").unwrap(), 15.0);
     }
 }
