@@ -55,7 +55,15 @@ impl Graph {
     pub fn bfs(&self, start_node_id: ScalarValue) -> Result<Relation, DatabaseError> {
         // 1. Initialize result schema: (node_id, distance)
         let result_heading = TupleType::new()
-            .with_attribute(self.node_id_attr.clone(), self.nodes.relation_type().heading().get_attribute_type(&self.node_id_attr).unwrap().clone())
+            .with_attribute(
+                self.node_id_attr.clone(),
+                self.nodes
+                    .relation_type()
+                    .heading()
+                    .get_attribute_type(&self.node_id_attr)
+                    .unwrap()
+                    .clone(),
+            )
             .with_attribute("distance", ScalarType::Int);
 
         let result_type = RelationType::new(result_heading.clone());
@@ -66,7 +74,10 @@ impl Graph {
         start_tuple_map.insert(self.node_id_attr.clone(), start_node_id);
         start_tuple_map.insert("distance".to_string(), ScalarValue::Int(0));
 
-        visited.insert(Tuple::new(result_heading, start_tuple_map).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?)?;
+        visited.insert(
+            Tuple::new(result_heading, start_tuple_map)
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?,
+        )?;
 
         // 3. Frontier is the set of newly visited nodes to expand
         let mut frontier = visited.clone();
@@ -97,10 +108,12 @@ impl Graph {
             let next_nodes = projected.rename(&rename_back_map);
 
             // Extend: distance = distance + 1
-            let next_nodes_inc = next_nodes.extend("new_distance", ScalarType::Int, |t| {
-                let d = t.get_typed::<i64>("distance").unwrap();
-                ScalarValue::Int(d + 1)
-            }).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            let next_nodes_inc = next_nodes
+                .extend("new_distance", ScalarType::Int, |t| {
+                    let d = t.get_typed::<i64>("distance").unwrap();
+                    ScalarValue::Int(d + 1)
+                })
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
             // Project out old distance and rename new_distance -> distance
             let next_frontier_candidates = next_nodes_inc
@@ -129,7 +142,9 @@ impl Graph {
             // 2. Get candidate nodes (just IDs)
             let candidate_ids = next_frontier_candidates.project(&[self.node_id_attr.as_str()]);
             // 3. New IDs = candidate IDs MINUS visited IDs
-            let new_ids = candidate_ids.difference(&visited_ids).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            let new_ids = candidate_ids
+                .difference(&visited_ids)
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
             // 4. Reconstruct frontier with distances
             // We join new_ids with next_frontier_candidates to get the distances back.
@@ -147,7 +162,9 @@ impl Graph {
             }
 
             // Update visited
-            visited = visited.union(&new_frontier).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            visited = visited
+                .union(&new_frontier)
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
             frontier = new_frontier;
         }
 
@@ -164,7 +181,11 @@ impl Graph {
     /// # Returns
     ///
     /// A relation with heading `(node_id, rank)`.
-    pub fn pagerank(&self, iterations: usize, damping_factor: f64) -> Result<Relation, DatabaseError> {
+    pub fn pagerank(
+        &self,
+        iterations: usize,
+        damping_factor: f64,
+    ) -> Result<Relation, DatabaseError> {
         let num_nodes = self.nodes.cardinality();
         if num_nodes == 0 {
             return Ok(self.nodes.clone()); // Or empty relation with rank
@@ -174,19 +195,24 @@ impl Graph {
 
         // 1. Initialize ranks: (node_id, rank)
         // We can't easily iterate and insert. Let's use Extend on `nodes`.
-        let mut ranks = self.nodes.project(&[self.node_id_attr.as_str()]).extend(
-            "rank",
-            ScalarType::Float,
-            move |_| ScalarValue::Float(initial_rank),
-        ).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        let mut ranks = self
+            .nodes
+            .project(&[self.node_id_attr.as_str()])
+            .extend("rank", ScalarType::Float, move |_| {
+                ScalarValue::Float(initial_rank)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 2. Precompute out-degrees: (from_node, out_degree)
         // Group edges by from_attr, count(*).
         // Summarize requires an aggregation function.
-        let out_degrees = self.edges.summarize(
-            &[self.from_attr.as_str()],
-            &[Aggregation::count("out_degree")],
-        ).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        let out_degrees = self
+            .edges
+            .summarize(
+                &[self.from_attr.as_str()],
+                &[Aggregation::count("out_degree")],
+            )
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // We also need to handle dangling nodes (sink nodes with no outgoing edges).
         // They accumulate rank but don't distribute it. In standard PageRank, they distribute to everyone.
@@ -209,10 +235,8 @@ impl Graph {
             let with_degrees = joined_edges.join(&out_degrees)?;
 
             // Calculate contribution: rank / out_degree
-            let contributions = with_degrees.extend(
-                "contribution",
-                ScalarType::Float,
-                |t| {
+            let contributions = with_degrees
+                .extend("contribution", ScalarType::Float, |t| {
                     let r = t.get_typed::<f64>("rank").unwrap();
                     let d = t.get_typed::<i64>("out_degree").unwrap();
                     if d == 0 {
@@ -220,8 +244,8 @@ impl Graph {
                     } else {
                         ScalarValue::Float(r / (d as f64))
                     }
-                }
-            ).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+                })
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
             // Project: (to, contribution)
             let incoming = contributions.project(&[self.to_attr.as_str(), "contribution"]);
@@ -231,10 +255,12 @@ impl Graph {
             let incoming_renamed = incoming.rename(&rename_back_map);
 
             // Summarize: Sum contributions for each node
-            let new_ranks_sum = incoming_renamed.summarize(
-                &[self.node_id_attr.as_str()],
-                &[Aggregation::sum_float("sum_rank", "contribution")],
-            ).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            let new_ranks_sum = incoming_renamed
+                .summarize(
+                    &[self.node_id_attr.as_str()],
+                    &[Aggregation::sum_float("sum_rank", "contribution")],
+                )
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
             // Note: `new_ranks_sum` only contains nodes that have INCOMING edges.
             // Nodes with no incoming edges (sources) will be missing.
@@ -245,26 +271,29 @@ impl Graph {
 
             let all_node_ids = self.nodes.project(&[self.node_id_attr.as_str()]);
             let ranked_node_ids = new_ranks_sum.project(&[self.node_id_attr.as_str()]);
-            let missing_nodes = all_node_ids.difference(&ranked_node_ids).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            let missing_ranks = missing_nodes.extend("sum_rank", ScalarType::Float, |_| ScalarValue::Float(0.0))
+            let missing_nodes = all_node_ids
+                .difference(&ranked_node_ids)
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-            let total_ranks = new_ranks_sum.union(&missing_ranks).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            let missing_ranks = missing_nodes
+                .extend("sum_rank", ScalarType::Float, |_| ScalarValue::Float(0.0))
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+            let total_ranks = new_ranks_sum
+                .union(&missing_ranks)
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
             // Apply damping factor: (1 - d) / N + d * sum_rank
             let base_score = (1.0 - damping_factor) / (num_nodes as f64);
 
-            ranks = total_ranks.extend(
-                "new_rank_final",
-                ScalarType::Float,
-                move |t| {
+            ranks = total_ranks
+                .extend("new_rank_final", ScalarType::Float, move |t| {
                     let sum_r = t.get_typed::<f64>("sum_rank").unwrap();
                     ScalarValue::Float(base_score + damping_factor * sum_r)
-                }
-            ).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-             .project(&[self.node_id_attr.as_str(), "new_rank_final"])
-             .rename(&[("new_rank_final", "rank")]);
+                })
+                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+                .project(&[self.node_id_attr.as_str(), "new_rank_final"])
+                .rename(&[("new_rank_final", "rank")]);
         }
 
         Ok(ranks)
@@ -300,13 +329,22 @@ mod tests {
         // 3: dist 2
         assert_eq!(result.cardinality(), 3);
 
-        let t1 = result.tuples().find(|t| t.get_typed::<i64>("id") == Some(1)).unwrap();
+        let t1 = result
+            .tuples()
+            .find(|t| t.get_typed::<i64>("id") == Some(1))
+            .unwrap();
         assert_eq!(t1.get_typed::<i64>("distance"), Some(0));
 
-        let t2 = result.tuples().find(|t| t.get_typed::<i64>("id") == Some(2)).unwrap();
+        let t2 = result
+            .tuples()
+            .find(|t| t.get_typed::<i64>("id") == Some(2))
+            .unwrap();
         assert_eq!(t2.get_typed::<i64>("distance"), Some(1));
 
-        let t3 = result.tuples().find(|t| t.get_typed::<i64>("id") == Some(3)).unwrap();
+        let t3 = result
+            .tuples()
+            .find(|t| t.get_typed::<i64>("id") == Some(3))
+            .unwrap();
         assert_eq!(t3.get_typed::<i64>("distance"), Some(2));
     }
 
