@@ -41,3 +41,7 @@
 ## 2026-02-17 - Strict Float Equality in Foreign Keys
 **Learning:** Foreign Keys on floating-point columns enforce strict bit-pattern equality (e.g., `-0.0` != `0.0`), rejecting references even if numerically equal.
 **Action:** Avoid using floating-point columns as foreign keys unless strict bitwise identity is guaranteed, or implement fuzzy matching logic explicitly.
+
+## 2027-08-15 - Integer Truncation and Overflow in Storage Layers
+**Learning:** `WalManager` and `PageFile` were casting `u64` length prefixes to `usize` without checking for truncation (on 32-bit systems) or overflow during offset calculation. This allowed malicious payloads to cause panics or potentially bypass size checks.
+**Action:** Always validate `u64` values from external sources (disk/network) using `checked_add` and `usize::try_from` before using them for memory indexing or allocation.

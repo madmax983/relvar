@@ -243,18 +243,28 @@ impl WalManager {
             let len_bytes: [u8; 8] = buffer[offset..offset + 8]
                 .try_into()
                 .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
-            let record_len = u64::from_le_bytes(len_bytes) as usize;
+            let record_len_u64 = u64::from_le_bytes(len_bytes);
+            let record_len = usize::try_from(record_len_u64).map_err(|_| {
+                WalError::Corrupted(
+                    lsn,
+                    format!("Record length {} exceeds memory limits", record_len_u64),
+                )
+            })?;
             offset += 8;
 
             // Read record data
-            if offset + record_len > buffer.len() {
+            let end_offset = offset.checked_add(record_len).ok_or_else(|| {
+                WalError::Corrupted(lsn, "Record length causes offset overflow".to_string())
+            })?;
+
+            if end_offset > buffer.len() {
                 return Err(WalError::Corrupted(
                     lsn,
                     "Record extends beyond file".to_string(),
                 ));
             }
 
-            let record_bytes = &buffer[offset..offset + record_len];
+            let record_bytes = &buffer[offset..end_offset];
             let record = WalRecord::deserialize(record_bytes)
                 .map_err(|e| WalError::Corrupted(lsn, format!("Deserialization failed: {}", e)))?;
 
@@ -302,15 +312,26 @@ impl WalManager {
             let len_bytes: [u8; 8] = buffer[offset..offset + 8]
                 .try_into()
                 .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
-            let record_len = u64::from_le_bytes(len_bytes) as usize;
+            let record_len_u64 = u64::from_le_bytes(len_bytes);
+            let record_len = usize::try_from(record_len_u64).map_err(|_| {
+                WalError::Corrupted(
+                    lsn,
+                    format!("Record length {} exceeds memory limits", record_len_u64),
+                )
+            })?;
             offset += 8;
 
             // Skip record data
-            if offset + record_len > buffer.len() {
+            let end_offset = match offset.checked_add(record_len) {
+                Some(end) => end,
+                None => break, // Overflow means invalid/corrupted, treat as end of valid log
+            };
+
+            if end_offset > buffer.len() {
                 // Partial record at end - ignore it
                 break;
             }
-            offset += record_len;
+            offset = end_offset;
         }
 
         // Next LSN is last_lsn + 1
@@ -467,5 +488,68 @@ mod tests {
         assert!(matches!(records[0].1, WalRecord::Begin { .. }));
         assert!(matches!(records[1].1, WalRecord::Insert { .. }));
         assert!(matches!(records[2].1, WalRecord::Commit { .. }));
+    }
+
+    #[test]
+    fn test_wal_record_length_overflow() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+
+        // Create a WAL file with a malicious record length
+        {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&path)
+                .unwrap();
+
+            use std::io::Write; // Import Write trait
+
+            // Write magic header
+            file.write_all(WAL_MAGIC).unwrap();
+
+            // Write a record: LSN=1, Len=u64::MAX
+            // On 64-bit systems, u64::MAX fits in usize, but offset + len overflows.
+            // On 32-bit systems, u64::MAX exceeds usize::MAX, so try_from fails early.
+            let lsn = 1u64;
+            let bad_len = u64::MAX;
+
+            file.write_all(&lsn.to_le_bytes()).unwrap();
+            file.write_all(&bad_len.to_le_bytes()).unwrap();
+
+            // Write a few bytes of "data"
+            file.write_all(&[1, 2, 3]).unwrap();
+        }
+
+        // Open calls scan_for_last_lsn internally.
+        // It handles tail corruption by stopping, so it might return Ok.
+        let result = WalManager::open(&path);
+
+        let mut wal = match result {
+            Ok(w) => w,
+            Err(_) => return, // If it fails, that's also acceptable for this test
+        };
+
+        // However, explicit scan() should catch the corruption and return Error
+        let scan_result = wal.scan();
+
+        assert!(scan_result.is_err());
+        match scan_result {
+            Err(WalError::Corrupted(_, msg)) => {
+                // We expect "exceeds memory limits" (32-bit)
+                // OR "Record length causes offset overflow" (64-bit checked)
+                // OR "Record extends beyond file"
+                assert!(
+                    msg.contains("exceeds memory limits")
+                        || msg.contains("Record length causes offset overflow")
+                        || msg.contains("Record extends beyond file"),
+                    "Unexpected error message: {}",
+                    msg
+                );
+            }
+            Ok(_) => panic!("Expected WalError::Corrupted, got Ok"),
+            Err(e) => panic!("Expected WalError::Corrupted, got {:?}", e),
+        }
     }
 }

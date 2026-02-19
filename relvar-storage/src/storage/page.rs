@@ -309,12 +309,24 @@ impl PageFile {
             )));
         }
 
-        let data_len = u64::from_le_bytes(buffer[0..8].try_into().unwrap()) as usize;
+        let data_len_u64 = u64::from_le_bytes(buffer[0..8].try_into().unwrap());
 
-        // Check if declared length fits in the buffer
-        let required_len = data_len
-            .checked_add(8)
-            .ok_or_else(|| PageError::Serialization("Page length overflow".to_string()))?;
+        // Check if data length exceeds PAGE_SIZE - 8 (maximum possible data)
+        // We check this using u64 arithmetic BEFORE casting to usize to prevent
+        // truncation vulnerabilities on 32-bit systems (e.g., 4GB+1 -> 1).
+        if data_len_u64 > (PAGE_SIZE - 8) as u64 {
+            return Err(PageError::Serialization(format!(
+                "Page data length {} exceeds maximum {}",
+                data_len_u64,
+                PAGE_SIZE - 8
+            )));
+        }
+
+        // Safe cast: we've already verified it's <= PAGE_SIZE - 8, which fits in usize
+        let data_len = data_len_u64 as usize;
+
+        // Check if declared length fits in the buffer (which might be smaller than PAGE_SIZE if read was short)
+        let required_len = data_len + 8; // No overflow possible (checked above)
 
         if required_len > buffer.len() {
             return Err(PageError::Serialization(format!(
@@ -743,6 +755,99 @@ mod tests {
                 "Expected Serialization error with overflow message, got {:?}",
                 result
             ),
+        }
+    }
+
+    #[test]
+    fn test_page_file_length_boundary() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let mut page_file = PageFile::create(path).unwrap();
+        let max_data = PAGE_SIZE - 8;
+
+        // Test Case 1: Max allowed length (PAGE_SIZE - 8)
+        {
+            let len = max_data as u64;
+            let mut buffer = Vec::new();
+            buffer.extend_from_slice(&len.to_le_bytes());
+            buffer.resize(PAGE_SIZE, 0); // Fill with valid data
+
+            // Write directly
+            let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+            use std::io::Seek;
+            use std::io::SeekFrom;
+            use std::io::Write;
+            file.seek(SeekFrom::Start(0)).unwrap();
+            file.write_all(&buffer).unwrap();
+        }
+
+        // Should succeed
+        let result = page_file.read_page(0);
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.data().len(), max_data);
+
+        // Test Case 2: Max allowed length + 1 (PAGE_SIZE - 7)
+        {
+            let len = (max_data + 1) as u64;
+            let mut buffer = Vec::new();
+            buffer.extend_from_slice(&len.to_le_bytes());
+            buffer.resize(PAGE_SIZE, 0);
+
+            // Write directly
+            let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+            use std::io::Seek;
+            use std::io::SeekFrom;
+            use std::io::Write;
+            file.seek(SeekFrom::Start(0)).unwrap();
+            file.write_all(&buffer).unwrap();
+        }
+
+        // Should fail
+        let result = page_file.read_page(0);
+        assert!(result.is_err());
+        match result {
+            Err(PageError::Serialization(msg)) => {
+                assert!(msg.contains("Page data length"), "Unexpected: {}", msg);
+                assert!(msg.contains("exceeds maximum"), "Unexpected: {}", msg);
+            }
+            _ => panic!("Expected Serialization error, got {:?}", result),
+        }
+
+        // Test Case 3: 4GB + 1 (Simulate 32-bit truncation vulnerability)
+        // 0x100000001 = 4294967297
+        // On 32-bit, this casts to 1. If we don't check u64 first, it might pass.
+        {
+            let len: u64 = 0x100000001;
+            let mut buffer = Vec::new();
+            buffer.extend_from_slice(&len.to_le_bytes());
+            buffer.resize(PAGE_SIZE, 0);
+
+            // Write directly
+            let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+            use std::io::Seek;
+            use std::io::SeekFrom;
+            use std::io::Write;
+            file.seek(SeekFrom::Start(0)).unwrap();
+            file.write_all(&buffer).unwrap();
+        }
+
+        // Should fail cleanly with our new check
+        let result = page_file.read_page(0);
+        assert!(result.is_err());
+        match result {
+            Err(PageError::Serialization(msg)) => {
+                assert!(msg.contains("Page data length"), "Unexpected: {}", msg);
+                assert!(msg.contains("exceeds maximum"), "Unexpected: {}", msg);
+                // Verify it actually printed the huge number, not the truncated one
+                assert!(
+                    msg.contains("4294967297"),
+                    "Did not detect full u64 length: {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected Serialization error, got {:?}", result),
         }
     }
 }
