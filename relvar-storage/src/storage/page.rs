@@ -685,7 +685,8 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {
-                assert!(msg.contains("Corrupted page"));
+                // 9999 > 4088 (PAGE_SIZE-8), so it hits the max size check first
+                assert!(msg.contains("exceeds maximum"));
             }
             _ => panic!("Expected Serialization error"),
         }
@@ -745,8 +746,9 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {
+                // u64::MAX > PAGE_SIZE-8, so it hits the max size check first
                 assert!(
-                    msg.contains("Page length overflow"),
+                    msg.contains("exceeds maximum"),
                     "Unexpected message: {}",
                     msg
                 );
