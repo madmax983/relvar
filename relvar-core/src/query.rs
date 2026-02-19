@@ -41,8 +41,9 @@
 
 use crate::algebra::summarize::Aggregation;
 use crate::constraints::{ConstraintExpression, ExpressionError};
+use crate::database::Database;
 use crate::error::DatabaseError;
-use crate::traits::QueryExecutor;
+use crate::storage_engine::StorageEngine;
 use crate::values::Relation;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -116,12 +117,15 @@ pub enum QueryError {
 }
 
 impl Query {
-    /// Executes the query plan against the given relation source (e.g., Database).
-    pub fn execute(&self, executor: &impl QueryExecutor) -> Result<Relation, QueryError> {
+    /// Executes the query plan against the given database.
+    pub fn execute<E: StorageEngine>(
+        &self,
+        database: &Database<E>,
+    ) -> Result<Relation, QueryError> {
         match self {
-            Query::Scan(table_name) => Ok(executor.query(table_name)?),
+            Query::Scan(table_name) => Ok(database.query(table_name)?),
             Query::Restrict { input, predicate } => {
-                let relation = input.execute(executor)?;
+                let relation = input.execute(database)?;
                 // Note: Relation::restrict takes a closure that returns bool.
                 // We use evaluate() inside, but we must handle errors.
                 // Currently, we treat evaluation errors as false (exclude tuple).
@@ -134,12 +138,12 @@ impl Query {
                 Ok(result)
             }
             Query::Project { input, attributes } => {
-                let relation = input.execute(executor)?;
+                let relation = input.execute(database)?;
                 let attrs_ref: Vec<&str> = attributes.iter().map(|s| s.as_str()).collect();
                 Ok(relation.project(&attrs_ref))
             }
             Query::Rename { input, mappings } => {
-                let relation = input.execute(executor)?;
+                let relation = input.execute(database)?;
                 let mappings_ref: Vec<(&str, &str)> = mappings
                     .iter()
                     .map(|(a, b)| (a.as_str(), b.as_str()))
@@ -147,8 +151,8 @@ impl Query {
                 Ok(relation.rename(&mappings_ref))
             }
             Query::Join { left, right } => {
-                let left_rel = left.execute(executor)?;
-                let right_rel = right.execute(executor)?;
+                let left_rel = left.execute(database)?;
+                let right_rel = right.execute(database)?;
                 Ok(left_rel.join(&right_rel)?)
             }
             Query::Summarize {
@@ -156,7 +160,7 @@ impl Query {
                 group_by,
                 aggregations,
             } => {
-                let relation = input.execute(executor)?;
+                let relation = input.execute(database)?;
                 // aggregations is already Vec<Aggregation>, so no conversion needed
                 let group_by_ref: Vec<&str> = group_by.iter().map(|s| s.as_str()).collect();
                 Ok(relation
