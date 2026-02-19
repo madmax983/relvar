@@ -1,6 +1,35 @@
 //! Pivot operator implementation.
 //!
 //! PIVOT transforms row values into column headers.
+//!
+//! # Visual Example
+//!
+//! ```text
+//! Before Pivot:
+//! +-------+-------+-------+
+//! | Item  | Color | Count |
+//! +-------+-------+-------+
+//! | Shirt | Red   | 10    |
+//! | Shirt | Blue  | 5     |
+//! | Pants | Blue  | 20    |
+//! +-------+-------+-------+
+//!
+//! After Pivot (on Color, value Count):
+//! +-------+-----+------+
+//! | Item  | Red | Blue |
+//! +-------+-----+------+
+//! | Shirt | 10  | 5    |
+//! | Pants | 0   | 20   |
+//! +-------+-----+------+
+//! ```
+//!
+//! The `pivot` operator is useful for transforming "tall" data (normalized) into "wide" data (denormalized/report format).
+//!
+//! # Conflict Resolution
+//!
+//! If multiple tuples map to the same cell (e.g., same `Item` and same `Color` in the example above),
+//! the operator uses a **Last Write Wins** strategy based on the lexicographical order of the source tuples.
+//! The tuple that sorts last determines the final cell value.
 
 use relvar_core::error::DatabaseError;
 use relvar_core::types::{RelationType, TupleType};
@@ -11,14 +40,49 @@ use std::collections::{BTreeMap, BTreeSet};
 pub trait Pivot {
     /// Pivots a relation.
     ///
-    /// Transforms unique values from `on_attr` into new columns,
-    /// filling cells with values from `value_attr`.
+    /// Transforms unique values from the `on_attr` column into new column headers,
+    /// filling the cells with values from the `value_attr` column. All other attributes
+    /// become grouping keys.
     ///
     /// # Arguments
     ///
-    /// * `on_attr` - Attribute for new column headers.
-    /// * `value_attr` - Attribute for cell values.
-    /// * `default_value` - Value for missing cells (must match `value_attr` type).
+    /// * `on_attr` - The attribute whose values will become new column headers.
+    /// * `value_attr` - The attribute whose values will populate the cells.
+    /// * `default_value` - The value to use when a cell is missing (e.g., `0` or `false`).
+    ///   Must match the type of `value_attr`.
+    ///
+    /// # Conflict Resolution
+    ///
+    /// If multiple source tuples map to the same target cell (i.e., they have the same
+    /// grouping attributes and the same `on_attr` value), the **Last Write Wins** strategy
+    /// is applied. The source tuples are sorted, and the value from the last tuple is used.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::{Relation, ScalarValue};
+    /// use relvar_core::tuple;
+    /// use relvar::experimental::pivot::Pivot;
+    ///
+    /// // Create a relation: (Item, Color, Count)
+    /// let heading = TupleType::new()
+    ///     .with_attribute("Item", ScalarType::String)
+    ///     .with_attribute("Color", ScalarType::String)
+    ///     .with_attribute("Count", ScalarType::Int);
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    ///
+    /// relation.insert(tuple! { Item: "Shirt", Color: "Red", Count: 10 }).unwrap();
+    /// relation.insert(tuple! { Item: "Shirt", Color: "Blue", Count: 5 }).unwrap();
+    /// relation.insert(tuple! { Item: "Pants", Color: "Blue", Count: 20 }).unwrap();
+    ///
+    /// // Pivot on 'Color', using 'Count' as values, default to 0
+    /// let pivoted = relation.pivot("Color", "Count", ScalarValue::Int(0)).unwrap();
+    ///
+    /// // Result: (Item, Red, Blue)
+    /// // Shirt: Red=10, Blue=5
+    /// // Pants: Red=0 (default), Blue=20
+    /// ```
     fn pivot(
         &self,
         on_attr: &str,
