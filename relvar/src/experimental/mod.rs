@@ -10,7 +10,9 @@
 //! - **Spatial**: Spatial data types.
 //! - **Search**: Relational Full-Text Search.
 //! - **Image**: Relational Image Processing (RIP).
+//! - **Graph**: Relational Graph Analytics (BFS, PageRank).
 
+pub mod graph;
 pub mod image;
 pub mod mock;
 pub mod pivot;
