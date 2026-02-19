@@ -1,5 +1,4 @@
 use relvar_core::types::ScalarType;
-use serde_json;
 
 #[test]
 fn test_scalar_type_deserialization_coverage() {
