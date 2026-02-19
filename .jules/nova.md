@@ -34,3 +34,8 @@
 **Concept:** A module (`relvar::experimental::search`) implementing Full-Text Search using an inverted index stored as a Relation.
 **Fate:** Merged
 **Lesson:** Search is just a join. By treating the inverted index as a relation `(term, doc_id, count)`, we can express search queries using standard relational algebra (Restrict -> Summarize), eliminating the need for a separate search engine for basic use cases.
+
+## [Relational Image Processing]
+**Concept:** A module (`relvar::experimental::image`) implementing image convolution (e.g., blur, edge detection) using pure relational algebra operators (`Extend`, `Union`, `Summarize`).
+**Fate:** Merged
+**Lesson:** Image processing is just signal processing, which is just math, which is just relational algebra. By treating an image as a relation `(x, y, r, g, b)`, we can implement complex filters without leaving the relational model.

@@ -9,7 +9,9 @@
 //! - **Mock**: Tools for generating random relations for testing.
 //! - **Spatial**: Spatial data types.
 //! - **Search**: Relational Full-Text Search.
+//! - **Image**: Relational Image Processing (RIP).
 
+pub mod image;
 pub mod mock;
 pub mod pivot;
 pub mod search;
