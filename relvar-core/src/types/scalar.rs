@@ -29,6 +29,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use std::convert::TryFrom;
 use thiserror::Error;
 
 /// Errors that can occur during scalar type operations.
@@ -93,6 +94,7 @@ pub enum ScalarTypeError {
 /// assert_ne!(employee_id, department_id);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ScalarTypeUnchecked")]
 pub enum ScalarType {
     /// 64-bit signed integer.
     ///
@@ -654,5 +656,56 @@ mod tests {
         assert_eq!(types[2], ScalarType::String);
         assert_eq!(types[3], ScalarType::Bool);
         assert_eq!(types[4], ScalarType::Bytes);
+    }
+}
+
+// Private structure to assist with deserialization and validation.
+// This allows us to intercept deserialization and enforce invariants (MAX_TYPE_DEPTH)
+// that could be bypassed by serde if we derived Deserialize directly on ScalarType.
+#[derive(Debug, Deserialize)]
+enum ScalarTypeUnchecked {
+    Int,
+    Float,
+    String,
+    Bool,
+    Bytes,
+    Relation(Box<crate::types::RelationType>),
+    UserDefined {
+        name: String,
+        representation: Box<ScalarTypeUnchecked>,
+    },
+}
+
+impl TryFrom<ScalarTypeUnchecked> for ScalarType {
+    type Error = String;
+
+    fn try_from(unchecked: ScalarTypeUnchecked) -> Result<Self, Self::Error> {
+        let ty = match unchecked {
+            ScalarTypeUnchecked::Int => ScalarType::Int,
+            ScalarTypeUnchecked::Float => ScalarType::Float,
+            ScalarTypeUnchecked::String => ScalarType::String,
+            ScalarTypeUnchecked::Bool => ScalarType::Bool,
+            ScalarTypeUnchecked::Bytes => ScalarType::Bytes,
+            ScalarTypeUnchecked::Relation(rel) => ScalarType::Relation(rel),
+            ScalarTypeUnchecked::UserDefined {
+                name,
+                representation,
+            } => {
+                let inner = ScalarType::try_from(*representation)?;
+                ScalarType::UserDefined {
+                    name,
+                    representation: Box::new(inner),
+                }
+            }
+        };
+
+        if ty.depth() > crate::types::MAX_TYPE_DEPTH {
+            return Err(format!(
+                "Type nesting too deep: {} (limit: {})",
+                ty.depth(),
+                crate::types::MAX_TYPE_DEPTH
+            ));
+        }
+        Ok(ty)
     }
 }

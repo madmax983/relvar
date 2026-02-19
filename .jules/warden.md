@@ -115,3 +115,14 @@ Since `ScalarType` variants are public and `serde` deserialization bypasses cons
 2. Implemented recursive `depth()` method for `ScalarType`, `TupleType`, and `RelationType`.
 3. Added panic checks in `ScalarType::user_defined`, `TupleType::with_attribute`, and `RelationType::new` to enforce the depth limit during construction.
 4. While this primarily protects programmatic construction, it establishes a clear limit that should be respected by all future parsers and deserializers.
+
+## 2026-02-11 - ScalarType Deserialization Stack Overflow
+**Threat:**
+Although `ScalarType::user_defined` constructor enforced `MAX_TYPE_DEPTH`, `ScalarType`'s enum variants were public, and it relied on the default `#[derive(Deserialize)]`. This allowed an attacker to construct a deeply nested `ScalarType` (e.g., via a JSON payload) bypassing the constructor checks, leading to a stack overflow or DoS when the type was subsequently used (e.g., hashed or dropped). `serde_json`'s recursion limit provided partial protection but was not guaranteed for all formats.
+
+**Defense:**
+1. Introduced a private `ScalarTypeUnchecked` enum mirroring `ScalarType` to intercept raw deserialization.
+2. Implemented `TryFrom<ScalarTypeUnchecked> for ScalarType`, which recursively rebuilds the type and enforces the `MAX_TYPE_DEPTH` (64) limit.
+3. Updated `ScalarType` to use `#[serde(try_from = "ScalarTypeUnchecked")]`.
+4. This ensures that *any* deserialization of `ScalarType` must pass the depth check, regardless of the underlying format or its limits.
+5. Added verification test `relvar-core/tests/warden_exploit_serde_stack_overflow.rs`.
