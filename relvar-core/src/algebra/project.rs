@@ -97,12 +97,18 @@ impl Relation {
 
         // Project each tuple
         let projected_tuples = self.tuples().map(|tuple| {
-            let values: BTreeMap<_, _> = attributes
-                .iter()
-                .filter_map(|&attr_name| {
-                    tuple
+            // Optimization: Iterate over the result heading instead of the input `attributes`.
+            // The result heading contains only valid, unique attributes that exist in the source.
+            // This hoists validation and deduplication out of the loop.
+            let values: BTreeMap<_, _> = shared_heading
+                .attribute_names()
+                .map(|attr_name| {
+                    // Safety: shared_heading is a subset of source relation's heading,
+                    // so the attribute MUST exist in any tuple conforming to source relation.
+                    let value = tuple
                         .get(attr_name)
-                        .map(|value| (attr_name.to_string(), value.clone()))
+                        .expect("Attribute from result heading must exist in source tuple");
+                    (attr_name.clone(), value.clone())
                 })
                 .collect();
             // Safety: We constructed values exactly from attributes present in new_heading
