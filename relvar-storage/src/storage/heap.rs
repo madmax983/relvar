@@ -3598,10 +3598,16 @@ mod tests {
         let mut tuples: Vec<Vec<u8>> = vec![];
 
         // Add 2 tuples, each 100 bytes
-        slots.push(Some(SlotEntry { offset: 0, length: 100 }));
+        slots.push(Some(SlotEntry {
+            offset: 0,
+            length: 100,
+        }));
         tuples.push(vec![0u8; 100]);
 
-        slots.push(Some(SlotEntry { offset: 0, length: 100 }));
+        slots.push(Some(SlotEntry {
+            offset: 0,
+            length: 100,
+        }));
         tuples.push(vec![0u8; 100]);
 
         // Usable size = 200
@@ -3621,9 +3627,18 @@ mod tests {
         // Test overflow (too many tuples)
         let tuples_overflow = vec![vec![0u8; 100], vec![0u8; 100], vec![0u8; 1]]; // Total 201
         let mut slots_overflow = vec![
-            Some(SlotEntry { offset: 0, length: 100 }),
-            Some(SlotEntry { offset: 0, length: 100 }),
-            Some(SlotEntry { offset: 0, length: 1 }),
+            Some(SlotEntry {
+                offset: 0,
+                length: 100,
+            }),
+            Some(SlotEntry {
+                offset: 0,
+                length: 100,
+            }),
+            Some(SlotEntry {
+                offset: 0,
+                length: 1,
+            }),
         ];
 
         let result = HeapFile::repack_slots(&mut slots_overflow, &tuples_overflow, usable_size);
