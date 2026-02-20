@@ -25,3 +25,7 @@
 ## 2024-05-28 - Join Logic Duplication
 **Learning:** `relvar-core/src/algebra/join.rs` contained significant duplication in key extraction (`extract_join_key`) and tuple combination logic (`combine_tuples`) between `join`, `theta_join`, and `probe_and_combine`.
 **Action:** Extract core algebraic operations (key extraction, tuple merging) into private helper functions to enforce DRY and ensure consistent behavior across different join implementations.
+
+## 2024-05-29 - Summarize Logic De-Duplication
+**Learning:** `relvar-core/src/algebra/summarize.rs` contained complex logic within `Aggregation::compute` (large match block) and `Relation::summarize` (validation, construction, execution). Extracting these into helper functions (`compute_sum`, `compute_avg`, `validate_grouping_attributes`, etc.) significantly improved readability and reduced cognitive load.
+**Action:** When a method performs multiple distinct phases (e.g., validate -> prepare -> execute) or contains a large `match` statement with complex arms, extract each phase or arm into a private helper method.

@@ -286,135 +286,139 @@ impl Aggregation {
 
     fn compute(&self, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
         match &self.function {
-            AggregationFn::Count => Ok(ScalarValue::Int(tuples.len() as i64)),
-            AggregationFn::Sum(attr_name) => {
-                if self.result_type == ScalarType::Float {
-                    let mut sum = 0.0;
-                    for tuple in tuples {
-                        let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
-                            SummarizeError::AggregationError(format!(
-                                "Failed to get attribute {} as f64",
-                                attr_name
-                            ))
-                        })?;
-                        sum += value;
-                    }
-                    Ok(ScalarValue::Float(sum))
-                } else {
-                    let mut sum = 0i64;
-                    for tuple in tuples {
-                        let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                            SummarizeError::AggregationError(format!(
-                                "Failed to get attribute {} as i64",
-                                attr_name
-                            ))
-                        })?;
-                        sum = sum.checked_add(value).ok_or_else(|| {
-                            SummarizeError::AggregationError("Integer overflow in SUM".to_string())
-                        })?;
-                    }
-                    Ok(ScalarValue::Int(sum))
-                }
-            }
-            AggregationFn::Avg(attr_name) => {
-                if tuples.is_empty() {
-                    return Ok(ScalarValue::Float(0.0));
-                }
-
-                // Check the type of the first tuple to decide implementation
-                // We assume all tuples have the same type (enforced by Relation)
-                let first_val = tuples[0].get(attr_name).ok_or_else(|| {
-                    SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
-                })?;
-
-                match first_val.scalar_type() {
-                    ScalarType::Int => {
-                        let mut sum = 0i128;
-                        for tuple in tuples {
-                            let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                                SummarizeError::AggregationError(format!(
-                                    "Failed to get attribute {} as i64",
-                                    attr_name
-                                ))
-                            })?;
-                            sum = sum.checked_add(value as i128).ok_or_else(|| {
-                                SummarizeError::AggregationError(
-                                    "Integer overflow in AVG".to_string(),
-                                )
-                            })?;
-                        }
-                        let avg = sum as f64 / tuples.len() as f64;
-                        Ok(ScalarValue::Float(avg))
-                    }
-                    ScalarType::Float => {
-                        let mut sum = 0.0;
-                        for tuple in tuples {
-                            let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
-                                SummarizeError::AggregationError(format!(
-                                    "Failed to get attribute {} as f64",
-                                    attr_name
-                                ))
-                            })?;
-                            sum += value;
-                        }
-                        let avg = sum / tuples.len() as f64;
-                        Ok(ScalarValue::Float(avg))
-                    }
-                    _ => Err(SummarizeError::AggregationError(format!(
-                        "Avg requires Int or Float attribute, got {:?}",
-                        first_val.scalar_type()
-                    ))),
-                }
-            }
+            AggregationFn::Count => self.compute_count(tuples),
+            AggregationFn::Sum(attr_name) => self.compute_sum(attr_name, tuples),
+            AggregationFn::Avg(attr_name) => self.compute_avg(attr_name, tuples),
             AggregationFn::Min(attr_name) => {
-                if tuples.is_empty() {
-                    return Err(SummarizeError::AggregationError(
-                        "Cannot compute MIN on empty set".to_string(),
-                    ));
-                }
-                let first = tuples[0].get(attr_name).ok_or_else(|| {
-                    SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
-                })?;
-                let mut min_value = first.clone();
-
-                for tuple in tuples.iter().skip(1) {
-                    let value = tuple.get(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Attribute {} not found",
-                            attr_name
-                        ))
-                    })?;
-                    if value < &min_value {
-                        min_value = value.clone();
-                    }
-                }
-                Ok(min_value)
+                self.compute_extremum(attr_name, tuples, |a, b| a < b, "MIN")
             }
             AggregationFn::Max(attr_name) => {
-                if tuples.is_empty() {
-                    return Err(SummarizeError::AggregationError(
-                        "Cannot compute MAX on empty set".to_string(),
-                    ));
-                }
-                let first = tuples[0].get(attr_name).ok_or_else(|| {
-                    SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
-                })?;
-                let mut max_value = first.clone();
+                self.compute_extremum(attr_name, tuples, |a, b| a > b, "MAX")
+            }
+        }
+    }
 
-                for tuple in tuples.iter().skip(1) {
-                    let value = tuple.get(attr_name).ok_or_else(|| {
+    fn compute_count(&self, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
+        Ok(ScalarValue::Int(tuples.len() as i64))
+    }
+
+    fn compute_sum(
+        &self,
+        attr_name: &str,
+        tuples: &[&Tuple],
+    ) -> Result<ScalarValue, SummarizeError> {
+        if self.result_type == ScalarType::Float {
+            let mut sum = 0.0;
+            for tuple in tuples {
+                let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
+                    SummarizeError::AggregationError(format!(
+                        "Failed to get attribute {} as f64",
+                        attr_name
+                    ))
+                })?;
+                sum += value;
+            }
+            Ok(ScalarValue::Float(sum))
+        } else {
+            let mut sum = 0i64;
+            for tuple in tuples {
+                let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
+                    SummarizeError::AggregationError(format!(
+                        "Failed to get attribute {} as i64",
+                        attr_name
+                    ))
+                })?;
+                sum = sum.checked_add(value).ok_or_else(|| {
+                    SummarizeError::AggregationError("Integer overflow in SUM".to_string())
+                })?;
+            }
+            Ok(ScalarValue::Int(sum))
+        }
+    }
+
+    fn compute_avg(
+        &self,
+        attr_name: &str,
+        tuples: &[&Tuple],
+    ) -> Result<ScalarValue, SummarizeError> {
+        if tuples.is_empty() {
+            return Ok(ScalarValue::Float(0.0));
+        }
+
+        // Check the type of the first tuple to decide implementation
+        // We assume all tuples have the same type (enforced by Relation)
+        let first_val = tuples[0].get(attr_name).ok_or_else(|| {
+            SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+        })?;
+
+        match first_val.scalar_type() {
+            ScalarType::Int => {
+                let mut sum = 0i128;
+                for tuple in tuples {
+                    let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
                         SummarizeError::AggregationError(format!(
-                            "Attribute {} not found",
+                            "Failed to get attribute {} as i64",
                             attr_name
                         ))
                     })?;
-                    if value > &max_value {
-                        max_value = value.clone();
-                    }
+                    sum = sum.checked_add(value as i128).ok_or_else(|| {
+                        SummarizeError::AggregationError("Integer overflow in AVG".to_string())
+                    })?;
                 }
-                Ok(max_value)
+                let avg = sum as f64 / tuples.len() as f64;
+                Ok(ScalarValue::Float(avg))
+            }
+            ScalarType::Float => {
+                let mut sum = 0.0;
+                for tuple in tuples {
+                    let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
+                        SummarizeError::AggregationError(format!(
+                            "Failed to get attribute {} as f64",
+                            attr_name
+                        ))
+                    })?;
+                    sum += value;
+                }
+                let avg = sum / tuples.len() as f64;
+                Ok(ScalarValue::Float(avg))
+            }
+            _ => Err(SummarizeError::AggregationError(format!(
+                "Avg requires Int or Float attribute, got {:?}",
+                first_val.scalar_type()
+            ))),
+        }
+    }
+
+    fn compute_extremum<F>(
+        &self,
+        attr_name: &str,
+        tuples: &[&Tuple],
+        compare: F,
+        op_name: &str,
+    ) -> Result<ScalarValue, SummarizeError>
+    where
+        F: Fn(&ScalarValue, &ScalarValue) -> bool,
+    {
+        if tuples.is_empty() {
+            return Err(SummarizeError::AggregationError(format!(
+                "Cannot compute {} on empty set",
+                op_name
+            )));
+        }
+        let first = tuples[0].get(attr_name).ok_or_else(|| {
+            SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+        })?;
+        let mut extremum = first.clone();
+
+        for tuple in tuples.iter().skip(1) {
+            let value = tuple.get(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+            })?;
+            if compare(value, &extremum) {
+                extremum = value.clone();
             }
         }
+        Ok(extremum)
     }
 }
 
@@ -450,56 +454,9 @@ impl Relation {
         group_by: &[&str],
         aggregations: &[Aggregation],
     ) -> Result<Relation, SummarizeError> {
-        // Validate grouping attributes exist
-        for attr in group_by {
-            if !self.relation_type().has_attribute(attr) {
-                return Err(SummarizeError::GroupingAttributeNotFound(attr.to_string()));
-            }
-        }
-
-        // Build result heading
-        let mut result_heading = TupleType::new();
-
-        // Add grouping attributes
-        for attr in group_by {
-            let attr_type = self
-                .relation_type()
-                .tuple_type()
-                .get_attribute_type(attr)
-                .unwrap();
-            result_heading = result_heading.with_attribute(attr.to_string(), attr_type.clone());
-        }
-
-        // Add aggregation result attributes
-        for agg in aggregations {
-            if result_heading.has_attribute(&agg.result_name) {
-                return Err(SummarizeError::ResultAttributeExists(
-                    agg.result_name.clone(),
-                ));
-            }
-            result_heading =
-                result_heading.with_attribute(agg.result_name.clone(), agg.result_type.clone());
-        }
-
-        // Group tuples
-        let groups = if group_by.is_empty() {
-            // No grouping - all tuples in one group
-            let mut map = HashMap::new();
-            let all_tuples: Vec<&Tuple> = self.tuples().collect();
-            map.insert(Vec::new(), all_tuples);
-            map
-        } else {
-            // Group by specified attributes
-            let mut groups: HashMap<Vec<ScalarValue>, Vec<&Tuple>> = HashMap::new();
-            for tuple in self.tuples() {
-                let key: Vec<ScalarValue> = group_by
-                    .iter()
-                    .map(|attr| tuple.get(attr).unwrap().clone())
-                    .collect();
-                groups.entry(key).or_default().push(tuple);
-            }
-            groups
-        };
+        self.validate_grouping_attributes(group_by)?;
+        let result_heading = self.build_result_heading(group_by, aggregations)?;
+        let groups = self.group_tuples(group_by);
 
         // Compute aggregations for each group
         let mut result_tuples = Vec::new();
@@ -526,6 +483,66 @@ impl Relation {
             Relation::from_tuples(RelationType::new(result_heading), result_tuples)
                 .expect("Summarized tuples should conform to result relation type"),
         )
+    }
+
+    fn validate_grouping_attributes(&self, group_by: &[&str]) -> Result<(), SummarizeError> {
+        for attr in group_by {
+            if !self.relation_type().has_attribute(attr) {
+                return Err(SummarizeError::GroupingAttributeNotFound(attr.to_string()));
+            }
+        }
+        Ok(())
+    }
+
+    fn build_result_heading(
+        &self,
+        group_by: &[&str],
+        aggregations: &[Aggregation],
+    ) -> Result<TupleType, SummarizeError> {
+        let mut result_heading = TupleType::new();
+
+        // Add grouping attributes
+        for attr in group_by {
+            let attr_type = self
+                .relation_type()
+                .tuple_type()
+                .get_attribute_type(attr)
+                .unwrap();
+            result_heading = result_heading.with_attribute(attr.to_string(), attr_type.clone());
+        }
+
+        // Add aggregation result attributes
+        for agg in aggregations {
+            if result_heading.has_attribute(&agg.result_name) {
+                return Err(SummarizeError::ResultAttributeExists(
+                    agg.result_name.clone(),
+                ));
+            }
+            result_heading =
+                result_heading.with_attribute(agg.result_name.clone(), agg.result_type.clone());
+        }
+        Ok(result_heading)
+    }
+
+    fn group_tuples<'a>(&'a self, group_by: &[&str]) -> HashMap<Vec<ScalarValue>, Vec<&'a Tuple>> {
+        if group_by.is_empty() {
+            // No grouping - all tuples in one group
+            let mut map = HashMap::new();
+            let all_tuples: Vec<&Tuple> = self.tuples().collect();
+            map.insert(Vec::new(), all_tuples);
+            map
+        } else {
+            // Group by specified attributes
+            let mut groups: HashMap<Vec<ScalarValue>, Vec<&Tuple>> = HashMap::new();
+            for tuple in self.tuples() {
+                let key: Vec<ScalarValue> = group_by
+                    .iter()
+                    .map(|attr| tuple.get(attr).unwrap().clone())
+                    .collect();
+                groups.entry(key).or_default().push(tuple);
+            }
+            groups
+        }
     }
 }
 
