@@ -794,5 +794,4 @@ impl<E: StorageEngine> Database<E> {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 mod tests;
