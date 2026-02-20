@@ -1,8 +1,8 @@
-use relvar::algebra::summarize::Aggregation;
+use relvar::algebra::Aggregation;
 use relvar::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
-use relvar::query::Query;
-use relvar::types::{RelationType, ScalarType, TupleType};
-use relvar::values::ScalarValue;
+use relvar::Query;
+use relvar::{RelationType, ScalarType, TupleType};
+use relvar::ScalarValue;
 use relvar::{Database, InMemoryEngine, tuple};
 
 #[test]
@@ -195,8 +195,4 @@ fn test_query_rename_aggregations() {
     // Explain check for Rename coverage
     let explanation = query.explain();
     assert!(explanation.contains("Rename"));
-    // Aggregation display logic might be default Debug which shows struct name
-    // Aggregation is now used directly, let's just check if it contains reasonable output
-    // The previous implementation likely printed specific things.
-    // Aggregation derives Debug so it should print Aggregation { ... }
 }

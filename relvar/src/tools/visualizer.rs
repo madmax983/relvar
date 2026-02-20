@@ -8,9 +8,9 @@
 //!
 //! ```
 //! use relvar::{Database, InMemoryEngine};
-//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::{TupleType, RelationType, ScalarType};
 //! use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
-//! use relvar::visualizer::SchemaVisualizer;
+//! use relvar::tools::visualizer::SchemaVisualizer;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
 //!

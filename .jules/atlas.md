@@ -19,3 +19,9 @@
 ## 2025-05-24 - Decouple Query from Database (Again)
 **Tangle:** `Query` depended on `Database` concrete type, creating a hard coupling. `Database` implementation of `QueryExecutor` existed but wasn't used by `Query`.
 **Blueprint:** Updated `Query::execute` to depend on `QueryExecutor` trait instead of `Database` struct. This reuses the existing abstraction used by virtual relvars and fully decouples the query definition from the database implementation.
+
+## 2025-05-24 - Facade Clean-up & Database De-bloat
+**Tangle:** `relvar` crate re-exported everything from `relvar-core` via `pub use relvar_core::*;`, creating a massive API surface and leaking implementation details. `relvar-core/src/database/mod.rs` was ~2000 lines of mixed logic and tests.
+**Blueprint:**
+- **Encapsulate:** Replaced glob import with explicit exports in `relvar/src/lib.rs`. Introduced `relvar/src/prelude.rs` for convenience.
+- **De-bloat:** Extracted ~1100 lines of tests from `database/mod.rs` to `database/tests.rs`.
