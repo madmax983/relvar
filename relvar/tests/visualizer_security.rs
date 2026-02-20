@@ -1,6 +1,5 @@
-use relvar::types::{RelationType, ScalarType, TupleType};
-use relvar::visualizer::SchemaVisualizer;
-use relvar::{Database, InMemoryEngine};
+use relvar::tools::visualizer::SchemaVisualizer;
+use relvar::{Database, InMemoryEngine, RelationType, ScalarType, TupleType};
 
 #[test]
 fn test_dot_injection_relvar_name() {

@@ -16,7 +16,7 @@
 //!
 //! ```
 //! use relvar::{Database, InMemoryEngine};
-//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::{TupleType, RelationType, ScalarType};
 //! use relvar::tuple;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
@@ -40,7 +40,7 @@
 //! # #[cfg(feature = "storage")]
 //! # {
 //! use relvar::{Database, PersistentEngine};
-//! use relvar::types::{TupleType, RelationType, ScalarType};
+//! use relvar::{TupleType, RelationType, ScalarType};
 //! use relvar::tuple;
 //!
 //! let mut db = Database::new(PersistentEngine::open("my_db").unwrap());
@@ -62,8 +62,8 @@
 //!
 //! ```
 //! use relvar::{Database, InMemoryEngine, tuple};
-//! use relvar::types::{TupleType, RelationType, ScalarType};
-//! use relvar::values::ScalarValue;
+//! use relvar::{TupleType, RelationType, ScalarType};
+//! use relvar::ScalarValue;
 //! use relvar::algebra::Aggregation;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
@@ -96,7 +96,7 @@
 //!
 //! ```
 //! use relvar::{Database, InMemoryEngine, tuple};
-//! # use relvar::types::{TupleType, RelationType, ScalarType};
+//! # use relvar::{TupleType, RelationType, ScalarType};
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
 //! # let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
@@ -119,12 +119,28 @@
 
 #![warn(missing_docs)]
 
-// Re-export everything from relvar-core
-pub use relvar_core::*;
+/// Common types and traits.
+pub mod prelude;
 
-// Re-export storage components when feature is enabled
+// Core Components
+pub use relvar_core::database::{Database, DatabaseError};
+pub use relvar_core::query::{Query, QueryError};
+pub use relvar_core::traits::QueryExecutor;
+pub use relvar_core::types::{RelationType, ScalarType, TupleType};
+pub use relvar_core::values::{Relation, ScalarValue, Tuple};
+
+// Storage
+pub use relvar_core::storage_engine::{InMemoryEngine, StorageEngine, StorageError};
+
 #[cfg(feature = "storage")]
 pub use relvar_storage::PersistentEngine;
+
+// Modules
+pub use relvar_core::algebra;
+pub use relvar_core::constraints;
+
+/// Tuple creation macro.
+pub use relvar_core::tuple;
 
 /// Experimental features that may be unstable or subject to change.
 pub mod experimental;
