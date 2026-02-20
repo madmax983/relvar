@@ -102,112 +102,22 @@ impl Relation {
     /// - [`GroupError::AllAttributesGrouped`] - No grouping key attributes remain
     /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts
     pub fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError> {
-        if attrs_to_group.is_empty() {
-            return Err(GroupError::NoAttributesSpecified);
-        }
+        // 1. Validate request and determine grouping attributes
+        let grouping_attrs = validate_group_request(self, attrs_to_group, rva_name)?;
 
-        // Validate all attributes exist
-        for attr in attrs_to_group {
-            if !self.relation_type().has_attribute(attr) {
-                return Err(GroupError::AttributeNotFound(attr.to_string()));
-            }
-        }
+        // 2. Build result and RVA headings
+        let (result_heading, rva_heading) =
+            build_group_result_heading(self, &grouping_attrs, attrs_to_group, rva_name)?;
 
-        // Check that we're not grouping all attributes
-        if attrs_to_group.len() == self.relation_type().degree() {
-            return Err(GroupError::AllAttributesGrouped);
-        }
-
-        // Determine grouping attributes (the ones NOT being grouped into RVA)
-        let all_attrs: Vec<String> = self
-            .relation_type()
-            .tuple_type()
-            .attribute_names()
-            .map(|s| s.to_string())
-            .collect();
-        let grouping_attrs: Vec<String> = all_attrs
-            .iter()
-            .filter(|attr| !attrs_to_group.contains(&attr.as_str()))
-            .cloned()
-            .collect();
-
-        // Build result heading
-        let mut result_heading = TupleType::new();
-
-        // Add grouping attributes
-        for attr in &grouping_attrs {
-            let attr_type = self
-                .relation_type()
-                .tuple_type()
-                .get_attribute_type(attr)
-                .unwrap();
-            result_heading = result_heading.with_attribute(attr.clone(), attr_type.clone());
-        }
-
-        // Check RVA name doesn't conflict
-        if result_heading.has_attribute(rva_name) {
-            return Err(GroupError::ResultAttributeExists(rva_name.to_string()));
-        }
-
-        // Build RVA heading (from attributes being grouped)
-        let mut rva_heading = TupleType::new();
-        for attr in attrs_to_group {
-            let attr_type = self
-                .relation_type()
-                .tuple_type()
-                .get_attribute_type(attr)
-                .unwrap();
-            rva_heading = rva_heading.with_attribute(attr.to_string(), attr_type.clone());
-        }
-
-        // Add RVA to result heading
-        result_heading = result_heading.with_attribute(
-            rva_name.to_string(),
-            ScalarType::Relation(Box::new(RelationType::new(rva_heading.clone()))),
-        );
-
-        // Group tuples
-        let mut groups: HashMap<Vec<ScalarValue>, Vec<Tuple>> = HashMap::new();
-
-        for tuple in self.tuples() {
-            // Extract grouping key
-            let key: Vec<ScalarValue> = grouping_attrs
-                .iter()
-                .map(|attr| tuple.get(attr).unwrap().clone())
-                .collect();
-
-            // Extract grouped attributes for RVA
-            let mut rva_values = HashMap::new();
-            for attr in attrs_to_group {
-                rva_values.insert(attr.to_string(), tuple.get(attr).unwrap().clone());
-            }
-
-            let rva_tuple = Tuple::new(rva_heading.clone(), rva_values)
-                .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
-
-            groups.entry(key).or_default().push(rva_tuple);
-        }
-
-        // Build result tuples
-        let mut result_tuples = Vec::new();
-        for (key, rva_tuples) in groups {
-            let mut values = HashMap::new();
-
-            // Add grouping attribute values
-            for (i, attr) in grouping_attrs.iter().enumerate() {
-                values.insert(attr.clone(), key[i].clone());
-            }
-
-            // Create RVA relation
-            let rva_relation =
-                Relation::from_tuples(RelationType::new(rva_heading.clone()), rva_tuples)
-                    .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
-            values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
-
-            let tuple = Tuple::new(result_heading.clone(), values)
-                .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
-            result_tuples.push(tuple);
-        }
+        // 3. Compute grouped tuples
+        let result_tuples = compute_grouped_tuples(
+            self,
+            &grouping_attrs,
+            attrs_to_group,
+            &result_heading,
+            &rva_heading,
+            rva_name,
+        )?;
 
         Ok(
             Relation::from_tuples(RelationType::new(result_heading), result_tuples)
@@ -234,89 +144,258 @@ impl Relation {
     /// - [`UngroupError::AttributeNotFound`] - The attribute doesn't exist
     /// - [`UngroupError::NotRelationValued`] - The attribute is not an RVA
     pub fn ungroup(&self, rva_name: &str) -> Result<Relation, UngroupError> {
-        // Check attribute exists
-        if !self.relation_type().has_attribute(rva_name) {
-            return Err(UngroupError::AttributeNotFound(rva_name.to_string()));
-        }
+        // 1. Validate request and get RVA type
+        let rva_relation_type = validate_ungroup_request(self, rva_name)?;
 
-        // Get the RVA type
-        let rva_type = self
-            .relation_type()
-            .tuple_type()
-            .get_attribute_type(rva_name)
-            .unwrap();
+        // 2. Build result heading
+        let result_heading = build_ungroup_result_heading(self, rva_name, &rva_relation_type)?;
 
-        let rva_relation_type = match rva_type {
-            ScalarType::Relation(rel_type) => rel_type.as_ref(),
-            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
-        };
-
-        // Build result heading (non-RVA attributes + RVA's attributes)
-        let mut result_heading = TupleType::new();
-
-        // Add non-RVA attributes
-        for attr_name in self.relation_type().tuple_type().attribute_names() {
-            if attr_name != rva_name {
-                let attr_type = self
-                    .relation_type()
-                    .tuple_type()
-                    .get_attribute_type(attr_name)
-                    .unwrap();
-                result_heading =
-                    result_heading.with_attribute(attr_name.to_string(), attr_type.clone());
-            }
-        }
-
-        // Add RVA's attributes
-        for attr_name in rva_relation_type.tuple_type().attribute_names() {
-            let attr_type = rva_relation_type
-                .tuple_type()
-                .get_attribute_type(attr_name)
-                .unwrap();
-            result_heading =
-                result_heading.with_attribute(attr_name.to_string(), attr_type.clone());
-        }
-
-        // Ungroup tuples
-        let mut result_tuples = Vec::new();
-
-        for tuple in self.tuples() {
-            // Get the RVA relation
-            let rva_relation = match tuple.get(rva_name).unwrap() {
-                ScalarValue::Relation(rel) => rel,
-                _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
-            };
-
-            // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
-            for rva_tuple in rva_relation.tuples() {
-                let mut values = HashMap::new();
-
-                // Add non-RVA attribute values
-                for attr_name in self.relation_type().tuple_type().attribute_names() {
-                    if attr_name != rva_name {
-                        values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
-                    }
-                }
-
-                // Add RVA tuple's attribute values
-                for attr_name in rva_relation_type.tuple_type().attribute_names() {
-                    values.insert(
-                        attr_name.to_string(),
-                        rva_tuple.get(attr_name).unwrap().clone(),
-                    );
-                }
-
-                let result_tuple = Tuple::new(result_heading.clone(), values)
-                    .map_err(|e| UngroupError::TupleCreation(e.to_string()))?;
-                result_tuples.push(result_tuple);
-            }
-        }
+        // 3. Compute ungrouped tuples
+        let result_tuples =
+            compute_ungrouped_tuples(self, rva_name, &result_heading, &rva_relation_type)?;
 
         Ok(
             Relation::from_tuples(RelationType::new(result_heading), result_tuples)
                 .expect("Ungrouped tuples should conform to result relation type"),
         )
     }
+}
+
+// --- Private Helper Functions for Group ---
+
+fn validate_group_request(
+    relation: &Relation,
+    attrs_to_group: &[&str],
+    rva_name: &str,
+) -> Result<Vec<String>, GroupError> {
+    if attrs_to_group.is_empty() {
+        return Err(GroupError::NoAttributesSpecified);
+    }
+
+    // Validate all attributes exist
+    for attr in attrs_to_group {
+        if !relation.relation_type().has_attribute(attr) {
+            return Err(GroupError::AttributeNotFound(attr.to_string()));
+        }
+    }
+
+    // Check that we're not grouping all attributes
+    if attrs_to_group.len() == relation.relation_type().degree() {
+        return Err(GroupError::AllAttributesGrouped);
+    }
+
+    // Determine grouping attributes (the ones NOT being grouped into RVA)
+    let all_attrs: Vec<String> = relation
+        .relation_type()
+        .tuple_type()
+        .attribute_names()
+        .map(|s| s.to_string())
+        .collect();
+    let grouping_attrs: Vec<String> = all_attrs
+        .iter()
+        .filter(|attr| !attrs_to_group.contains(&attr.as_str()))
+        .cloned()
+        .collect();
+
+    // Check RVA name doesn't conflict with grouping attributes
+    // Note: We check against the resulting heading, which contains grouping attributes + RVA name
+    // If rva_name is one of the grouping attributes, that's a conflict.
+    if grouping_attrs.contains(&rva_name.to_string()) {
+        return Err(GroupError::ResultAttributeExists(rva_name.to_string()));
+    }
+
+    Ok(grouping_attrs)
+}
+
+fn build_group_result_heading(
+    relation: &Relation,
+    grouping_attrs: &[String],
+    attrs_to_group: &[&str],
+    rva_name: &str,
+) -> Result<(TupleType, TupleType), GroupError> {
+    // Build result heading
+    let mut result_heading = TupleType::new();
+
+    // Add grouping attributes
+    for attr in grouping_attrs {
+        let attr_type = relation
+            .relation_type()
+            .tuple_type()
+            .get_attribute_type(attr)
+            .unwrap();
+        result_heading = result_heading.with_attribute(attr.clone(), attr_type.clone());
+    }
+
+    // Build RVA heading (from attributes being grouped)
+    let mut rva_heading = TupleType::new();
+    for attr in attrs_to_group {
+        let attr_type = relation
+            .relation_type()
+            .tuple_type()
+            .get_attribute_type(attr)
+            .unwrap();
+        rva_heading = rva_heading.with_attribute(attr.to_string(), attr_type.clone());
+    }
+
+    // Add RVA to result heading
+    result_heading = result_heading.with_attribute(
+        rva_name.to_string(),
+        ScalarType::Relation(Box::new(RelationType::new(rva_heading.clone()))),
+    );
+
+    Ok((result_heading, rva_heading))
+}
+
+fn compute_grouped_tuples(
+    relation: &Relation,
+    grouping_attrs: &[String],
+    attrs_to_group: &[&str],
+    result_heading: &TupleType,
+    rva_heading: &TupleType,
+    rva_name: &str,
+) -> Result<Vec<Tuple>, GroupError> {
+    let mut groups: HashMap<Vec<ScalarValue>, Vec<Tuple>> = HashMap::new();
+
+    for tuple in relation.tuples() {
+        // Extract grouping key
+        let key: Vec<ScalarValue> = grouping_attrs
+            .iter()
+            .map(|attr| tuple.get(attr).unwrap().clone())
+            .collect();
+
+        // Extract grouped attributes for RVA
+        let mut rva_values = HashMap::new();
+        for attr in attrs_to_group {
+            rva_values.insert(attr.to_string(), tuple.get(attr).unwrap().clone());
+        }
+
+        let rva_tuple = Tuple::new(rva_heading.clone(), rva_values)
+            .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
+
+        groups.entry(key).or_default().push(rva_tuple);
+    }
+
+    // Build result tuples
+    let mut result_tuples = Vec::new();
+    for (key, rva_tuples) in groups {
+        let mut values = HashMap::new();
+
+        // Add grouping attribute values
+        for (i, attr) in grouping_attrs.iter().enumerate() {
+            values.insert(attr.clone(), key[i].clone());
+        }
+
+        // Create RVA relation
+        let rva_relation =
+            Relation::from_tuples(RelationType::new(rva_heading.clone()), rva_tuples)
+                .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
+        values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
+
+        let tuple = Tuple::new(result_heading.clone(), values)
+            .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
+        result_tuples.push(tuple);
+    }
+
+    Ok(result_tuples)
+}
+
+// --- Private Helper Functions for Ungroup ---
+
+fn validate_ungroup_request(
+    relation: &Relation,
+    rva_name: &str,
+) -> Result<RelationType, UngroupError> {
+    // Check attribute exists
+    if !relation.relation_type().has_attribute(rva_name) {
+        return Err(UngroupError::AttributeNotFound(rva_name.to_string()));
+    }
+
+    // Get the RVA type
+    let rva_type = relation
+        .relation_type()
+        .tuple_type()
+        .get_attribute_type(rva_name)
+        .unwrap();
+
+    match rva_type {
+        ScalarType::Relation(rel_type) => Ok(*rel_type.clone()),
+        _ => Err(UngroupError::NotRelationValued(rva_name.to_string())),
+    }
+}
+
+fn build_ungroup_result_heading(
+    relation: &Relation,
+    rva_name: &str,
+    rva_relation_type: &RelationType,
+) -> Result<TupleType, UngroupError> {
+    let mut result_heading = TupleType::new();
+
+    // Add non-RVA attributes
+    for attr_name in relation.relation_type().tuple_type().attribute_names() {
+        if attr_name != rva_name {
+            let attr_type = relation
+                .relation_type()
+                .tuple_type()
+                .get_attribute_type(attr_name)
+                .unwrap();
+            result_heading =
+                result_heading.with_attribute(attr_name.to_string(), attr_type.clone());
+        }
+    }
+
+    // Add RVA's attributes
+    for attr_name in rva_relation_type.tuple_type().attribute_names() {
+        let attr_type = rva_relation_type
+            .tuple_type()
+            .get_attribute_type(attr_name)
+            .unwrap();
+        result_heading = result_heading.with_attribute(attr_name.to_string(), attr_type.clone());
+    }
+
+    Ok(result_heading)
+}
+
+fn compute_ungrouped_tuples(
+    relation: &Relation,
+    rva_name: &str,
+    result_heading: &TupleType,
+    rva_relation_type: &RelationType,
+) -> Result<Vec<Tuple>, UngroupError> {
+    let mut result_tuples = Vec::new();
+
+    for tuple in relation.tuples() {
+        // Get the RVA relation
+        let rva_relation = match tuple.get(rva_name).unwrap() {
+            ScalarValue::Relation(rel) => rel,
+            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
+        };
+
+        // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
+        for rva_tuple in rva_relation.tuples() {
+            let mut values = HashMap::new();
+
+            // Add non-RVA attribute values
+            for attr_name in relation.relation_type().tuple_type().attribute_names() {
+                if attr_name != rva_name {
+                    values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
+                }
+            }
+
+            // Add RVA tuple's attribute values
+            for attr_name in rva_relation_type.tuple_type().attribute_names() {
+                values.insert(
+                    attr_name.to_string(),
+                    rva_tuple.get(attr_name).unwrap().clone(),
+                );
+            }
+
+            let result_tuple = Tuple::new(result_heading.clone(), values)
+                .map_err(|e| UngroupError::TupleCreation(e.to_string()))?;
+            result_tuples.push(result_tuple);
+        }
+    }
+
+    Ok(result_tuples)
 }
 
 #[cfg(test)]
