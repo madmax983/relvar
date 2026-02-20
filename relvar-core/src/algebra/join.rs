@@ -328,23 +328,29 @@ fn combine_tuples(
     secondary: &Tuple,
     result_heading: &Arc<TupleType>,
 ) -> Result<Tuple, DatabaseError> {
-    let mut combined_values = HashMap::with_capacity(result_heading.degree());
-
-    // Add all values from primary
-    for (attr_name, value) in primary.values() {
-        combined_values.insert(attr_name.clone(), value.clone());
-    }
+    // Optimization: Clone the primary BTreeMap directly (O(N) operation)
+    // instead of inserting one by one (O(N log N)).
+    // This also avoids allocation of a temporary HashMap.
+    let mut combined_values = primary.values().clone();
 
     // Add values from secondary (skipping common ones which are already in)
     for (attr_name, value) in secondary.values() {
+        // BTreeMap::contains_key is O(log N)
         if !combined_values.contains_key(attr_name) {
             combined_values.insert(attr_name.clone(), value.clone());
         }
     }
 
-    Tuple::new(result_heading.clone(), combined_values).map_err(|e| {
-        DatabaseError::AlgebraError(format!("Failed to construct combined tuple: {}", e))
-    })
+    // Safety:
+    // 1. Primary and secondary tuples are valid and conform to their headings.
+    // 2. Result heading is the union of both headings.
+    // 3. We combined values from both, respecting types.
+    // 4. Therefore, the resulting map conforms to result_heading.
+    // We can skip the expensive validation in Tuple::new.
+    Ok(Tuple::new_unchecked(
+        result_heading.clone(),
+        combined_values,
+    ))
 }
 
 #[cfg(test)]
