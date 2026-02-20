@@ -126,3 +126,13 @@ Although `ScalarType::user_defined` constructor enforced `MAX_TYPE_DEPTH`, `Scal
 3. Updated `ScalarType` to use `#[serde(try_from = "ScalarTypeUnchecked")]`.
 4. This ensures that *any* deserialization of `ScalarType` must pass the depth check, regardless of the underlying format or its limits.
 5. Added verification test `relvar-core/tests/warden_exploit_serde_stack_overflow.rs`.
+
+## 2026-02-12 - JSON Importer Deserialization Bomb
+**Threat:**
+`relvar::tools::importer::from_json` used `serde_json` to deserialize input into a `JsonValue` DOM before converting to `ScalarValue`. This allowed "deserialization bombs" where a single malicious string or array (e.g., 1GB string) would be fully allocated in memory as `JsonValue`, potentially causing OOM DoS.
+
+**Defense:**
+1. Refactored `importer.rs` to use streaming `serde::de::DeserializeSeed` and `Visitor` traits, eliminating `JsonValue` usage.
+2. Enforced strict limits `MAX_STRING_LEN` (1MB) and `MAX_BYTES_LEN` (1MB) during streaming parsing.
+3. Added `ImporterError::LimitExceeded` to report violations.
+4. Added `relvar/tests/warden_json_import.rs` to verify limits and recursion safety.
