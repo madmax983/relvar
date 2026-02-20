@@ -1,9 +1,9 @@
+use relvar::Query;
+use relvar::ScalarValue;
 use relvar::algebra::Aggregation;
 use relvar::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
-use relvar::Query;
-use relvar::{RelationType, ScalarType, TupleType};
-use relvar::ScalarValue;
 use relvar::{Database, InMemoryEngine, tuple};
+use relvar::{RelationType, ScalarType, TupleType};
 
 #[test]
 fn test_query_builder_e2e() {

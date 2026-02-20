@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::constraints::ConstraintManagerError;
 use crate::constraints::check::{CheckConstraint, CheckConstraints};
