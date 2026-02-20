@@ -328,23 +328,24 @@ fn combine_tuples(
     secondary: &Tuple,
     result_heading: &Arc<TupleType>,
 ) -> Result<Tuple, DatabaseError> {
-    let mut combined_values = HashMap::with_capacity(result_heading.degree());
-
-    // Add all values from primary
-    for (attr_name, value) in primary.values() {
-        combined_values.insert(attr_name.clone(), value.clone());
-    }
+    // Clone the primary's BTreeMap. This gives us a head start with sorted keys.
+    let mut combined_values = primary.values().clone();
 
     // Add values from secondary (skipping common ones which are already in)
     for (attr_name, value) in secondary.values() {
+        // Use BTreeMap's O(log N) lookup.
+        // We only insert if not present (primary takes precedence).
         if !combined_values.contains_key(attr_name) {
             combined_values.insert(attr_name.clone(), value.clone());
         }
     }
 
-    Tuple::new(result_heading.clone(), combined_values).map_err(|e| {
-        DatabaseError::AlgebraError(format!("Failed to construct combined tuple: {}", e))
-    })
+    // Use unchecked constructor to skip validation and sorting since we know the inputs are valid
+    // and the logic ensures the result conforms to result_heading (union of attributes).
+    Ok(Tuple::new_unchecked(
+        result_heading.clone(),
+        combined_values,
+    ))
 }
 
 #[cfg(test)]
