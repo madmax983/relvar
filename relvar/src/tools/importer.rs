@@ -77,6 +77,8 @@ pub enum ImporterError {
 
 const MAX_STRING_LEN: usize = 1_000_000; // 1MB
 const MAX_BYTES_LEN: usize = 1_000_000; // 1MB
+const MAX_IMPORT_ROWS: usize = 100_000; // 100k rows
+const MAX_CSV_LINE_LEN: usize = 1_000_000; // 1MB
 
 /// Imports a relation from a JSON source.
 ///
@@ -139,6 +141,12 @@ impl<'de> Visitor<'de> for RelationVisitor {
         let tuple_seed = TupleSeed { heading };
 
         while let Some(tuple) = seq.next_element_seed(tuple_seed.clone())? {
+            if relation.cardinality() >= MAX_IMPORT_ROWS {
+                return Err(serde::de::Error::custom(format!(
+                    "Size limit exceeded: Max rows: {}",
+                    MAX_IMPORT_ROWS
+                )));
+            }
             let _ = relation
                 .insert(tuple)
                 .map_err(|e| serde::de::Error::custom(format!("Relvar error: {}", e)))?;
@@ -373,15 +381,49 @@ pub fn from_csv<R: std::io::Read>(
 ) -> Result<Relation, ImporterError> {
     let mut relation = Relation::new(relation_type.clone());
     let heading = relation_type.heading();
-    let reader = std::io::BufReader::new(reader);
-    let mut lines = reader.lines();
+    let mut reader = std::io::BufReader::new(reader);
+
+    // Helper for safe line reading
+    fn read_line_safe<B: BufRead>(
+        reader: &mut B,
+        buf: &mut String,
+    ) -> Result<usize, ImporterError> {
+        buf.clear();
+        // Use reader.take() directly on the mutable reference.
+        // B implements BufRead, so &mut B implements BufRead + Read.
+        // We use take() from the Read trait on the reference itself to avoid moving B.
+        let mut taker = std::io::Read::take(&mut *reader, MAX_CSV_LINE_LEN as u64);
+        let n = taker.read_line(buf)?;
+
+        if n == 0 {
+            return Ok(0);
+        }
+
+        if buf.ends_with('\n') {
+            return Ok(n);
+        }
+
+        // Check if there is more data (meaning we hit the limit)
+        let available = reader.fill_buf()?;
+        if !available.is_empty() {
+            return Err(ImporterError::LimitExceeded(format!(
+                "CSV Line too long: > {}",
+                MAX_CSV_LINE_LEN
+            )));
+        }
+
+        Ok(n)
+    }
 
     // 1. Read Header
-    let header_line = lines
-        .next()
-        .ok_or_else(|| ImporterError::FormatError("Empty CSV input".to_string()))??;
+    let mut header_line = String::new();
+    if read_line_safe(&mut reader, &mut header_line)? == 0 {
+        return Err(ImporterError::FormatError("Empty CSV input".to_string()));
+    }
+    // Trim newline for parsing
+    let header_line_trimmed = header_line.trim_end();
 
-    let headers: Vec<String> = parse_csv_line(&header_line, delimiter);
+    let headers: Vec<String> = parse_csv_line(header_line_trimmed, delimiter);
 
     // Validate headers
     for attr_name in heading.attribute_names() {
@@ -394,13 +436,22 @@ pub fn from_csv<R: std::io::Read>(
     }
 
     // 2. Read Rows
-    for (line_idx, line) in lines.enumerate() {
-        let line = line?;
+    let mut line_buf = String::new();
+    let mut line_idx = 0;
+    while read_line_safe(&mut reader, &mut line_buf)? > 0 {
+        if relation.cardinality() >= MAX_IMPORT_ROWS {
+            return Err(ImporterError::LimitExceeded(format!(
+                "Size limit exceeded: Max rows: {}",
+                MAX_IMPORT_ROWS
+            )));
+        }
+
+        let line = line_buf.trim_end();
         if line.trim().is_empty() {
             continue;
         }
 
-        let fields = parse_csv_line(&line, delimiter);
+        let fields = parse_csv_line(line, delimiter);
 
         if fields.len() != headers.len() {
             return Err(ImporterError::FormatError(format!(
@@ -416,8 +467,6 @@ pub fn from_csv<R: std::io::Read>(
         for (i, field) in fields.iter().enumerate() {
             let attr_name = &headers[i];
 
-            // If the schema has this attribute (we allow extra columns in CSV, but skip them if not in schema?)
-            // For strictness, let's only import what's in schema.
             if let Some(attr_type) = heading.get_attribute_type(attr_name) {
                 let scalar_val = str_to_scalar(field, attr_type).map_err(|e| {
                     ImporterError::TypeError(
@@ -436,6 +485,8 @@ pub fn from_csv<R: std::io::Read>(
         let _ = relation
             .insert(tuple)
             .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
+
+        line_idx += 1;
     }
 
     Ok(relation)
