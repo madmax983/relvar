@@ -11,7 +11,9 @@
 //! - **Search**: Relational Full-Text Search.
 //! - **Image**: Relational Image Processing (RIP).
 //! - **Graph**: Relational Graph Analytics (BFS, PageRank).
+//! - **AutoML**: Relational Machine Learning (Naive Bayes).
 
+pub mod automl;
 pub mod graph;
 pub mod image;
 pub mod mock;
