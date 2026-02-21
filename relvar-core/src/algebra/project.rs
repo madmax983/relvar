@@ -97,18 +97,27 @@ impl Relation {
 
         // Project each tuple
         let projected_tuples = self.tuples().map(|tuple| {
-            // Optimization: Iterate over the result heading instead of the input `attributes`.
-            // The result heading contains only valid, unique attributes that exist in the source.
-            // This hoists validation and deduplication out of the loop.
+            // Optimization: Use synchronized iteration (merge-join style) between source tuple values
+            // and result heading attributes. Both are sorted BTreeMaps.
+            // This avoids O(log N) lookup for each attribute, reducing complexity from O(M log N) to O(N).
+            let mut source_iter = tuple.values().iter();
+
             let values: BTreeMap<_, _> = shared_heading
                 .attribute_names()
-                .map(|attr_name| {
-                    // Safety: shared_heading is a subset of source relation's heading,
-                    // so the attribute MUST exist in any tuple conforming to source relation.
-                    let value = tuple
-                        .get(attr_name)
-                        .expect("Attribute from result heading must exist in source tuple");
-                    (attr_name.clone(), value.clone())
+                .map(|target_attr| {
+                    // Advance source iterator until we find the target attribute.
+                    // Since both are sorted and target is a subset of source, we are guaranteed to find it
+                    // without backtracking.
+                    loop {
+                        let (source_attr, source_val) = source_iter
+                            .next()
+                            .expect("Attribute from result heading must exist in source tuple");
+
+                        if source_attr == target_attr {
+                            return (target_attr.clone(), source_val.clone());
+                        }
+                        // If source_attr < target_attr, continue skipping unwanted attributes
+                    }
                 })
                 .collect();
             // Safety: We constructed values exactly from attributes present in new_heading

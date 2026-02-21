@@ -26,6 +26,28 @@ fn create_employee_relation(size: usize) -> Relation {
     relation
 }
 
+fn create_wide_relation(num_tuples: usize, num_cols: usize) -> Relation {
+    let mut heading = TupleType::new();
+    for i in 0..num_cols {
+        heading = heading.with_attribute(format!("col_{}", i), ScalarType::Int);
+    }
+
+    let mut relation = Relation::new(RelationType::new(heading));
+
+    for i in 0..num_tuples {
+        let mut values = std::collections::HashMap::new();
+        for c in 0..num_cols {
+            values.insert(format!("col_{}", c), ScalarValue::Int((i + c) as i64));
+        }
+        // Using Tuple::new for validation, though slower, it's setup code.
+        let tuple_type = relation.relation_type().heading().clone();
+        let tuple = relvar_core::values::Tuple::new(tuple_type, values).unwrap();
+        relation.insert(tuple).unwrap();
+    }
+
+    relation
+}
+
 fn create_department_relation(size: usize) -> Relation {
     let heading = TupleType::new()
         .with_attribute("dept_id".to_string(), ScalarType::Int)
@@ -120,6 +142,52 @@ fn bench_project(c: &mut Criterion) {
 
             b.iter(|| {
                 let result = relation.project(&["emp_id", "name"]);
+                black_box(result);
+            });
+        });
+    }
+    group.finish();
+}
+
+fn bench_project_wide(c: &mut Criterion) {
+    let mut group = c.benchmark_group("project_wide");
+    let num_cols = 100;
+    let project_cols: Vec<String> = (0..num_cols)
+        .step_by(2)
+        .map(|i| format!("col_{}", i))
+        .collect();
+    let project_cols_refs: Vec<&str> = project_cols.iter().map(|s| s.as_str()).collect();
+
+    for size in [100, 1000].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            let relation = create_wide_relation(size, num_cols);
+
+            b.iter(|| {
+                let result = relation.project(&project_cols_refs);
+                black_box(result);
+            });
+        });
+    }
+    group.finish();
+}
+
+fn bench_project_narrow(c: &mut Criterion) {
+    let mut group = c.benchmark_group("project_narrow");
+    let num_cols = 10;
+    let project_cols: Vec<String> = (0..num_cols)
+        .step_by(2)
+        .map(|i| format!("col_{}", i))
+        .collect();
+    let project_cols_refs: Vec<&str> = project_cols.iter().map(|s| s.as_str()).collect();
+
+    for size in [100, 1000].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            let relation = create_wide_relation(size, num_cols);
+
+            b.iter(|| {
+                let result = relation.project(&project_cols_refs);
                 black_box(result);
             });
         });
@@ -351,6 +419,8 @@ criterion_group!(
     benches,
     bench_restrict,
     bench_project,
+    bench_project_wide,
+    bench_project_narrow,
     bench_rename,
     bench_join,
     bench_semijoin,
