@@ -5,8 +5,8 @@
 //!
 //! # System Architecture
 //!
-//! The `Database` struct acts as the orchestrator of the system, delegating responsibilities
-//! to specialized components while maintaining the logical consistency of the relational model.
+//! The `Database` struct acts as the **central orchestrator** of the system. It adheres to the
+//! Facade pattern, hiding the complexity of the constraint and storage subsystems from the user.
 //!
 //! ```text
 //! ┌───────────────────────────────────────────────────────────────────┐
@@ -28,13 +28,45 @@
 //!
 //! ## Key Interactions
 //!
-//! 1.  **Operation Request**: User calls methods like `insert`, `update`, `delete`.
-//! 2.  **Constraint Validation**: `Database` consults `ConstraintManager` to ensure
-//!     the operation violates no integrity rules.
+//! 1.  **Operation Request**: User calls methods like [`insert`](Database::insert), [`update`](Database::update), [`delete`](Database::delete).
+//! 2.  **Constraint Validation**: `Database` consults [`ConstraintManager`](crate::constraints::ConstraintManager)
+//!     to ensure the operation violates no integrity rules (e.g., uniqueness, foreign keys).
 //! 3.  **Persistence**: If valid, `Database` delegates the physical data modification
-//!     to the configured `StorageEngine`.
+//!     to the configured [`StorageEngine`](crate::storage_engine::StorageEngine).
 //! 4.  **Transaction Management**: `Database` coordinates with `StorageEngine` to begin,
 //!     commit, or rollback transactions.
+//!
+//! # Transactions
+//!
+//! The database supports ACID transactions via [`begin`](Database::begin), [`commit`](Database::commit),
+//! and [`rollback`](Database::rollback).
+//!
+//! - **Atomicity**: Operations within a transaction either all succeed or all fail.
+//! - **Consistency**: Constraints are checked before commit (and during operations).
+//! - **Isolation**: Provided by the underlying storage engine (e.g., Snapshot Isolation).
+//! - **Durability**: Provided by the storage engine (e.g., Write-Ahead Logging).
+//!
+//! ## Example: Transactional Update
+//!
+//! ```
+//! # use relvar_core::database::Database;
+//! # use relvar_core::storage_engine::InMemoryEngine;
+//! # use relvar_core::types::{TupleType, RelationType, ScalarType};
+//! # use relvar_core::tuple;
+//! # let mut db = Database::new(InMemoryEngine::new());
+//! # let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+//! # db.create_relvar("TEST", rel_type).unwrap();
+//!
+//! db.begin().unwrap();
+//!
+//! // This insert is provisional
+//! db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+//!
+//! // If we panic or rollback here, the insert is lost
+//! db.rollback().unwrap();
+//!
+//! assert_eq!(db.query("TEST").unwrap().cardinality(), 0);
+//! ```
 
 use crate::constraints::{
     AttributeConstraints, CheckConstraints, ConstraintManager, ForeignKeyConstraints,
@@ -52,7 +84,18 @@ pub mod virtual_relvar;
 
 /// A relational database instance.
 ///
-/// Generic over the storage engine `E`, which handles persistence.
+/// The `Database` struct is the primary interface for interacting with Relvar. It is
+/// generic over a [`StorageEngine`] `E`, allowing you to swap between in-memory
+/// (testing) and persistent (production) storage backends without changing your
+/// application logic.
+///
+/// # Responsibilities
+///
+/// - **DDL Operations**: Create and drop relvars ([`create_relvar`](Database::create_relvar)).
+/// - **DML Operations**: Insert, update, and delete tuples ([`insert`](Database::insert)).
+/// - **Query Execution**: Run relational algebra queries ([`query`](Database::query)).
+/// - **Constraint Management**: Enforce keys, foreign keys, and type constraints.
+/// - **Transaction Control**: Manage ACID transactions.
 ///
 /// # Example
 ///
@@ -62,17 +105,23 @@ pub mod virtual_relvar;
 /// use relvar_core::types::{TupleType, RelationType, ScalarType};
 /// use relvar_core::tuple;
 ///
+/// // 1. Create a database with an in-memory engine
 /// let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 ///
+/// // 2. Define a relation type (schema)
 /// let rel_type = RelationType::new(
 ///     TupleType::new()
 ///         .with_attribute("id", ScalarType::Int)
 ///         .with_attribute("name", ScalarType::String)
 /// );
 ///
+/// // 3. Create a relation variable (table)
 /// db.create_relvar("EMPLOYEES", rel_type).unwrap();
+///
+/// // 4. Insert data
 /// db.insert("EMPLOYEES", tuple! { id: 1i64, name: "Alice" }).unwrap();
 ///
+/// // 5. Query data
 /// let employees = db.query("EMPLOYEES").unwrap();
 /// assert_eq!(employees.cardinality(), 1);
 /// ```
@@ -374,6 +423,9 @@ impl<E: StorageEngine> Database<E> {
 
     /// Insert a tuple into a relation.
     ///
+    /// This operation validates all constraints (Types, Keys, Foreign Keys, CHECKs)
+    /// before modifying the database state.
+    ///
     /// # Example
     ///
     /// ```
@@ -390,18 +442,20 @@ impl<E: StorageEngine> Database<E> {
     /// );
     /// db.create_relvar("USERS", rel_type).unwrap();
     ///
+    /// // Successful insert
     /// db.insert("USERS", tuple! { id: 1i64, name: "Alice" }).unwrap();
     ///
-    /// let users = db.query("USERS").unwrap();
-    /// assert_eq!(users.cardinality(), 1);
+    /// // Fails: Tuple type mismatch (missing 'name')
+    /// let result = db.insert("USERS", tuple! { id: 2i64 });
+    /// assert!(result.is_err());
     /// ```
     ///
     /// # Errors
     ///
     /// Returns an error if:
-    /// - The relation doesn't exist
-    /// - The tuple type doesn't match
-    /// - A constraint is violated
+    /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
+    /// - The tuple type doesn't match the relation's heading ([`DatabaseError::TupleMismatch`])
+    /// - Any constraint is violated (Key, Foreign Key, Type, Check)
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
         self.ensure_not_virtual(relation_name)?;
         self.validate_insert(relation_name, &tuple)?;
@@ -456,6 +510,12 @@ impl<E: StorageEngine> Database<E> {
     /// - Deleting the tuples would violate a foreign key constraint in another relation
     ///   ([`crate::constraints::ConstraintManagerError::ForeignKeyViolation`])
     ///
+    /// # Performance
+    ///
+    /// This operation scans the entire relation to evaluate the predicate.
+    /// It then constructs a new relation containing the remaining tuples.
+    /// Complexity is O(N) where N is the relation size.
+    ///
     /// # Example
     ///
     /// ```
@@ -473,9 +533,11 @@ impl<E: StorageEngine> Database<E> {
     /// db.insert("TEST", tuple! { id: 2i64 }).unwrap();
     ///
     /// // Delete id 1
-    /// let count = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1).unwrap();
+    /// let deleted_count = db.delete("TEST", |t| {
+    ///     t.get_typed::<i64>("id").unwrap() == 1
+    /// }).unwrap();
     ///
-    /// assert_eq!(count, 1);
+    /// assert_eq!(deleted_count, 1);
     /// assert_eq!(db.query("TEST").unwrap().cardinality(), 1);
     /// ```
     pub fn delete<F>(&mut self, relation_name: &str, predicate: F) -> Result<usize, DatabaseError>
@@ -599,11 +661,20 @@ impl<E: StorageEngine> Database<E> {
         Ok(update_count)
     }
 
-    /// Begin a transaction.
+    /// Begins a new transaction.
+    ///
+    /// This establishes a savepoint (snapshot) of the database. Any changes made
+    /// subsequently are provisional until [`commit`](Self::commit) is called.
+    ///
+    /// # ACID Guarantees
+    ///
+    /// - **Isolation**: The transaction sees a consistent snapshot of the data.
+    /// - **Atomicity**: Changes are not visible to other transactions until commit.
     ///
     /// # Errors
     ///
-    /// Returns an error if a transaction is already in progress.
+    /// Returns `DatabaseError::TransactionError` if a transaction is already active.
+    /// Nested transactions are not currently supported.
     pub fn begin(&mut self) -> Result<(), DatabaseError> {
         if self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -617,11 +688,18 @@ impl<E: StorageEngine> Database<E> {
         Ok(())
     }
 
-    /// Commit the current transaction.
+    /// Commits the current transaction.
+    ///
+    /// Makes all changes since [`begin`](Self::begin) permanent and visible to others.
     ///
     /// # Errors
     ///
-    /// Returns an error if no transaction is in progress.
+    /// Returns `DatabaseError::TransactionError` if no transaction is in progress.
+    ///
+    /// # Durability
+    ///
+    /// If using a persistent storage engine, this ensures all data and WAL entries
+    /// are flushed to disk.
     pub fn commit(&mut self) -> Result<(), DatabaseError> {
         if !self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -637,11 +715,14 @@ impl<E: StorageEngine> Database<E> {
         Ok(())
     }
 
-    /// Rollback the current transaction.
+    /// Rolls back the current transaction.
+    ///
+    /// Discards all changes made since [`begin`](Self::begin), restoring the database
+    /// to its state at the start of the transaction.
     ///
     /// # Errors
     ///
-    /// Returns an error if no transaction is in progress.
+    /// Returns `DatabaseError::TransactionError` if no transaction is in progress.
     pub fn rollback(&mut self) -> Result<(), DatabaseError> {
         if !self.in_transaction {
             return Err(DatabaseError::TransactionError(
