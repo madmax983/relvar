@@ -28,6 +28,7 @@
 
 use crate::types::ScalarType;
 use serde::{Deserialize, Serialize};
+use std::convert::TryFrom;
 use thiserror::Error;
 
 /// Errors that can occur during scalar value operations.
@@ -80,6 +81,7 @@ pub enum ScalarValueError {
 /// assert!(value.is_type(&ScalarType::Int));
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "ScalarValueUnchecked")]
 pub enum ScalarValue {
     /// 64-bit signed integer value.
     Int(i64),
@@ -390,6 +392,68 @@ impl Ord for ScalarValue {
                 }
             }
             other => other,
+        }
+    }
+}
+
+// Private structure to assist with deserialization and validation.
+// This allows us to intercept deserialization and enforce type consistency and depth limits.
+#[derive(Debug, Deserialize)]
+enum ScalarValueUnchecked {
+    Int(i64),
+    Float(f64),
+    String(String),
+    Bool(bool),
+    Bytes(Vec<u8>),
+    Relation(crate::values::Relation),
+    UserDefined {
+        type_def: ScalarType,
+        value: Box<ScalarValueUnchecked>,
+    },
+}
+
+impl TryFrom<ScalarValueUnchecked> for ScalarValue {
+    type Error = String;
+
+    fn try_from(unchecked: ScalarValueUnchecked) -> Result<Self, Self::Error> {
+        match unchecked {
+            ScalarValueUnchecked::Int(v) => Ok(ScalarValue::Int(v)),
+            ScalarValueUnchecked::Float(v) => Ok(ScalarValue::Float(v)),
+            ScalarValueUnchecked::String(v) => Ok(ScalarValue::String(v)),
+            ScalarValueUnchecked::Bool(v) => Ok(ScalarValue::Bool(v)),
+            ScalarValueUnchecked::Bytes(v) => Ok(ScalarValue::Bytes(v)),
+            ScalarValueUnchecked::Relation(v) => Ok(ScalarValue::Relation(v)),
+            ScalarValueUnchecked::UserDefined { type_def, value } => {
+                // First, ensure the type definition itself is a UserDefined type.
+                // A ScalarValue::UserDefined variant must have a ScalarType::UserDefined type definition.
+                // It makes no sense to have ScalarValue::UserDefined { type_def: Int, ... }.
+                let representation = match &type_def {
+                    ScalarType::UserDefined { representation, .. } => representation,
+                    _ => {
+                        return Err(format!(
+                            "Invalid UserDefined value: type definition must be UserDefined, got {}",
+                            type_def.name()
+                        ));
+                    }
+                };
+
+                // Recursively convert and validate the inner value
+                let inner_value = ScalarValue::try_from(*value)?;
+
+                // Enforce type consistency: inner value MUST match the representation type
+                if !inner_value.is_type(representation) {
+                    return Err(format!(
+                        "Type mismatch in UserDefined value: type definition expects {}, but value is {}",
+                        representation.name(),
+                        inner_value.scalar_type().name()
+                    ));
+                }
+
+                Ok(ScalarValue::UserDefined {
+                    type_def,
+                    value: Box::new(inner_value),
+                })
+            }
         }
     }
 }
