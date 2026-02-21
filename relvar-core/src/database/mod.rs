@@ -42,7 +42,6 @@ use crate::constraints::{
 };
 pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
-use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 
@@ -86,13 +85,7 @@ pub struct Database<E: StorageEngine> {
     /// Transaction savepoint.
     transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
-    virtual_relvars: HashMap<String, virtual_relvar::VirtualRelvarDefinition>,
-}
-
-impl<E: StorageEngine> QueryExecutor for Database<E> {
-    fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
-        self.query(relation_name)
-    }
+    virtual_relvars: HashMap<String, virtual_relvar::VirtualRelvarDefinition<E>>,
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -666,7 +659,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+        evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));

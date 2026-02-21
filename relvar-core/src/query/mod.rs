@@ -41,8 +41,9 @@
 
 use crate::algebra::summarize::Aggregation;
 use crate::constraints::{ConstraintExpression, ExpressionError};
+use crate::database::Database;
 use crate::error::DatabaseError;
-use crate::traits::QueryExecutor;
+use crate::storage_engine::StorageEngine;
 use crate::values::Relation;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -117,7 +118,10 @@ pub enum QueryError {
 
 impl Query {
     /// Executes the query plan against the given relation source (e.g., Database).
-    pub fn execute(&self, executor: &impl QueryExecutor) -> Result<Relation, QueryError> {
+    pub fn execute<E: StorageEngine>(
+        &self,
+        executor: &Database<E>,
+    ) -> Result<Relation, QueryError> {
         match self {
             Query::Scan(table_name) => Ok(executor.query(table_name)?),
             Query::Restrict { input, predicate } => {

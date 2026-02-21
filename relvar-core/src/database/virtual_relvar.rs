@@ -24,7 +24,6 @@
 //! use relvar_core::types::{TupleType, RelationType, ScalarType};
 //! use relvar_core::values::Relation;
 //! use relvar_core::tuple;
-//! use relvar_core::traits::QueryExecutor;
 //!
 //! // 1. Setup Database
 //! let mut db = Database::new(InMemoryEngine::new());
@@ -53,8 +52,8 @@
 //! db.define_virtual_relvar(
 //!     "DEPT_10_STAFF",
 //!     view_type,
-//!     |db: &dyn QueryExecutor| {
-//!         // The closure receives a QueryExecutor (like the Database)
+//!     |db| {
+//!         // The closure receives a reference to the Database
 //!         // and returns a Relation.
 //!         let employees = db.query("EMPLOYEES")?;
 //!
@@ -76,8 +75,9 @@
 //! assert_eq!(result_updated.cardinality(), 2); // Alice and Charlie
 //! ```
 
+use crate::database::Database;
 use crate::error::DatabaseError;
-use crate::traits::QueryExecutor;
+use crate::storage_engine::StorageEngine;
 use crate::types::RelationType;
 use crate::values::Relation;
 
@@ -85,7 +85,7 @@ use crate::values::Relation;
 ///
 /// Stores the metadata required to evaluate a virtual relvar on demand.
 #[derive(Debug, Clone)]
-pub struct VirtualRelvarDefinition {
+pub struct VirtualRelvarDefinition<E: StorageEngine> {
     /// The unique name of the virtual relvar.
     pub name: String,
 
@@ -100,15 +100,15 @@ pub struct VirtualRelvarDefinition {
     ///
     /// # Signature
     ///
-    /// `fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>`
+    /// `fn(&Database<E>) -> Result<Relation, DatabaseError>`
     ///
-    /// - **Input**: A `&dyn QueryExecutor` trait object, which allows the view
+    /// - **Input**: A reference to the `Database`, which allows the view
     ///   to query other relvars (base or virtual) in the database.
     /// - **Output**: A `Result` containing the computed `Relation`.
     ///
     /// # Safety
     ///
-    /// The evaluator is passed a read-only reference (`&dyn`), ensuring that
+    /// The evaluator is passed a read-only reference (`&Database`), ensuring that
     /// viewing a relation cannot cause side effects (mutations) in the database.
-    pub evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+    pub evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
 }
