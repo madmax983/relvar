@@ -47,6 +47,25 @@ where
         .map_err(|e| HeapError::Serialization(e.to_string()))
 }
 
+/// Helper for consistent serialization matching `deserialize_bounded`.
+/// Uses LittleEndian and FixedIntEncoding to ensure compatibility.
+fn serialize_compat<T: Serialize>(value: &T) -> Result<Vec<u8>, HeapError> {
+    bincode::options()
+        .with_little_endian()
+        .with_fixint_encoding()
+        .serialize(value)
+        .map_err(|e| HeapError::Serialization(e.to_string()))
+}
+
+/// Helper for calculating serialized size matching `serialize_compat`.
+fn serialized_size_compat<T: Serialize>(value: &T) -> Result<u64, HeapError> {
+    bincode::options()
+        .with_little_endian()
+        .with_fixint_encoding()
+        .serialized_size(value)
+        .map_err(|e| HeapError::Serialization(e.to_string()))
+}
+
 /// Tuple ID: (page_id, slot_number)
 /// Internal to storage layer only (TTM Proscription 6)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -299,8 +318,7 @@ impl HeapFile {
     /// Returns [`HeapError::Page`] if a page I/O error occurs.
     pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<(), HeapError> {
         // Serialize the tuple
-        let tuple_data =
-            bincode::serialize(tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let tuple_data = serialize_compat(tuple)?;
 
         // Check if tuple is too large to ever fit
         self.check_tuple_size_limit(tuple_data.len())?;
@@ -322,9 +340,7 @@ impl HeapFile {
             })],
         };
 
-        let header_size = bincode::serialized_size(&dummy_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?
-            as usize;
+        let header_size = serialized_size_compat(&dummy_page)? as usize;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
 
@@ -471,9 +487,7 @@ impl HeapFile {
         });
 
         // Calculate exact header size using bincode
-        let header_size = bincode::serialized_size(&slotted_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?
-            as usize;
+        let header_size = serialized_size_compat(&slotted_page)? as usize;
 
         // Calculate total size correctly
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
@@ -507,8 +521,7 @@ impl HeapFile {
         tuples: &[Vec<u8>],
     ) -> Result<Vec<u8>, HeapError> {
         // Serialize slot directory
-        let slot_dir = bincode::serialize(slotted_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let slot_dir = serialize_compat(slotted_page)?;
 
         // Create page buffer
         let mut data = vec![0u8; PAGE_SIZE - 8]; // USABLE_PAGE_SIZE
@@ -720,8 +733,7 @@ impl HeapFile {
         txn_id: crate::wal::TransactionId,
     ) -> Result<TupleId, HeapError> {
         // Serialize the tuple
-        let tuple_data =
-            bincode::serialize(tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let tuple_data = serialize_compat(tuple)?;
 
         // Check if tuple is too large to ever fit
         // New inserts have no previous version (prev_version = None)
@@ -759,9 +771,7 @@ impl HeapFile {
             })],
         };
 
-        let header_size = bincode::serialized_size(&dummy_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?
-            as usize;
+        let header_size = serialized_size_compat(&dummy_page)? as usize;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
         const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
@@ -821,8 +831,7 @@ impl HeapFile {
 
         // Calculate required space using ACTUAL serialized size
         // CRITICAL: Must use bincode size, not sizeof, as they differ!
-        let slot_dir = bincode::serialize(&versioned_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let slot_dir = serialize_compat(&versioned_page)?;
         let header_size = V2_HEADER_SIZE + slot_dir.len();
 
         // existing_tuples already includes tuple_data, so we just sum existing_tuples
@@ -858,8 +867,7 @@ impl HeapFile {
         tuples: &[Vec<u8>],
     ) -> Result<Vec<u8>, HeapError> {
         // Serialize slot directory
-        let slot_dir = bincode::serialize(versioned_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let slot_dir = serialize_compat(versioned_page)?;
 
         // Format: [version:1 byte][slot_dir_length:4 bytes][slot_dir][tuple_data]
         const HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
@@ -1101,8 +1109,7 @@ impl HeapFile {
         self.page_file.write_page(&updated_page)?;
 
         // Step 2: Insert new version
-        let new_tuple_data =
-            bincode::serialize(new_tuple).map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let new_tuple_data = serialize_compat(new_tuple)?;
 
         // Check if new tuple is too large
         // Updates link to previous version (prev_version = Some(...))
@@ -3582,6 +3589,61 @@ mod tests {
             tuples.contains(&tuple_c),
             "Missing tuple C - CORRUPTION DETECTED!"
         );
+    }
+
+    #[test]
+    fn test_repack_slots_correctness() {
+        // Test edge case where tuples perfectly fill the page
+        let mut slots: Vec<Option<SlotEntry>> = vec![];
+        let mut tuples: Vec<Vec<u8>> = vec![];
+
+        // Add 2 tuples, each 100 bytes
+        slots.push(Some(SlotEntry {
+            offset: 0,
+            length: 100,
+        }));
+        tuples.push(vec![0u8; 100]);
+
+        slots.push(Some(SlotEntry {
+            offset: 0,
+            length: 100,
+        }));
+        tuples.push(vec![0u8; 100]);
+
+        // Usable size = 200
+        let usable_size = 200;
+
+        HeapFile::repack_slots(&mut slots, &tuples, usable_size).unwrap();
+
+        // Check offsets
+        // Last tuple (index 1) gets offset: 200 - 100 = 100
+        assert_eq!(slots[1].as_ref().unwrap().offset, 100);
+        assert_eq!(slots[1].as_ref().unwrap().length, 100);
+
+        // First tuple (index 0) gets offset: 100 - 100 = 0
+        assert_eq!(slots[0].as_ref().unwrap().offset, 0);
+        assert_eq!(slots[0].as_ref().unwrap().length, 100);
+
+        // Test overflow (too many tuples)
+        let tuples_overflow = vec![vec![0u8; 100], vec![0u8; 100], vec![0u8; 1]]; // Total 201
+        let mut slots_overflow = vec![
+            Some(SlotEntry {
+                offset: 0,
+                length: 100,
+            }),
+            Some(SlotEntry {
+                offset: 0,
+                length: 100,
+            }),
+            Some(SlotEntry {
+                offset: 0,
+                length: 1,
+            }),
+        ];
+
+        let result = HeapFile::repack_slots(&mut slots_overflow, &tuples_overflow, usable_size);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), HeapError::PageFull));
     }
 }
 
