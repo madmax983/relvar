@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
 
-use crate::storage::{PageId, heap::TupleId};
+use crate::storage::slotted_page::TupleId;
+use crate::storage::PageId;
 
 /// Errors that can occur during WAL record operations.
 #[derive(Debug, Error)]

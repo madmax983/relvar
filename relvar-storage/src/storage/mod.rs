@@ -65,6 +65,7 @@ pub mod catalog;
 pub mod heap;
 pub mod manager;
 pub mod page;
+pub(crate) mod slotted_page;
 
 pub use catalog::{Catalog, CatalogError};
 pub use heap::{HeapError, HeapFile};
