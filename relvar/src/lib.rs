@@ -141,9 +141,6 @@ pub use relvar_core::constraints;
 /// Tuple creation macro.
 pub use relvar_core::tuple;
 
-/// Experimental features that may be unstable or subject to change.
-pub mod experimental;
-
 /// Developer tools and utilities.
 pub mod tools;
 
