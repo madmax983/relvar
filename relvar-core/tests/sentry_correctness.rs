@@ -1,7 +1,7 @@
-use relvar_core::values::ScalarValue;
-use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
-use relvar_core::tuple;
 use proptest::prelude::*;
+use relvar_core::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
+use relvar_core::tuple;
+use relvar_core::values::ScalarValue;
 
 proptest! {
     #[test]
