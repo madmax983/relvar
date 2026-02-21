@@ -630,22 +630,7 @@ impl<E: StorageEngine> Database<E> {
         let (new_relation, update_count) =
             self.compute_relation_after_update(current_relation, predicate, updater)?;
 
-        // Validate key constraints on new relation
-        if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
-            self.constraints
-                .validate_key_constraints_bulk(&new_relation, key_constraints)?;
-        }
-
-        // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
-        // NOTE: In a production system we'd only validate changed tuples, but for now
-        // we validate everything to ensure total consistency.
-        new_relation.tuples().try_for_each(|tuple| {
-            self.constraints.validate_tuple_content_constraints(
-                &mut self.engine,
-                relation_name,
-                tuple,
-            )
-        })?;
+        self.validate_relation_constraints(relation_name, &new_relation)?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -788,20 +773,17 @@ impl<E: StorageEngine> Database<E> {
     where
         F: Fn(&Tuple) -> bool,
     {
-        // Pre-allocate new relation with same capacity as current, assuming worst case (no deletions)
-        let mut new_relation = Relation::with_capacity(
-            current_relation.relation_type().clone(),
-            current_relation.cardinality(),
-        );
-        let mut delete_count = 0;
+        let initial_cardinality = current_relation.cardinality();
+        let relation_type = current_relation.relation_type().clone();
 
-        for tuple in current_relation {
-            if predicate(&tuple) {
-                delete_count += 1;
-            } else {
-                new_relation.insert(tuple)?;
-            }
-        }
+        let kept_tuples: Vec<Tuple> = current_relation
+            .into_iter()
+            .filter(|tuple| !predicate(tuple))
+            .collect();
+
+        let delete_count = initial_cardinality - kept_tuples.len();
+
+        let new_relation = Relation::from_tuples(relation_type, kept_tuples)?;
 
         Ok((new_relation, delete_count))
     }
@@ -818,26 +800,27 @@ impl<E: StorageEngine> Database<E> {
     {
         let relation_type = current_relation.relation_type().clone();
         let expected_type = relation_type.tuple_type().clone();
-        // Pre-allocate new relation with same capacity as current, as update preserves cardinality
-        let mut new_relation =
-            Relation::with_capacity(relation_type, current_relation.cardinality());
-        let mut update_count = 0;
+        let initial_cardinality = current_relation.cardinality();
 
-        for tuple in current_relation {
-            if predicate(&tuple) {
-                let updated_tuple = updater(&tuple);
+        let (tuples, update_count) = current_relation.into_iter().try_fold(
+            (Vec::with_capacity(initial_cardinality), 0),
+            |(mut acc, count), tuple| {
+                if predicate(&tuple) {
+                    let updated_tuple = updater(&tuple);
 
-                // Validate updated tuple
-                if !updated_tuple.conforms_to(&expected_type) {
-                    return Err(DatabaseError::TupleMismatch);
+                    if !updated_tuple.conforms_to(&expected_type) {
+                        return Err(DatabaseError::TupleMismatch);
+                    }
+                    acc.push(updated_tuple);
+                    Ok((acc, count + 1))
+                } else {
+                    acc.push(tuple);
+                    Ok((acc, count))
                 }
+            },
+        )?;
 
-                new_relation.insert(updated_tuple)?;
-                update_count += 1;
-            } else {
-                new_relation.insert(tuple)?;
-            }
-        }
+        let new_relation = Relation::from_tuples(relation_type, tuples)?;
 
         Ok((new_relation, update_count))
     }
@@ -860,6 +843,31 @@ impl<E: StorageEngine> Database<E> {
             tuple,
             &current_relation,
         )?;
+
+        Ok(())
+    }
+
+    fn validate_relation_constraints(
+        &mut self,
+        relation_name: &str,
+        relation: &Relation,
+    ) -> Result<(), DatabaseError> {
+        // Validate key constraints on new relation
+        if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
+            self.constraints
+                .validate_key_constraints_bulk(relation, key_constraints)?;
+        }
+
+        // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
+        // NOTE: In a production system we'd only validate changed tuples, but for now
+        // we validate everything to ensure total consistency.
+        relation.tuples().try_for_each(|tuple| {
+            self.constraints.validate_tuple_content_constraints(
+                &mut self.engine,
+                relation_name,
+                tuple,
+            )
+        })?;
 
         Ok(())
     }
