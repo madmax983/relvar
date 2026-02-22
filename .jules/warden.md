@@ -136,3 +136,18 @@ Although `ScalarType::user_defined` constructor enforced `MAX_TYPE_DEPTH`, `Scal
 2. Enforced strict limits `MAX_STRING_LEN` (1MB) and `MAX_BYTES_LEN` (1MB) during streaming parsing.
 3. Added `ImporterError::LimitExceeded` to report violations.
 4. Added `relvar/tests/warden_json_import.rs` to verify limits and recursion safety.
+
+## 2026-02-13 - ScalarValue Inconsistency and Stack Overflow
+**Threat:**
+`ScalarValue` deserialization blindly trusted the input structure without validating type consistency. This allowed constructing:
+1. Inconsistent values: `UserDefined(Int)` containing `String`.
+2. Invalid recursion: `UserDefined(Int)` containing `UserDefined(...)` (which claims to be `Int` but is structurally recursive).
+This bypassed `ScalarType` depth limits, enabling stack overflow attacks via deep recursion in `Drop`, `PartialEq`, etc.
+
+**Defense:**
+1. Implemented `ScalarValueUnchecked` private enum for raw deserialization.
+2. Implemented `TryFrom<ScalarValueUnchecked> for ScalarValue` which enforces:
+   - `UserDefined` values must have a `UserDefined` type definition.
+   - The inner `value` must match the `type_def` representation.
+3. Updated `ScalarValue` to use `#[serde(try_from = ...)]`.
+This ensures all deserialized values are structurally sound and respect the depth limits inherent in their type definitions.
