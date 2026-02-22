@@ -296,7 +296,7 @@ fn test_virtual_relvar() {
     db.define_virtual_relvar(
         "NAMES",
         RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-        |db: &Database<InMemoryEngine>| {
+        |db| {
             let test = db.query("TEST")?;
             Ok(test.project(&["name"]))
         },
@@ -553,7 +553,7 @@ fn test_drop_virtual_relvar() {
     db.define_virtual_relvar(
         "VIRT",
         RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-        |db: &Database<InMemoryEngine>| {
+        |db| {
             let test = db.query("TEST")?;
             Ok(test.project(&["name"]))
         },
@@ -589,7 +589,7 @@ fn test_cannot_insert_into_virtual_relvar() {
     db.define_virtual_relvar(
         "VIRT",
         RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
-        |db: &Database<InMemoryEngine>| {
+        |db| {
             let test = db.query("TEST")?;
             Ok(test.project(&["name"]))
         },
@@ -610,10 +610,8 @@ fn test_cannot_delete_from_virtual_relvar() {
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
     db.create_relvar("TEST", test_rel_type()).unwrap();
 
-    db.define_virtual_relvar("VIRT", test_rel_type(), |db: &Database<InMemoryEngine>| {
-        db.query("TEST")
-    })
-    .unwrap();
+    db.define_virtual_relvar("VIRT", test_rel_type(), |db| db.query("TEST"))
+        .unwrap();
 
     // Try to delete
     let result = db.delete("VIRT", |_| true);
@@ -629,10 +627,8 @@ fn test_cannot_update_virtual_relvar() {
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
     db.create_relvar("TEST", test_rel_type()).unwrap();
 
-    db.define_virtual_relvar("VIRT", test_rel_type(), |db: &Database<InMemoryEngine>| {
-        db.query("TEST")
-    })
-    .unwrap();
+    db.define_virtual_relvar("VIRT", test_rel_type(), |db| db.query("TEST"))
+        .unwrap();
 
     // Try to update
     let result = db.update("VIRT", |_| true, |_| tuple! { id: 99i64, name: "X" });
@@ -654,10 +650,8 @@ fn test_virtual_relvar_error_propagation() {
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
     // Define virtual relvar that queries nonexistent base
-    db.define_virtual_relvar("VIRT", test_rel_type(), |db: &Database<InMemoryEngine>| {
-        db.query("NONEXISTENT")
-    })
-    .unwrap();
+    db.define_virtual_relvar("VIRT", test_rel_type(), |db| db.query("NONEXISTENT"))
+        .unwrap();
 
     // Querying it should fail
     let result = db.query("VIRT");
@@ -1120,18 +1114,14 @@ fn test_virtual_relvar_immutability_enforcement() {
 
     // Define a view. The compiler enforces that we cannot call mutable methods
     // like insert() inside the evaluator because it receives &Database<E>, not &mut Database.
-    db.define_virtual_relvar(
-        "SAFE_VIEW",
-        test_rel_type(),
-        |db: &Database<InMemoryEngine>| {
-            // db.insert("LOG", ...); // This would cause compilation error!
+    db.define_virtual_relvar("SAFE_VIEW", test_rel_type(), |db| {
+        // db.insert("LOG", ...); // This would cause compilation error!
 
-            // Read operations are allowed
-            let _ = db.query("LOG")?;
+        // Read operations are allowed
+        let _ = db.query("LOG")?;
 
-            Ok(Relation::new(test_rel_type()))
-        },
-    )
+        Ok(Relation::new(test_rel_type()))
+    })
     .unwrap();
 
     // Query the view
