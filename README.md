@@ -108,6 +108,17 @@ let id = widget_id_type.selector(ScalarValue::Int(42))?;
 let raw_val = id.observer()?; // ScalarValue::Int(42)
 ```
 
+## Experimental Features
+
+The `relvar::experimental` module showcases the power of the relational model beyond standard business data. These features demonstrate that relational algebra is a universal language for data manipulation.
+
+- **[Graph Analytics](relvar/src/experimental/graph.rs)**: Implements BFS and PageRank using recursive relational queries.
+- **[Relational Image Processing (RIP)](relvar/src/experimental/image.rs)**: Performs image convolution and filtering by treating pixels as tuples `(x, y, r, g, b)`.
+- **[Full-Text Search](relvar/src/experimental/search.rs)**: A search engine built on an inverted index relation `(term, doc_id, count)`.
+- **[AutoML](relvar/src/experimental/automl.rs)**: A Naive Bayes classifier trained purely via `summarize` and `count` operators.
+- **[Pivot](relvar/src/experimental/pivot.rs)**: Transforms "tall" data into "wide" reports.
+- **[Spatial Types](relvar/src/experimental/spatial.rs)**: Implements Point types using User-Defined Types (UDTs) wrapping relations.
+
 ## Installation
 
 ```bash

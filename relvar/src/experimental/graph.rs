@@ -1,8 +1,56 @@
 //! Relational Graph Analytics.
 //!
 //! This module demonstrates how graph algorithms can be implemented using
-//! pure relational algebra operations. It provides a `Graph` abstraction
-//! over node and edge relations and implements BFS and PageRank.
+//! pure relational algebra operations. It provides a [`Graph`] abstraction
+//! over node and edge relations and implements Breadth-First Search (BFS) and PageRank.
+//!
+//! # The Story: Graphs are Relations
+//!
+//! In a relational database, a graph is simply two relations:
+//! - **Nodes**: A set of entities (e.g., `(id: Int, label: String)`).
+//! - **Edges**: A set of connections between entities (e.g., `(from: Int, to: Int, weight: Float)`).
+//!
+//! By treating the graph as relations, we can use standard relational operators
+//! (Join, Project, Union, Summarize) to perform complex graph traversals and analytics
+//! without needing a specialized graph database or imperative pointer-chasing code.
+//!
+//! # Example: Finding the Shortest Path
+//!
+//! ```
+//! use relvar::experimental::graph::Graph;
+//! use relvar_core::types::{RelationType, TupleType, ScalarType};
+//! use relvar_core::values::{Relation, ScalarValue};
+//! use relvar_core::tuple;
+//!
+//! // 1. Define Nodes: (id)
+//! let node_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+//! let mut nodes = Relation::new(node_type);
+//! nodes.insert(tuple! { id: 1i64 }).unwrap();
+//! nodes.insert(tuple! { id: 2i64 }).unwrap();
+//! nodes.insert(tuple! { id: 3i64 }).unwrap();
+//!
+//! // 2. Define Edges: (from, to)
+//! let edge_type = RelationType::new(
+//!     TupleType::new()
+//!         .with_attribute("from", ScalarType::Int)
+//!         .with_attribute("to", ScalarType::Int)
+//! );
+//! let mut edges = Relation::new(edge_type);
+//! edges.insert(tuple! { from: 1i64, to: 2i64 }).unwrap(); // 1 -> 2
+//! edges.insert(tuple! { from: 2i64, to: 3i64 }).unwrap(); // 2 -> 3
+//!
+//! // 3. Create Graph View
+//! let graph = Graph::new(nodes, edges, "id", "from", "to");
+//!
+//! // 4. Run BFS from Node 1
+//! let paths = graph.bfs(ScalarValue::Int(1)).unwrap();
+//!
+//! // Result: (id, distance)
+//! // 1: 0
+//! // 2: 1
+//! // 3: 2
+//! assert_eq!(paths.cardinality(), 3);
+//! ```
 
 use relvar_core::algebra::summarize::Aggregation;
 use relvar_core::error::DatabaseError;
@@ -50,7 +98,21 @@ impl Graph {
 
     /// Performs a Breadth-First Search (BFS) starting from a given node.
     ///
-    /// Returns a relation with heading `(node_id, distance)` containing all
+    /// # Algorithm
+    ///
+    /// The BFS is implemented as an iterative relational fixpoint computation:
+    ///
+    /// 1. **Initialize**: `visited` = {(start_node, 0)}.
+    /// 2. **Iterate**:
+    ///    - `frontier` = `visited` (newly added nodes).
+    ///    - `next_nodes` = `frontier` JOIN `edges` (traverse one step).
+    ///    - `new_visited` = `next_nodes` MINUS `visited` (keep only unvisited).
+    ///    - Update distances and add to `visited`.
+    ///    - Repeat until `new_visited` is empty.
+    ///
+    /// # Returns
+    ///
+    /// A relation with heading `(node_id, distance)` containing all
     /// reachable nodes and their shortest distance from the start node.
     pub fn bfs(&self, start_node_id: ScalarValue) -> Result<Relation, DatabaseError> {
         // 1. Initialize result schema: (node_id, distance)
@@ -173,9 +235,20 @@ impl Graph {
 
     /// Computes PageRank for all nodes in the graph.
     ///
+    /// PageRank measures the importance of each node based on the number and quality
+    /// of links pointing to it.
+    ///
+    /// # Algorithm
+    ///
+    /// 1. **Initialize**: Assign initial rank `1/N` to all N nodes.
+    /// 2. **Iterate**:
+    ///    - Distribute each node's rank to its neighbors: `contribution = rank / out_degree`.
+    ///    - `new_rank` = `(1 - d) / N + d * sum(inbound contributions)`.
+    ///    - Update ranks.
+    ///
     /// # Arguments
     ///
-    /// * `iterations` - Number of iterations to run.
+    /// * `iterations` - Number of iterations to run (typically 10-20 for convergence).
     /// * `damping_factor` - Probability of following a link (usually 0.85).
     ///
     /// # Returns

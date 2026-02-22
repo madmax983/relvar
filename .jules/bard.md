@@ -34,3 +34,7 @@ This ensures the map matches the territory.
 ## 2024-05-27 - The Ghost Variants
 **Confusion:** The `ScalarValueError` and `RelationError` enums had variants that were technically public but lacked documentation explaining *when* they occur or *what* they mean. This forced users to guess based on the variant name.
 **Clarification:** I've added detailed documentation to these enum variants, explaining the specific conditions that trigger them (e.g., `NotUserDefined` only happens when calling `observer()` on a built-in type).
+
+## 2024-05-28 - The Hidden Gems of Experimental Modules
+**Confusion:** The project contains powerful experimental features like Graph Analytics, Image Processing, and AutoML in `relvar/src/experimental`, but they were undocumented and unmentioned in the main README, making them invisible to users.
+**Clarification:** I've added a "Gallery of Wonders" to `relvar/src/experimental/mod.rs` and an "Experimental Features" section to the root `README.md`. I also added comprehensive "Hero's Journey" examples to the `Graph` module to demonstrate that graph algorithms are just recursive relational queries.
