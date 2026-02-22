@@ -13,8 +13,10 @@
 //! - **Graph**: Relational Graph Analytics (BFS, PageRank).
 //! - **AutoML**: Relational Machine Learning (Naive Bayes).
 //! - **Time Series**: Relational Time Series Analysis (Moving Averages).
+//! - **Genetics**: Relational Genetic Algorithms (RGA).
 
 pub mod automl;
+pub mod genetics;
 pub mod graph;
 pub mod image;
 pub mod mock;
