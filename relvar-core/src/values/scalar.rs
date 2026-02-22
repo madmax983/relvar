@@ -308,8 +308,8 @@ impl Ord for ScalarValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::cmp::Ordering;
 
-        // Helper to get type ordering
-        fn type_order(val: &ScalarValue) -> u8 {
+        // Determine ordering of variants
+        fn variant_ordinal(val: &ScalarValue) -> u8 {
             match val {
                 ScalarValue::Int(_) => 0,
                 ScalarValue::Float(_) => 1,
@@ -322,7 +322,7 @@ impl Ord for ScalarValue {
         }
 
         // Compare types first
-        match type_order(self).cmp(&type_order(other)) {
+        match variant_ordinal(self).cmp(&variant_ordinal(other)) {
             Ordering::Equal => {
                 // Same type: order by value
                 match (self, other) {
@@ -365,13 +365,7 @@ impl Ord for ScalarValue {
                     (ScalarValue::String(a), ScalarValue::String(b)) => a.cmp(b),
                     (ScalarValue::Bool(a), ScalarValue::Bool(b)) => a.cmp(b),
                     (ScalarValue::Bytes(a), ScalarValue::Bytes(b)) => a.cmp(b),
-                    (ScalarValue::Relation(a), ScalarValue::Relation(b)) => {
-                        // For relations, order by cardinality first, then degree
-                        match a.cardinality().cmp(&b.cardinality()) {
-                            Ordering::Equal => a.degree().cmp(&b.degree()),
-                            other => other,
-                        }
-                    }
+                    (ScalarValue::Relation(a), ScalarValue::Relation(b)) => a.cmp(b),
                     (
                         ScalarValue::UserDefined {
                             type_def: type_a,

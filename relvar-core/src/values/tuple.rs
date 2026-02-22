@@ -111,7 +111,7 @@ pub enum TupleError {
 /// let age: i64 = person.get_typed("age").unwrap();
 /// assert_eq!(age, 30);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Tuple {
     /// The tuple type (heading) that this tuple conforms to.
     #[serde(with = "arc_serde")]

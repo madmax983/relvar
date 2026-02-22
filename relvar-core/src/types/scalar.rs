@@ -306,80 +306,45 @@ impl Ord for ScalarType {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::cmp::Ordering;
 
-        // Helper to get a discriminant value for ordering
-        let disc_value = |t: &ScalarType| match t {
-            ScalarType::Int => 0,
-            ScalarType::Float => 1,
-            ScalarType::String => 2,
-            ScalarType::Bool => 3,
-            ScalarType::Bytes => 4,
-            ScalarType::Relation(_) => 5,
-            ScalarType::UserDefined { .. } => 6,
-        };
-
-        match disc_value(self).cmp(&disc_value(other)) {
-            Ordering::Equal => {
-                // Same variant, compare data
-                match (self, other) {
-                    (ScalarType::Int, ScalarType::Int)
-                    | (ScalarType::Float, ScalarType::Float)
-                    | (ScalarType::String, ScalarType::String)
-                    | (ScalarType::Bool, ScalarType::Bool)
-                    | (ScalarType::Bytes, ScalarType::Bytes) => Ordering::Equal,
-                    (ScalarType::Relation(a), ScalarType::Relation(b)) => {
-                        // Compare relation types by their headings
-                        // Since TupleType doesn't have Ord, we need a custom comparison
-                        let a_attrs: Vec<_> = a
-                            .heading()
-                            .attribute_names()
-                            .map(|n| (n, a.heading().get_attribute_type(n).unwrap()))
-                            .collect();
-                        let b_attrs: Vec<_> = b
-                            .heading()
-                            .attribute_names()
-                            .map(|n| (n, b.heading().get_attribute_type(n).unwrap()))
-                            .collect();
-
-                        // Compare by count first, then by sorted attributes
-                        match a_attrs.len().cmp(&b_attrs.len()) {
-                            Ordering::Equal => {
-                                let mut a_sorted = a_attrs;
-                                let mut b_sorted = b_attrs;
-                                a_sorted.sort_by_key(|(name, _)| *name);
-                                b_sorted.sort_by_key(|(name, _)| *name);
-
-                                for ((a_name, a_ty), (b_name, b_ty)) in
-                                    a_sorted.iter().zip(b_sorted.iter())
-                                {
-                                    match a_name.cmp(b_name) {
-                                        Ordering::Equal => match a_ty.cmp(b_ty) {
-                                            Ordering::Equal => continue,
-                                            other => return other,
-                                        },
-                                        other => return other,
-                                    }
-                                }
-                                Ordering::Equal
-                            }
-                            other => other,
-                        }
-                    }
-                    (
-                        ScalarType::UserDefined {
-                            name: a_name,
-                            representation: a_rep,
-                        },
-                        ScalarType::UserDefined {
-                            name: b_name,
-                            representation: b_rep,
-                        },
-                    ) => match a_name.cmp(b_name) {
-                        Ordering::Equal => a_rep.cmp(b_rep),
-                        other => other,
-                    },
-                    _ => unreachable!("Discriminants matched but variants don't"),
-                }
+        // Determine ordering of variants
+        fn variant_ordinal(t: &ScalarType) -> u8 {
+            match t {
+                ScalarType::Int => 0,
+                ScalarType::Float => 1,
+                ScalarType::String => 2,
+                ScalarType::Bool => 3,
+                ScalarType::Bytes => 4,
+                ScalarType::Relation(_) => 5,
+                ScalarType::UserDefined { .. } => 6,
             }
+        }
+
+        match variant_ordinal(self).cmp(&variant_ordinal(other)) {
+            Ordering::Equal => match (self, other) {
+                // Variants with no data are equal
+                (ScalarType::Int, _)
+                | (ScalarType::Float, _)
+                | (ScalarType::String, _)
+                | (ScalarType::Bool, _)
+                | (ScalarType::Bytes, _) => Ordering::Equal,
+
+                // Compare inner data for variants with data
+                (ScalarType::Relation(a), ScalarType::Relation(b)) => a.cmp(b),
+                (
+                    ScalarType::UserDefined {
+                        name: a_name,
+                        representation: a_rep,
+                    },
+                    ScalarType::UserDefined {
+                        name: b_name,
+                        representation: b_rep,
+                    },
+                ) => match a_name.cmp(b_name) {
+                    Ordering::Equal => a_rep.cmp(b_rep),
+                    other => other,
+                },
+                _ => unreachable!("Discriminants matched but variants don't"),
+            },
             other => other,
         }
     }

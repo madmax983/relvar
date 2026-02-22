@@ -169,6 +169,39 @@ impl IntoIterator for Relation {
     }
 }
 
+impl PartialOrd for Relation {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Relation {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // First compare types
+        match self.relation_type.cmp(&other.relation_type) {
+            std::cmp::Ordering::Equal => {
+                // Then compare cardinality
+                match self.cardinality().cmp(&other.cardinality()) {
+                    std::cmp::Ordering::Equal => {
+                        // Then compare sorted tuples
+                        // Note: This is O(N log N) which is expensive but necessary for deterministic ordering
+                        // independent of HashSet iteration order.
+                        let mut self_tuples: Vec<_> = self.tuples().collect();
+                        let mut other_tuples: Vec<_> = other.tuples().collect();
+
+                        self_tuples.sort();
+                        other_tuples.sort();
+
+                        self_tuples.cmp(&other_tuples)
+                    }
+                    other => other,
+                }
+            }
+            other => other,
+        }
+    }
+}
+
 impl Relation {
     /// Creates a new empty relation with the given type.
     ///
