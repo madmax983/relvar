@@ -38,9 +38,11 @@
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue, Tuple};
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io::BufRead;
+use std::rc::Rc;
 use thiserror::Error;
 
 /// Errors that can occur during import.
@@ -94,7 +96,11 @@ pub fn from_json<R: std::io::Read>(
     relation_type: RelationType,
 ) -> Result<Relation, ImporterError> {
     let mut deserializer = serde_json::Deserializer::from_reader(reader);
-    let seed = RelationSeed { relation_type };
+    let counter = Rc::new(RefCell::new(0usize));
+    let seed = RelationSeed {
+        relation_type,
+        counter,
+    };
     seed.deserialize(&mut deserializer).map_err(|e| {
         if e.to_string().contains("Size limit exceeded") {
             ImporterError::LimitExceeded(e.to_string())
@@ -106,6 +112,7 @@ pub fn from_json<R: std::io::Read>(
 
 struct RelationSeed {
     relation_type: RelationType,
+    counter: Rc<RefCell<usize>>,
 }
 
 impl<'de> DeserializeSeed<'de> for RelationSeed {
@@ -117,12 +124,14 @@ impl<'de> DeserializeSeed<'de> for RelationSeed {
     {
         deserializer.deserialize_seq(RelationVisitor {
             relation_type: self.relation_type,
+            counter: self.counter,
         })
     }
 }
 
 struct RelationVisitor {
     relation_type: RelationType,
+    counter: Rc<RefCell<usize>>,
 }
 
 impl<'de> Visitor<'de> for RelationVisitor {
@@ -138,15 +147,22 @@ impl<'de> Visitor<'de> for RelationVisitor {
     {
         let mut relation = Relation::new(self.relation_type.clone());
         let heading = self.relation_type.heading().clone();
-        let tuple_seed = TupleSeed { heading };
+        let tuple_seed = TupleSeed {
+            heading,
+            counter: self.counter.clone(),
+        };
 
         while let Some(tuple) = seq.next_element_seed(tuple_seed.clone())? {
-            if relation.cardinality() >= MAX_IMPORT_ROWS {
+            let mut count = self.counter.borrow_mut();
+            if *count >= MAX_IMPORT_ROWS {
                 return Err(serde::de::Error::custom(format!(
                     "Size limit exceeded: Max rows: {}",
                     MAX_IMPORT_ROWS
                 )));
             }
+            *count += 1;
+            drop(count);
+
             let _ = relation
                 .insert(tuple)
                 .map_err(|e| serde::de::Error::custom(format!("Relvar error: {}", e)))?;
@@ -159,6 +175,7 @@ impl<'de> Visitor<'de> for RelationVisitor {
 #[derive(Clone)]
 struct TupleSeed {
     heading: TupleType,
+    counter: Rc<RefCell<usize>>,
 }
 
 impl<'de> DeserializeSeed<'de> for TupleSeed {
@@ -170,12 +187,14 @@ impl<'de> DeserializeSeed<'de> for TupleSeed {
     {
         deserializer.deserialize_map(TupleVisitor {
             heading: self.heading,
+            counter: self.counter,
         })
     }
 }
 
 struct TupleVisitor {
     heading: TupleType,
+    counter: Rc<RefCell<usize>>,
 }
 
 impl<'de> Visitor<'de> for TupleVisitor {
@@ -196,6 +215,7 @@ impl<'de> Visitor<'de> for TupleVisitor {
             if let Some(attr_type) = heading.get_attribute_type(&key) {
                 let seed = ScalarValueSeed {
                     scalar_type: attr_type.clone(),
+                    counter: self.counter.clone(),
                 };
                 let val = map.next_value_seed(seed)?;
                 values.insert(key, val);
@@ -211,6 +231,7 @@ impl<'de> Visitor<'de> for TupleVisitor {
 
 struct ScalarValueSeed {
     scalar_type: ScalarType,
+    counter: Rc<RefCell<usize>>,
 }
 
 impl<'de> DeserializeSeed<'de> for ScalarValueSeed {
@@ -224,6 +245,7 @@ impl<'de> DeserializeSeed<'de> for ScalarValueSeed {
             ScalarType::UserDefined { representation, .. } => {
                 let inner_seed = ScalarValueSeed {
                     scalar_type: *representation.clone(),
+                    counter: self.counter,
                 };
                 let inner_val = inner_seed.deserialize(deserializer)?;
                 self.scalar_type
@@ -232,6 +254,7 @@ impl<'de> DeserializeSeed<'de> for ScalarValueSeed {
             }
             _ => deserializer.deserialize_any(ScalarValueVisitor {
                 scalar_type: self.scalar_type,
+                counter: self.counter,
             }),
         }
     }
@@ -239,6 +262,7 @@ impl<'de> DeserializeSeed<'de> for ScalarValueSeed {
 
 struct ScalarValueVisitor {
     scalar_type: ScalarType,
+    counter: Rc<RefCell<usize>>,
 }
 
 impl<'de> Visitor<'de> for ScalarValueVisitor {
@@ -348,9 +372,20 @@ impl<'de> Visitor<'de> for ScalarValueVisitor {
                 let mut relation = Relation::new(*inner_type.clone()); // Need to deref Box
                 let tuple_seed = TupleSeed {
                     heading: inner_type.heading().clone(),
+                    counter: self.counter.clone(),
                 };
 
                 while let Some(tuple) = seq.next_element_seed(tuple_seed.clone())? {
+                    let mut count = self.counter.borrow_mut();
+                    if *count >= MAX_IMPORT_ROWS {
+                        return Err(serde::de::Error::custom(format!(
+                            "Size limit exceeded: Max rows: {}",
+                            MAX_IMPORT_ROWS
+                        )));
+                    }
+                    *count += 1;
+                    drop(count);
+
                     relation
                         .insert(tuple)
                         .map_err(|e| serde::de::Error::custom(format!("Relvar error: {}", e)))?;
