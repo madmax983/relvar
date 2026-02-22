@@ -127,6 +127,7 @@ pub use relvar_core::database::{Database, DatabaseError};
 pub use relvar_core::query::{Query, QueryError};
 pub use relvar_core::types::{RelationType, ScalarType, TupleType};
 pub use relvar_core::values::{Relation, ScalarValue, Tuple};
+pub use relvar_core::QueryExecutor;
 
 // Storage
 pub use relvar_core::storage_engine::{InMemoryEngine, StorageEngine, StorageError};
