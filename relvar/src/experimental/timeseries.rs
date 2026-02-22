@@ -1,0 +1,249 @@
+//! Experimental Relational Time Series Analysis.
+//!
+//! This module demonstrates how to implement time series operations like
+//! Moving Averages using pure Relational Algebra primitives (Self-Join,
+//! Rename, Summarize).
+//!
+//! # Philosophy
+//!
+//! Traditional databases use specialized window functions (`OVER PARTITION BY`)
+//! or imperative loops for time series. In a pure relational model, a window
+//! is simply a set of tuples related by a time condition.
+//!
+//! By joining a relation with itself on `time between (current_time - window) and current_time`,
+//! we form groups that represent the rolling window, which can then be aggregated
+//! using standard summation operators.
+
+use relvar_core::algebra::summarize::Aggregation;
+use relvar_core::error::DatabaseError;
+use relvar_core::values::{Relation, ScalarValue};
+
+/// Computes a Simple Moving Average (SMA) over a time window.
+///
+/// # Arguments
+///
+/// * `relation` - The input relation containing time series data.
+/// * `time_attr` - The attribute representing the time step (must be Int).
+/// * `value_attr` - The attribute to average (must be Int or Float).
+/// * `window_size` - The size of the moving window (inclusive of current row).
+/// * `partition_by` - Optional list of attributes to partition the series by (e.g., "symbol").
+///
+/// # Returns
+///
+/// A new relation with the original attributes plus a `moving_avg` attribute.
+///
+/// # Example
+///
+/// ```
+/// use relvar::{tuple, Relation, RelationType, TupleType, ScalarType};
+/// use relvar::experimental::timeseries::moving_average;
+///
+/// // Create a relation with (time, value)
+/// let mut rel = Relation::new(RelationType::new(
+///     TupleType::new()
+///         .with_attribute("time", ScalarType::Int)
+///         .with_attribute("value", ScalarType::Float)
+/// ));
+///
+/// rel.insert(tuple! { time: 1, value: 10.0 }).unwrap();
+/// rel.insert(tuple! { time: 2, value: 20.0 }).unwrap();
+/// rel.insert(tuple! { time: 3, value: 30.0 }).unwrap();
+///
+/// // Compute 2-period moving average
+/// let result = moving_average(&rel, "time", "value", 2, &[]).unwrap();
+///
+/// // Result at time 3: avg(20, 30) = 25.0
+/// ```
+pub fn moving_average(
+    relation: &Relation,
+    time_attr: &str,
+    value_attr: &str,
+    window_size: i64,
+    partition_by: &[&str],
+) -> Result<Relation, DatabaseError> {
+    // 1. Prepare Self-Join
+    // We need to join the relation with itself to find "previous" rows within the window.
+    // To avoid attribute name collisions, we rename ALL attributes in the "previous" relation.
+    let prev_attr_suffix = "_prev";
+    let mut rename_map = Vec::new();
+    let original_heading = relation.relation_type().heading();
+
+    // Iterate over attributes to build rename map
+    for (attr_name, _) in original_heading.attributes().iter() {
+        rename_map.push((
+            attr_name.as_str(),
+            format!("{}{}", attr_name, prev_attr_suffix),
+        ));
+    }
+
+    // Convert Vec<(&str, String)> to Vec<(&str, &str)> for rename API
+    // We need to keep the Strings alive, so we can't just map to &str references to temporary strings.
+    // But rename_map holds the Strings.
+    let rename_slice: Vec<(&str, &str)> =
+        rename_map.iter().map(|(k, v)| (*k, v.as_str())).collect();
+
+    let r_prev = relation.rename(&rename_slice);
+
+    // 2. Perform Theta Join
+    // condition:
+    //   1. Partition attributes match (if any)
+    //   2. time_prev >= time - window_size + 1 (inclusive window)
+    //   3. time_prev <= time
+    let effective_window_start_offset = window_size - 1;
+    let time_attr_prev = format!("{}{}", time_attr, prev_attr_suffix);
+
+    // We need to capture these strings for the closure
+    let p_by: Vec<String> = partition_by.iter().map(|s| s.to_string()).collect();
+    let p_by_prev: Vec<String> = partition_by
+        .iter()
+        .map(|s| format!("{}{}", s, prev_attr_suffix))
+        .collect();
+    let t_curr = time_attr.to_string();
+    let t_prev = time_attr_prev.clone();
+
+    // The Theta Join
+    // R_curr (left) joins R_prev (right)
+    let joined = relation.theta_join(&r_prev, move |curr, prev| {
+        // 1. Check partitions
+        for (p_curr_name, p_prev_name) in p_by.iter().zip(p_by_prev.iter()) {
+            let val_curr = curr.get(p_curr_name);
+            let val_prev = prev.get(p_prev_name);
+            if val_curr != val_prev {
+                return false;
+            }
+        }
+
+        // 2. Check Time Window
+        if let (Some(ScalarValue::Int(curr_time)), Some(ScalarValue::Int(prev_time))) =
+            (curr.get(&t_curr), prev.get(&t_prev))
+        {
+            let window_start = curr_time - effective_window_start_offset;
+            *prev_time >= window_start && *prev_time <= *curr_time
+        } else {
+            false // Should not happen if types are correct
+        }
+    });
+
+    // 3. Summarize (Group By)
+    // We group by ALL original attributes to preserve the row identity.
+    let group_by_attrs: Vec<&str> = original_heading
+        .attributes()
+        .keys() // Iterates over keys (attribute names)
+        .map(|k| k.as_str())
+        .collect();
+
+    let value_attr_prev = format!("{}{}", value_attr, prev_attr_suffix);
+
+    // Aggregation: Average of the *previous* values
+    let avg_agg = Aggregation::avg("moving_avg", &value_attr_prev);
+
+    // Perform the summarization
+    let summarized = joined
+        .summarize(&group_by_attrs, &[avg_agg])
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+    // 4. Clean up (Project)
+    // The summarized relation contains all group_by attributes + moving_avg.
+    // We return it as is.
+
+    Ok(summarized)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    #[test]
+    fn test_moving_average_simple() {
+        let mut rel = Relation::new(RelationType::new(
+            TupleType::new()
+                .with_attribute("time", ScalarType::Int)
+                .with_attribute("value", ScalarType::Float),
+        ));
+
+        rel.insert(tuple! { time: 1, value: 10.0 }).unwrap();
+        rel.insert(tuple! { time: 2, value: 20.0 }).unwrap();
+        rel.insert(tuple! { time: 3, value: 30.0 }).unwrap();
+        rel.insert(tuple! { time: 4, value: 40.0 }).unwrap();
+
+        // Window = 2
+        // T1: avg(10) = 10
+        // T2: avg(10, 20) = 15
+        // T3: avg(20, 30) = 25
+        // T4: avg(30, 40) = 35
+        let res = moving_average(&rel, "time", "value", 2, &[]).unwrap();
+
+        assert_eq!(res.cardinality(), 4);
+
+        // Check T3
+        let t3 = res
+            .tuples()
+            .find(|t| t.get_typed::<i64>("time") == Some(3))
+            .unwrap();
+        assert_eq!(t3.get_typed::<f64>("moving_avg").unwrap(), 25.0);
+    }
+
+    #[test]
+    fn test_moving_average_partitioned() {
+        let mut rel = Relation::new(RelationType::new(
+            TupleType::new()
+                .with_attribute("symbol", ScalarType::String)
+                .with_attribute("time", ScalarType::Int)
+                .with_attribute("value", ScalarType::Float),
+        ));
+
+        // AAPL
+        rel.insert(tuple! { symbol: "AAPL", time: 1, value: 100.0 })
+            .unwrap();
+        rel.insert(tuple! { symbol: "AAPL", time: 2, value: 110.0 })
+            .unwrap();
+
+        // GOOGL
+        rel.insert(tuple! { symbol: "GOOGL", time: 1, value: 200.0 })
+            .unwrap();
+        rel.insert(tuple! { symbol: "GOOGL", time: 2, value: 200.0 })
+            .unwrap(); // Flat
+
+        // Window = 2
+        let res = moving_average(&rel, "time", "value", 2, &["symbol"]).unwrap();
+
+        // AAPL T2: avg(100, 110) = 105
+        let aapl_t2 = res
+            .tuples()
+            .find(|t| {
+                t.get_typed::<String>("symbol").as_deref() == Some("AAPL")
+                    && t.get_typed::<i64>("time") == Some(2)
+            })
+            .unwrap();
+        assert_eq!(aapl_t2.get_typed::<f64>("moving_avg").unwrap(), 105.0);
+
+        // GOOGL T2: avg(200, 200) = 200
+        let googl_t2 = res
+            .tuples()
+            .find(|t| {
+                t.get_typed::<String>("symbol").as_deref() == Some("GOOGL")
+                    && t.get_typed::<i64>("time") == Some(2)
+            })
+            .unwrap();
+        assert_eq!(googl_t2.get_typed::<f64>("moving_avg").unwrap(), 200.0);
+    }
+
+    #[test]
+    fn test_moving_average_window_larger_than_history() {
+        let mut rel = Relation::new(RelationType::new(
+            TupleType::new()
+                .with_attribute("time", ScalarType::Int)
+                .with_attribute("value", ScalarType::Float),
+        ));
+
+        rel.insert(tuple! { time: 1, value: 10.0 }).unwrap();
+
+        // Window = 5
+        let res = moving_average(&rel, "time", "value", 5, &[]).unwrap();
+
+        let t1 = res.tuples().next().unwrap();
+        assert_eq!(t1.get_typed::<f64>("moving_avg").unwrap(), 10.0);
+    }
+}

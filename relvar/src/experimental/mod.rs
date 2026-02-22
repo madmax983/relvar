@@ -12,6 +12,7 @@
 //! - **Image**: Relational Image Processing (RIP).
 //! - **Graph**: Relational Graph Analytics (BFS, PageRank).
 //! - **AutoML**: Relational Machine Learning (Naive Bayes).
+//! - **Time Series**: Relational Time Series Analysis (Moving Averages).
 
 pub mod automl;
 pub mod graph;
@@ -20,3 +21,4 @@ pub mod mock;
 pub mod pivot;
 pub mod search;
 pub mod spatial;
+pub mod timeseries;
