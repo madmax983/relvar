@@ -884,7 +884,7 @@ impl<E: StorageEngine> Database<E> {
 ///
 /// Stores the metadata required to evaluate a virtual relvar on demand.
 #[derive(Debug, Clone)]
-pub struct VirtualRelvarDefinition {
+pub(crate) struct VirtualRelvarDefinition {
     /// The unique name of the virtual relvar.
     pub name: String,
 
