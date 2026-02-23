@@ -391,6 +391,65 @@ fn bench_divide(c: &mut Criterion) {
     group.finish();
 }
 
+// Create employee relation with multiple common attributes
+fn create_employee_relation_multi(size: usize) -> Relation {
+    let heading = TupleType::new()
+        .with_attribute("emp_id".to_string(), ScalarType::Int)
+        .with_attribute("dept_id".to_string(), ScalarType::Int)
+        .with_attribute("location_id".to_string(), ScalarType::Int); // Common attribute 2
+
+    let mut relation = Relation::new(RelationType::new(heading));
+
+    for i in 0..size {
+        let tuple = tuple! {
+            emp_id: i as i64,
+            dept_id: (i % 10) as i64,
+            location_id: (i % 5) as i64
+        };
+        relation.insert(tuple).unwrap();
+    }
+    relation
+}
+
+// Create department relation with multiple common attributes
+fn create_department_relation_multi(size: usize) -> Relation {
+    let heading = TupleType::new()
+        .with_attribute("dept_id".to_string(), ScalarType::Int)
+        .with_attribute("location_id".to_string(), ScalarType::Int) // Common attribute 2
+        .with_attribute("dept_name".to_string(), ScalarType::String);
+
+    let mut relation = Relation::new(RelationType::new(heading));
+
+    for i in 0..size {
+        let tuple = tuple! {
+            dept_id: i as i64,
+            location_id: (i % 5) as i64,
+            dept_name: format!("Dept_{}", i)
+        };
+        relation.insert(tuple).unwrap();
+    }
+    relation
+}
+
+// Join benchmark multi-attribute
+fn bench_join_multi(c: &mut Criterion) {
+    let mut group = c.benchmark_group("join_multi");
+
+    for size in [10, 50, 100, 500].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            let employees = create_employee_relation_multi(size * 10);
+            let departments = create_department_relation_multi(size);
+
+            b.iter(|| {
+                let result = employees.join(&departments).unwrap();
+                black_box(result);
+            });
+        });
+    }
+    group.finish();
+}
+
 // Chained operations benchmark (realistic query)
 fn bench_chained_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("chained_operations");
@@ -423,6 +482,7 @@ criterion_group!(
     bench_project_narrow,
     bench_rename,
     bench_join,
+    bench_join_multi,
     bench_semijoin,
     bench_semidifference,
     bench_union,
