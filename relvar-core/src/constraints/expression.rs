@@ -810,10 +810,7 @@ mod tests {
         assert!(attrs2.contains("end_date"));
 
         // Nested expression
-        let expr3 = ConstraintExpression::And(
-            Box::new(expr1),
-            Box::new(expr2),
-        );
+        let expr3 = ConstraintExpression::And(Box::new(expr1), Box::new(expr2));
         let attrs3 = expr3.referenced_attributes();
         assert_eq!(attrs3.len(), 3);
         assert!(attrs3.contains("age"));

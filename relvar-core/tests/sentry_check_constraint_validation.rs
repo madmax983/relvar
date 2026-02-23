@@ -1,12 +1,15 @@
 #[cfg(test)]
 mod tests {
+    use relvar_core::constraints::{
+        CheckConstraint, CheckConstraints, CmpOp, ConstraintExpression, ConstraintManagerError,
+        ValueOrRef,
+    };
     use relvar_core::database::Database;
-    use relvar_core::storage_engine::InMemoryEngine;
-    use relvar_core::types::{RelationType, ScalarType, TupleType};
-    use relvar_core::constraints::{CheckConstraint, CheckConstraints, ConstraintManagerError, ConstraintExpression, CmpOp, ValueOrRef};
-    use relvar_core::values::ScalarValue;
-    use relvar_core::tuple;
     use relvar_core::error::DatabaseError;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::ScalarValue;
 
     #[test]
     fn test_check_constraint_invalid_attribute_empty_relation() {
@@ -32,13 +35,16 @@ mod tests {
         // This should now FAIL because we validate against schema even if relation is empty
         let result = db.set_check_constraints("test_rel", constraints);
 
-        assert!(result.is_err(), "Setting invalid check constraint should fail");
+        assert!(
+            result.is_err(),
+            "Setting invalid check constraint should fail"
+        );
 
         match result.unwrap_err() {
             DatabaseError::Constraint(ConstraintManagerError::AttributeNotFound(attr, rel)) => {
                 assert_eq!(attr, "b");
                 assert_eq!(rel, "test_rel");
-            },
+            }
             err => panic!("Expected AttributeNotFound error, got: {:?}", err),
         }
 
