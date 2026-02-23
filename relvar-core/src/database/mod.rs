@@ -74,7 +74,6 @@ use crate::constraints::{
 };
 pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
-use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 
@@ -133,13 +132,7 @@ pub struct Database<E: StorageEngine> {
     /// Transaction savepoint.
     transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
-    virtual_relvars: HashMap<String, VirtualRelvarDefinition>,
-}
-
-impl<E: StorageEngine> QueryExecutor for Database<E> {
-    fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
-        self.query(relation_name)
-    }
+    virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -730,7 +723,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+        evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -883,7 +876,7 @@ impl<E: StorageEngine> Database<E> {
 ///
 /// Stores the metadata required to evaluate a virtual relvar on demand.
 #[derive(Debug, Clone)]
-pub(crate) struct VirtualRelvarDefinition {
+pub(crate) struct VirtualRelvarDefinition<E: StorageEngine> {
     /// The relation type (heading) of the view.
     ///
     /// This defines the schema of the result produced by the evaluator.
@@ -895,9 +888,9 @@ pub(crate) struct VirtualRelvarDefinition {
     ///
     /// # Signature
     ///
-    /// `fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>`
+    /// `fn(&Database<E>) -> Result<Relation, DatabaseError>`
     ///
-    /// - **Input**: A `&dyn QueryExecutor`, which allows the view
+    /// - **Input**: A `&Database<E>`, which allows the view
     ///   to query other relvars (base or virtual) in the database.
     /// - **Output**: A `Result` containing the computed `Relation`.
     ///
@@ -905,7 +898,7 @@ pub(crate) struct VirtualRelvarDefinition {
     ///
     /// The evaluator is passed a read-only reference (`&`), ensuring that
     /// viewing a relation cannot cause side effects (mutations) in the database.
-    pub evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+    pub evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
 }
 
 #[cfg(test)]
