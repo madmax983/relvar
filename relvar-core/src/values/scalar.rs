@@ -400,7 +400,7 @@ impl Ord for ScalarValue {
 // ------------------- Recursion Guard -------------------
 
 thread_local! {
-    static RECURSION_DEPTH: Cell<usize> = Cell::new(0);
+    static RECURSION_DEPTH: Cell<usize> = const { Cell::new(0) };
 }
 
 const MAX_RECURSION_DEPTH: usize = 32;
