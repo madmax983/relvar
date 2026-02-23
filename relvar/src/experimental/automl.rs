@@ -38,7 +38,8 @@
 //!     // ... more data ...
 //!
 //!     // 2. Train Model
-//!     let model = NaiveBayesClassifier::train(&mut db, "GOLF", "play")?;
+//!     let golf = db.query("GOLF")?;
+//!     let model = NaiveBayesClassifier::train(&golf, "play")?;
 //!
 //!     // 3. Predict
 //!     let t = tuple! { outlook: "sunny", humidity: "high" };
@@ -50,10 +51,8 @@
 //! ```
 
 use relvar_core::algebra::summarize::Aggregation;
-use relvar_core::database::Database;
 use relvar_core::error::DatabaseError;
-use relvar_core::storage_engine::StorageEngine;
-use relvar_core::values::{ScalarValue, Tuple};
+use relvar_core::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
 
 /// A simple Naive Bayes classifier.
@@ -82,21 +81,15 @@ impl NaiveBayesClassifier {
     ///
     /// # Arguments
     ///
-    /// * `db` - The database instance.
-    /// * `rel_name` - The name of the relation containing training data.
+    /// * `relation` - The relation containing training data.
     /// * `target_attr` - The name of the target attribute (class label).
-    pub fn train<S: StorageEngine>(
-        db: &mut Database<S>,
-        rel_name: &str,
-        target_attr: &str,
-    ) -> Result<Self, DatabaseError> {
-        let relation = db.query(rel_name)?;
+    pub fn train(relation: &Relation, target_attr: &str) -> Result<Self, DatabaseError> {
         let heading = relation.relation_type().heading();
 
         if !heading.has_attribute(target_attr) {
             return Err(DatabaseError::AttributeNotFound(
                 target_attr.to_string(),
-                rel_name.to_string(),
+                "<input_relation>".to_string(),
             ));
         }
 
@@ -247,6 +240,7 @@ fn scalar_to_string(val: &ScalarValue) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use relvar_core::database::Database;
     use relvar_core::storage_engine::InMemoryEngine;
     use relvar_core::tuple;
     use relvar_core::types::{RelationType, ScalarType, TupleType};
@@ -285,7 +279,8 @@ mod tests {
         )?;
 
         // 2. Train
-        let model = NaiveBayesClassifier::train(&mut db, "GOLF", "play")?;
+        let golf = db.query("GOLF")?;
+        let model = NaiveBayesClassifier::train(&golf, "play")?;
 
         // 3. Predict
         // Test 1: Sunny (No), Hot (No), High (No), False (No/Yes) -> Expect "no"
