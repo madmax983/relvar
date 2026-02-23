@@ -39,6 +39,7 @@
 use crate::constraints::expression::ConstraintExpression;
 use crate::values::Tuple;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur during CHECK constraint evaluation.
@@ -139,6 +140,11 @@ impl CheckConstraint {
             .evaluate(tuple)
             .map_err(|e| CheckConstraintError::EvaluationError(e.to_string()))
     }
+
+    /// Returns the set of all attribute names referenced in this constraint.
+    pub fn referenced_attributes(&self) -> HashSet<String> {
+        self.expression.referenced_attributes()
+    }
 }
 
 /// A collection of CHECK constraints for a relvar.
@@ -186,6 +192,15 @@ impl CheckConstraints {
     /// Returns all constraints.
     pub fn constraints(&self) -> &[CheckConstraint] {
         &self.constraints
+    }
+
+    /// Returns the set of all attribute names referenced in all constraints.
+    pub fn referenced_attributes(&self) -> HashSet<String> {
+        let mut attributes = HashSet::new();
+        for constraint in &self.constraints {
+            attributes.extend(constraint.referenced_attributes());
+        }
+        attributes
     }
 }
 

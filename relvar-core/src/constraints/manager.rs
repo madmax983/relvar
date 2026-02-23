@@ -202,6 +202,19 @@ impl ConstraintManager {
             ));
         }
 
+        // Validate that all referenced attributes exist in the relation
+        let metadata = engine.get_relation_metadata(relation_name)?;
+        let heading = metadata.relation_type.heading();
+
+        for attr in constraints.referenced_attributes() {
+            if !heading.has_attribute(&attr) {
+                return Err(ConstraintManagerError::AttributeNotFound(
+                    attr,
+                    relation_name.to_string(),
+                ));
+            }
+        }
+
         // Validate constraints against existing data
         let relation = engine.load_relation(relation_name)?;
 
