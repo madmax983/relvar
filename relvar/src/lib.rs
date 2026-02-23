@@ -1,14 +1,14 @@
 //! # Relvar - A Pure Relational Database Management System
 //!
 //! Relvar is a Rust implementation of a relational database management system (RDBMS)
-//! that strictly adheres to the principles outlined in *The Third Manifesto* by
+//! that strictly adheres to the principles outlined in *The Third Manifesto* (TTM) by
 //! C.J. Date and Hugh Darwen.
 //!
 //! ## Architecture
 //!
 //! This crate is a facade over:
-//! - `relvar-core` - Pure TTM logical model (always available)
-//! - `relvar-storage` - Persistent storage (optional, via "storage" feature)
+//! - [`relvar-core`](../relvar_core/index.html) - Pure TTM logical model (always available)
+//! - [`relvar-storage`](../relvar_storage/index.html) - Persistent storage (optional, via "storage" feature)
 //!
 //! ## Examples
 //!
@@ -36,14 +36,17 @@
 //!
 //! ### Persistent database (requires "storage" feature)
 //!
-//! ```no_run
+//! ```
 //! # #[cfg(feature = "storage")]
 //! # {
 //! use relvar::{Database, PersistentEngine};
 //! use relvar::{TupleType, RelationType, ScalarType};
 //! use relvar::tuple;
+//! use tempfile::TempDir;
 //!
-//! let mut db = Database::new(PersistentEngine::open("my_db").unwrap());
+//! // Create a temporary directory for the database
+//! let temp_dir = TempDir::new().unwrap();
+//! let mut db = Database::new(PersistentEngine::open(temp_dir.path()).unwrap());
 //!
 //! let rel_type = RelationType::new(
 //!     TupleType::new()
@@ -179,12 +182,14 @@ pub fn in_memory() -> Database<InMemoryEngine> {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```
 /// # #[cfg(feature = "storage")]
 /// # {
 /// use relvar;
+/// use tempfile::TempDir;
 ///
-/// let mut db = relvar::open("my_database").unwrap();
+/// let temp_dir = TempDir::new().unwrap();
+/// let mut db = relvar::open(temp_dir.path()).unwrap();
 /// # }
 /// ```
 #[cfg(feature = "storage")]
