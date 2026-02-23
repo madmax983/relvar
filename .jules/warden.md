@@ -100,7 +100,7 @@ Added verification test `relvar-core/tests/warden_exploit_like_memory.rs`.
 `importer::from_json` used `serde_json::from_reader` which deserialized the entire JSON input into a DOM (`Value`) before processing. An attacker could supply a very large JSON array (e.g., 10GB), causing the server to exhaust memory (OOM DoS) trying to represent the entire structure in memory.
 
 **Defense:**
-1. Replaced `from_json` implementation with a streaming parser using `serde::de::DeserializeSeed` and `Visitor`.
+1. Replaced `from_json` implementation with a streaming parser using `serde::de::DeserializeSeed` and `Visitor` traits, eliminating `JsonValue` usage.
 2. The new implementation iterates over the JSON array element-by-element, processing and inserting each tuple individually.
 3. This ensures memory usage is proportional to the size of a single tuple (plus the accumulating `Relation` result), preventing the "double memory usage" (DOM + Result) and allowing for future optimizations (e.g. streaming to disk).
 
@@ -151,3 +151,13 @@ This bypassed `ScalarType` depth limits, enabling stack overflow attacks via dee
    - The inner `value` must match the `type_def` representation.
 3. Updated `ScalarValue` to use `#[serde(try_from = ...)]`.
 This ensures all deserialized values are structurally sound and respect the depth limits inherent in their type definitions.
+
+## 2026-02-14 - Nested Relation Import DoS
+**Threat:**
+The JSON importer (`relvar::tools::importer`) enforced `MAX_IMPORT_ROWS` (100,000) only on the top-level relation. An attacker could construct a malicious JSON payload with a Relation-Valued Attribute (RVA) containing an unlimited number of nested tuples (e.g., 1 billion), causing memory exhaustion (DoS) or CPU lockup. The nested relation deserialization loop did not check any row limits.
+
+**Defense:**
+1. Modified `importer::from_json` to initialize a `Rc<RefCell<usize>>` global row counter.
+2. Propagated this counter to all `Visitor` and `Seed` implementations (`RelationVisitor`, `TupleVisitor`, `ScalarValueVisitor`).
+3. Enforced `MAX_IMPORT_ROWS` check and increment logic within `RelationVisitor::visit_seq` (top-level) and `ScalarValueVisitor::visit_seq` (nested relations).
+4. This ensures the total number of tuples imported across all nesting levels cannot exceed the limit.
