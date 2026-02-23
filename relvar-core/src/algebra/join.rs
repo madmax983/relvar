@@ -44,6 +44,7 @@ use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 impl Relation {
@@ -304,68 +305,79 @@ fn probe_and_combine_single<'a>(
     Ok(joined_tuples)
 }
 
+/// A key for hash join that avoids allocating a Vec for the key.
+/// It holds references to the tuple and the attributes to key on.
+#[derive(Debug, Eq)]
+struct JoinKey<'t, 'a> {
+    tuple: &'t Tuple,
+    attributes: &'a [String],
+}
+
+impl<'t, 'a> PartialEq for JoinKey<'t, 'a> {
+    fn eq(&self, other: &Self) -> bool {
+        // We assume attributes are the same (or same values) as this is used internally
+        // with the same common_attrs slice.
+        for (i, attr) in self.attributes.iter().enumerate() {
+            let v1 = self.tuple.get(attr);
+            let v2 = other.tuple.get(&other.attributes[i]);
+            if v1 != v2 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl<'t, 'a> Hash for JoinKey<'t, 'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for attr in self.attributes {
+            if let Some(val) = self.tuple.get(attr) {
+                val.hash(state);
+            }
+        }
+    }
+}
+
 /// Helper to build the hash map for the join operation (Build Phase).
-fn build_join_map<'a>(
-    build_rel: &'a Relation,
-    common_attrs: &[String],
-) -> Result<HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>>, DatabaseError> {
-    let mut build_map: HashMap<Vec<&ScalarValue>, Vec<&Tuple>> =
+fn build_join_map<'t, 'a>(
+    build_rel: &'t Relation,
+    common_attrs: &'a [String],
+) -> Result<HashMap<JoinKey<'t, 'a>, Vec<&'t Tuple>>, DatabaseError> {
+    let mut build_map: HashMap<JoinKey<'t, 'a>, Vec<&Tuple>> =
         HashMap::with_capacity(build_rel.cardinality());
 
     for tuple in build_rel.tuples() {
-        let key = extract_join_key(tuple, common_attrs, "build relation")?;
+        let key = JoinKey {
+            tuple,
+            attributes: common_attrs,
+        };
         build_map.entry(key).or_default().push(tuple);
     }
     Ok(build_map)
 }
 
 /// Helper to probe the hash map and combine tuples (Probe Phase).
-fn probe_and_combine<'a>(
-    probe_rel: &'a Relation,
-    build_map: &HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>>,
-    common_attrs: &[String],
+fn probe_and_combine<'t, 'a>(
+    probe_rel: &'t Relation,
+    build_map: &HashMap<JoinKey<'t, 'a>, Vec<&'t Tuple>>,
+    common_attrs: &'a [String],
     result_heading: &Arc<TupleType>,
 ) -> Result<Vec<Tuple>, DatabaseError> {
     let mut joined_tuples = Vec::new();
-    let mut key_buffer = Vec::with_capacity(common_attrs.len());
 
     for probe_tuple in probe_rel.tuples() {
-        extract_join_key_into(probe_tuple, common_attrs, "probe relation", &mut key_buffer)?;
+        let key = JoinKey {
+            tuple: probe_tuple,
+            attributes: common_attrs,
+        };
 
-        if let Some(matching_tuples) = build_map.get(key_buffer.as_slice()) {
+        if let Some(matching_tuples) = build_map.get(&key) {
             for build_tuple in matching_tuples {
                 joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
             }
         }
     }
     Ok(joined_tuples)
-}
-
-/// Helper to extract key values from a tuple for the join operation.
-fn extract_join_key<'a>(
-    tuple: &'a Tuple,
-    attrs: &[String],
-    source_name: &str,
-) -> Result<Vec<&'a ScalarValue>, DatabaseError> {
-    let mut key = Vec::with_capacity(attrs.len());
-    extract_join_key_into(tuple, attrs, source_name, &mut key)?;
-    Ok(key)
-}
-
-/// Helper to extract key values into a provided buffer.
-fn extract_join_key_into<'a>(
-    tuple: &'a Tuple,
-    attrs: &[String],
-    source_name: &str,
-    key: &mut Vec<&'a ScalarValue>,
-) -> Result<(), DatabaseError> {
-    key.clear();
-    for attr in attrs {
-        key.push(tuple.get(attr).ok_or_else(|| {
-            DatabaseError::AttributeNotFound(attr.clone(), source_name.to_string())
-        })?);
-    }
-    Ok(())
 }
 
 /// Helper to combine two tuples into a single tuple.
