@@ -32,6 +32,7 @@
 use super::prepared::PreparedConstraintExpression;
 use crate::values::{ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur during constraint expression evaluation.
@@ -141,6 +142,54 @@ pub enum ConstraintExpression {
 }
 
 impl ConstraintExpression {
+    /// Evaluates this expression against a tuple.
+    ///
+    /// Returns `true` if the tuple satisfies the constraint,
+    /// `false` otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// - A referenced attribute is not found in the tuple
+    /// - A type mismatch occurs during comparison
+    /// - An invalid comparison is attempted
+    /// Returns the set of all attribute names referenced in this expression.
+    ///
+    /// This includes:
+    /// - Attributes on the left side of comparisons
+    /// - Attributes referenced via `ValueOrRef::Attribute` on the right side
+    /// - Attributes used in `IN` and `LIKE` expressions
+    /// - Attributes in nested sub-expressions (AND, OR, NOT)
+    pub fn referenced_attributes(&self) -> HashSet<String> {
+        let mut attributes = HashSet::new();
+        self.collect_attributes(&mut attributes);
+        attributes
+    }
+
+    fn collect_attributes(&self, attributes: &mut HashSet<String>) {
+        match self {
+            ConstraintExpression::Cmp { left, right, .. } => {
+                attributes.insert(left.clone());
+                if let ValueOrRef::Attribute(attr) = right {
+                    attributes.insert(attr.clone());
+                }
+            }
+            ConstraintExpression::And(l, r) | ConstraintExpression::Or(l, r) => {
+                l.collect_attributes(attributes);
+                r.collect_attributes(attributes);
+            }
+            ConstraintExpression::Not(expr) => {
+                expr.collect_attributes(attributes);
+            }
+            ConstraintExpression::In(attr, _) => {
+                attributes.insert(attr.clone());
+            }
+            ConstraintExpression::Like(attr, _) => {
+                attributes.insert(attr.clone());
+            }
+        }
+    }
+
     /// Evaluates this expression against a tuple.
     ///
     /// Returns `true` if the tuple satisfies the constraint,
@@ -735,6 +784,47 @@ mod tests {
         let result = expr.evaluate(&tuple);
         assert!(result.is_err());
         assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
+    }
+
+    #[test]
+    fn test_referenced_attributes() {
+        // Simple comparison
+        let expr1 = ConstraintExpression::Cmp {
+            left: "age".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Value(ScalarValue::Int(18)),
+        };
+        let attrs1 = expr1.referenced_attributes();
+        assert_eq!(attrs1.len(), 1);
+        assert!(attrs1.contains("age"));
+
+        // Attribute to attribute comparison
+        let expr2 = ConstraintExpression::Cmp {
+            left: "start_date".to_string(),
+            op: CmpOp::Le,
+            right: ValueOrRef::Attribute("end_date".to_string()),
+        };
+        let attrs2 = expr2.referenced_attributes();
+        assert_eq!(attrs2.len(), 2);
+        assert!(attrs2.contains("start_date"));
+        assert!(attrs2.contains("end_date"));
+
+        // Nested expression
+        let expr3 = ConstraintExpression::And(
+            Box::new(expr1),
+            Box::new(expr2),
+        );
+        let attrs3 = expr3.referenced_attributes();
+        assert_eq!(attrs3.len(), 3);
+        assert!(attrs3.contains("age"));
+        assert!(attrs3.contains("start_date"));
+        assert!(attrs3.contains("end_date"));
+
+        // Like expression
+        let expr4 = ConstraintExpression::Like("name".to_string(), "A%".to_string());
+        let attrs4 = expr4.referenced_attributes();
+        assert_eq!(attrs4.len(), 1);
+        assert!(attrs4.contains("name"));
     }
 }
 
