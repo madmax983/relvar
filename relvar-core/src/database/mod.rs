@@ -739,7 +739,6 @@ impl<E: StorageEngine> Database<E> {
         self.virtual_relvars.insert(
             name.to_string(),
             VirtualRelvarDefinition {
-                name: name.to_string(),
                 relation_type,
                 evaluator,
             },
@@ -885,9 +884,6 @@ impl<E: StorageEngine> Database<E> {
 /// Stores the metadata required to evaluate a virtual relvar on demand.
 #[derive(Debug, Clone)]
 pub(crate) struct VirtualRelvarDefinition {
-    /// The unique name of the virtual relvar.
-    pub name: String,
-
     /// The relation type (heading) of the view.
     ///
     /// This defines the schema of the result produced by the evaluator.
