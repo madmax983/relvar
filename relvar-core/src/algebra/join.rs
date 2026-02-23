@@ -120,9 +120,17 @@ impl Relation {
             (other, self)
         };
 
-        let build_map = build_join_map(build_rel, &common_attrs)?;
-        let joined_tuples =
-            probe_and_combine(probe_rel, &build_map, &common_attrs, &result_heading_arc)?;
+        let joined_tuples = if common_attrs.len() == 1 {
+            // Optimization for single-attribute joins:
+            // Use HashMap<&ScalarValue, Vec<&Tuple>> instead of HashMap<Vec<&ScalarValue>, ...>
+            // to avoid allocating a Vec for every key in the build relation.
+            let attr = &common_attrs[0];
+            let build_map = build_join_map_single(build_rel, attr)?;
+            probe_and_combine_single(probe_rel, &build_map, attr, &result_heading_arc)?
+        } else {
+            let build_map = build_join_map(build_rel, &common_attrs)?;
+            probe_and_combine(probe_rel, &build_map, &common_attrs, &result_heading_arc)?
+        };
 
         Ok(Relation::from_tuples(result_rel_type, joined_tuples)?)
     }
@@ -254,6 +262,46 @@ fn compute_natural_join_heading(left: &Relation, right: &Relation) -> TupleType 
     }
 
     result_heading
+}
+
+/// Helper to build the hash map for the join operation (Build Phase) - Single Attribute Optimization.
+fn build_join_map_single<'a>(
+    build_rel: &'a Relation,
+    attr: &str,
+) -> Result<HashMap<&'a ScalarValue, Vec<&'a Tuple>>, DatabaseError> {
+    let mut build_map: HashMap<&ScalarValue, Vec<&Tuple>> =
+        HashMap::with_capacity(build_rel.cardinality());
+
+    for tuple in build_rel.tuples() {
+        let val = tuple.get(attr).ok_or_else(|| {
+            DatabaseError::AttributeNotFound(attr.to_string(), "build relation".to_string())
+        })?;
+        build_map.entry(val).or_default().push(tuple);
+    }
+    Ok(build_map)
+}
+
+/// Helper to probe the hash map and combine tuples (Probe Phase) - Single Attribute Optimization.
+fn probe_and_combine_single<'a>(
+    probe_rel: &'a Relation,
+    build_map: &HashMap<&'a ScalarValue, Vec<&'a Tuple>>,
+    attr: &str,
+    result_heading: &Arc<TupleType>,
+) -> Result<Vec<Tuple>, DatabaseError> {
+    let mut joined_tuples = Vec::new();
+
+    for probe_tuple in probe_rel.tuples() {
+        let val = probe_tuple.get(attr).ok_or_else(|| {
+            DatabaseError::AttributeNotFound(attr.to_string(), "probe relation".to_string())
+        })?;
+
+        if let Some(matching_tuples) = build_map.get(val) {
+            for build_tuple in matching_tuples {
+                joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
+            }
+        }
+    }
+    Ok(joined_tuples)
 }
 
 /// Helper to build the hash map for the join operation (Build Phase).
