@@ -83,14 +83,12 @@ impl Relation {
     where
         F: Fn(&Tuple) -> bool,
     {
-        let filtered_tuples: Vec<_> = self
-            .tuples()
-            .filter(|tuple| predicate(tuple))
-            .cloned()
-            .collect();
-
-        Relation::from_tuples(self.relation_type().clone(), filtered_tuples)
-            .expect("Filtered tuples should conform to relation type")
+        // Filter tuples and create relation without redundant checks
+        // Safety: source tuples are from a valid relation
+        Relation::from_tuples_unchecked(
+            self.relation_type().clone(),
+            self.tuples().filter(|tuple| predicate(tuple)).cloned(),
+        )
     }
 }
 
