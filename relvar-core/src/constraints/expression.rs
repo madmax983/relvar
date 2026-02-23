@@ -142,17 +142,6 @@ pub enum ConstraintExpression {
 }
 
 impl ConstraintExpression {
-    /// Evaluates this expression against a tuple.
-    ///
-    /// Returns `true` if the tuple satisfies the constraint,
-    /// `false` otherwise.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if:
-    /// - A referenced attribute is not found in the tuple
-    /// - A type mismatch occurs during comparison
-    /// - An invalid comparison is attempted
     /// Returns the set of all attribute names referenced in this expression.
     ///
     /// This includes:
