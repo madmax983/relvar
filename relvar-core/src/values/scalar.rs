@@ -28,6 +28,7 @@
 
 use crate::types::ScalarType;
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::convert::TryFrom;
 use thiserror::Error;
 
@@ -396,6 +397,57 @@ impl Ord for ScalarValue {
     }
 }
 
+// ------------------- Recursion Guard -------------------
+
+thread_local! {
+    static RECURSION_DEPTH: Cell<usize> = Cell::new(0);
+}
+
+const MAX_RECURSION_DEPTH: usize = 32;
+
+struct RecursionGuard;
+
+impl RecursionGuard {
+    fn new() -> Result<Self, &'static str> {
+        RECURSION_DEPTH.with(|cell| {
+            let depth = cell.get();
+            if depth >= MAX_RECURSION_DEPTH {
+                Err("Recursion limit exceeded")
+            } else {
+                cell.set(depth + 1);
+                Ok(RecursionGuard)
+            }
+        })
+    }
+}
+
+impl Drop for RecursionGuard {
+    fn drop(&mut self) {
+        RECURSION_DEPTH.with(|cell| {
+            let depth = cell.get();
+            if depth > 0 {
+                cell.set(depth - 1);
+            }
+        });
+    }
+}
+
+#[derive(Debug)]
+struct DepthGuarded<T>(pub T);
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for DepthGuarded<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let _guard = RecursionGuard::new().map_err(serde::de::Error::custom)?;
+        let value = T::deserialize(deserializer)?;
+        Ok(DepthGuarded(value))
+    }
+}
+
+// -------------------------------------------------------
+
 // Private structure to assist with deserialization and validation.
 // This allows us to intercept deserialization and enforce type consistency and depth limits.
 #[derive(Debug, Deserialize)]
@@ -405,10 +457,10 @@ enum ScalarValueUnchecked {
     String(String),
     Bool(bool),
     Bytes(Vec<u8>),
-    Relation(crate::values::Relation),
+    Relation(DepthGuarded<crate::values::Relation>),
     UserDefined {
         type_def: ScalarType,
-        value: Box<ScalarValueUnchecked>,
+        value: Box<DepthGuarded<ScalarValueUnchecked>>,
     },
 }
 
@@ -422,7 +474,7 @@ impl TryFrom<ScalarValueUnchecked> for ScalarValue {
             ScalarValueUnchecked::String(v) => Ok(ScalarValue::String(v)),
             ScalarValueUnchecked::Bool(v) => Ok(ScalarValue::Bool(v)),
             ScalarValueUnchecked::Bytes(v) => Ok(ScalarValue::Bytes(v)),
-            ScalarValueUnchecked::Relation(v) => Ok(ScalarValue::Relation(v)),
+            ScalarValueUnchecked::Relation(v) => Ok(ScalarValue::Relation(v.0)),
             ScalarValueUnchecked::UserDefined { type_def, value } => {
                 // First, ensure the type definition itself is a UserDefined type.
                 // A ScalarValue::UserDefined variant must have a ScalarType::UserDefined type definition.
@@ -438,7 +490,8 @@ impl TryFrom<ScalarValueUnchecked> for ScalarValue {
                 };
 
                 // Recursively convert and validate the inner value
-                let inner_value = ScalarValue::try_from(*value)?;
+                // Unwrap the DepthGuarded wrapper
+                let inner_value = ScalarValue::try_from((*value).0)?;
 
                 // Enforce type consistency: inner value MUST match the representation type
                 if !inner_value.is_type(representation) {
