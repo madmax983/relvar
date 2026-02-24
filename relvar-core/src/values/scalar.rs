@@ -214,6 +214,22 @@ impl ScalarValue {
     }
 }
 
+impl Drop for ScalarValue {
+    fn drop(&mut self) {
+        if let ScalarValue::UserDefined { value, .. } = self {
+            // Iteratively drop nested UserDefined values to prevent stack overflow
+            let mut current = std::mem::replace(value, Box::new(ScalarValue::Int(0)));
+            while let ScalarValue::UserDefined {
+                value: ref mut next,
+                ..
+            } = *current
+            {
+                current = std::mem::replace(next, Box::new(ScalarValue::Int(0)));
+            }
+        }
+    }
+}
+
 // Custom PartialEq implementation for ScalarValue
 // Note: Float comparison uses bit equality, which is appropriate for
 // database values (we want NaN == NaN for set semantics)
@@ -244,7 +260,35 @@ impl PartialEq for ScalarValue {
                     type_def: type_b,
                     value: val_b,
                 },
-            ) => type_a == type_b && val_a == val_b,
+            ) => {
+                if type_a != type_b {
+                    return false;
+                }
+                // Iterative comparison to prevent stack overflow
+                let mut cur_a = val_a;
+                let mut cur_b = val_b;
+                loop {
+                    match (&**cur_a, &**cur_b) {
+                        (
+                            ScalarValue::UserDefined {
+                                type_def: ta,
+                                value: va,
+                            },
+                            ScalarValue::UserDefined {
+                                type_def: tb,
+                                value: vb,
+                            },
+                        ) => {
+                            if ta != tb {
+                                return false;
+                            }
+                            cur_a = va;
+                            cur_b = vb;
+                        }
+                        (a, b) => return a == b,
+                    }
+                }
+            }
             _ => false,
         }
     }
@@ -289,7 +333,24 @@ impl std::hash::Hash for ScalarValue {
             ScalarValue::UserDefined { type_def, value } => {
                 6u8.hash(state);
                 type_def.hash(state);
-                value.hash(state);
+                // Iterative hash to prevent stack overflow
+                let mut cur = value;
+                loop {
+                    match &**cur {
+                        ScalarValue::UserDefined {
+                            type_def: t,
+                            value: v,
+                        } => {
+                            6u8.hash(state);
+                            t.hash(state);
+                            cur = v;
+                        }
+                        other => {
+                            other.hash(state);
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -385,7 +446,32 @@ impl Ord for ScalarValue {
                     ) => {
                         // Order by type identity first (structural comparison), then by value
                         match type_a.cmp(type_b) {
-                            Ordering::Equal => val_a.cmp(val_b),
+                            Ordering::Equal => {
+                                // Iterative comparison to prevent stack overflow
+                                let mut cur_a = val_a;
+                                let mut cur_b = val_b;
+                                loop {
+                                    match (&**cur_a, &**cur_b) {
+                                        (
+                                            ScalarValue::UserDefined {
+                                                type_def: ta,
+                                                value: va,
+                                            },
+                                            ScalarValue::UserDefined {
+                                                type_def: tb,
+                                                value: vb,
+                                            },
+                                        ) => match ta.cmp(tb) {
+                                            Ordering::Equal => {
+                                                cur_a = va;
+                                                cur_b = vb;
+                                            }
+                                            other => return other,
+                                        },
+                                        (a, b) => return a.cmp(b),
+                                    }
+                                }
+                            }
                             other => other,
                         }
                     }

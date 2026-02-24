@@ -383,9 +383,9 @@ impl TryFrom<ScalarValue> for f64 {
 
 impl TryFrom<ScalarValue> for String {
     type Error = ();
-    fn try_from(value: ScalarValue) -> Result<Self, Self::Error> {
+    fn try_from(mut value: ScalarValue) -> Result<Self, Self::Error> {
         match value {
-            ScalarValue::String(v) => Ok(v),
+            ScalarValue::String(ref mut v) => Ok(std::mem::take(v)),
             _ => Err(()),
         }
     }
@@ -396,6 +396,16 @@ impl TryFrom<ScalarValue> for bool {
     fn try_from(value: ScalarValue) -> Result<Self, Self::Error> {
         match value {
             ScalarValue::Bool(v) => Ok(v),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<ScalarValue> for Vec<u8> {
+    type Error = ();
+    fn try_from(mut value: ScalarValue) -> Result<Self, Self::Error> {
+        match value {
+            ScalarValue::Bytes(ref mut v) => Ok(std::mem::take(v)),
             _ => Err(()),
         }
     }
