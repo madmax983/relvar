@@ -3,6 +3,40 @@
 //! This module demonstrates how graph algorithms can be implemented using
 //! pure relational algebra operations. It provides a `Graph` abstraction
 //! over node and edge relations and implements BFS and PageRank.
+//!
+//! # Example: Breadth-First Search (BFS)
+//!
+//! ```
+//! use relvar::experimental::graph::Graph;
+//! use relvar_core::values::{Relation, ScalarValue};
+//! use relvar_core::types::{RelationType, TupleType, ScalarType};
+//! use relvar_core::tuple;
+//!
+//! // 1. Define Nodes: {id}
+//! let node_heading = TupleType::new().with_attribute("id", ScalarType::Int);
+//! let mut nodes = Relation::new(RelationType::new(node_heading));
+//! nodes.insert(tuple! { id: 1i64 }).unwrap();
+//! nodes.insert(tuple! { id: 2i64 }).unwrap();
+//! nodes.insert(tuple! { id: 3i64 }).unwrap();
+//!
+//! // 2. Define Edges: {from, to}
+//! let edge_heading = TupleType::new()
+//!     .with_attribute("from", ScalarType::Int)
+//!     .with_attribute("to", ScalarType::Int);
+//! let mut edges = Relation::new(RelationType::new(edge_heading));
+//! edges.insert(tuple! { from: 1i64, to: 2i64 }).unwrap();
+//! edges.insert(tuple! { from: 2i64, to: 3i64 }).unwrap();
+//!
+//! // 3. Create Graph View
+//! let graph = Graph::new(nodes, edges, "id", "from", "to");
+//!
+//! // 4. Run BFS from node 1
+//! let distances = graph.bfs(ScalarValue::Int(1)).unwrap();
+//!
+//! // Result: 1->0, 2->1, 3->2
+//! let t3 = distances.tuples().find(|t| t.get_typed::<i64>("id") == Some(3)).unwrap();
+//! assert_eq!(t3.get_typed::<i64>("distance").unwrap(), 2);
+//! ```
 
 use relvar_core::algebra::summarize::Aggregation;
 use relvar_core::error::DatabaseError;

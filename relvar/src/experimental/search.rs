@@ -4,6 +4,36 @@
 //! It demonstrates that an inverted index is simply a relation, and search queries
 //! can be expressed as relational operations (Restrict, Join, Summarize).
 //!
+//! # Example
+//!
+//! ```
+//! use relvar::experimental::search::FullTextIndex;
+//! use relvar_core::Database;
+//! use relvar_core::storage_engine::InMemoryEngine;
+//! use relvar_core::types::ScalarType;
+//! use relvar_core::values::ScalarValue;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let mut db = Database::new(InMemoryEngine::new());
+//!     let index = FullTextIndex::new("idx_docs", ScalarType::Int);
+//!
+//!     // 1. Initialize the index relation
+//!     index.create(&mut db)?;
+//!
+//!     // 2. Index some documents
+//!     index.index_document(&mut db, ScalarValue::Int(1), "The quick brown fox")?;
+//!     index.index_document(&mut db, ScalarValue::Int(2), "The quick blue fox")?;
+//!
+//!     // 3. Search for terms
+//!     let results = index.search(&db, "quick fox")?;
+//!
+//!     // Both documents match "quick" and "fox" (score 2)
+//!     assert_eq!(results.cardinality(), 2);
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
 //! # Disclaimer
 //!
 //! This is an **experimental demonstration** of relational principles. It is not intended
