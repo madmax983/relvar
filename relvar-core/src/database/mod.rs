@@ -80,6 +80,12 @@ use crate::values::{Relation, Tuple};
 
 use std::collections::HashMap;
 
+mod dml;
+mod virtual_relvar;
+
+use self::dml::{compute_relation_after_delete, compute_relation_after_update};
+pub(crate) use self::virtual_relvar::VirtualRelvarDefinition;
+
 /// A relational database instance.
 ///
 /// The `Database` struct is the primary interface for interacting with Relvar. It is
@@ -549,7 +555,7 @@ impl<E: StorageEngine> Database<E> {
 
         // Filter out tuples to delete
         let (new_relation, delete_count) =
-            self.compute_relation_after_delete(current_relation, predicate)?;
+            compute_relation_after_delete(current_relation, predicate)?;
 
         self.constraints.validate_referencing_foreign_keys(
             &mut self.engine,
@@ -635,7 +641,7 @@ impl<E: StorageEngine> Database<E> {
 
         // Apply updates
         let (new_relation, update_count) =
-            self.compute_relation_after_update(current_relation, predicate, updater)?;
+            compute_relation_after_update(current_relation, predicate, updater)?;
 
         self.validate_relation_constraints(relation_name, &new_relation)?;
 
@@ -771,66 +777,6 @@ impl<E: StorageEngine> Database<E> {
         }
     }
 
-    fn compute_relation_after_delete<F>(
-        &self,
-        current_relation: Relation,
-        predicate: F,
-    ) -> Result<(Relation, usize), DatabaseError>
-    where
-        F: Fn(&Tuple) -> bool,
-    {
-        let initial_cardinality = current_relation.cardinality();
-        let relation_type = current_relation.relation_type().clone();
-
-        let kept_tuples: Vec<Tuple> = current_relation
-            .into_iter()
-            .filter(|tuple| !predicate(tuple))
-            .collect();
-
-        let delete_count = initial_cardinality - kept_tuples.len();
-
-        let new_relation = Relation::from_tuples(relation_type, kept_tuples)?;
-
-        Ok((new_relation, delete_count))
-    }
-
-    fn compute_relation_after_update<F, U>(
-        &self,
-        current_relation: Relation,
-        predicate: F,
-        updater: U,
-    ) -> Result<(Relation, usize), DatabaseError>
-    where
-        F: Fn(&Tuple) -> bool,
-        U: Fn(&Tuple) -> Tuple,
-    {
-        let relation_type = current_relation.relation_type().clone();
-        let expected_type = relation_type.tuple_type().clone();
-        let initial_cardinality = current_relation.cardinality();
-
-        let (tuples, update_count) = current_relation.into_iter().try_fold(
-            (Vec::with_capacity(initial_cardinality), 0),
-            |(mut acc, count), tuple| {
-                if predicate(&tuple) {
-                    let updated_tuple = updater(&tuple);
-
-                    if !updated_tuple.conforms_to(&expected_type) {
-                        return Err(DatabaseError::TupleMismatch);
-                    }
-                    acc.push(updated_tuple);
-                    Ok((acc, count + 1))
-                } else {
-                    acc.push(tuple);
-                    Ok((acc, count))
-                }
-            },
-        )?;
-
-        let new_relation = Relation::from_tuples(relation_type, tuples)?;
-
-        Ok((new_relation, update_count))
-    }
-
     fn validate_insert(&mut self, relation_name: &str, tuple: &Tuple) -> Result<(), DatabaseError> {
         // Pure checks and Type validations
         self.constraints
@@ -877,35 +823,6 @@ impl<E: StorageEngine> Database<E> {
 
         Ok(())
     }
-}
-
-/// Definition of a virtual relvar (view).
-///
-/// Stores the metadata required to evaluate a virtual relvar on demand.
-#[derive(Debug, Clone)]
-pub(crate) struct VirtualRelvarDefinition {
-    /// The relation type (heading) of the view.
-    ///
-    /// This defines the schema of the result produced by the evaluator.
-    /// The database uses this to validate queries against the view without
-    /// needing to evaluate it first.
-    pub relation_type: RelationType,
-
-    /// The evaluation function (closure) that computes the view's contents.
-    ///
-    /// # Signature
-    ///
-    /// `fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>`
-    ///
-    /// - **Input**: A `&dyn QueryExecutor`, which allows the view
-    ///   to query other relvars (base or virtual) in the database.
-    /// - **Output**: A `Result` containing the computed `Relation`.
-    ///
-    /// # Safety
-    ///
-    /// The evaluator is passed a read-only reference (`&`), ensuring that
-    /// viewing a relation cannot cause side effects (mutations) in the database.
-    pub evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
 }
 
 #[cfg(test)]
