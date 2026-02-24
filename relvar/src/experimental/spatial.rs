@@ -136,7 +136,7 @@ fn extract_coords(p: &ScalarValue) -> Result<(f64, f64), String> {
     let inner_val = p.observer().map_err(|_| "Not a user-defined type")?;
 
     match inner_val {
-        ScalarValue::Relation(rel) => {
+        ScalarValue::Relation(ref rel) => {
             if rel.cardinality() != 1 {
                 return Err("Point relation must have exactly 1 tuple".to_string());
             }
