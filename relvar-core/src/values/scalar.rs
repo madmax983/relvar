@@ -219,7 +219,11 @@ impl Drop for ScalarValue {
         if let ScalarValue::UserDefined { value, .. } = self {
             // Iteratively drop nested UserDefined values to prevent stack overflow
             let mut current = std::mem::replace(value, Box::new(ScalarValue::Int(0)));
-            while let ScalarValue::UserDefined { value: ref mut next, .. } = *current {
+            while let ScalarValue::UserDefined {
+                value: ref mut next,
+                ..
+            } = *current
+            {
                 current = std::mem::replace(next, Box::new(ScalarValue::Int(0)));
             }
         }
@@ -333,7 +337,10 @@ impl std::hash::Hash for ScalarValue {
                 let mut cur = value;
                 loop {
                     match &**cur {
-                        ScalarValue::UserDefined { type_def: t, value: v } => {
+                        ScalarValue::UserDefined {
+                            type_def: t,
+                            value: v,
+                        } => {
                             6u8.hash(state);
                             t.hash(state);
                             cur = v;
@@ -454,15 +461,13 @@ impl Ord for ScalarValue {
                                                 type_def: tb,
                                                 value: vb,
                                             },
-                                        ) => {
-                                            match ta.cmp(tb) {
-                                                Ordering::Equal => {
-                                                    cur_a = va;
-                                                    cur_b = vb;
-                                                }
-                                                other => return other,
+                                        ) => match ta.cmp(tb) {
+                                            Ordering::Equal => {
+                                                cur_a = va;
+                                                cur_b = vb;
                                             }
-                                        }
+                                            other => return other,
+                                        },
                                         (a, b) => return a.cmp(b),
                                     }
                                 }

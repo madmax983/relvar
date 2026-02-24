@@ -1,7 +1,7 @@
-use relvar_core::values::ScalarValue;
 use relvar_core::types::ScalarType;
-use std::hash::{Hash, Hasher};
+use relvar_core::values::ScalarValue;
 use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[test]
 fn test_deeply_nested_drop_should_not_overflow() {
