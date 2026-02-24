@@ -106,15 +106,12 @@ impl Relation {
             return Err(UnionError::TypeMismatch);
         }
 
-        // Collect all tuples from both relations
-        let mut all_tuples: Vec<_> = self.tuples().cloned().collect();
-        all_tuples.extend(other.tuples().cloned());
-
-        // from_tuples automatically removes duplicates via HashSet
-        Ok(
-            Relation::from_tuples(self.relation_type().clone(), all_tuples)
-                .expect("Union tuples should conform to relation type"),
-        )
+        // Chain iterators and create relation without redundant checks
+        // Safety: both relations are verified to have the same type, so their tuples must conform
+        Ok(Relation::from_tuples_unchecked(
+            self.relation_type().clone(),
+            self.tuples().chain(other.tuples()).cloned(),
+        ))
     }
 }
 

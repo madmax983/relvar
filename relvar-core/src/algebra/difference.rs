@@ -111,17 +111,14 @@ impl Relation {
             return Err(DifferenceError::TypeMismatch);
         }
 
-        // Find tuples in self that are not in other
-        let diff_tuples: Vec<_> = self
-            .tuples()
-            .filter(|tuple| !other.contains(tuple))
-            .cloned()
-            .collect();
-
-        Ok(
-            Relation::from_tuples(self.relation_type().clone(), diff_tuples)
-                .expect("Difference tuples should conform to relation type"),
-        )
+        // Filter tuples and create relation without redundant checks
+        // Safety: source tuples are from a valid relation of the same type
+        Ok(Relation::from_tuples_unchecked(
+            self.relation_type().clone(),
+            self.tuples()
+                .filter(|tuple| !other.contains(tuple))
+                .cloned(),
+        ))
     }
 
     /// Alias for [`difference`](Self::difference) with SQL-style naming.

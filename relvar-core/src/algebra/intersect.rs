@@ -112,17 +112,12 @@ impl Relation {
             return Err(IntersectError::TypeMismatch);
         }
 
-        // Find tuples that exist in both relations
-        let common_tuples: Vec<_> = self
-            .tuples()
-            .filter(|tuple| other.contains(tuple))
-            .cloned()
-            .collect();
-
-        Ok(
-            Relation::from_tuples(self.relation_type().clone(), common_tuples)
-                .expect("Intersection tuples should conform to relation type"),
-        )
+        // Filter tuples and create relation without redundant checks
+        // Safety: source tuples are from a valid relation of the same type
+        Ok(Relation::from_tuples_unchecked(
+            self.relation_type().clone(),
+            self.tuples().filter(|tuple| other.contains(tuple)).cloned(),
+        ))
     }
 }
 
