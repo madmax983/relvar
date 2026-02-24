@@ -10,11 +10,13 @@
 //! - **Spatial**: Spatial data types.
 //! - **Search**: Relational Full-Text Search.
 //! - **Image**: Relational Image Processing (RIP).
+//! - **Audio**: Relational Audio Synthesis (RAS).
 //! - **Graph**: Relational Graph Analytics (BFS, PageRank).
 //! - **AutoML**: Relational Machine Learning (Naive Bayes).
 //! - **Time Series**: Relational Time Series Analysis (Moving Averages).
 //! - **ECS**: Relational Entity Component System.
 
+pub mod audio;
 pub mod automl;
 pub mod ecs;
 pub mod graph;
