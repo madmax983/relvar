@@ -178,8 +178,8 @@ impl Query {
                 // Pre-compute optimized structures (HashSet for IN, Vec<char> for LIKE)
                 // This prevents O(N*M) behavior for large IN lists or LIKE patterns
                 let prepared = predicate.prepare();
-                let result =
-                    relation.restrict(move |tuple| prepared.evaluate(tuple).unwrap_or_default());
+                let result = relation
+                    .restrict_into(move |tuple| prepared.evaluate(tuple).unwrap_or_default());
                 Ok(result)
             }
             Query::Project { input, attributes } => {

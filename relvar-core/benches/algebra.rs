@@ -1,4 +1,6 @@
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{
+    BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
+};
 use relvar_core::algebra::summarize::Aggregation;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
@@ -126,6 +128,52 @@ fn bench_restrict(c: &mut Criterion) {
                 });
                 black_box(result);
             });
+        });
+    }
+    group.finish();
+}
+
+// Restrict benchmark comparing implementations with fair setup
+fn bench_restrict_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("restrict_comparison");
+
+    for size in [1000, 5000].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+
+        let relation = create_employee_relation(*size);
+
+        // Case 1: restrict (immutable, clones output tuples)
+        // We clone input in setup to simulate having an owned relation,
+        // but restrict() takes &self so it doesn't consume it.
+        // This measures the cost of building a NEW relation with cloned tuples.
+        group.bench_with_input(BenchmarkId::new("immutable", size), size, |b, &_| {
+            b.iter_batched(
+                || relation.clone(),
+                |r| {
+                    let result = r.restrict(|t| {
+                        t.get_typed::<i64>("dept_id").unwrap() == 5
+                            && t.get_typed::<f64>("salary").unwrap() > 60000.0
+                    });
+                    black_box(result);
+                },
+                BatchSize::SmallInput,
+            );
+        });
+
+        // Case 2: restrict_into (mutable, in-place)
+        // This measures the cost of retaining tuples in-place.
+        group.bench_with_input(BenchmarkId::new("in_place", size), size, |b, &_| {
+            b.iter_batched(
+                || relation.clone(),
+                |r| {
+                    let result = r.restrict_into(|t| {
+                        t.get_typed::<i64>("dept_id").unwrap() == 5
+                            && t.get_typed::<f64>("salary").unwrap() > 60000.0
+                    });
+                    black_box(result);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
@@ -477,6 +525,7 @@ fn bench_chained_operations(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_restrict,
+    bench_restrict_comparison,
     bench_project,
     bench_project_wide,
     bench_project_narrow,
