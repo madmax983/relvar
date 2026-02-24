@@ -1,6 +1,31 @@
 //! Mock data generation module.
 //!
 //! This module provides tools to generate random relations for testing and prototyping.
+//! It can automatically populate relations based on their schema (RelationType),
+//! supporting both primitive types and nested structures.
+//!
+//! # Example
+//!
+//! ```
+//! use relvar::experimental::mock::MockRelation;
+//! use relvar_core::types::{RelationType, TupleType, ScalarType};
+//!
+//! // 1. Define schema
+//! let rel_type = RelationType::new(
+//!     TupleType::new()
+//!         .with_attribute("id", ScalarType::Int)
+//!         .with_attribute("score", ScalarType::Float)
+//!         .with_attribute("tag", ScalarType::String)
+//! );
+//!
+//! // 2. Generate random data
+//! let relation = MockRelation::new(rel_type)
+//!     .count(100)       // Generate 100 tuples
+//!     .seed(42)         // Use fixed seed for deterministic results
+//!     .generate();
+//!
+//! assert_eq!(relation.cardinality(), 100);
+//! ```
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};

@@ -99,32 +99,86 @@ pub enum ScalarType {
     /// 64-bit signed integer.
     ///
     /// Corresponds to Rust's `i64` type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::values::ScalarValue;
+    /// let val = ScalarValue::Int(42);
+    /// ```
     Int,
 
     /// 64-bit floating point number.
     ///
     /// Corresponds to Rust's `f64` type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::values::ScalarValue;
+    /// let val = ScalarValue::Float(3.14);
+    /// ```
     Float,
 
     /// UTF-8 encoded string.
     ///
     /// Corresponds to Rust's `String` type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::values::ScalarValue;
+    /// let val = ScalarValue::String("Relvar".to_string());
+    /// ```
     String,
 
     /// Boolean value (true or false).
     ///
     /// Corresponds to Rust's `bool` type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::values::ScalarValue;
+    /// let val = ScalarValue::Bool(true);
+    /// ```
     Bool,
 
     /// Arbitrary byte sequence.
     ///
     /// Corresponds to Rust's `Vec<u8>` type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::values::ScalarValue;
+    /// let val = ScalarValue::Bytes(vec![0xDE, 0xAD, 0xBE, 0xEF]);
+    /// ```
     Bytes,
 
     /// Relation-valued attribute (RVA) type.
     ///
     /// Contains a nested relation, enabling hierarchical data modeling.
     /// The boxed `RelationType` specifies the heading of the nested relation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::types::{ScalarType, TupleType, RelationType};
+    ///
+    /// // Define the type for items in an order
+    /// let item_type = TupleType::new()
+    ///     .with_attribute("product_id", ScalarType::Int)
+    ///     .with_attribute("quantity", ScalarType::Int);
+    ///
+    /// // Define the type for the RVA "items"
+    /// let items_rva_type = ScalarType::Relation(Box::new(RelationType::new(item_type)));
+    ///
+    /// // Define the order type containing the RVA
+    /// let order_type = TupleType::new()
+    ///     .with_attribute("order_id", ScalarType::Int)
+    ///     .with_attribute("items", items_rva_type);
+    /// ```
     Relation(Box<crate::types::RelationType>),
 
     /// User-defined scalar type.
@@ -133,13 +187,27 @@ pub enum ScalarType {
     /// The type has a unique name (providing type identity) and a base
     /// representation type (defining storage and valid values).
     ///
+    /// # TTM Prescription 1
+    ///
+    /// User-defined types provide strong typing. A value of type `EmployeeId`
+    /// is distinct from `DepartmentId`, even if both are represented by `Int`.
+    ///
     /// # Example
     ///
     /// ```
     /// use relvar_core::types::ScalarType;
+    /// use relvar_core::values::ScalarValue;
     ///
-    /// let currency = ScalarType::user_defined("Currency", ScalarType::Float);
-    /// assert_eq!(currency.name(), "Currency");
+    /// // Define distinct types for IDs
+    /// let emp_id_type = ScalarType::user_defined("EmployeeId", ScalarType::Int);
+    /// let dept_id_type = ScalarType::user_defined("DepartmentId", ScalarType::Int);
+    ///
+    /// // They are not equal
+    /// assert_ne!(emp_id_type, dept_id_type);
+    ///
+    /// // Creating values requires the selector
+    /// let id_val = emp_id_type.selector(ScalarValue::Int(100)).unwrap();
+    /// assert_eq!(id_val.scalar_type().name(), "EmployeeId");
     /// ```
     UserDefined {
         /// The unique name identifying this type.
