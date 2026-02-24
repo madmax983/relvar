@@ -472,6 +472,22 @@ impl Relation {
     pub fn is_empty(&self) -> bool {
         self.body.is_empty()
     }
+
+    /// Restricts this relation by filtering tuples in-place.
+    ///
+    /// This consumes the relation and modifies it, avoiding allocations for a new relation
+    /// and avoiding cloning tuples.
+    ///
+    /// # Arguments
+    ///
+    /// * `predicate` - A function that returns `true` for tuples to keep
+    pub fn restrict_into<F>(mut self, mut predicate: F) -> Self
+    where
+        F: FnMut(&Tuple) -> bool,
+    {
+        self.body.retain(|tuple| predicate(tuple));
+        self
+    }
 }
 
 #[cfg(test)]
