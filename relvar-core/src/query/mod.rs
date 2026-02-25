@@ -41,9 +41,8 @@
 
 use crate::algebra::summarize::Aggregation;
 use crate::constraints::{ConstraintExpression, ExpressionError};
-use crate::database::Database;
 use crate::error::DatabaseError;
-use crate::storage_engine::StorageEngine;
+use crate::traits::QueryExecutor;
 use crate::values::Relation;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -167,7 +166,7 @@ impl Query {
     /// - A referenced relation does not exist.
     /// - A constraint expression is invalid (e.g., type mismatch).
     /// - An algebraic operation fails (e.g., joining incompatible types).
-    pub fn execute<E: StorageEngine>(&self, db: &Database<E>) -> Result<Relation, QueryError> {
+    pub fn execute(&self, db: &impl QueryExecutor) -> Result<Relation, QueryError> {
         match self {
             Query::Scan(table_name) => Ok(db.query(table_name)?),
             Query::Restrict { input, predicate } => {

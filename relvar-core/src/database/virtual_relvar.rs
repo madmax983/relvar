@@ -1,6 +1,5 @@
-use crate::database::Database;
 use crate::error::DatabaseError;
-use crate::storage_engine::StorageEngine;
+use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::Relation;
 
@@ -8,7 +7,7 @@ use crate::values::Relation;
 ///
 /// Stores the metadata required to evaluate a virtual relvar on demand.
 #[derive(Debug, Clone)]
-pub(crate) struct VirtualRelvarDefinition<E: StorageEngine> {
+pub(crate) struct VirtualRelvarDefinition {
     /// The relation type (heading) of the view.
     ///
     /// This defines the schema of the result produced by the evaluator.
@@ -20,9 +19,9 @@ pub(crate) struct VirtualRelvarDefinition<E: StorageEngine> {
     ///
     /// # Signature
     ///
-    /// `fn(&Database<E>) -> Result<Relation, DatabaseError>`
+    /// `fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>`
     ///
-    /// - **Input**: A `&Database<E>`, which allows the view
+    /// - **Input**: A `&dyn QueryExecutor`, which allows the view
     ///   to query other relvars (base or virtual) in the database.
     /// - **Output**: A `Result` containing the computed `Relation`.
     ///
@@ -30,5 +29,5 @@ pub(crate) struct VirtualRelvarDefinition<E: StorageEngine> {
     ///
     /// The evaluator is passed a read-only reference (`&`), ensuring that
     /// viewing a relation cannot cause side effects (mutations) in the database.
-    pub evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
+    pub evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
 }
