@@ -88,10 +88,7 @@ impl Life {
         // 2. Count Neighbors per Cell location
         // Group by (nx, ny), Count(*) -> (nx, ny, count)
         let counts = with_coords
-            .summarize(
-                &["nx", "ny"],
-                &[Aggregation::count("count")],
-            )
+            .summarize(&["nx", "ny"], &[Aggregation::count("count")])
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 3. Identify Survivors: (nx, ny) in counts AND (x, y) in cells AND (count == 2 || count == 3)
