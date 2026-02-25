@@ -12,24 +12,23 @@
 //! # Usage
 //!
 //! ```
+//! use relvar::{InMemoryEngine, ScalarType, tuple};
 //! use relvar::experimental::ecs::World;
-//! use relvar_core::storage_engine::InMemoryEngine;
-//! use relvar_core::types::ScalarType;
-//! use relvar_core::tuple;
-//! use relvar_core::values::ScalarValue;
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut world = World::new(InMemoryEngine::new());
 //!
 //! // 1. Define Components
-//! world.register_component("Position", &[("x", ScalarType::Float), ("y", ScalarType::Float)]).unwrap();
-//! world.register_component("Velocity", &[("vx", ScalarType::Float), ("vy", ScalarType::Float)]).unwrap();
+//! world.register_component("Position", &[("x", ScalarType::Float), ("y", ScalarType::Float)])?;
+//! world.register_component("Velocity", &[("vx", ScalarType::Float), ("vy", ScalarType::Float)])?;
 //!
 //! // 2. Create Entity
-//! let e = world.spawn().unwrap();
-//! world.add_component(e, "Position", tuple! { x: 0.0, y: 0.0 }).unwrap();
-//! world.add_component(e, "Velocity", tuple! { vx: 1.0, vy: 1.0 }).unwrap();
+//! let e = world.spawn()?;
+//! world.add_component(e, "Position", tuple! { x: 0.0, y: 0.0 })?;
+//! world.add_component(e, "Velocity", tuple! { vx: 1.0, vy: 1.0 })?;
 //!
 //! // 3. Run System (Update Position based on Velocity)
+//! // System: For every entity with Position AND Velocity, update Position
 //! world.run_update_system("Position", &["Velocity"], |joined_tuple| {
 //!     let x = joined_tuple.get_typed::<f64>("x").unwrap();
 //!     let y = joined_tuple.get_typed::<f64>("y").unwrap();
@@ -40,12 +39,20 @@
 //!         x: x + vx,
 //!         y: y + vy
 //!     }
-//! }).unwrap();
+//! })?;
 //!
 //! // 4. Verify
-//! let pos = world.get_component(e, "Position").unwrap();
+//! let pos = world.get_component(e, "Position")?;
 //! assert_eq!(pos.get_typed::<f64>("x"), Some(1.0));
+//! # Ok(())
+//! # }
 //! ```
+//!
+//! # Limitations
+//!
+//! The `World` struct maintains the `next_entity_id` counter in memory. If the `World` instance
+//! is dropped, this counter is lost. When using a persistent engine, you must manually manage
+//! entity ID generation or serialize the `World` state to persist this counter.
 
 use relvar_core::database::{Database, DatabaseError};
 use relvar_core::storage_engine::StorageEngine;

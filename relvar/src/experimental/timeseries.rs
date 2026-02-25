@@ -38,6 +38,7 @@ use relvar_core::values::{Relation, ScalarValue};
 /// use relvar::{tuple, Relation, RelationType, TupleType, ScalarType};
 /// use relvar::experimental::timeseries::moving_average;
 ///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create a relation with (time, value)
 /// let mut rel = Relation::new(RelationType::new(
 ///     TupleType::new()
@@ -45,15 +46,27 @@ use relvar_core::values::{Relation, ScalarValue};
 ///         .with_attribute("value", ScalarType::Float)
 /// ));
 ///
-/// rel.insert(tuple! { time: 1, value: 10.0 }).unwrap();
-/// rel.insert(tuple! { time: 2, value: 20.0 }).unwrap();
-/// rel.insert(tuple! { time: 3, value: 30.0 }).unwrap();
+/// rel.insert(tuple! { time: 1, value: 10.0 })?;
+/// rel.insert(tuple! { time: 2, value: 20.0 })?;
+/// rel.insert(tuple! { time: 3, value: 30.0 })?;
 ///
 /// // Compute 2-period moving average
-/// let result = moving_average(&rel, "time", "value", 2, &[]).unwrap();
+/// let result = moving_average(&rel, "time", "value", 2, &[])?;
 ///
 /// // Result at time 3: avg(20, 30) = 25.0
+/// let t3 = result.tuples().find(|t| t.get_typed::<i64>("time") == Some(3)).unwrap();
+/// assert_eq!(t3.get_typed::<f64>("moving_avg"), Some(25.0));
+/// # Ok(())
+/// # }
 /// ```
+///
+/// # Known Issues
+///
+/// * **Attribute Naming Collision**: This function works by self-joining the relation. To do this,
+///   it renames the attributes of the "previous" relation by appending `_prev` to them.
+///   If your input relation already contains attributes ending in `_prev` that would conflict
+///   with these generated names, the function will fail (panic or return error depending on the exact conflict).
+///   **Workaround**: Ensure input attributes do not end with `_prev`.
 pub fn moving_average(
     relation: &Relation,
     time_attr: &str,

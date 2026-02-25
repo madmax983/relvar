@@ -6,11 +6,11 @@
 //!
 //! # Included Tools
 //!
-//! - **[`exporter`]:** Export relations to standard formats like CSV, JSON, and ASCII tables.
+//! - **[`exporter`](crate::tools::exporter):** Export relations to standard formats like CSV, JSON, and ASCII tables.
 //!   Useful for reporting, backups, or integrating with other systems.
-//! - **[`importer`]:** Import data from JSON and CSV. Features strict type checking
+//! - **[`importer`](crate::tools::importer):** Import data from JSON and CSV. Features strict type checking
 //!   and limit enforcement (DoS protection).
-//! - **[`visualizer`]:** Generate Graphviz DOT diagrams of your database schema,
+//! - **[`visualizer`](crate::tools::visualizer):** Generate Graphviz DOT diagrams of your database schema,
 //!   showing tables, columns, keys, and relationships.
 //!
 //! # Example: Import, Visualize, and Export

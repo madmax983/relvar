@@ -14,40 +14,40 @@
 //! # Example
 //!
 //! ```
+//! use relvar::{Database, InMemoryEngine, tuple};
+//! use relvar::{RelationType, ScalarType, TupleType};
+//! use relvar::{ScalarValue, Relation};
 //! use relvar::experimental::automl::NaiveBayesClassifier;
-//! use relvar_core::Database;
-//! use relvar_core::storage_engine::InMemoryEngine;
-//! use relvar_core::types::{RelationType, ScalarType, TupleType};
-//! use relvar_core::values::{Relation, ScalarValue};
-//! use relvar_core::tuple;
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let mut db = Database::new(InMemoryEngine::new());
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // 1. Setup Database
+//! let mut db = Database::new(InMemoryEngine::new());
 //!
-//!     // 1. Create Training Data
-//!     let heading = TupleType::new()
-//!         .with_attribute("outlook", ScalarType::String)
-//!         .with_attribute("humidity", ScalarType::String)
-//!         .with_attribute("play", ScalarType::String);
+//! // 2. Create Training Data Schema
+//! let heading = TupleType::new()
+//!     .with_attribute("outlook", ScalarType::String)
+//!     .with_attribute("humidity", ScalarType::String)
+//!     .with_attribute("play", ScalarType::String);
 //!
-//!     let rel_type = RelationType::new(heading);
-//!     db.create_relvar("GOLF", rel_type)?;
+//! db.create_relvar("GOLF", RelationType::new(heading))?;
 //!
-//!     db.insert("GOLF", tuple! { outlook: "sunny", humidity: "high", play: "no" })?;
-//!     db.insert("GOLF", tuple! { outlook: "overcast", humidity: "normal", play: "yes" })?;
-//!     // ... more data ...
+//! // 3. Insert Training Data
+//! db.insert("GOLF", tuple! { outlook: "sunny", humidity: "high", play: "no" })?;
+//! db.insert("GOLF", tuple! { outlook: "overcast", humidity: "normal", play: "yes" })?;
+//! // ... (in real usage, you'd add more data) ...
 //!
-//!     // 2. Train Model
-//!     let golf = db.query("GOLF")?;
-//!     let model = NaiveBayesClassifier::train(&golf, "play")?;
+//! // 4. Train Model
+//! let golf = db.query("GOLF")?;
+//! let model = NaiveBayesClassifier::train(&golf, "play")?;
 //!
-//!     // 3. Predict
-//!     let t = tuple! { outlook: "sunny", humidity: "high" };
-//!     let prediction = model.predict(&t);
+//! // 5. Predict
+//! let t = tuple! { outlook: "sunny", humidity: "high" };
+//! let prediction = model.predict(&t);
 //!
-//!     assert_eq!(prediction, ScalarValue::String("no".to_string()));
-//!     Ok(())
-//! }
+//! // With very limited data (sunny=no, overcast=yes), sunny predicts "no"
+//! assert_eq!(prediction, ScalarValue::String("no".to_string()));
+//! # Ok(())
+//! # }
 //! ```
 
 use relvar_core::algebra::summarize::Aggregation;
@@ -83,6 +83,11 @@ impl NaiveBayesClassifier {
     ///
     /// * `relation` - The relation containing training data.
     /// * `target_attr` - The name of the target attribute (class label).
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError::AttributeNotFound` if `target_attr` is not in the relation.
+    /// Returns `DatabaseError::AlgebraError` if internal algebra operations fail.
     pub fn train(relation: &Relation, target_attr: &str) -> Result<Self, DatabaseError> {
         let heading = relation.relation_type().heading();
 

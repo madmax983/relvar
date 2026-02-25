@@ -5,15 +5,15 @@
 //!
 //! # Included Features
 //!
-//! - **Pivot**: Operator to rotate unique values from one column into multiple columns.
-//! - **Mock**: Tools for generating random relations for testing.
-//! - **Spatial**: Spatial data types.
-//! - **Search**: Relational Full-Text Search.
-//! - **Image**: Relational Image Processing (RIP).
-//! - **Graph**: Relational Graph Analytics (BFS, PageRank).
-//! - **AutoML**: Relational Machine Learning (Naive Bayes).
-//! - **Time Series**: Relational Time Series Analysis (Moving Averages).
-//! - **ECS**: Relational Entity Component System.
+//! - **[`automl`](crate::experimental::automl)**: Relational Machine Learning (Naive Bayes).
+//! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
+//! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
+//! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
+//! - **[`mock`](crate::experimental::mock)**: Tools for generating random relations for testing.
+//! - **[`pivot`](crate::experimental::pivot)**: Operator to rotate unique values from one column into multiple columns.
+//! - **[`search`](crate::experimental::search)**: Relational Full-Text Search.
+//! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
+//! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 
 pub mod automl;
 pub mod ecs;

@@ -7,35 +7,36 @@
 //! # Example: Breadth-First Search (BFS)
 //!
 //! ```
+//! use relvar::{Relation, RelationType, ScalarType, TupleType, ScalarValue, tuple};
 //! use relvar::experimental::graph::Graph;
-//! use relvar_core::values::{Relation, ScalarValue};
-//! use relvar_core::types::{RelationType, TupleType, ScalarType};
-//! use relvar_core::tuple;
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // 1. Define Nodes: {id}
 //! let node_heading = TupleType::new().with_attribute("id", ScalarType::Int);
 //! let mut nodes = Relation::new(RelationType::new(node_heading));
-//! nodes.insert(tuple! { id: 1i64 }).unwrap();
-//! nodes.insert(tuple! { id: 2i64 }).unwrap();
-//! nodes.insert(tuple! { id: 3i64 }).unwrap();
+//! nodes.insert(tuple! { id: 1i64 })?;
+//! nodes.insert(tuple! { id: 2i64 })?;
+//! nodes.insert(tuple! { id: 3i64 })?;
 //!
 //! // 2. Define Edges: {from, to}
 //! let edge_heading = TupleType::new()
 //!     .with_attribute("from", ScalarType::Int)
 //!     .with_attribute("to", ScalarType::Int);
 //! let mut edges = Relation::new(RelationType::new(edge_heading));
-//! edges.insert(tuple! { from: 1i64, to: 2i64 }).unwrap();
-//! edges.insert(tuple! { from: 2i64, to: 3i64 }).unwrap();
+//! edges.insert(tuple! { from: 1i64, to: 2i64 })?;
+//! edges.insert(tuple! { from: 2i64, to: 3i64 })?;
 //!
 //! // 3. Create Graph View
 //! let graph = Graph::new(nodes, edges, "id", "from", "to");
 //!
 //! // 4. Run BFS from node 1
-//! let distances = graph.bfs(ScalarValue::Int(1)).unwrap();
+//! let distances = graph.bfs(ScalarValue::Int(1))?;
 //!
 //! // Result: 1->0, 2->1, 3->2
 //! let t3 = distances.tuples().find(|t| t.get_typed::<i64>("id") == Some(3)).unwrap();
-//! assert_eq!(t3.get_typed::<i64>("distance").unwrap(), 2);
+//! assert_eq!(t3.get_typed::<i64>("distance"), Some(2));
+//! # Ok(())
+//! # }
 //! ```
 
 use relvar_core::algebra::summarize::Aggregation;
@@ -86,6 +87,11 @@ impl Graph {
     ///
     /// Returns a relation with heading `(node_id, distance)` containing all
     /// reachable nodes and their shortest distance from the start node.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError::AlgebraError` if internal relational operations (Join, Project, etc.) fail,
+    /// typically due to schema mismatches or invalid attribute names.
     pub fn bfs(&self, start_node_id: ScalarValue) -> Result<Relation, DatabaseError> {
         // 1. Initialize result schema: (node_id, distance)
         let result_heading = TupleType::new()
@@ -215,6 +221,10 @@ impl Graph {
     /// # Returns
     ///
     /// A relation with heading `(node_id, rank)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError::AlgebraError` if internal relational operations fail.
     pub fn pagerank(
         &self,
         iterations: usize,
