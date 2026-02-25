@@ -14,11 +14,13 @@
 //! - **AutoML**: Relational Machine Learning (Naive Bayes).
 //! - **Time Series**: Relational Time Series Analysis (Moving Averages).
 //! - **ECS**: Relational Entity Component System.
+//! - **Life**: Relational Conway's Game of Life.
 
 pub mod automl;
 pub mod ecs;
 pub mod graph;
 pub mod image;
+pub mod life;
 pub mod mock;
 pub mod pivot;
 pub mod search;
