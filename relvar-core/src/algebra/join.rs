@@ -111,27 +111,10 @@ impl Relation {
         let result_heading_arc = Arc::new(result_heading);
 
         // Perform Hash Join
+        let (build_rel, probe_rel) = determine_hash_join_sides(self, other);
 
-        // Determine Build and Probe sides
-        // We want the smaller relation to be the build side to minimize hash map size.
-        // This optimization ensures O(min(N, M)) memory usage for the hash table.
-        let (build_rel, probe_rel) = if self.cardinality() <= other.cardinality() {
-            (self, other)
-        } else {
-            (other, self)
-        };
-
-        let joined_tuples = if common_attrs.len() == 1 {
-            // Optimization for single-attribute joins:
-            // Use HashMap<&ScalarValue, Vec<&Tuple>> instead of HashMap<Vec<&ScalarValue>, ...>
-            // to avoid allocating a Vec for every key in the build relation.
-            let attr = &common_attrs[0];
-            let build_map = build_join_map_single(build_rel, attr)?;
-            probe_and_combine_single(probe_rel, &build_map, attr, &result_heading_arc)?
-        } else {
-            let build_map = build_join_map(build_rel, &common_attrs)?;
-            probe_and_combine(probe_rel, &build_map, &common_attrs, &result_heading_arc)?
-        };
+        let joined_tuples =
+            perform_hash_join(build_rel, probe_rel, &common_attrs, &result_heading_arc)?;
 
         Ok(Relation::from_tuples(result_rel_type, joined_tuples)?)
     }
@@ -214,19 +197,7 @@ impl Relation {
         let result_heading_arc = Arc::new(result_heading);
 
         // Perform theta join
-        let mut joined_tuples = Vec::new();
-
-        for tuple1 in self.tuples() {
-            for tuple2 in other.tuples() {
-                if !predicate(tuple1, tuple2) {
-                    continue;
-                }
-
-                if let Ok(combined_tuple) = combine_tuples(tuple1, tuple2, &result_heading_arc) {
-                    joined_tuples.push(combined_tuple);
-                }
-            }
-        }
+        let joined_tuples = compute_theta_join_tuples(self, other, predicate, &result_heading_arc);
 
         Relation::from_tuples(result_rel_type, joined_tuples)
             .expect("Joined tuples should conform to result relation type")
@@ -378,6 +349,64 @@ fn probe_and_combine<'t, 'a>(
         }
     }
     Ok(joined_tuples)
+}
+
+/// Helper to determine which relation should be the build side (smaller) and which the probe side (larger).
+/// Returns (build_rel, probe_rel).
+fn determine_hash_join_sides<'a>(
+    left: &'a Relation,
+    right: &'a Relation,
+) -> (&'a Relation, &'a Relation) {
+    if left.cardinality() <= right.cardinality() {
+        (left, right)
+    } else {
+        (right, left)
+    }
+}
+
+/// Helper to perform the hash join logic, dispatching between single-attribute optimization and general case.
+fn perform_hash_join(
+    build_rel: &Relation,
+    probe_rel: &Relation,
+    common_attrs: &[String],
+    result_heading: &Arc<TupleType>,
+) -> Result<Vec<Tuple>, DatabaseError> {
+    if common_attrs.len() == 1 {
+        // Optimization for single-attribute joins
+        let attr = &common_attrs[0];
+        let build_map = build_join_map_single(build_rel, attr)?;
+        probe_and_combine_single(probe_rel, &build_map, attr, result_heading)
+    } else {
+        let build_map = build_join_map(build_rel, common_attrs)?;
+        probe_and_combine(probe_rel, &build_map, common_attrs, result_heading)
+    }
+}
+
+/// Helper to compute tuples for a theta join by iterating through the Cartesian product
+/// and filtering with the predicate.
+fn compute_theta_join_tuples<F>(
+    left: &Relation,
+    right: &Relation,
+    predicate: F,
+    result_heading: &Arc<TupleType>,
+) -> Vec<Tuple>
+where
+    F: Fn(&Tuple, &Tuple) -> bool,
+{
+    let mut joined_tuples = Vec::new();
+
+    for tuple1 in left.tuples() {
+        for tuple2 in right.tuples() {
+            if !predicate(tuple1, tuple2) {
+                continue;
+            }
+
+            if let Ok(combined_tuple) = combine_tuples(tuple1, tuple2, result_heading) {
+                joined_tuples.push(combined_tuple);
+            }
+        }
+    }
+    joined_tuples
 }
 
 /// Helper to combine two tuples into a single tuple.
