@@ -161,3 +161,13 @@ The JSON importer (`relvar::tools::importer`) enforced `MAX_IMPORT_ROWS` (100,00
 2. Propagated this counter to all `Visitor` and `Seed` implementations (`RelationVisitor`, `TupleVisitor`, `ScalarValueVisitor`).
 3. Enforced `MAX_IMPORT_ROWS` check and increment logic within `RelationVisitor::visit_seq` (top-level) and `ScalarValueVisitor::visit_seq` (nested relations).
 4. This ensures the total number of tuples imported across all nesting levels cannot exceed the limit.
+
+## 2026-02-20 - ScalarType/ScalarValue Recursion DoS
+**Threat:**
+`ScalarType` and `ScalarValue` deserialization were vulnerable to stack overflow attacks via deeply nested structures (e.g., `UserDefined` wrapping `UserDefined` recursively). While `serde_json` provides a default recursion limit, other formats like `bincode` do not. An attacker could craft a malicious payload that causes the application to crash with a stack overflow during deserialization, leading to a Denial of Service (DoS).
+
+**Defense:**
+1. Implemented a shared `RecursionGuard` and `DepthGuarded<T>` wrapper in `relvar-core/src/utils/recursion.rs`.
+2. This guard enforces a strict recursion limit (`MAX_RECURSION_DEPTH = 64`) using a thread-local counter during deserialization.
+3. Updated `ScalarValue` and `ScalarType` internal deserialization logic (`ScalarValueUnchecked`, `ScalarTypeUnchecked`) to wrap recursive fields in `DepthGuarded`.
+4. This ensures that any deserialization attempt exceeding the limit fails gracefully with a "Recursion limit exceeded" error, regardless of the underlying format (JSON, Bincode, etc.).

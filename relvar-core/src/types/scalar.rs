@@ -28,6 +28,7 @@
 //! assert_ne!(widget_id, supplier_id);
 //! ```
 
+use crate::utils::recursion::DepthGuarded;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use thiserror::Error;
@@ -737,10 +738,10 @@ enum ScalarTypeUnchecked {
     String,
     Bool,
     Bytes,
-    Relation(Box<crate::types::RelationType>),
+    Relation(DepthGuarded<Box<crate::types::RelationType>>),
     UserDefined {
         name: String,
-        representation: Box<ScalarTypeUnchecked>,
+        representation: Box<DepthGuarded<ScalarTypeUnchecked>>,
     },
 }
 
@@ -754,12 +755,13 @@ impl TryFrom<ScalarTypeUnchecked> for ScalarType {
             ScalarTypeUnchecked::String => ScalarType::String,
             ScalarTypeUnchecked::Bool => ScalarType::Bool,
             ScalarTypeUnchecked::Bytes => ScalarType::Bytes,
-            ScalarTypeUnchecked::Relation(rel) => ScalarType::Relation(rel),
+            ScalarTypeUnchecked::Relation(rel) => ScalarType::Relation(rel.0),
             ScalarTypeUnchecked::UserDefined {
                 name,
                 representation,
             } => {
-                let inner = ScalarType::try_from(*representation)?;
+                // Explicitly dereference the Box to access the inner DepthGuarded value
+                let inner = ScalarType::try_from((*representation).0)?;
                 ScalarType::UserDefined {
                     name,
                     representation: Box::new(inner),
