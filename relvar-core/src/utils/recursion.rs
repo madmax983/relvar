@@ -1,5 +1,5 @@
-use std::cell::Cell;
 use serde::Deserialize;
+use std::cell::Cell;
 
 thread_local! {
     static RECURSION_DEPTH: Cell<usize> = const { Cell::new(0) };
