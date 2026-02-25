@@ -33,7 +33,7 @@
 //! assert_eq!(employees.cardinality(), 2);  // Still 2, not 3
 //! ```
 
-use crate::types::RelationType;
+use crate::types::{RelationType, TupleType};
 use crate::values::Tuple;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -255,11 +255,26 @@ impl Relation {
         // Use lower bound as a conservative estimate to avoid over-allocation if upper is None or very large
         let mut body = HashSet::with_capacity(lower);
 
+        let expected_heading = relation_type.heading();
+
+        // Optimization: Cache pointer to last checked TupleType to avoid repeated deep comparisons
+        // when inserting many tuples that share the same Arc<TupleType> (common case).
+        let mut last_checked_type_ptr: Option<*const TupleType> = None;
+
         for tuple in iter {
-            // Verify tuple conforms to the relation type
-            if tuple.tuple_type() != relation_type.heading() {
-                return Err(RelationError::TypeMismatch);
+            let current_type_ref = tuple.tuple_type();
+            let current_type_ptr = current_type_ref as *const TupleType;
+
+            // Fast path: if pointer is same as last checked (which we know is valid), skip check
+            if Some(current_type_ptr) != last_checked_type_ptr {
+                // Slow path: full comparison
+                if current_type_ref != expected_heading {
+                    return Err(RelationError::TypeMismatch);
+                }
+                // If match, update cache
+                last_checked_type_ptr = Some(current_type_ptr);
             }
+
             body.insert(tuple);
         }
 
@@ -632,5 +647,38 @@ mod tests {
 
         let count = relation.tuples().count();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_from_tuples_optimization_correctness() {
+        let heading = emp_type();
+        let rel_type = RelationType::new(heading.clone());
+
+        // Create a valid tuple
+        let valid_tuple = tuple! { emp_id: 1i64, name: "Alice" };
+
+        // Create an invalid tuple (wrong type)
+        // Note: tuple! macro creates a tuple with inferred type from values.
+        // So this tuple has a different TupleType than 'heading'.
+        let invalid_tuple = tuple! { emp_id: 2i64, name: 12345 }; // Name is Int, expected String
+
+        // Case 1: All valid (optimization path should work)
+        let tuples = vec![valid_tuple.clone(), valid_tuple.clone()];
+        let rel = Relation::from_tuples(rel_type.clone(), tuples);
+        assert!(rel.is_ok());
+
+        // Case 2: Mix valid and invalid (optimization should not hide error)
+        // The first tuple sets the cached valid pointer.
+        // The second tuple has a different pointer (and type), so it should be checked and fail.
+        let tuples = vec![valid_tuple.clone(), invalid_tuple.clone()];
+        let rel = Relation::from_tuples(rel_type.clone(), tuples);
+        assert!(rel.is_err());
+        assert!(matches!(rel.unwrap_err(), RelationError::TypeMismatch));
+
+        // Case 3: Invalid first
+        // The first tuple fails immediately.
+        let tuples = vec![invalid_tuple.clone(), valid_tuple.clone()];
+        let rel = Relation::from_tuples(rel_type.clone(), tuples);
+        assert!(rel.is_err());
     }
 }
