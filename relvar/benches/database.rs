@@ -466,7 +466,8 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
 
                         fn high_earners_evaluator(
                             db: &relvar::Database<relvar::PersistentEngine>,
-                        ) -> Result<relvar::Relation, relvar::DatabaseError> {
+                        ) -> Result<relvar::Relation, relvar::DatabaseError>
+                        {
                             Ok(db
                                 .query("EMP")?
                                 .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
