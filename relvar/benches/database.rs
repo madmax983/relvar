@@ -428,7 +428,7 @@ fn bench_virtual_relvar_creation(c: &mut Criterion) {
                 let emp_type = create_employee_type();
 
                 fn evaluator(
-                    db: &dyn relvar::QueryExecutor,
+                    db: &relvar::Database<relvar::PersistentEngine>,
                 ) -> Result<relvar::Relation, relvar::DatabaseError> {
                     Ok(db
                         .query("EMP")?
@@ -465,9 +465,8 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
                         let emp_type = create_employee_type();
 
                         fn high_earners_evaluator(
-                            db: &dyn relvar::QueryExecutor,
-                        ) -> Result<relvar::Relation, relvar::DatabaseError>
-                        {
+                            db: &relvar::Database<relvar::PersistentEngine>,
+                        ) -> Result<relvar::Relation, relvar::DatabaseError> {
                             Ok(db
                                 .query("EMP")?
                                 .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
