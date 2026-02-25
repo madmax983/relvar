@@ -131,12 +131,24 @@ impl ConstraintManager {
 
         // Validate constraints against existing data
         let relation = engine.load_relation(relation_name)?;
+        self.validate_foreign_keys_against_existing_data(engine, &relation, &constraints)?;
 
+        self.foreign_key_constraints
+            .insert(relation_name.to_string(), constraints);
+        Ok(())
+    }
+
+    fn validate_foreign_keys_against_existing_data<E: StorageEngine>(
+        &self,
+        engine: &mut E,
+        relation: &Relation,
+        constraints: &ForeignKeyConstraints,
+    ) -> Result<(), ConstraintManagerError> {
         for fk in constraints.foreign_keys() {
             let referenced_relation = engine.load_relation(fk.referenced_relation_name())?;
 
             if !fk
-                .is_satisfied_by(&relation, &referenced_relation)
+                .is_satisfied_by(relation, &referenced_relation)
                 .map_err(|e| ConstraintManagerError::ForeignKeyViolation(e.to_string()))?
             {
                 return Err(ConstraintManagerError::ForeignKeyViolation(
@@ -144,9 +156,6 @@ impl ConstraintManager {
                 ));
             }
         }
-
-        self.foreign_key_constraints
-            .insert(relation_name.to_string(), constraints);
         Ok(())
     }
 
@@ -169,7 +178,25 @@ impl ConstraintManager {
 
         // Validate constraints against existing data
         let relation = engine.load_relation(relation_name)?;
+        self.validate_type_constraints_against_existing_data(
+            &relation,
+            attribute_name,
+            &constraints,
+        )?;
 
+        self.type_constraints
+            .entry(relation_name.to_string())
+            .or_default()
+            .insert(attribute_name.to_string(), constraints);
+        Ok(())
+    }
+
+    fn validate_type_constraints_against_existing_data(
+        &self,
+        relation: &Relation,
+        attribute_name: &str,
+        constraints: &AttributeConstraints,
+    ) -> Result<(), ConstraintManagerError> {
         for tuple in relation.tuples() {
             if let Some(value) = tuple.get(attribute_name)
                 && !constraints
@@ -181,11 +208,6 @@ impl ConstraintManager {
                 ));
             }
         }
-
-        self.type_constraints
-            .entry(relation_name.to_string())
-            .or_default()
-            .insert(attribute_name.to_string(), constraints);
         Ok(())
     }
 
@@ -202,6 +224,23 @@ impl ConstraintManager {
             ));
         }
 
+        self.validate_check_constraint_attributes(engine, relation_name, &constraints)?;
+
+        // Validate constraints against existing data
+        let relation = engine.load_relation(relation_name)?;
+        self.validate_check_constraints_against_existing_data(&relation, &constraints)?;
+
+        self.check_constraints
+            .insert(relation_name.to_string(), constraints);
+        Ok(())
+    }
+
+    fn validate_check_constraint_attributes<E: StorageEngine>(
+        &self,
+        engine: &E,
+        relation_name: &str,
+        constraints: &CheckConstraints,
+    ) -> Result<(), ConstraintManagerError> {
         // Validate that all referenced attributes exist in the relation
         let metadata = engine.get_relation_metadata(relation_name)?;
         let heading = metadata.relation_type.heading();
@@ -214,16 +253,17 @@ impl ConstraintManager {
                 ));
             }
         }
+        Ok(())
+    }
 
-        // Validate constraints against existing data
-        let relation = engine.load_relation(relation_name)?;
-
+    fn validate_check_constraints_against_existing_data(
+        &self,
+        relation: &Relation,
+        constraints: &CheckConstraints,
+    ) -> Result<(), ConstraintManagerError> {
         for tuple in relation.tuples() {
             constraints.are_all_satisfied_by(tuple)?;
         }
-
-        self.check_constraints
-            .insert(relation_name.to_string(), constraints);
         Ok(())
     }
 
