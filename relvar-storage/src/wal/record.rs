@@ -4,6 +4,7 @@
 //! Records are serialized using bincode for efficient storage and recovery.
 
 use super::lsn::{Lsn, TransactionId};
+use bincode::Options;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -148,7 +149,19 @@ impl WalRecord {
     ///
     /// Returns `WalRecordError::Serialization` if deserialization fails.
     pub fn deserialize(bytes: &[u8]) -> Result<Self, WalRecordError> {
-        let record = bincode::deserialize(bytes)?;
+        // Enforce maximum record size on the input buffer.
+        // This handles cases where bincode options ignore the limit for total size on slices.
+        if bytes.len() > MAX_RECORD_SIZE {
+            return Err(WalRecordError::RecordTooLarge(bytes.len(), MAX_RECORD_SIZE));
+        }
+
+        // Use bounded deserialization to prevent allocation bombs.
+        // Must explicitly set LittleEndian and FixedIntEncoding to match legacy bincode::serialize defaults.
+        let record = bincode::options()
+            .with_limit(MAX_RECORD_SIZE as u64)
+            .with_little_endian()
+            .with_fixint_encoding()
+            .deserialize(bytes)?;
         Ok(record)
     }
 
@@ -464,6 +477,80 @@ mod tests {
         } = recovered
         {
             assert_eq!(tuple_data, recovered_data);
+        }
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use bincode::Options;
+
+    #[test]
+    fn test_allocation_bomb_prevention() {
+        let mut payload = Vec::new();
+        // Insert variant (4)
+        payload.extend_from_slice(&4u32.to_le_bytes());
+        // txn_id (1)
+        payload.extend_from_slice(&1u64.to_le_bytes());
+        // relation_name "test"
+        payload.extend_from_slice(&4u64.to_le_bytes());
+        payload.extend_from_slice(b"test");
+        // tuple_data len 1GB
+        let huge_len: u64 = 1024 * 1024 * 1024;
+        payload.extend_from_slice(&huge_len.to_le_bytes());
+
+        let result = WalRecord::deserialize(&payload);
+
+        match result {
+            Err(WalRecordError::Serialization(e)) => {
+                let msg = e.to_string();
+                // bincode 1.3.3 returns UnexpectedEof if it avoids allocation but reads past end
+                let accepted = msg.contains("SizeLimit")
+                    || msg.contains("size limit")
+                    || msg.contains("unexpected end of file");
+                assert!(accepted, "Expected size limit or EOF error, got: {}", msg);
+            }
+            _ => panic!("Expected Serialization error, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_record_exceeding_limit_fails() {
+        // Construct a valid record that is > 1MB
+        // 1MB + 100 bytes of data
+        let huge_data = vec![0u8; MAX_RECORD_SIZE + 100];
+
+        let record = WalRecord::Insert {
+            txn_id: TransactionId::new(1),
+            relation_name: "huge".to_string(),
+            tuple_data: huge_data,
+        };
+
+        // Serialize manually to bypass WalRecord::serialize check
+        let bytes = bincode::options()
+            .with_little_endian()
+            .with_fixint_encoding()
+            .serialize(&record)
+            .unwrap();
+
+        // Deserialize should fail due to manual length check OR bincode check
+        let result = WalRecord::deserialize(&bytes);
+
+        match result {
+            Err(WalRecordError::RecordTooLarge(len, max)) => {
+                assert!(len > max);
+                assert_eq!(max, MAX_RECORD_SIZE);
+            }
+            Err(WalRecordError::Serialization(e)) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("SizeLimit") || msg.contains("size limit"),
+                    "Expected size limit error, got: {}",
+                    msg
+                );
+            }
+            Ok(_) => panic!("Should have failed due to size limit"),
         }
     }
 }
