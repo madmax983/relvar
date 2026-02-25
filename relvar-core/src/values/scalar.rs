@@ -428,9 +428,24 @@ impl Ord for ScalarValue {
                     (ScalarValue::Bool(a), ScalarValue::Bool(b)) => a.cmp(b),
                     (ScalarValue::Bytes(a), ScalarValue::Bytes(b)) => a.cmp(b),
                     (ScalarValue::Relation(a), ScalarValue::Relation(b)) => {
-                        // For relations, order by cardinality first, then degree
-                        match a.cardinality().cmp(&b.cardinality()) {
-                            Ordering::Equal => a.degree().cmp(&b.degree()),
+                        // 1. Compare relation types (headings)
+                        match a.relation_type().cmp(b.relation_type()) {
+                            Ordering::Equal => {
+                                // 2. Compare cardinality (optimization: different sizes can't be equal)
+                                match a.cardinality().cmp(&b.cardinality()) {
+                                    Ordering::Equal => {
+                                        // 3. Compare sorted tuples (expensive but necessary for correctness)
+                                        // Relations are sets, so to compare them deterministically as values,
+                                        // we must sort their elements.
+                                        let mut tuples_a: Vec<_> = a.tuples().collect();
+                                        let mut tuples_b: Vec<_> = b.tuples().collect();
+                                        tuples_a.sort();
+                                        tuples_b.sort();
+                                        tuples_a.cmp(&tuples_b)
+                                    }
+                                    other => other,
+                                }
+                            }
                             other => other,
                         }
                     }

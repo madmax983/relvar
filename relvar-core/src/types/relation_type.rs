@@ -60,7 +60,7 @@ use serde::{Deserialize, Serialize};
 /// assert!(employee_type.has_attribute("emp_id"));
 /// assert!(!employee_type.has_attribute("salary"));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RelationType {
     /// The heading (tuple type) that defines this relation type.
     heading: TupleType,
