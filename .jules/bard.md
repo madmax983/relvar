@@ -34,3 +34,11 @@ This ensures the map matches the territory.
 ## 2024-05-27 - The Ghost Variants
 **Confusion:** The `ScalarValueError` and `RelationError` enums had variants that were technically public but lacked documentation explaining *when* they occur or *what* they mean. This forced users to guess based on the variant name.
 **Clarification:** I've added detailed documentation to these enum variants, explaining the specific conditions that trigger them (e.g., `NotUserDefined` only happens when calling `observer()` on a built-in type).
+
+## 2024-05-27 - Relational Graph Algorithms
+**Confusion:** Implementing graph algorithms like BFS in a relational database seems counter-intuitive because they are inherently recursive/iterative, while SQL queries are typically declarative sets.
+**Clarification:** I've documented how "Semi-Naive Evaluation" allows us to implement these algorithms using standard relational operators (`JOIN`, `UNION`, `DIFFERENCE`) in a loop. The "frontier" set acts as the state carried between iterations.
+
+## 2024-05-27 - ECS on Relational DB
+**Confusion:** Entity Component Systems (ECS) are usually associated with high-performance arrays and structure-of-arrays (SoA) layouts, not relational databases.
+**Clarification:** I've clarified that ECS concepts map directly to relational theory: Entity = ID, Component = Relation, System = Query + Update. The `World` struct in `relvar` acts as the coordinator, and `run_update_system` demonstrates how to perform efficient batch updates using joins.

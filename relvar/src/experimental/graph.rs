@@ -1,8 +1,17 @@
 //! Relational Graph Analytics.
 //!
 //! This module demonstrates how graph algorithms can be implemented using
-//! pure relational algebra operations. It provides a `Graph` abstraction
-//! over node and edge relations and implements BFS and PageRank.
+//! pure relational algebra operations. It provides a [`Graph`] abstraction
+//! over node and edge relations and implements Breadth-First Search (BFS) and PageRank.
+//!
+//! # Concepts
+//!
+//! Graph algorithms in a relational database are typically implemented using "Semi-Naive Evaluation"
+//! or iterative fixed-point algorithms. Instead of traversing pointers or references, we use set operations:
+//!
+//! - **Traversal** is a `JOIN` between a "frontier" set of nodes and the "edges" relation.
+//! - **Filtering** visited nodes is a set `DIFFERENCE` operation.
+//! - **Aggregation** (like PageRank sums) is done via `SUMMARIZE`.
 //!
 //! # Example: Breadth-First Search (BFS)
 //!
@@ -45,6 +54,11 @@ use relvar_core::values::{Relation, ScalarValue, Tuple};
 
 /// A graph wrapper around relational data.
 ///
+/// This struct does not own the data but operates on clones or references to the underlying relations.
+/// It provides a graph-oriented API (BFS, PageRank) over standard relational tables.
+///
+/// # Structure
+///
 /// A graph consists of:
 /// - A `nodes` relation containing at least a unique identifier attribute.
 /// - An `edges` relation containing source and target node identifiers.
@@ -84,7 +98,20 @@ impl Graph {
 
     /// Performs a Breadth-First Search (BFS) starting from a given node.
     ///
-    /// Returns a relation with heading `(node_id, distance)` containing all
+    /// This method computes the shortest path distance from the `start_node_id` to all other reachable nodes.
+    /// It uses an iterative approach based on relational algebra:
+    ///
+    /// 1. **Initialize**: Create a `visited` relation with `(start_node, 0)`.
+    /// 2. **Iterate**:
+    ///    - `JOIN` the current frontier with the `edges` relation to find neighbors.
+    ///    - `PROJECT` to keep only the neighbors and increment the distance.
+    ///    - `DIFFERENCE` to remove nodes that have already been visited.
+    ///    - `UNION` the new nodes into the `visited` set.
+    /// 3. **Terminate**: Stop when no new nodes are found.
+    ///
+    /// # Returns
+    ///
+    /// A [`Relation`] with heading `(node_id, distance)` containing all
     /// reachable nodes and their shortest distance from the start node.
     pub fn bfs(&self, start_node_id: ScalarValue) -> Result<Relation, DatabaseError> {
         // 1. Initialize result schema: (node_id, distance)
@@ -207,14 +234,46 @@ impl Graph {
 
     /// Computes PageRank for all nodes in the graph.
     ///
+    /// This implementation uses the iterative "Power Method" to compute PageRank.
+    ///
     /// # Arguments
     ///
-    /// * `iterations` - Number of iterations to run.
-    /// * `damping_factor` - Probability of following a link (usually 0.85).
+    /// * `iterations` - Number of iterations to run (convergence usually happens within 20-50 iterations).
+    /// * `damping_factor` - Probability of following a link (typically 0.85). The remaining probability (0.15) is for teleporting to a random node.
     ///
     /// # Returns
     ///
-    /// A relation with heading `(node_id, rank)`.
+    /// A [`Relation`] with heading `(node_id, rank)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::experimental::graph::Graph;
+    /// use relvar_core::values::{Relation, ScalarValue};
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// // Define a simple cycle: 1 <-> 2
+    /// let node_heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let mut nodes = Relation::new(RelationType::new(node_heading));
+    /// nodes.insert(tuple! { id: 1i64 }).unwrap();
+    /// nodes.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// let edge_heading = TupleType::new().with_attribute("from", ScalarType::Int).with_attribute("to", ScalarType::Int);
+    /// let mut edges = Relation::new(RelationType::new(edge_heading));
+    /// edges.insert(tuple! { from: 1i64, to: 2i64 }).unwrap();
+    /// edges.insert(tuple! { from: 2i64, to: 1i64 }).unwrap();
+    ///
+    /// let graph = Graph::new(nodes, edges, "id", "from", "to");
+    ///
+    /// // Compute PageRank
+    /// let ranks = graph.pagerank(10, 0.85).unwrap();
+    ///
+    /// // Both nodes should have rank approx 0.5
+    /// let t1 = ranks.tuples().find(|t| t.get_typed::<i64>("id") == Some(1)).unwrap();
+    /// let r1 = t1.get_typed::<f64>("rank").unwrap();
+    /// assert!((r1 - 0.5).abs() < 0.01);
+    /// ```
     pub fn pagerank(
         &self,
         iterations: usize,

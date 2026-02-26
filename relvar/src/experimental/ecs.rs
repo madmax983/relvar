@@ -3,13 +3,13 @@
 //! This module demonstrates how a relational database can be used as the backend for
 //! an Entity Component System, a common architectural pattern in game development.
 //!
-//! # Concept
+//! # Concepts
 //!
-//! - **Entity**: A unique integer ID.
-//! - **Component**: A Relation where the first column is `entity_id`.
-//! - **System**: A function that queries components (joins them on `entity_id`) and updates them.
+//! - **Entity**: A unique integer ID (`Entity`).
+//! - **Component**: A relation where the first column is `entity_id`. Each component type corresponds to a named table (e.g., `C_Position`).
+//! - **System**: A function that queries components (joining them on `entity_id`) and updates one of them based on the result.
 //!
-//! # Usage
+//! # Example: Physics System
 //!
 //! ```
 //! use relvar::experimental::ecs::World;
@@ -21,30 +21,40 @@
 //! let mut world = World::new(InMemoryEngine::new());
 //!
 //! // 1. Define Components
+//! // "Position" component has x, y
 //! world.register_component("Position", &[("x", ScalarType::Float), ("y", ScalarType::Float)]).unwrap();
+//! // "Velocity" component has vx, vy
 //! world.register_component("Velocity", &[("vx", ScalarType::Float), ("vy", ScalarType::Float)]).unwrap();
 //!
 //! // 2. Create Entity
 //! let e = world.spawn().unwrap();
+//! // Add initial position (0, 0)
 //! world.add_component(e, "Position", tuple! { x: 0.0, y: 0.0 }).unwrap();
+//! // Add velocity (1, 1)
 //! world.add_component(e, "Velocity", tuple! { vx: 1.0, vy: 1.0 }).unwrap();
 //!
 //! // 3. Run System (Update Position based on Velocity)
-//! world.run_update_system("Position", &["Velocity"], |joined_tuple| {
+//! // This joins Position and Velocity on entity_id, calculates new position, and updates Position component.
+//! let count = world.run_update_system("Position", &["Velocity"], |joined_tuple| {
 //!     let x = joined_tuple.get_typed::<f64>("x").unwrap();
 //!     let y = joined_tuple.get_typed::<f64>("y").unwrap();
 //!     let vx = joined_tuple.get_typed::<f64>("vx").unwrap();
 //!     let vy = joined_tuple.get_typed::<f64>("vy").unwrap();
 //!
+//!     // Return the new values for the target component (Position)
+//!     // entity_id is automatically preserved
 //!     tuple! {
 //!         x: x + vx,
 //!         y: y + vy
 //!     }
 //! }).unwrap();
 //!
+//! assert_eq!(count, 1);
+//!
 //! // 4. Verify
 //! let pos = world.get_component(e, "Position").unwrap();
 //! assert_eq!(pos.get_typed::<f64>("x"), Some(1.0));
+//! assert_eq!(pos.get_typed::<f64>("y"), Some(1.0));
 //! ```
 
 use relvar_core::database::{Database, DatabaseError};
@@ -60,6 +70,9 @@ pub type Entity = i64;
 pub const ENTITY_ID_ATTR: &str = "entity_id";
 
 /// The main container for the ECS.
+///
+/// `World` manages the lifecycle of entities and components. It wraps a [`Database`]
+/// instance where each component type is stored as a separate relation (table).
 pub struct World<E: StorageEngine> {
     db: Database<E>,
     next_entity_id: Entity,
@@ -67,6 +80,15 @@ pub struct World<E: StorageEngine> {
 
 impl<E: StorageEngine> World<E> {
     /// Creates a new World with the given storage engine.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar::experimental::ecs::World;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let world = World::new(InMemoryEngine::new());
+    /// ```
     pub fn new(engine: E) -> Self {
         Self {
             db: Database::new(engine),
@@ -75,6 +97,8 @@ impl<E: StorageEngine> World<E> {
     }
 
     /// Spawns a new entity with a unique ID.
+    ///
+    /// This simply reserves an ID. No data is stored until components are added.
     pub fn spawn(&mut self) -> Result<Entity, DatabaseError> {
         let id = self.next_entity_id;
         self.next_entity_id += 1;
@@ -85,6 +109,11 @@ impl<E: StorageEngine> World<E> {
     ///
     /// A component is stored as a relation named `C_{name}`.
     /// It automatically gets an `entity_id` column as the Primary Key.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the component (e.g., "Position").
+    /// * `attributes` - A list of attribute names and types (excluding `entity_id`).
     pub fn register_component(
         &mut self,
         name: &str,
@@ -160,6 +189,8 @@ impl<E: StorageEngine> World<E> {
     }
 
     /// Gets a component for an entity.
+    ///
+    /// Returns the full tuple including `entity_id`.
     pub fn get_component(
         &self,
         entity: Entity,
@@ -177,12 +208,21 @@ impl<E: StorageEngine> World<E> {
 
     /// Runs a system that updates a target component based on joined data.
     ///
+    /// This method performs the following steps:
+    /// 1. **Join**: Performs a natural join between the `target_component` and all `join_components` on `entity_id`.
+    /// 2. **Compute**: Iterates over the joined tuples and calls `updater` to calculate new values.
+    /// 3. **Update**: Applies the changes to the `target_component` relation in the database.
+    ///
     /// # Arguments
     ///
-    /// * `target_component` - The name of the component to update.
-    /// * `join_components` - Names of other components to join with.
-    /// * `updater` - A function that takes the joined tuple and returns new values for the target component.
-    ///   The returned tuple should NOT contain `entity_id` (it is preserved automatically).
+    /// * `target_component` - The name of the component to update (e.g., "Position").
+    /// * `join_components` - Names of other components to join with (e.g., ["Velocity"]).
+    /// * `updater` - A function that takes the joined tuple (containing attributes from all joined components)
+    ///   and returns a new tuple containing ONLY the attributes for the `target_component` (excluding `entity_id`).
+    ///
+    /// # Returns
+    ///
+    /// Returns the number of entities updated.
     pub fn run_update_system<F>(
         &mut self,
         target_component: &str,
