@@ -108,6 +108,8 @@ pub mod traits;
 pub mod types;
 pub mod values;
 
+pub mod utils;
+
 pub use database::{Database, DatabaseError};
 pub use query::{Query, QueryError};
 pub use types::{RelationType, ScalarType, TupleType};
