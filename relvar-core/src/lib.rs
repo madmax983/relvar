@@ -106,6 +106,7 @@ pub mod storage_engine;
 /// Core traits for decoupling components.
 pub mod traits;
 pub mod types;
+pub mod utils;
 pub mod values;
 
 pub use database::{Database, DatabaseError};

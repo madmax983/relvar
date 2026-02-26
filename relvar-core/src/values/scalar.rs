@@ -27,8 +27,8 @@
 //! ```
 
 use crate::types::ScalarType;
+use crate::utils::recursion::DepthGuarded;
 use serde::{Deserialize, Serialize};
-use std::cell::Cell;
 use std::convert::TryFrom;
 use thiserror::Error;
 
@@ -482,57 +482,6 @@ impl Ord for ScalarValue {
         }
     }
 }
-
-// ------------------- Recursion Guard -------------------
-
-thread_local! {
-    static RECURSION_DEPTH: Cell<usize> = const { Cell::new(0) };
-}
-
-const MAX_RECURSION_DEPTH: usize = 32;
-
-struct RecursionGuard;
-
-impl RecursionGuard {
-    fn new() -> Result<Self, &'static str> {
-        RECURSION_DEPTH.with(|cell| {
-            let depth = cell.get();
-            if depth >= MAX_RECURSION_DEPTH {
-                Err("Recursion limit exceeded")
-            } else {
-                cell.set(depth + 1);
-                Ok(RecursionGuard)
-            }
-        })
-    }
-}
-
-impl Drop for RecursionGuard {
-    fn drop(&mut self) {
-        RECURSION_DEPTH.with(|cell| {
-            let depth = cell.get();
-            if depth > 0 {
-                cell.set(depth - 1);
-            }
-        });
-    }
-}
-
-#[derive(Debug)]
-struct DepthGuarded<T>(pub T);
-
-impl<'de, T: Deserialize<'de>> Deserialize<'de> for DepthGuarded<T> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let _guard = RecursionGuard::new().map_err(serde::de::Error::custom)?;
-        let value = T::deserialize(deserializer)?;
-        Ok(DepthGuarded(value))
-    }
-}
-
-// -------------------------------------------------------
 
 // Private structure to assist with deserialization and validation.
 // This allows us to intercept deserialization and enforce type consistency and depth limits.
