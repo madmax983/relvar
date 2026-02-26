@@ -14,9 +14,11 @@
 //! - **AutoML**: Relational Machine Learning (Naive Bayes).
 //! - **Time Series**: Relational Time Series Analysis (Moving Averages).
 //! - **ECS**: Relational Entity Component System.
+//! - **Genetic**: Relational Genetic Algorithm.
 
 pub mod automl;
 pub mod ecs;
+pub mod genetic;
 pub mod graph;
 pub mod image;
 pub mod mock;
