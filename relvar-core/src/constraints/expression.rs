@@ -217,8 +217,7 @@ impl ConstraintExpression {
     /// ```
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
         // Enforce recursion limit
-        let _guard =
-            RecursionGuard::new().map_err(|_| ExpressionError::RecursionLimitExceeded)?;
+        let _guard = RecursionGuard::new().map_err(|_| ExpressionError::RecursionLimitExceeded)?;
 
         match self {
             ConstraintExpression::Cmp { left, op, right } => {
@@ -402,8 +401,14 @@ enum ConstraintExpressionUnchecked {
         op: CmpOp,
         right: ValueOrRef,
     },
-    And(Box<ConstraintExpressionUnchecked>, Box<ConstraintExpressionUnchecked>),
-    Or(Box<ConstraintExpressionUnchecked>, Box<ConstraintExpressionUnchecked>),
+    And(
+        Box<ConstraintExpressionUnchecked>,
+        Box<ConstraintExpressionUnchecked>,
+    ),
+    Or(
+        Box<ConstraintExpressionUnchecked>,
+        Box<ConstraintExpressionUnchecked>,
+    ),
     Not(Box<ConstraintExpressionUnchecked>),
     In(String, Vec<ScalarValue>),
     Like(String, String),
@@ -414,7 +419,8 @@ impl TryFrom<ConstraintExpressionUnchecked> for ConstraintExpression {
 
     fn try_from(unchecked: ConstraintExpressionUnchecked) -> Result<Self, Self::Error> {
         // Enforce recursion limit during deserialization
-        let _guard = RecursionGuard::new().map_err(|_| "Recursion limit exceeded during deserialization".to_string())?;
+        let _guard = RecursionGuard::new()
+            .map_err(|_| "Recursion limit exceeded during deserialization".to_string())?;
 
         match unchecked {
             ConstraintExpressionUnchecked::Cmp { left, op, right } => {

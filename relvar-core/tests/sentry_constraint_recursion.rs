@@ -1,6 +1,8 @@
-use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef, ExpressionError};
-use relvar_core::values::ScalarValue;
+use relvar_core::constraints::expression::{
+    CmpOp, ConstraintExpression, ExpressionError, ValueOrRef,
+};
 use relvar_core::tuple;
+use relvar_core::values::ScalarValue;
 
 #[test]
 fn test_constraint_recursion_evaluate_stack_overflow() {
@@ -30,7 +32,11 @@ fn test_constraint_recursion_evaluate_stack_overflow() {
     match result {
         Ok(_) => panic!("Should have failed with RecursionLimitExceeded"),
         Err(e) => {
-            assert!(matches!(e, ExpressionError::RecursionLimitExceeded), "Expected RecursionLimitExceeded, got: {:?}", e);
+            assert!(
+                matches!(e, ExpressionError::RecursionLimitExceeded),
+                "Expected RecursionLimitExceeded, got: {:?}",
+                e
+            );
         }
     }
 }
