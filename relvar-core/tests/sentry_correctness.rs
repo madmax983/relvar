@@ -1,5 +1,7 @@
 use proptest::prelude::*;
-use relvar_core::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef, ExpressionError};
+use relvar_core::constraints::expression::{
+    CmpOp, ConstraintExpression, ExpressionError, ValueOrRef,
+};
 use relvar_core::tuple;
 use relvar_core::values::ScalarValue;
 
@@ -103,5 +105,8 @@ fn test_constraint_deep_nesting() {
     // This should fail with recursion limit error due to new security hardening.
     let result = expr.evaluate(&tuple);
     assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), ExpressionError::RecursionLimitExceeded));
+    assert!(matches!(
+        result.unwrap_err(),
+        ExpressionError::RecursionLimitExceeded
+    ));
 }
