@@ -96,39 +96,46 @@ impl Relation {
         let shared_heading = Arc::new(new_heading);
 
         // Project each tuple
-        let projected_tuples = self.tuples().map(|tuple| {
-            // Optimization: Use synchronized iteration (merge-join style) between source tuple values
-            // and result heading attributes. Both are sorted BTreeMaps.
-            // This avoids O(log N) lookup for each attribute, reducing complexity from O(M log N) to O(N).
-            let mut source_iter = tuple.values().iter();
-
-            let values: BTreeMap<_, _> = shared_heading
-                .attribute_names()
-                .map(|target_attr| {
-                    // Advance source iterator until we find the target attribute.
-                    // Since both are sorted and target is a subset of source, we are guaranteed to find it
-                    // without backtracking.
-                    loop {
-                        let (source_attr, source_val) = source_iter
-                            .next()
-                            .expect("Attribute from result heading must exist in source tuple");
-
-                        if source_attr == target_attr {
-                            return (target_attr.clone(), source_val.clone());
-                        }
-                        // If source_attr < target_attr, continue skipping unwanted attributes
-                    }
-                })
-                .collect();
-            // Safety: We constructed values exactly from attributes present in new_heading
-            // derived from the source relation schema, so types match by definition.
-            Tuple::new_unchecked(shared_heading.clone(), values)
-        });
+        let projected_tuples = self
+            .tuples()
+            .map(|tuple| project_tuple_values(tuple, &shared_heading));
 
         // Duplicates are automatically removed when creating the relation
         // Safety: projected_tuples use shared_heading which matches new_rel_type.heading()
         Relation::from_tuples_unchecked(new_rel_type, projected_tuples)
     }
+}
+
+/// Helper function to project values from a source tuple based on a target heading.
+///
+/// Optimization: Uses synchronized iteration (merge-join style) between source tuple values
+/// and result heading attributes. Both are sorted BTreeMaps (or iterate in sorted order).
+/// This avoids O(log N) lookup for each attribute, reducing complexity from O(M log N) to O(N).
+fn project_tuple_values(source_tuple: &Tuple, target_heading: &Arc<TupleType>) -> Tuple {
+    let mut source_iter = source_tuple.values().iter();
+
+    let values: BTreeMap<_, _> = target_heading
+        .attribute_names()
+        .map(|target_attr| {
+            // Advance source iterator until we find the target attribute.
+            // Since both are sorted and target is a subset of source, we are guaranteed to find it
+            // without backtracking.
+            loop {
+                let (source_attr, source_val) = source_iter
+                    .next()
+                    .expect("Attribute from result heading must exist in source tuple");
+
+                if source_attr == target_attr {
+                    return (target_attr.clone(), source_val.clone());
+                }
+                // If source_attr < target_attr, continue skipping unwanted attributes
+            }
+        })
+        .collect();
+
+    // Safety: We constructed values exactly from attributes present in new_heading
+    // derived from the source relation schema, so types match by definition.
+    Tuple::new_unchecked(target_heading.clone(), values)
 }
 
 #[cfg(test)]

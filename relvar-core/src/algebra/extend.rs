@@ -99,37 +99,50 @@ impl Relation {
         let new_heading_arc = std::sync::Arc::new(new_heading);
 
         // Create extended tuples
-        let mut extended_tuples = Vec::with_capacity(self.cardinality());
-        let attr_name_string = attr_name.to_string();
-
-        for tuple in self.tuples() {
-            let computed_value = compute(tuple);
-
-            // Manual type check for the new value
-            // We only need to check this one value because the existing values
-            // come from a valid tuple and are guaranteed to match the rest of the heading.
-            if !computed_value.is_type(&attr_type) {
-                return Err(ExtendError::TupleCreation(format!(
-                    "Type mismatch for attribute '{}': expected {}, got {}",
-                    attr_name,
-                    attr_type.name(),
-                    computed_value.scalar_type().name()
-                )));
-            }
-
-            let mut new_values = tuple.values().clone();
-            new_values.insert(attr_name_string.clone(), computed_value);
-
-            // Safety: We verified the new value's type above, and existing values
-            // are known to be valid because they come from a valid Tuple.
-            // Using new_unchecked avoids O(N) validation per tuple where N is degree.
-            let extended_tuple = Tuple::new_unchecked(new_heading_arc.clone(), new_values);
-            extended_tuples.push(extended_tuple);
-        }
+        let extended_tuples: Vec<Tuple> = self
+            .tuples()
+            .map(|tuple| {
+                create_extended_tuple(tuple, attr_name, &attr_type, &new_heading_arc, &compute)
+            })
+            .collect::<Result<_, _>>()?;
 
         Ok(Relation::from_tuples(new_rel_type, extended_tuples)
             .expect("Extended tuples should conform to new relation type"))
     }
+}
+
+/// Helper function to create a single extended tuple.
+fn create_extended_tuple<F>(
+    tuple: &Tuple,
+    attr_name: &str,
+    attr_type: &crate::types::ScalarType,
+    new_heading: &std::sync::Arc<crate::types::TupleType>,
+    compute: &F,
+) -> Result<Tuple, ExtendError>
+where
+    F: Fn(&Tuple) -> ScalarValue,
+{
+    let computed_value = compute(tuple);
+
+    // Manual type check for the new value
+    // We only need to check this one value because the existing values
+    // come from a valid tuple and are guaranteed to match the rest of the heading.
+    if !computed_value.is_type(attr_type) {
+        return Err(ExtendError::TupleCreation(format!(
+            "Type mismatch for attribute '{}': expected {}, got {}",
+            attr_name,
+            attr_type.name(),
+            computed_value.scalar_type().name()
+        )));
+    }
+
+    let mut new_values = tuple.values().clone();
+    new_values.insert(attr_name.to_string(), computed_value);
+
+    // Safety: We verified the new value's type above, and existing values
+    // are known to be valid because they come from a valid Tuple.
+    // Using new_unchecked avoids O(N) validation per tuple where N is degree.
+    Ok(Tuple::new_unchecked(new_heading.clone(), new_values))
 }
 
 #[cfg(test)]
