@@ -19,3 +19,7 @@
 ## 2026-02-05 - Tuple Validation Overhead in Relational Operators
 **Learning:** `Tuple::new` performs O(M) validation (where M is degree) for every tuple creation. In relational operators like `extend`, inputs are often already valid. Using `Tuple::new_unchecked` with manual checks for only new/modified attributes reduced execution time by ~35%.
 **Action:** When implementing relational operators that derive new tuples from existing valid tuples, use `Tuple::new_unchecked` and manually validate only the changed parts.
+
+## 2026-02-05 - Zero-Allocation Keys in Semijoin
+**Learning:** `semijoin` and `semidifference` operations allocated a `Vec<&ScalarValue>` for every tuple in the right-hand relation to perform hash lookups. This O(M) allocation overhead dominated performance for small relations.
+**Action:** Replaced `Vec` keys with a `SemijoinKey` wrapper struct that holds references to the tuple and attributes, enabling zero-allocation hashing and comparison. This yielded an ~8% speedup for small relations.

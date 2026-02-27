@@ -14,8 +14,42 @@
 //! - Result heading always equals self's heading
 //! - Set semantics maintained (no duplicates, no ordering)
 
-use crate::values::{Relation, ScalarValue};
+use crate::values::{Relation, Tuple};
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+
+/// A key for hash join that avoids allocating a Vec for the key.
+/// It holds references to the tuple and the attributes to key on.
+#[derive(Debug, Eq)]
+struct SemijoinKey<'t, 'a> {
+    tuple: &'t Tuple,
+    attributes: &'a [String],
+}
+
+impl<'t, 'a> PartialEq for SemijoinKey<'t, 'a> {
+    fn eq(&self, other: &Self) -> bool {
+        // We assume attributes are the same (or same values) as this is used internally
+        // with the same common_attrs slice.
+        for (i, attr) in self.attributes.iter().enumerate() {
+            let v1 = self.tuple.get(attr);
+            let v2 = other.tuple.get(&other.attributes[i]);
+            if v1 != v2 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl<'t, 'a> Hash for SemijoinKey<'t, 'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for attr in self.attributes {
+            if let Some(val) = self.tuple.get(attr) {
+                val.hash(state);
+            }
+        }
+    }
+}
 
 /// Finds common attribute names between two relations' headings.
 fn common_attributes(a: &Relation, b: &Relation) -> Vec<String> {
@@ -95,38 +129,25 @@ impl Relation {
         }
 
         // Build HashSet of keys from other relation
-        // We use Vec<&ScalarValue> as key to avoid cloning values
-        let mut other_keys: HashSet<Vec<&ScalarValue>> =
-            HashSet::with_capacity(other.cardinality());
+        // We use SemijoinKey to avoid allocating Vec per tuple
+        let mut other_keys: HashSet<SemijoinKey> = HashSet::with_capacity(other.cardinality());
+
         for tuple in other.tuples() {
-            let mut key = Vec::with_capacity(common_attrs.len());
-            for attr in &common_attrs {
-                // We know the attribute exists because we filtered for common attributes
-                // and tuples must conform to the relation heading.
-                key.push(
-                    tuple
-                        .get(attr)
-                        .expect("Common attribute must exist in other tuple"),
-                );
-            }
-            other_keys.insert(key);
+            other_keys.insert(SemijoinKey {
+                tuple,
+                attributes: &common_attrs,
+            });
         }
 
         let mut matched = Vec::new();
-        // Reusable key vector to avoid allocations in the loop
-        let mut key_buf: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
 
         for tuple in self.tuples() {
-            key_buf.clear();
-            for attr in &common_attrs {
-                key_buf.push(
-                    tuple
-                        .get(attr)
-                        .expect("Common attribute must exist in self tuple"),
-                );
-            }
+            let key = SemijoinKey {
+                tuple,
+                attributes: &common_attrs,
+            };
 
-            if other_keys.contains(&key_buf) {
+            if other_keys.contains(&key) {
                 matched.push(tuple.clone());
             }
         }
@@ -207,34 +228,24 @@ impl Relation {
         }
 
         // Build HashSet of keys from other relation
-        let mut other_keys: HashSet<Vec<&ScalarValue>> =
-            HashSet::with_capacity(other.cardinality());
+        let mut other_keys: HashSet<SemijoinKey> = HashSet::with_capacity(other.cardinality());
+
         for tuple in other.tuples() {
-            let mut key = Vec::with_capacity(common_attrs.len());
-            for attr in &common_attrs {
-                key.push(
-                    tuple
-                        .get(attr)
-                        .expect("Common attribute must exist in other tuple"),
-                );
-            }
-            other_keys.insert(key);
+            other_keys.insert(SemijoinKey {
+                tuple,
+                attributes: &common_attrs,
+            });
         }
 
         let mut non_matched = Vec::new();
-        let mut key_buf: Vec<&ScalarValue> = Vec::with_capacity(common_attrs.len());
 
         for tuple in self.tuples() {
-            key_buf.clear();
-            for attr in &common_attrs {
-                key_buf.push(
-                    tuple
-                        .get(attr)
-                        .expect("Common attribute must exist in self tuple"),
-                );
-            }
+            let key = SemijoinKey {
+                tuple,
+                attributes: &common_attrs,
+            };
 
-            if !other_keys.contains(&key_buf) {
+            if !other_keys.contains(&key) {
                 non_matched.push(tuple.clone());
             }
         }
