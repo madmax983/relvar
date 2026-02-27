@@ -1,6 +1,5 @@
 use relvar_core::constraints::expression::ConstraintExpression;
 use relvar_core::values::ScalarValue;
-use serde_json;
 
 #[test]
 fn test_deserialize_and_or_not_variants() {
