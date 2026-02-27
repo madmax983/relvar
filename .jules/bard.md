@@ -34,3 +34,7 @@ This ensures the map matches the territory.
 ## 2024-05-27 - The Ghost Variants
 **Confusion:** The `ScalarValueError` and `RelationError` enums had variants that were technically public but lacked documentation explaining *when* they occur or *what* they mean. This forced users to guess based on the variant name.
 **Clarification:** I've added detailed documentation to these enum variants, explaining the specific conditions that trigger them (e.g., `NotUserDefined` only happens when calling `observer()` on a built-in type).
+
+## 2024-05-27 - Time Series Self-Join Collision
+**Confusion:** The `moving_average` function silently failed or produced incorrect results when the input relation had attributes ending in `_prev`.
+**Clarification:** The function implements a self-join by renaming the "previous" relation's attributes with a `_prev` suffix. This naive implementation causes a name collision if the input relation already has such attributes. I've documented this as a `# Known Issue` and advised users to avoid the `_prev` suffix in input data.
