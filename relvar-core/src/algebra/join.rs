@@ -43,7 +43,7 @@
 use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -448,16 +448,45 @@ fn combine_tuples(
     secondary: &Tuple,
     result_heading: &Arc<TupleType>,
 ) -> Result<Tuple, DatabaseError> {
-    // Optimization: Clone the primary BTreeMap directly (O(N) operation)
-    // instead of inserting one by one (O(N log N)).
-    // This also avoids allocation of a temporary HashMap.
-    let mut combined_values = primary.values().clone();
+    // Optimization: Use a merge-sort style iteration to combine values.
+    // Since both BTreeMaps are sorted, we can iterate through them simultaneously
+    // and build the new map in O(N) time without O(log N) insertions.
+    let mut iter_p = primary.values().iter().peekable();
+    let mut iter_s = secondary.values().iter().peekable();
 
-    // Add values from secondary (skipping common ones which are already in)
-    for (attr_name, value) in secondary.values() {
-        // BTreeMap::contains_key is O(log N)
-        if !combined_values.contains_key(attr_name) {
-            combined_values.insert(attr_name.clone(), value.clone());
+    // Pre-allocate to avoid reallocations
+    let mut values = Vec::with_capacity(primary.degree() + secondary.degree());
+
+    loop {
+        match (iter_p.peek(), iter_s.peek()) {
+            (Some((k_p, v_p)), Some((k_s, v_s))) => {
+                if k_p == k_s {
+                    // Collision: Primary wins (as per doc)
+                    // Consume both since they match
+                    values.push(((*k_p).clone(), (*v_p).clone()));
+                    iter_p.next();
+                    iter_s.next();
+                } else if k_p < k_s {
+                    // Primary is smaller, take it
+                    values.push(((*k_p).clone(), (*v_p).clone()));
+                    iter_p.next();
+                } else {
+                    // Secondary is smaller, take it
+                    values.push(((*k_s).clone(), (*v_s).clone()));
+                    iter_s.next();
+                }
+            }
+            (Some((k_p, v_p)), None) => {
+                // Only primary remaining
+                values.push(((*k_p).clone(), (*v_p).clone()));
+                iter_p.next();
+            }
+            (None, Some((k_s, v_s))) => {
+                // Only secondary remaining
+                values.push(((*k_s).clone(), (*v_s).clone()));
+                iter_s.next();
+            }
+            (None, None) => break,
         }
     }
 
@@ -466,7 +495,10 @@ fn combine_tuples(
     // 2. Result heading is the union of both headings.
     // 3. We combined values from both, respecting types.
     // 4. Therefore, the resulting map conforms to result_heading.
-    // We can skip the expensive validation in Tuple::new.
+    //
+    // BTreeMap::from_iter is efficient (O(N)) when input is already sorted.
+    let combined_values = BTreeMap::from_iter(values);
+
     Ok(Tuple::new_unchecked(
         result_heading.clone(),
         combined_values,
