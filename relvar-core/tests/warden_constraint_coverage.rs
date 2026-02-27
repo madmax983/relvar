@@ -89,7 +89,9 @@ fn test_deserialize_in_like_variants() {
         ]
     }"#;
     let expr_like: ConstraintExpression = serde_json::from_str(json_like).unwrap();
-    assert!(matches!(expr_like, ConstraintExpression::Like(attr, pat) if attr == "email" && pat == "%@example.com"));
+    assert!(
+        matches!(expr_like, ConstraintExpression::Like(attr, pat) if attr == "email" && pat == "%@example.com")
+    );
 }
 
 #[test]
