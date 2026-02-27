@@ -14,11 +14,13 @@
 //! - **[`search`](crate::experimental::search)**: Relational Full-Text Search.
 //! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
+//! - **[`life`](crate::experimental::life)**: Relational Conway's Game of Life.
 
 pub mod automl;
 pub mod ecs;
 pub mod graph;
 pub mod image;
+pub mod life;
 pub mod mock;
 pub mod pivot;
 pub mod search;
