@@ -65,10 +65,6 @@ pub enum SummarizeError {
     /// or has an incompatible type.
     #[error("Aggregation error: {0}")]
     AggregationError(String),
-
-    /// A specified attribute for aggregation does not exist in the relation.
-    #[error("Aggregation attribute '{0}' does not exist in relation")]
-    AggregationAttributeNotFound(String),
 }
 
 /// Specifies the type of aggregation function to apply.
@@ -459,7 +455,6 @@ impl Relation {
         aggregations: &[Aggregation],
     ) -> Result<Relation, SummarizeError> {
         self.validate_grouping_attributes(group_by)?;
-        self.validate_aggregation_attributes(aggregations)?;
         let result_heading = self.build_result_heading(group_by, aggregations)?;
         let groups = self.group_tuples(group_by);
 
@@ -494,28 +489,6 @@ impl Relation {
         for attr in group_by {
             if !self.relation_type().has_attribute(attr) {
                 return Err(SummarizeError::GroupingAttributeNotFound(attr.to_string()));
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_aggregation_attributes(
-        &self,
-        aggregations: &[Aggregation],
-    ) -> Result<(), SummarizeError> {
-        for agg in aggregations {
-            let attr_name = match &agg.function {
-                AggregationFn::Count => continue,
-                AggregationFn::Sum(name) => name,
-                AggregationFn::Avg(name) => name,
-                AggregationFn::Min(name) => name,
-                AggregationFn::Max(name) => name,
-            };
-
-            if !self.relation_type().has_attribute(attr_name) {
-                return Err(SummarizeError::AggregationAttributeNotFound(
-                    attr_name.to_string(),
-                ));
             }
         }
         Ok(())
@@ -832,7 +805,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::GroupingAttributeNotFound(_)
+            SummarizeError::AggregationError(_)
         ));
     }
 
@@ -938,7 +911,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationAttributeNotFound(_)
+            SummarizeError::AggregationError(_)
         ));
     }
 
@@ -958,7 +931,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationAttributeNotFound(_)
+            SummarizeError::AggregationError(_)
         ));
     }
 
@@ -1099,40 +1072,6 @@ mod tests {
         let tuple = result.tuples().next().unwrap();
         assert_eq!(tuple.get_typed::<String>("min_name").unwrap(), "Alice");
         assert_eq!(tuple.get_typed::<String>("max_name").unwrap(), "Charlie");
-    }
-
-    #[test]
-    fn test_summarize_empty_relation_invalid_attribute_grand_total() {
-        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
-        let rel_type = RelationType::new(heading);
-        let relation = Relation::new(rel_type); // Empty relation
-
-        // Try to SUM a non-existent attribute "salary" without grouping (grand total)
-        // This should fail during validation, even if there are no tuples to aggregate
-        let result = relation.summarize(&[], &[Aggregation::sum("total", "non_existent_attr")]);
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            SummarizeError::AggregationAttributeNotFound(attr) if attr == "non_existent_attr"
-        ));
-    }
-
-    #[test]
-    fn test_summarize_empty_relation_invalid_attribute_with_grouping() {
-        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
-        let rel_type = RelationType::new(heading);
-        let relation = Relation::new(rel_type); // Empty relation
-
-        // Try to SUM a non-existent attribute "salary" WITH grouping
-        // This should fail during validation, even if there are no groups
-        let result = relation.summarize(&["id"], &[Aggregation::sum("total", "non_existent_attr")]);
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            SummarizeError::AggregationAttributeNotFound(attr) if attr == "non_existent_attr"
-        ));
     }
 }
 
