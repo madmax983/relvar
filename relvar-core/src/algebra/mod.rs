@@ -4,6 +4,16 @@
 //! as defined in *The Third Manifesto* (RM Prescription 7). All operators
 //! are implemented as methods on the [`Relation`](crate::values::Relation) type.
 //!
+//! # Why Relational Algebra?
+//!
+//! Relational algebra is the functional programming language of data.
+//! Just as you compose functions like `map`, `filter`, and `fold` to transform collections
+//! in Rust, you compose relational operators to transform relations.
+//!
+//! - **Composable**: The output of every operator is a relation, so you can chain them endlessly.
+//! - **Declarative**: You specify *what* result you want, not *how* to compute it.
+//! - **Safe**: The type system guarantees that every intermediate result is a valid relation.
+//!
 //! # Operators
 //!
 //! ## Set Operators (require type-compatible relations)
@@ -24,13 +34,13 @@
 //!
 //! ## Join Operators
 //!
-//! | Operator | Method | Description |
-//! |----------|--------|-------------|
-//! | Natural Join | [`join()`](crate::values::Relation::join) | Joins on common attributes |
-//! | Theta Join | [`theta_join()`](crate::values::Relation::theta_join) | Joins with arbitrary predicate |
-//! | Semijoin | [`semijoin()`](crate::values::Relation::semijoin) | Tuples from A matching B |
-//! | Semidifference | [`semidifference()`](crate::values::Relation::semidifference) | Tuples from A not matching B |
-//! | Division | [`divide()`](crate::values::Relation::divide) | Relational division (A ÷ B) |
+//! | Operator | Method | Description | Tutorial D Alias |
+//! |----------|--------|-------------|------------------|
+//! | Natural Join | [`join()`](crate::values::Relation::join) | Joins on common attributes | `JOIN` |
+//! | Theta Join | [`theta_join()`](crate::values::Relation::theta_join) | Joins with arbitrary predicate | - |
+//! | Semijoin | [`semijoin()`](crate::values::Relation::semijoin) | Tuples from A matching B | `MATCHING` |
+//! | Semidifference | [`semidifference()`](crate::values::Relation::semidifference) | Tuples from A not matching B | `NOT MATCHING` |
+//! | Division | [`divide()`](crate::values::Relation::divide) | Relational division (A ÷ B) | `DIVIDEBY` |
 //!
 //! ## Extended Operators
 //!
