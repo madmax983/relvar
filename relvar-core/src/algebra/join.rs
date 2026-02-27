@@ -152,7 +152,7 @@ impl Relation {
     ///
     /// O(n * m) where n and m are the cardinalities of the two relations.
     ///
-    /// # Example
+    /// # Example: Standard Usage
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -184,6 +184,37 @@ impl Relation {
     /// });
     /// // Only employee 2 (salary 75000) qualifies for dept 10 (min 60000)
     /// assert_eq!(result.cardinality(), 1);
+    /// ```
+    ///
+    /// # Example: Safe Usage (Avoiding Collisions)
+    ///
+    /// To avoid silent attribute collisions when both relations share attribute names
+    /// (e.g., both have `id`), rename the attributes before joining:
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// let mut r1 = Relation::new(rel_type.clone());
+    /// r1.insert(tuple! { id: 1i64 }).unwrap();
+    ///
+    /// let mut r2 = Relation::new(rel_type);
+    /// r2.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// // DANGEROUS: r1.theta_join(&r2, ...) will drop r2's "id" attribute!
+    ///
+    /// // SAFE: Rename r2's attribute first
+    /// let r2_renamed = r2.rename(&[("id", "r2_id")]);
+    ///
+    /// let result = r1.theta_join(&r2_renamed, |t1, t2| true);
+    ///
+    /// // Result now has both: "id" (from r1) and "r2_id" (from r2)
+    /// assert!(result.relation_type().has_attribute("id"));
+    /// assert!(result.relation_type().has_attribute("r2_id"));
     /// ```
     pub fn theta_join<F>(&self, other: &Relation, predicate: F) -> Self
     where
