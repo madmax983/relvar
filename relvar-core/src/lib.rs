@@ -103,8 +103,6 @@ pub mod database;
 pub mod error;
 pub mod query;
 pub mod storage_engine;
-/// Core traits for decoupling components.
-pub mod traits;
 pub mod types;
 pub mod values;
 
@@ -124,5 +122,3 @@ pub use constraints::{
 // Re-export storage engine types
 pub use storage_engine::{InMemoryEngine, StorageEngine, StorageError};
 
-// Re-export core traits
-pub use traits::QueryExecutor;
