@@ -876,7 +876,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationAttributeNotFound(_)
+            SummarizeError::AggregationError(_)
         ));
     }
 
@@ -898,7 +898,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationAttributeNotFound(_)
+            SummarizeError::AggregationError(_)
         ));
     }
 
