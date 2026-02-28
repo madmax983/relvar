@@ -1,3 +1,3 @@
-## 2026-02-21 - Removed QueryExecutor Abstraction
-**Tangle:** `VirtualRelvarDefinition` depended on `QueryExecutor` trait to avoid circular dependency with `Database` struct. This created an unnecessary abstraction layer (`QueryExecutor`) with only one real implementation (`Database`).
-**Blueprint:** Removed `QueryExecutor` trait. Merged `virtual_relvar` module into `database/mod.rs` to resolve the resulting circular dependency between `Database` (which holds views) and `VirtualRelvarDefinition` (which queries `Database`). Updated `Query::execute` to depend directly on `Database<E>`.
+## 2024-03-XX - Module Encapsulation Cleanup
+**Tangle:** Broad visibility (`pub mod`) across many internal modules (`algebra`, `values`, `types`, etc.) leaked implementation details and complicated the dependency graph.
+**Blueprint:** Converted most top-level internal module definitions in `relvar-core`, `relvar-storage`, and `relvar` to `pub(crate) mod`. Re-exported necessary types via their respective `mod.rs` files, ensuring clean, intention-revealing public APIs while maintaining low coupling between internal components.

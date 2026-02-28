@@ -13,7 +13,7 @@ use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 use thiserror::Error;
 
-pub mod in_memory;
+pub(crate) mod in_memory;
 
 pub use in_memory::InMemoryEngine;
 

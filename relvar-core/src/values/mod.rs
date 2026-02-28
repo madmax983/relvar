@@ -56,9 +56,9 @@
 //! assert_eq!(employees.cardinality(), 2);
 //! ```
 
-pub mod relation;
-pub mod scalar;
-pub mod tuple;
+pub(crate) mod relation;
+pub(crate) mod scalar;
+pub(crate) mod tuple;
 
 pub use relation::Relation;
 pub use scalar::ScalarValue;
