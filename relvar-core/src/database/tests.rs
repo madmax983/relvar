@@ -1127,3 +1127,23 @@ fn test_virtual_relvar_immutability_enforcement() {
     // Query the view
     assert!(db.query("SAFE_VIEW").is_ok());
 }
+
+#[test]
+fn test_virtual_relvar_definition_debug() {
+    let rel_type = test_rel_type();
+
+    fn evaluator(db: &Database<InMemoryEngine>) -> Result<Relation, DatabaseError> {
+        db.query("TEST")
+    }
+
+    let def = VirtualRelvarDefinition::<InMemoryEngine> {
+        relation_type: rel_type,
+        evaluator,
+    };
+
+    let debug_str = format!("{:?}", def);
+    assert!(debug_str.contains("VirtualRelvarDefinition"));
+    assert!(debug_str.contains("relation_type"));
+    assert!(debug_str.contains("evaluator"));
+    assert!(debug_str.contains("<fn>"));
+}
