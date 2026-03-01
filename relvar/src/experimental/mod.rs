@@ -9,6 +9,7 @@
 //! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
+//! - **[`matrix`](crate::experimental::matrix)**: Relational Linear Algebra (Sparse Matrices).
 //! - **[`mock`](crate::experimental::mock)**: Tools for generating random relations for testing.
 //! - **[`pivot`](crate::experimental::pivot)**: Operator to rotate unique values from one column into multiple columns.
 //! - **[`search`](crate::experimental::search)**: Relational Full-Text Search.
@@ -19,6 +20,7 @@ pub mod automl;
 pub mod ecs;
 pub mod graph;
 pub mod image;
+pub mod matrix;
 pub mod mock;
 pub mod pivot;
 pub mod search;
