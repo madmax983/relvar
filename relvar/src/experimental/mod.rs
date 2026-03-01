@@ -14,11 +14,13 @@
 //! - **[`search`](crate::experimental::search)**: Relational Full-Text Search.
 //! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
+//! - **[`matrix`](crate::experimental::matrix)**: Relational Matrix Math.
 
 pub mod automl;
 pub mod ecs;
 pub mod graph;
 pub mod image;
+pub mod matrix;
 pub mod mock;
 pub mod pivot;
 pub mod search;
