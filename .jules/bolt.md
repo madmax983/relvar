@@ -23,3 +23,7 @@
 ## 2026-02-05 - Zero-Allocation Keys in Semijoin
 **Learning:** `semijoin` and `semidifference` operations allocated a `Vec<&ScalarValue>` for every tuple in the right-hand relation to perform hash lookups. This O(M) allocation overhead dominated performance for small relations.
 **Action:** Replaced `Vec` keys with a `SemijoinKey` wrapper struct that holds references to the tuple and attributes, enabling zero-allocation hashing and comparison. This yielded an ~8% speedup for small relations.
+
+## 2024-03-01 - [Zero-Copy Primitive Extraction]
+**Learning:** `Tuple::get_typed<T>` was invoking `.clone()` on the `ScalarValue` enum purely to satisfy the `TryFrom<ScalarValue>` trait bound, causing a 24-byte enum copy for every extraction.
+**Action:** Changed trait bound to `T: for<'a> TryFrom<&'a ScalarValue>` to enable extraction by reference and avoid the enum wrapper clone, while preserving type safety.
