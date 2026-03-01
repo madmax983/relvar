@@ -39,18 +39,19 @@ where
     let (tuples, update_count) = current_relation.into_iter().try_fold(
         (Vec::with_capacity(initial_cardinality), 0),
         |(mut acc, count), tuple| {
-            if predicate(&tuple) {
-                let updated_tuple = updater(&tuple);
-
-                if !updated_tuple.conforms_to(&expected_type) {
-                    return Err(DatabaseError::TupleMismatch);
-                }
-                acc.push(updated_tuple);
-                Ok((acc, count + 1))
-            } else {
+            if !predicate(&tuple) {
                 acc.push(tuple);
-                Ok((acc, count))
+                return Ok((acc, count));
             }
+
+            let updated_tuple = updater(&tuple);
+
+            if !updated_tuple.conforms_to(&expected_type) {
+                return Err(DatabaseError::TupleMismatch);
+            }
+
+            acc.push(updated_tuple);
+            Ok((acc, count + 1))
         },
     )?;
 
