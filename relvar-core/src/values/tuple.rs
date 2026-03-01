@@ -225,8 +225,7 @@ impl Tuple {
     where
         T: for<'a> TryFrom<&'a ScalarValue>,
     {
-        self.get(attr_name)
-            .and_then(|v| T::try_from(v).ok())
+        self.get(attr_name).and_then(|v| T::try_from(v).ok())
     }
 
     /// Get all attribute names
