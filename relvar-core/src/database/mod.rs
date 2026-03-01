@@ -29,10 +29,10 @@
 //! ## Key Interactions
 //!
 //! 1.  **Operation Request**: User calls methods like [`insert`](Database::insert), [`update`](Database::update), [`delete`](Database::delete).
-//! 2.  **Constraint Validation**: `Database` consults [`ConstraintManager`](crate::constraints::ConstraintManager)
+//! 2.  **Constraint Validation**: `Database` consults [`ConstraintManager`]
 //!     to ensure the operation violates no integrity rules (e.g., uniqueness, foreign keys).
 //! 3.  **Persistence**: If valid, `Database` delegates the physical data modification
-//!     to the configured [`StorageEngine`](crate::storage_engine::StorageEngine).
+//!     to the configured [`StorageEngine`].
 //! 4.  **Transaction Management**: `Database` coordinates with `StorageEngine` to begin,
 //!     commit, or rollback transactions.
 //!
