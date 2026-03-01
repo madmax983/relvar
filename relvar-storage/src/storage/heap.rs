@@ -235,7 +235,7 @@ impl MutableSlot for VersionedSlotEntry {
     }
 }
 
-/// Page layout: [slot_count (4 bytes)] [slot_entries...] [free_space] [...tuple_data]
+/// Page layout: `[slot_count (4 bytes)] [slot_entries...] [free_space] [...tuple_data]`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SlottedPage {
     slot_count: u32,

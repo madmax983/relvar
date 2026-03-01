@@ -29,10 +29,10 @@
 //! ## Key Interactions
 //!
 //! 1.  **Operation Request**: User calls methods like [`insert`](Database::insert), [`update`](Database::update), [`delete`](Database::delete).
-//! 2.  **Constraint Validation**: `Database` consults [`ConstraintManager`](crate::constraints::ConstraintManager)
+//! 2.  **Constraint Validation**: `Database` consults [`ConstraintManager`]
 //!     to ensure the operation violates no integrity rules (e.g., uniqueness, foreign keys).
 //! 3.  **Persistence**: If valid, `Database` delegates the physical data modification
-//!     to the configured [`StorageEngine`](crate::storage_engine::StorageEngine).
+//!     to the configured [`StorageEngine`].
 //! 4.  **Transaction Management**: `Database` coordinates with `StorageEngine` to begin,
 //!     commit, or rollback transactions.
 //!
@@ -196,6 +196,9 @@ impl<E: StorageEngine> Database<E> {
 
     /// Drop a base relvar.
     ///
+    /// Removes the relation variable and all its associated constraints
+    /// from the database. This effectively deletes the table and all its data.
+    ///
     /// # Example
     ///
     /// ```
@@ -228,11 +231,51 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Check if a relvar exists (base or virtual).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    ///
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    /// assert!(db.relvar_exists("TEST"));
+    /// assert!(!db.relvar_exists("MISSING"));
+    /// ```
     pub fn relvar_exists(&self, name: &str) -> bool {
         self.engine.relation_exists(name) || self.virtual_relvars.contains_key(name)
     }
 
     /// List all relvar names (base and virtual).
+    ///
+    /// This is useful for building database inspection tools (like the visualizer)
+    /// or for exploring an unfamiliar database schema. It combines both physically
+    /// stored relvars and dynamically computed virtual relvars.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::traits::QueryExecutor;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    ///
+    /// db.create_relvar("TABLE_1", rel_type.clone()).unwrap();
+    /// db.define_virtual_relvar("VIEW_1", rel_type, |db_exec| {
+    ///     Ok(relvar_core::values::Relation::new(relvar_core::types::RelationType::new(relvar_core::types::TupleType::new())))
+    /// }).unwrap();
+    ///
+    /// let mut relvars = db.list_relvars();
+    /// relvars.sort();
+    /// assert_eq!(relvars, vec!["TABLE_1", "VIEW_1"]);
+    /// ```
     pub fn list_relvars(&self) -> Vec<String> {
         let mut names = self.engine.list_relations();
         names.extend(self.virtual_relvars.keys().cloned());
@@ -258,11 +301,64 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Get the key constraints for a relation.
+    ///
+    /// Retrieving constraints is necessary when dynamically generating data entry
+    /// forms or building query optimizers that rely on uniqueness guarantees.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::constraints::{KeyConstraints, PrimaryKey};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    ///
+    /// let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    /// let constraints = KeyConstraints::new().with_primary_key(pk);
+    /// db.set_key_constraints("TEST", constraints).unwrap();
+    ///
+    /// let current_constraints = db.get_key_constraints("TEST").unwrap();
+    /// assert!(current_constraints.primary_key().is_some());
+    /// ```
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.constraints.get_key_constraints(relation_name)
     }
 
     /// Get the foreign key constraints for a relation.
+    ///
+    /// Retrieving foreign keys is primarily used by the schema visualizer
+    /// to draw relationships between relvars, or by automated testing tools
+    /// to understand dependency insertion order.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::constraints::{ForeignKeyConstraints, ForeignKey};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let type1 = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    /// let type2 = RelationType::new(TupleType::new().with_attribute("ref_id", ScalarType::Int));
+    /// db.create_relvar("A", type1).unwrap();
+    /// db.create_relvar("B", type2).unwrap();
+    ///
+    /// let fk = ForeignKey::new(
+    ///     vec!["ref_id".to_string()],
+    ///     "A".to_string(),
+    ///     vec!["id".to_string()]
+    /// ).unwrap();
+    /// let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    /// db.set_foreign_key_constraints("B", constraints).unwrap();
+    ///
+    /// let current_fks = db.get_foreign_key_constraints("B").unwrap();
+    /// assert_eq!(current_fks.foreign_keys().len(), 1);
+    /// ```
     pub fn get_foreign_key_constraints(
         &self,
         relation_name: &str,
@@ -729,6 +825,44 @@ impl<E: StorageEngine> Database<E> {
 
     /// Define a virtual relvar (view).
     ///
+    /// A virtual relvar (or view) acts like a regular relation but is not stored
+    /// on disk. Its contents are dynamically generated by evaluating a given function
+    /// every time it is queried.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::tuple;
+    /// use relvar_core::traits::QueryExecutor;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let emp_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::Int)
+    ///         .with_attribute("active", ScalarType::Bool)
+    /// );
+    /// db.create_relvar("EMP", emp_type.clone()).unwrap();
+    /// db.insert("EMP", tuple! { id: 1i64, active: true }).unwrap();
+    /// db.insert("EMP", tuple! { id: 2i64, active: false }).unwrap();
+    ///
+    /// // Define a view for active employees
+    /// db.define_virtual_relvar(
+    ///     "ACTIVE_EMP",
+    ///     emp_type,
+    ///     |db_exec| {
+    ///         let emp = db_exec.query("EMP").unwrap();
+    ///         Ok(emp.restrict(|t| t.get_typed::<bool>("active").unwrap_or(false)))
+    ///     }
+    /// ).unwrap();
+    ///
+    /// // Querying the view
+    /// let active_emps = db.query("ACTIVE_EMP").unwrap();
+    /// assert_eq!(active_emps.cardinality(), 1);
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns an error if a relvar with this name already exists.
@@ -754,6 +888,30 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Drop a virtual relvar.
+    ///
+    /// Removes the definition of the virtual relvar from the database.
+    /// This does not delete any underlying data since virtual relvars
+    /// are not stored.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::traits::QueryExecutor;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    ///
+    /// db.define_virtual_relvar("MY_VIEW", rel_type, |db_exec| {
+    ///     Ok(relvar_core::values::Relation::new(relvar_core::types::RelationType::new(relvar_core::types::TupleType::new())))
+    /// }).unwrap();
+    ///
+    /// assert!(db.relvar_exists("MY_VIEW"));
+    /// db.drop_virtual_relvar("MY_VIEW").unwrap();
+    /// assert!(!db.relvar_exists("MY_VIEW"));
+    /// ```
     ///
     /// # Errors
     ///
