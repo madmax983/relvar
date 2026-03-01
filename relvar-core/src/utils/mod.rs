@@ -1,1 +1,1 @@
-pub mod recursion;
+pub(crate) mod recursion;

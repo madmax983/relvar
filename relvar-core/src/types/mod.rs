@@ -42,9 +42,9 @@
 //! assert_eq!(employee_type.degree(), 3);
 //! ```
 
-pub mod relation_type;
-pub mod scalar;
-pub mod tuple_type;
+pub(crate) mod relation_type;
+pub(crate) mod scalar;
+pub(crate) mod tuple_type;
 
 pub use relation_type::RelationType;
 pub use scalar::ScalarType;
