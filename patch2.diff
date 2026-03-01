@@ -1,0 +1,12 @@
+--- relvar-core/src/values/tuple.rs
++++ relvar-core/src/values/tuple.rs
+@@ -221,7 +221,8 @@
+         self.values.get(attr_name)
+     }
+
+-    /// Get a typed value by attribute name
++    /// Get a typed value by attribute name.
++    /// Extracts the value by reference to avoid allocating or cloning the `ScalarValue` enum wrapper.
+     pub fn get_typed<T>(&self, attr_name: &str) -> Option<T>
+     where
+         T: for<'a> TryFrom<&'a ScalarValue>,
