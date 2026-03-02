@@ -61,5 +61,7 @@ pub(crate) mod scalar;
 pub(crate) mod tuple;
 
 pub use relation::Relation;
+pub use relation::RelationError;
 pub use scalar::ScalarValue;
 pub use tuple::Tuple;
+pub use tuple::TupleError;
