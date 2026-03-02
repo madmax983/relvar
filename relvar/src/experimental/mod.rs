@@ -16,6 +16,7 @@
 //! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 
+pub mod automata;
 pub mod automl;
 pub mod ecs;
 pub mod graph;
