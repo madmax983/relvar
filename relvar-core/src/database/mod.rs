@@ -74,17 +74,43 @@ use crate::constraints::{
 };
 pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
-use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 
 use std::collections::HashMap;
 
 mod dml;
-mod virtual_relvar;
 
 use self::dml::{compute_relation_after_delete, compute_relation_after_update};
-pub(crate) use self::virtual_relvar::VirtualRelvarDefinition;
+
+/// Definition of a virtual relvar (view).
+///
+/// Stores the metadata required to evaluate a virtual relvar on demand.
+#[derive(Debug, Clone)]
+pub(crate) struct VirtualRelvarDefinition<E: StorageEngine> {
+    /// The relation type (heading) of the view.
+    ///
+    /// This defines the schema of the result produced by the evaluator.
+    /// The database uses this to validate queries against the view without
+    /// needing to evaluate it first.
+    pub relation_type: RelationType,
+
+    /// The evaluation function (closure) that computes the view's contents.
+    ///
+    /// # Signature
+    ///
+    /// `fn(&Database<E>) -> Result<Relation, DatabaseError>`
+    ///
+    /// - **Input**: A `&Database<E>`, which allows the view
+    ///   to query other relvars (base or virtual) in the database.
+    /// - **Output**: A `Result` containing the computed `Relation`.
+    ///
+    /// # Safety
+    ///
+    /// The evaluator is passed a read-only reference (`&`), ensuring that
+    /// viewing a relation cannot cause side effects (mutations) in the database.
+    pub evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
+}
 
 /// A relational database instance.
 ///
@@ -139,13 +165,7 @@ pub struct Database<E: StorageEngine> {
     /// Transaction savepoint.
     transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
-    virtual_relvars: HashMap<String, VirtualRelvarDefinition>,
-}
-
-impl<E: StorageEngine> QueryExecutor for Database<E> {
-    fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
-        self.query(relation_name)
-    }
+    virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -262,13 +282,12 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
     ///
     /// db.create_relvar("TABLE_1", rel_type.clone()).unwrap();
-    /// db.define_virtual_relvar("VIEW_1", rel_type, |db_exec| {
+    /// db.define_virtual_relvar("VIEW_1", rel_type, |db| {
     ///     Ok(relvar_core::values::Relation::new(relvar_core::types::RelationType::new(relvar_core::types::TupleType::new())))
     /// }).unwrap();
     ///
@@ -836,7 +855,6 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
     /// use relvar_core::tuple;
-    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let emp_type = RelationType::new(
@@ -852,8 +870,8 @@ impl<E: StorageEngine> Database<E> {
     /// db.define_virtual_relvar(
     ///     "ACTIVE_EMP",
     ///     emp_type,
-    ///     |db_exec| {
-    ///         let emp = db_exec.query("EMP").unwrap();
+    ///     |db| {
+    ///         let emp = db.query("EMP").unwrap();
     ///         Ok(emp.restrict(|t| t.get_typed::<bool>("active").unwrap_or(false)))
     ///     }
     /// ).unwrap();
@@ -870,7 +888,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+        evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -899,12 +917,11 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
     ///
-    /// db.define_virtual_relvar("MY_VIEW", rel_type, |db_exec| {
+    /// db.define_virtual_relvar("MY_VIEW", rel_type, |db| {
     ///     Ok(relvar_core::values::Relation::new(relvar_core::types::RelationType::new(relvar_core::types::TupleType::new())))
     /// }).unwrap();
     ///

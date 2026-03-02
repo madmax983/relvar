@@ -7,3 +7,7 @@
 **Bloat:** `RelationSource` trait. It was a "One-Time Trait" implemented only by `Database`, adding unnecessary abstraction and indirection for speculative "Future Proofing".
 **Cut:** Removed `RelationSource` trait and updated `Query::execute` to depend directly on `Database`.
 **Saved:** Removed 1 file (`traits.rs`), removed ~20 lines of code, reduced cognitive load by removing an unnecessary abstraction layer.
+## [Reduction]
+**Bloat:** `QueryExecutor` trait. It was a "One-Time Trait" implemented only by `Database`, adding unnecessary abstraction and indirection for speculative "Future Proofing".
+**Cut:** Removed `QueryExecutor` trait and updated `Query::execute`, `VirtualRelvarDefinition`, and `search` to depend directly on concrete `Database<E>`.
+**Saved:** Removed 1 file (`traits.rs`), removed ~20 lines of code, reduced cognitive load by removing an unnecessary abstraction layer.
