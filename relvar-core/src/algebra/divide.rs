@@ -172,10 +172,11 @@ fn filter_matching_candidates(
     dividend: &Relation,
     dividend_heading: &crate::types::TupleType,
 ) -> Vec<crate::values::Tuple> {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
 
     // Clone dividend_heading once outside the loop to avoid repeated clones
-    let dividend_heading = dividend_heading.clone();
+    let dividend_heading_arc = Arc::new(dividend_heading.clone());
 
     candidates
         .tuples()
@@ -183,7 +184,7 @@ fn filter_matching_candidates(
             // Check if ALL divisor tuples match when extended with this candidate
             divisor.tuples().all(|divisor_tuple| {
                 // Extend candidate with divisor tuple using iterator-based approach
-                let extended_values: HashMap<_, _> = candidate
+                let extended_values: BTreeMap<_, _> = candidate
                     .values()
                     .iter()
                     .chain(divisor_tuple.values())
@@ -191,9 +192,10 @@ fn filter_matching_candidates(
                     .collect();
 
                 // Create extended tuple
-                let extended_tuple =
-                    crate::values::Tuple::new(dividend_heading.clone(), extended_values)
-                        .expect("Extended tuple should conform to dividend heading");
+                let extended_tuple = crate::values::Tuple::new_unchecked(
+                    dividend_heading_arc.clone(),
+                    extended_values,
+                );
 
                 // Check if this extended tuple exists in the dividend
                 dividend.contains(&extended_tuple)

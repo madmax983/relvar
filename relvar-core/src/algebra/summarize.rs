@@ -456,12 +456,15 @@ impl Relation {
     ) -> Result<Relation, SummarizeError> {
         self.validate_grouping_attributes(group_by)?;
         let result_heading = self.build_result_heading(group_by, aggregations)?;
+        let result_rel_type = RelationType::new(result_heading.clone());
+        let result_heading_arc = std::sync::Arc::new(result_heading);
+
         let groups = self.group_tuples(group_by);
 
         // Compute aggregations for each group
         let mut result_tuples = Vec::new();
         for (key, group_tuples) in groups {
-            let mut values = HashMap::new();
+            let mut values = std::collections::BTreeMap::new();
 
             // Add grouping attribute values
             for (i, attr) in group_by.iter().enumerate() {
@@ -474,15 +477,14 @@ impl Relation {
                 values.insert(agg.result_name.clone(), agg_value);
             }
 
-            let tuple = Tuple::new(result_heading.clone(), values)
-                .map_err(|e| SummarizeError::TupleCreation(e.to_string()))?;
+            // Using new_unchecked avoids O(N) validation per tuple where N is degree,
+            // since we've already validated the grouping and aggregation attributes
+            let tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
             result_tuples.push(tuple);
         }
 
-        Ok(
-            Relation::from_tuples(RelationType::new(result_heading), result_tuples)
-                .expect("Summarized tuples should conform to result relation type"),
-        )
+        Ok(Relation::from_tuples(result_rel_type, result_tuples)
+            .expect("Summarized tuples should conform to result relation type"))
     }
 
     fn validate_grouping_attributes(&self, group_by: &[&str]) -> Result<(), SummarizeError> {
