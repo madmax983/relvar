@@ -38,3 +38,7 @@ This ensures the map matches the territory.
 ## 2024-05-27 - Time Series Self-Join Collision
 **Confusion:** The `moving_average` function silently failed or produced incorrect results when the input relation had attributes ending in `_prev`.
 **Clarification:** The function implements a self-join by renaming the "previous" relation's attributes with a `_prev` suffix. This naive implementation causes a name collision if the input relation already has such attributes. I've documented this as a `# Known Issue` and advised users to avoid the `_prev` suffix in input data.
+
+## 2024-05-27 - Broken Intra-Doc Links for Errors
+**Confusion:** Rustdoc was emitting warnings because public documentation (like `Relation::from_tuples`) contained intra-doc links to error types (`RelationError`, `TupleError`) that were private at the module boundary, making them unresolvable to external readers.
+**Clarification:** Exported the missing error enums (`RelationError` and `TupleError`) in `relvar-core/src/values/mod.rs` using `pub use relation::RelationError;` and `pub use tuple::TupleError;` so that they are visible in public documentation and Rustdoc can correctly generate hyperlinks.
