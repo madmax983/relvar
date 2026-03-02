@@ -254,6 +254,9 @@ fn compute_grouped_tuples(
     rva_heading: &TupleType,
     rva_name: &str,
 ) -> Result<Vec<Tuple>, GroupError> {
+    let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
+    let result_heading_arc = std::sync::Arc::new(result_heading.clone());
+
     let mut groups: HashMap<Vec<ScalarValue>, Vec<Tuple>> = HashMap::new();
 
     for tuple in relation.tuples() {
@@ -264,21 +267,21 @@ fn compute_grouped_tuples(
             .collect();
 
         // Extract grouped attributes for RVA
-        let mut rva_values = HashMap::new();
+        let mut rva_values = std::collections::BTreeMap::new();
         for attr in attrs_to_group {
             rva_values.insert(attr.to_string(), tuple.get(attr).unwrap().clone());
         }
 
-        let rva_tuple = Tuple::new(rva_heading.clone(), rva_values)
-            .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
+        let rva_tuple = Tuple::new_unchecked(rva_heading_arc.clone(), rva_values);
 
         groups.entry(key).or_default().push(rva_tuple);
     }
 
     // Build result tuples
     let mut result_tuples = Vec::new();
+    let rva_relation_type = RelationType::new(rva_heading.clone());
     for (key, rva_tuples) in groups {
-        let mut values = HashMap::new();
+        let mut values = std::collections::BTreeMap::new();
 
         // Add grouping attribute values
         for (i, attr) in grouping_attrs.iter().enumerate() {
@@ -286,13 +289,11 @@ fn compute_grouped_tuples(
         }
 
         // Create RVA relation
-        let rva_relation =
-            Relation::from_tuples(RelationType::new(rva_heading.clone()), rva_tuples)
-                .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
+        let rva_relation = Relation::from_tuples(rva_relation_type.clone(), rva_tuples)
+            .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
         values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
 
-        let tuple = Tuple::new(result_heading.clone(), values)
-            .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
+        let tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
         result_tuples.push(tuple);
     }
 
@@ -362,6 +363,7 @@ fn compute_ungrouped_tuples(
     rva_relation_type: &RelationType,
 ) -> Result<Vec<Tuple>, UngroupError> {
     let mut result_tuples = Vec::new();
+    let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
     for tuple in relation.tuples() {
         // Get the RVA relation
@@ -372,7 +374,7 @@ fn compute_ungrouped_tuples(
 
         // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
         for rva_tuple in rva_relation.tuples() {
-            let mut values = HashMap::new();
+            let mut values = std::collections::BTreeMap::new();
 
             // Add non-RVA attribute values
             for attr_name in relation.relation_type().tuple_type().attribute_names() {
@@ -389,8 +391,7 @@ fn compute_ungrouped_tuples(
                 );
             }
 
-            let result_tuple = Tuple::new(result_heading.clone(), values)
-                .map_err(|e| UngroupError::TupleCreation(e.to_string()))?;
+            let result_tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
             result_tuples.push(result_tuple);
         }
     }
