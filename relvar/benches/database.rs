@@ -188,7 +188,9 @@ fn bench_query_with_operations(c: &mut Criterion) {
                 let result = db
                     .query("EMP")
                     .unwrap()
-                    .restrict(|t| t.get_typed::<i64>("dept_id").unwrap() == 5)
+                    .restrict(|t: &relvar_core::values::Tuple| {
+                        t.get_typed::<i64>("dept_id").unwrap() == 5
+                    })
                     .project(&["emp_id", "name", "salary"]);
                 black_box(result);
             });
@@ -362,10 +364,12 @@ fn bench_realistic_workload(c: &mut Criterion) {
 
                 // Query 5 times
                 for _ in 0..5 {
-                    let _result = db
-                        .query("EMP")
-                        .unwrap()
-                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 55000.0);
+                    let _result =
+                        db.query("EMP")
+                            .unwrap()
+                            .restrict(|t: &relvar_core::values::Tuple| {
+                                t.get_typed::<f64>("salary").unwrap() > 55000.0
+                            });
                 }
 
                 // Update 10 records
@@ -427,12 +431,12 @@ fn bench_virtual_relvar_creation(c: &mut Criterion) {
             |(_temp_dir, mut db)| {
                 let emp_type = create_employee_type();
 
-                fn evaluator(
-                    db: &dyn relvar::QueryExecutor,
+                fn evaluator<E: relvar_core::storage_engine::StorageEngine>(
+                    db: &relvar_core::database::Database<E>,
                 ) -> Result<relvar::Relation, relvar::DatabaseError> {
-                    Ok(db
-                        .query("EMP")?
-                        .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
+                    Ok(db.query("EMP")?.restrict(|t: &relvar_core::values::Tuple| {
+                        t.get_typed::<f64>("salary").unwrap() > 60000.0
+                    }))
                 }
 
                 db.define_virtual_relvar("HIGH_EARNERS", emp_type, evaluator)
@@ -465,12 +469,12 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
                         let emp_type = create_employee_type();
 
                         fn high_earners_evaluator(
-                            db: &dyn relvar::QueryExecutor,
+                            db: &relvar::Database<relvar::PersistentEngine>,
                         ) -> Result<relvar::Relation, relvar::DatabaseError>
                         {
-                            Ok(db
-                                .query("EMP")?
-                                .restrict(|t| t.get_typed::<f64>("salary").unwrap() > 60000.0))
+                            Ok(db.query("EMP")?.restrict(|t: &relvar_core::values::Tuple| {
+                                t.get_typed::<f64>("salary").unwrap() > 60000.0
+                            }))
                         }
 
                         db.define_virtual_relvar("HIGH_EARNERS", emp_type, high_earners_evaluator)
