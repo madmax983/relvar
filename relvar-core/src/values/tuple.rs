@@ -172,16 +172,15 @@ impl Tuple {
 
         // Verify all values match their types
         for (attr_name, value) in &values_map {
-            if let Some(expected_type) = tuple_type.get_attribute_type(attr_name) {
-                if !value.is_type(expected_type) {
-                    return Err(TupleError::TypeMismatch(
-                        attr_name.clone(),
-                        expected_type.name().to_string(),
-                        value.scalar_type().name().to_string(),
-                    ));
-                }
-            } else {
+            let Some(expected_type) = tuple_type.get_attribute_type(attr_name) else {
                 return Err(TupleError::AttributeNotFound(attr_name.clone()));
+            };
+            if !value.is_type(expected_type) {
+                return Err(TupleError::TypeMismatch(
+                    attr_name.clone(),
+                    expected_type.name().to_string(),
+                    value.scalar_type().name().to_string(),
+                ));
             }
         }
 
@@ -254,11 +253,10 @@ impl Tuple {
 
         // Check that all values match their types
         for (attr_name, value) in &self.values {
-            if let Some(expected_type) = tuple_type.get_attribute_type(attr_name) {
-                if !value.is_type(expected_type) {
-                    return false;
-                }
-            } else {
+            let Some(expected_type) = tuple_type.get_attribute_type(attr_name) else {
+                return false;
+            };
+            if !value.is_type(expected_type) {
                 return false;
             }
         }
@@ -364,100 +362,100 @@ impl From<Vec<u8>> for ScalarValue {
 impl TryFrom<ScalarValue> for i64 {
     type Error = ();
     fn try_from(value: ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::Int(v) => Ok(v),
-            _ => Err(()),
-        }
+        let ScalarValue::Int(v) = value else {
+            return Err(());
+        };
+        Ok(v)
     }
 }
 
 impl TryFrom<ScalarValue> for f64 {
     type Error = ();
     fn try_from(value: ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::Float(v) => Ok(v),
-            _ => Err(()),
-        }
+        let ScalarValue::Float(v) = value else {
+            return Err(());
+        };
+        Ok(v)
     }
 }
 
 impl TryFrom<ScalarValue> for String {
     type Error = ();
     fn try_from(mut value: ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::String(ref mut v) => Ok(std::mem::take(v)),
-            _ => Err(()),
-        }
+        let ScalarValue::String(ref mut v) = value else {
+            return Err(());
+        };
+        Ok(std::mem::take(v))
     }
 }
 
 impl TryFrom<ScalarValue> for bool {
     type Error = ();
     fn try_from(value: ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::Bool(v) => Ok(v),
-            _ => Err(()),
-        }
+        let ScalarValue::Bool(v) = value else {
+            return Err(());
+        };
+        Ok(v)
     }
 }
 
 impl TryFrom<ScalarValue> for Vec<u8> {
     type Error = ();
     fn try_from(mut value: ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::Bytes(ref mut v) => Ok(std::mem::take(v)),
-            _ => Err(()),
-        }
+        let ScalarValue::Bytes(ref mut v) = value else {
+            return Err(());
+        };
+        Ok(std::mem::take(v))
     }
 }
 
 impl<'a> TryFrom<&'a ScalarValue> for i64 {
     type Error = ();
     fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::Int(v) => Ok(*v),
-            _ => Err(()),
-        }
+        let ScalarValue::Int(v) = value else {
+            return Err(());
+        };
+        Ok(*v)
     }
 }
 
 impl<'a> TryFrom<&'a ScalarValue> for f64 {
     type Error = ();
     fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::Float(v) => Ok(*v),
-            _ => Err(()),
-        }
+        let ScalarValue::Float(v) = value else {
+            return Err(());
+        };
+        Ok(*v)
     }
 }
 
 impl<'a> TryFrom<&'a ScalarValue> for String {
     type Error = ();
     fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::String(v) => Ok(v.clone()),
-            _ => Err(()),
-        }
+        let ScalarValue::String(v) = value else {
+            return Err(());
+        };
+        Ok(v.clone())
     }
 }
 
 impl<'a> TryFrom<&'a ScalarValue> for bool {
     type Error = ();
     fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::Bool(v) => Ok(*v),
-            _ => Err(()),
-        }
+        let ScalarValue::Bool(v) = value else {
+            return Err(());
+        };
+        Ok(*v)
     }
 }
 
 impl<'a> TryFrom<&'a ScalarValue> for Vec<u8> {
     type Error = ();
     fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-        match value {
-            ScalarValue::Bytes(v) => Ok(v.clone()),
-            _ => Err(()),
-        }
+        let ScalarValue::Bytes(v) = value else {
+            return Err(());
+        };
+        Ok(v.clone())
     }
 }
 
