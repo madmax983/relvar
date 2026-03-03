@@ -220,15 +220,15 @@ pub enum ScalarType {
 
 impl ScalarType {
     /// Returns the name of the type
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> &str {
         match self {
-            ScalarType::Int => "Int".to_string(),
-            ScalarType::Float => "Float".to_string(),
-            ScalarType::String => "String".to_string(),
-            ScalarType::Bool => "Bool".to_string(),
-            ScalarType::Bytes => "Bytes".to_string(),
-            ScalarType::Relation(_) => "Relation".to_string(),
-            ScalarType::UserDefined { name, .. } => name.clone(),
+            ScalarType::Int => "Int",
+            ScalarType::Float => "Float",
+            ScalarType::String => "String",
+            ScalarType::Bool => "Bool",
+            ScalarType::Bytes => "Bytes",
+            ScalarType::Relation(_) => "Relation",
+            ScalarType::UserDefined { name, .. } => name.as_str(),
         }
     }
 
@@ -315,8 +315,8 @@ impl ScalarType {
                 // Check that the value matches the representation type
                 if !value.is_type(representation) {
                     return Err(ScalarTypeError::TypeMismatch {
-                        expected: representation.name(),
-                        actual: value.scalar_type().name(),
+                        expected: representation.name().to_string(),
+                        actual: value.scalar_type().name().to_string(),
                     });
                 }
                 Ok(ScalarValue::UserDefined {
@@ -328,8 +328,8 @@ impl ScalarType {
             ty => {
                 if !value.is_type(ty) {
                     return Err(ScalarTypeError::TypeMismatch {
-                        expected: ty.name(),
-                        actual: value.scalar_type().name(),
+                        expected: ty.name().to_string(),
+                        actual: value.scalar_type().name().to_string(),
                     });
                 }
                 Ok(value)
