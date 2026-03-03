@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "relvar-core",
     "relvar-storage",
-    "relvar", "test_magic_project",
+    "relvar",
 ]
 
 [workspace.package]
