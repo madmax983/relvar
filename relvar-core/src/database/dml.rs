@@ -11,14 +11,18 @@ where
     let initial_cardinality = current_relation.cardinality();
     let relation_type = current_relation.relation_type().clone();
 
-    let kept_tuples: Vec<Tuple> = current_relation
-        .into_iter()
-        .filter(|tuple| !predicate(tuple))
-        .collect();
+    // Optimization: Pass the iterator directly to `from_tuples_unchecked`
+    // instead of collecting into an intermediate `Vec`. Since the source
+    // relation is valid, the filtered tuples are also guaranteed to be valid,
+    // allowing us to bypass redundant type checking.
+    let new_relation = Relation::from_tuples_unchecked(
+        relation_type,
+        current_relation
+            .into_iter()
+            .filter(|tuple| !predicate(tuple)),
+    );
 
-    let delete_count = initial_cardinality - kept_tuples.len();
-
-    let new_relation = Relation::from_tuples(relation_type, kept_tuples)?;
+    let delete_count = initial_cardinality - new_relation.cardinality();
 
     Ok((new_relation, delete_count))
 }
@@ -55,7 +59,10 @@ where
         },
     )?;
 
-    let new_relation = Relation::from_tuples(relation_type, tuples)?;
+    // Optimization: The updated tuples are already validated via `conforms_to`
+    // inside the `try_fold` loop. We can safely use `from_tuples_unchecked`
+    // to build the new relation, avoiding a second O(N*M) validation pass.
+    let new_relation = Relation::from_tuples_unchecked(relation_type, tuples);
 
     Ok((new_relation, update_count))
 }
