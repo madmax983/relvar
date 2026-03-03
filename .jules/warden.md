@@ -171,3 +171,12 @@ The JSON importer (`relvar::tools::importer`) enforced `MAX_IMPORT_ROWS` (100,00
 2. This guard enforces a strict recursion limit (`MAX_RECURSION_DEPTH = 64`) using a thread-local counter during deserialization.
 3. Updated `ScalarValue` and `ScalarType` internal deserialization logic (`ScalarValueUnchecked`, `ScalarTypeUnchecked`) to wrap recursive fields in `DepthGuarded`.
 4. This ensures that any deserialization attempt exceeding the limit fails gracefully with a "Recursion limit exceeded" error, regardless of the underlying format (JSON, Bincode, etc.).
+## 2026-03-01 - Bincode Unmaintained & Allocation Bomb Migration
+**Threat:**
+`relvar-storage` and `relvar-core` used `bincode = 1.3.3`, which has been permanently abandoned (RUSTSEC-2025-0141). Although previous mitigations (`bincode::options().with_limit(...)`) protected against bounded allocation attacks, relying on an unmaintained serialization library is an inherent long-term security risk and leaves the project vulnerable to future exploits with no patch path.
+
+**Defense:**
+1. Replaced `bincode` with `postcard` across the entire workspace (`Cargo.toml`, `relvar-storage`, `relvar-core`).
+2. `postcard` natively serializes data using varints without blindly trusting 64-bit length prefixes to perform unbounded `Vec` pre-allocations, inherently resolving the allocation bomb DoS vector.
+3. Updated `relvar-storage/src/storage/heap.rs` to detect versioned pages properly since `VERSIONED_PAGE_MAGIC` (0x4D564343) encodes to 5 bytes in `postcard`'s varint system.
+4. Removed all uses of legacy `bincode::options()` in `HeapFile` and `WalRecord` parsing, streamlining serialization error handling.

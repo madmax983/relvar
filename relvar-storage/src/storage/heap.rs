@@ -21,7 +21,6 @@
 //! storage references, maintaining the relational abstraction.
 
 use super::page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
-use bincode::Options;
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
 use serde::{Deserialize, Serialize};
@@ -34,35 +33,18 @@ fn deserialize_bounded<'a, T>(data: &'a [u8]) -> Result<T, HeapError>
 where
     T: Deserialize<'a>,
 {
-    // Limit deserialization size to PAGE_SIZE to prevent allocation bombs.
-    // bincode 1.3.3's with_limit checks the size of data being deserialized.
-    // For Vec/String, it checks the length prefix against this limit.
-    // NOTE: Must explicitly set LittleEndian and FixedIntEncoding to match legacy bincode::serialize defaults.
-    bincode::options()
-        .with_little_endian()
-        .with_fixint_encoding()
-        .with_limit(PAGE_SIZE as u64)
-        .allow_trailing_bytes()
-        .deserialize(data)
-        .map_err(|e| HeapError::Serialization(e.to_string()))
+    postcard::from_bytes(data).map_err(|e| HeapError::Serialization(e.to_string()))
 }
 
 /// Helper for consistent serialization matching `deserialize_bounded`.
-/// Uses LittleEndian and FixedIntEncoding to ensure compatibility.
 fn serialize_compat<T: Serialize>(value: &T) -> Result<Vec<u8>, HeapError> {
-    bincode::options()
-        .with_little_endian()
-        .with_fixint_encoding()
-        .serialize(value)
-        .map_err(|e| HeapError::Serialization(e.to_string()))
+    postcard::to_allocvec(value).map_err(|e| HeapError::Serialization(e.to_string()))
 }
 
 /// Helper for calculating serialized size matching `serialize_compat`.
 fn serialized_size_compat<T: Serialize>(value: &T) -> Result<u64, HeapError> {
-    bincode::options()
-        .with_little_endian()
-        .with_fixint_encoding()
-        .serialized_size(value)
+    postcard::to_allocvec(value)
+        .map(|v| v.len() as u64)
         .map_err(|e| HeapError::Serialization(e.to_string()))
 }
 
@@ -931,26 +913,17 @@ impl HeapFile {
 
     /// Checks if a page is a versioned page (MVCC).
     fn is_versioned_page(&self, page: &Page) -> bool {
-        // Check for new format: version byte + magic at offset 5
-        let is_new_format = page.data().len() >= 9 && page.data()[0] == PAGE_FORMAT_VERSION && {
-            let magic_at_5 = u32::from_le_bytes([
-                page.data()[5],
-                page.data()[6],
-                page.data()[7],
-                page.data()[8],
-            ]);
-            magic_at_5 == VERSIONED_PAGE_MAGIC
-        };
+        // postcard uses varint for u32. 0x4D564343 encodes to [195, 134, 217, 234, 4].
+        let postcard_magic = [195, 134, 217, 234, 4];
 
-        // Check for old format versioned: magic at offset 0
-        let is_old_versioned = !is_new_format && page.data().len() >= 4 && {
-            let first_u32 = u32::from_le_bytes([
-                page.data()[0],
-                page.data()[1],
-                page.data()[2],
-                page.data()[3],
-            ]);
-            first_u32 == VERSIONED_PAGE_MAGIC
+        // Check for new format: version byte + length (4 bytes) + magic at offset 5
+        let is_new_format = page.data().len() >= 5 + postcard_magic.len()
+            && page.data()[0] == PAGE_FORMAT_VERSION
+            && { page.data()[5..5 + postcard_magic.len()] == postcard_magic };
+
+        // Check for old format (just the magic number at the start)
+        let is_old_versioned = !is_new_format && page.data().len() >= postcard_magic.len() && {
+            page.data()[0..postcard_magic.len()] == postcard_magic
         };
 
         is_new_format || is_old_versioned
@@ -1180,8 +1153,7 @@ impl HeapFile {
         });
 
         // Calculate required space using ACTUAL serialized size
-        let slot_dir = bincode::serialize(&versioned_page)
-            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        let slot_dir = serialize_compat(&versioned_page)?;
         let header_size = V2_HEADER_SIZE + slot_dir.len();
 
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
@@ -1447,14 +1419,14 @@ mod tests {
     /// Helper function for tests to deserialize versioned pages (handles both old and new formats)
     fn deserialize_versioned_page_for_test(
         page_data: &[u8],
-    ) -> Result<VersionedSlottedPage, bincode::Error> {
+    ) -> Result<VersionedSlottedPage, postcard::Error> {
         if page_data.len() >= 5 && page_data[0] == PAGE_FORMAT_VERSION {
             // New format: [version:1][length:4][slot_dir][tuples]
             let slot_dir_len = u32::from_le_bytes(page_data[1..5].try_into().unwrap()) as usize;
-            bincode::deserialize(&page_data[5..5 + slot_dir_len])
+            postcard::from_bytes(&page_data[5..5 + slot_dir_len])
         } else {
             // Old format: [slot_dir][tuples]
-            bincode::deserialize(page_data)
+            postcard::from_bytes(page_data)
         }
     }
 
@@ -1638,7 +1610,7 @@ mod tests {
                 id: i as i64,
                 data: payload.clone(),
             };
-            let tuple_data = bincode::serialize(&tuple).unwrap();
+            let tuple_data = postcard::to_allocvec(&tuple).unwrap();
 
             // Construct a SlottedPage with one tuple
             // We place tuple at the end of the page (standard behavior)
@@ -1728,8 +1700,8 @@ mod tests {
         };
 
         // Serialize and deserialize
-        let serialized = bincode::serialize(&entry).unwrap();
-        let deserialized: VersionedSlotEntry = bincode::deserialize(&serialized).unwrap();
+        let serialized = postcard::to_allocvec(&entry).unwrap();
+        let deserialized: VersionedSlotEntry = postcard::from_bytes(&serialized).unwrap();
 
         assert_eq!(entry, deserialized);
     }
@@ -1744,8 +1716,8 @@ mod tests {
             prev_version: None,
         };
 
-        let serialized = bincode::serialize(&entry).unwrap();
-        let deserialized: VersionedSlotEntry = bincode::deserialize(&serialized).unwrap();
+        let serialized = postcard::to_allocvec(&entry).unwrap();
+        let deserialized: VersionedSlotEntry = postcard::from_bytes(&serialized).unwrap();
 
         assert_eq!(entry, deserialized);
         assert_eq!(deserialized.xmax, Some(test_txn(2)));
@@ -1766,8 +1738,8 @@ mod tests {
             prev_version: Some(prev),
         };
 
-        let serialized = bincode::serialize(&entry).unwrap();
-        let deserialized: VersionedSlotEntry = bincode::deserialize(&serialized).unwrap();
+        let serialized = postcard::to_allocvec(&entry).unwrap();
+        let deserialized: VersionedSlotEntry = postcard::from_bytes(&serialized).unwrap();
 
         assert_eq!(entry, deserialized);
         assert_eq!(deserialized.prev_version, Some(prev));
@@ -1800,8 +1772,8 @@ mod tests {
         };
 
         // Serialize and deserialize
-        let serialized = bincode::serialize(&page).unwrap();
-        let deserialized: VersionedSlottedPage = bincode::deserialize(&serialized).unwrap();
+        let serialized = postcard::to_allocvec(&page).unwrap();
+        let deserialized: VersionedSlottedPage = postcard::from_bytes(&serialized).unwrap();
 
         assert_eq!(page.slot_count, deserialized.slot_count);
         assert_eq!(page.slots.len(), deserialized.slots.len());
@@ -1853,8 +1825,8 @@ mod tests {
         ];
 
         for entry in entries {
-            let serialized = bincode::serialize(&entry).unwrap();
-            let deserialized: VersionedSlotEntry = bincode::deserialize(&serialized).unwrap();
+            let serialized = postcard::to_allocvec(&entry).unwrap();
+            let deserialized: VersionedSlotEntry = postcard::from_bytes(&serialized).unwrap();
             assert_eq!(entry, deserialized);
         }
     }
@@ -1867,8 +1839,8 @@ mod tests {
             slots: Vec::new(),
         };
 
-        let serialized = bincode::serialize(&page).unwrap();
-        let deserialized: VersionedSlottedPage = bincode::deserialize(&serialized).unwrap();
+        let serialized = postcard::to_allocvec(&page).unwrap();
+        let deserialized: VersionedSlottedPage = postcard::from_bytes(&serialized).unwrap();
 
         assert_eq!(page.slot_count, deserialized.slot_count);
         assert_eq!(page.slots.len(), 0);
@@ -1890,8 +1862,8 @@ mod tests {
             prev_version: None,
         };
 
-        let regular_size = bincode::serialize(&regular).unwrap().len();
-        let versioned_size = bincode::serialize(&versioned).unwrap().len();
+        let regular_size = postcard::to_allocvec(&regular).unwrap().len();
+        let versioned_size = postcard::to_allocvec(&versioned).unwrap().len();
 
         // Versioned should be larger (has xmin, xmax, prev_version)
         assert!(versioned_size > regular_size);
@@ -2964,7 +2936,7 @@ mod tests {
         };
 
         // Serialize just the header (no tuple data needed as offset is invalid)
-        let slot_dir = bincode::serialize(&slotted_page).unwrap();
+        let slot_dir = postcard::to_allocvec(&slotted_page).unwrap();
         let mut page_data = vec![0u8; PAGE_SIZE - 8];
         page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
@@ -3028,7 +3000,7 @@ mod tests {
         // 4. Verify scan fails gracefully
         let result = heap.scan();
         assert!(result.is_err());
-        // Should be a serialization error because bincode will fail to deserialize garbage
+        // Should be a serialization error because postcard will fail to deserialize garbage
         match result {
             Err(HeapError::Serialization(_)) => {}
             _ => panic!("Expected Serialization error, got {:?}", result),
@@ -3055,7 +3027,7 @@ mod tests {
         };
 
         // Serialize header
-        let slot_dir = bincode::serialize(&slotted_page).unwrap();
+        let slot_dir = postcard::to_allocvec(&slotted_page).unwrap();
         let mut page_data = vec![0u8; PAGE_SIZE - 8];
         page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
@@ -3106,7 +3078,7 @@ mod tests {
         };
 
         // Serialize header
-        let slot_dir = bincode::serialize(&versioned_page).unwrap();
+        let slot_dir = postcard::to_allocvec(&versioned_page).unwrap();
         let mut page_data = vec![0u8; PAGE_SIZE - 8];
 
         // Write format version
@@ -3178,7 +3150,7 @@ mod tests {
             };
 
             // Serialize and write back
-            let slot_dir = bincode::serialize(&corrupted_page).unwrap();
+            let slot_dir = postcard::to_allocvec(&corrupted_page).unwrap();
             let mut page_data = vec![0u8; PAGE_SIZE - 8];
             page_data[0] = PAGE_FORMAT_VERSION;
             let slot_dir_len = slot_dir.len() as u32;
@@ -3233,7 +3205,7 @@ mod tests {
                 })],
             };
 
-            let slot_dir = bincode::serialize(&corrupted_page).unwrap();
+            let slot_dir = postcard::to_allocvec(&corrupted_page).unwrap();
             let mut page_data = vec![0u8; PAGE_SIZE - 8];
             page_data[0] = PAGE_FORMAT_VERSION;
             let slot_dir_len = slot_dir.len() as u32;
@@ -3283,7 +3255,7 @@ mod tests {
         };
 
         // Serialize header
-        let slot_dir = bincode::serialize(&versioned_page).unwrap();
+        let slot_dir = postcard::to_allocvec(&versioned_page).unwrap();
         let mut page_data = vec![0u8; PAGE_SIZE - 8];
 
         // Write format version
@@ -3388,7 +3360,7 @@ mod tests {
         };
 
         // Serialize header only
-        let slot_dir = bincode::serialize(&slotted_page).unwrap();
+        let slot_dir = postcard::to_allocvec(&slotted_page).unwrap();
         let mut page_data = vec![0u8; PAGE_SIZE - 8];
         page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
@@ -3473,7 +3445,7 @@ mod tests {
             let sp = res.unwrap();
             if let Some(Some(last_slot)) = sp.slots.last() {
                 // Check for overlap
-                let slot_dir = bincode::serialize(&sp).unwrap();
+                let slot_dir = postcard::to_allocvec(&sp).unwrap();
                 // Slot dir is at offset 0.
                 // Tuple is at last_slot.offset.
                 // If tuple start < slot_dir end, we have overlap.
@@ -3498,14 +3470,15 @@ mod tests {
     #[test]
     fn test_allocation_bomb_prevention() {
         // Construct a malicious payload: a Vec<u8> with length prefix 1GB
-        // bincode uses little-endian by default
-        let huge_len: u64 = 1024 * 1024 * 1024; // 1 GB
+        // Postcard uses varints. 1 GB is 2^30.
+        let huge_len: usize = 1024 * 1024 * 1024; // 1 GB
         let mut payload = Vec::new();
-        payload.extend_from_slice(&huge_len.to_le_bytes());
+        // Since postcard uses varint, we must serialize the length the way postcard does
+        payload.extend_from_slice(&postcard::to_allocvec(&huge_len).unwrap());
         // No actual data follows
 
         // Try to deserialize into Vec<u8> using our bounded deserializer
-        // This should fail immediately because the declared length exceeds PAGE_SIZE
+        // This should fail immediately because postcard checks if enough bytes are remaining
         let result: Result<Vec<u8>, HeapError> = deserialize_bounded(&payload);
 
         assert!(result.is_err());
@@ -3670,11 +3643,11 @@ mod security_tests {
         // Loop through sizes that are close to page limit
         // USABLE_PAGE_SIZE is 4088. Overhead roughly 40-60 bytes.
         // We look for a size where it fits with 'None' but fails with 'Some'
-        for len in 3950..4050 {
+        for len in 3500..4088 {
             let data = vec![0u8; len];
             let tuple = tuple! { data: data.clone() };
             // Serialize to get length
-            let tuple_data = bincode::serialize(&tuple).unwrap();
+            let tuple_data = postcard::to_allocvec(&tuple).unwrap();
             let tuple_data_len = tuple_data.len();
 
             // Check if it fits with None (insert)

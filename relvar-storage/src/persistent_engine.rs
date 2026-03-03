@@ -328,7 +328,7 @@ impl StorageEngine for PersistentEngine {
         let (txn_id, auto_commit) = self.ensure_transaction()?;
 
         // Serialize tuple for WAL
-        let tuple_data = bincode::serialize(&tuple)
+        let tuple_data = postcard::to_allocvec(&tuple)
             .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
 
         // Log INSERT record to WAL
@@ -443,7 +443,7 @@ impl PersistentEngine {
         txn_id: TransactionId,
     ) -> Result<(), StorageError> {
         // Log WAL
-        let tuple_data = bincode::serialize(&tuple)
+        let tuple_data = postcard::to_allocvec(&tuple)
             .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
 
         self.wal
