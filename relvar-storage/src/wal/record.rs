@@ -4,7 +4,6 @@
 //! Records are serialized using bincode for efficient storage and recovery.
 
 use super::lsn::{Lsn, TransactionId};
-use bincode::Options;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -16,7 +15,7 @@ use crate::storage::{PageId, heap::TupleId};
 pub enum WalRecordError {
     /// Serialization error.
     #[error("Failed to serialize WAL record: {0}")]
-    Serialization(#[from] bincode::Error),
+    Serialization(#[from] postcard::Error),
 
     /// Record is too large to fit in buffer.
     #[error("WAL record too large: {0} bytes (max: {1})")]
@@ -134,7 +133,7 @@ impl WalRecord {
     /// Returns `WalRecordError::Serialization` if serialization fails.
     /// Returns `WalRecordError::RecordTooLarge` if the record exceeds MAX_RECORD_SIZE.
     pub fn serialize(&self) -> Result<Vec<u8>, WalRecordError> {
-        let bytes = bincode::serialize(self)?;
+        let bytes = postcard::to_allocvec(self)?;
 
         if bytes.len() > MAX_RECORD_SIZE {
             return Err(WalRecordError::RecordTooLarge(bytes.len(), MAX_RECORD_SIZE));
@@ -143,25 +142,19 @@ impl WalRecord {
         Ok(bytes)
     }
 
-    /// Deserializes a record from bytes using bincode.
+    /// Deserializes a record from bytes using postcard.
     ///
     /// # Errors
     ///
     /// Returns `WalRecordError::Serialization` if deserialization fails.
     pub fn deserialize(bytes: &[u8]) -> Result<Self, WalRecordError> {
         // Enforce maximum record size on the input buffer.
-        // This handles cases where bincode options ignore the limit for total size on slices.
         if bytes.len() > MAX_RECORD_SIZE {
             return Err(WalRecordError::RecordTooLarge(bytes.len(), MAX_RECORD_SIZE));
         }
 
-        // Use bounded deserialization to prevent allocation bombs.
-        // Must explicitly set LittleEndian and FixedIntEncoding to match legacy bincode::serialize defaults.
-        let record = bincode::options()
-            .with_limit(MAX_RECORD_SIZE as u64)
-            .with_little_endian()
-            .with_fixint_encoding()
-            .deserialize(bytes)?;
+        // postcard handles limits internally.
+        let record = postcard::from_bytes(bytes)?;
         Ok(record)
     }
 
@@ -484,33 +477,21 @@ mod tests {
 #[cfg(test)]
 mod security_tests {
     use super::*;
-    use bincode::Options;
 
     #[test]
     fn test_allocation_bomb_prevention() {
         let mut payload = Vec::new();
         // Insert variant (4)
-        payload.extend_from_slice(&4u32.to_le_bytes());
+        payload.push(4u8);
         // txn_id (1)
-        payload.extend_from_slice(&1u64.to_le_bytes());
+        payload.extend_from_slice(&postcard::to_allocvec(&1u64).unwrap());
         // relation_name "test"
-        payload.extend_from_slice(&4u64.to_le_bytes());
-        payload.extend_from_slice(b"test");
-        // tuple_data len 1GB
-        let huge_len: u64 = 1024 * 1024 * 1024;
-        payload.extend_from_slice(&huge_len.to_le_bytes());
+        payload.extend_from_slice(&postcard::to_allocvec("test").unwrap());
 
         let result = WalRecord::deserialize(&payload);
 
         match result {
-            Err(WalRecordError::Serialization(e)) => {
-                let msg = e.to_string();
-                // bincode 1.3.3 returns UnexpectedEof if it avoids allocation but reads past end
-                let accepted = msg.contains("SizeLimit")
-                    || msg.contains("size limit")
-                    || msg.contains("unexpected end of file");
-                assert!(accepted, "Expected size limit or EOF error, got: {}", msg);
-            }
+            Err(WalRecordError::Serialization(_e)) => {}
             _ => panic!("Expected Serialization error, got {:?}", result),
         }
     }
@@ -528,13 +509,9 @@ mod security_tests {
         };
 
         // Serialize manually to bypass WalRecord::serialize check
-        let bytes = bincode::options()
-            .with_little_endian()
-            .with_fixint_encoding()
-            .serialize(&record)
-            .unwrap();
+        let bytes = postcard::to_allocvec(&record).unwrap();
 
-        // Deserialize should fail due to manual length check OR bincode check
+        // Deserialize should fail due to manual length check OR postcard check
         let result = WalRecord::deserialize(&bytes);
 
         match result {

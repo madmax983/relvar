@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "relvar-core",
     "relvar-storage",
-    "relvar",
+    "relvar", "test_magic_project",
 ]
 
 [workspace.package]
@@ -17,7 +17,7 @@ repository = "https://github.com/yourusername/relvar"
 # Shared dependencies
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-bincode = "1"
+postcard = { version = "1.0", features = ["alloc", "use-std"] }
 serde_json = "1"
 
 # Dev dependencies
