@@ -112,8 +112,8 @@ impl TypeConstraint {
                     || value.scalar_type() != max.scalar_type()
                 {
                     return Err(TypeConstraintError::TypeMismatch {
-                        expected: min.scalar_type().name(),
-                        actual: value.scalar_type().name(),
+                        expected: min.scalar_type().name().to_string(),
+                        actual: value.scalar_type().name().to_string(),
                     });
                 }
 
@@ -124,8 +124,8 @@ impl TypeConstraint {
                     // Check type compatibility with first allowed value
                     if value.scalar_type() != allowed_values[0].scalar_type() {
                         return Err(TypeConstraintError::TypeMismatch {
-                            expected: allowed_values[0].scalar_type().name(),
-                            actual: value.scalar_type().name(),
+                            expected: allowed_values[0].scalar_type().name().to_string(),
+                            actual: value.scalar_type().name().to_string(),
                         });
                     }
                 }
@@ -139,7 +139,7 @@ impl TypeConstraint {
                 } else {
                     Err(TypeConstraintError::TypeMismatch {
                         expected: "String".to_string(),
-                        actual: value.scalar_type().name(),
+                        actual: value.scalar_type().name().to_string(),
                     })
                 }
             }
@@ -191,8 +191,8 @@ impl AttributeConstraints {
         // Check base type
         if value.scalar_type() != self.scalar_type {
             return Err(TypeConstraintError::TypeMismatch {
-                expected: self.scalar_type.name(),
-                actual: value.scalar_type().name(),
+                expected: self.scalar_type.name().to_string(),
+                actual: value.scalar_type().name().to_string(),
             });
         }
 
