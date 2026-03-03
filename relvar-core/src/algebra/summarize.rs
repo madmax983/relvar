@@ -14,7 +14,7 @@
 //! ```
 //! use relvar_core::types::{TupleType, RelationType, ScalarType};
 //! use relvar_core::values::{Relation, ScalarValue};
-//! use relvar_core::algebra::summarize::Aggregation;
+//! use relvar_core::algebra::Aggregation;
 //! use relvar_core::tuple;
 //!
 //! let heading = TupleType::new()
@@ -107,7 +107,7 @@ pub enum AggregationFn {
 ///
 /// ```
 /// use relvar_core::types::ScalarType;
-/// use relvar_core::algebra::summarize::Aggregation;
+/// use relvar_core::algebra::Aggregation;
 ///
 /// // Count all tuples, store in "total" as Int
 /// let count_agg = Aggregation::count("total");
@@ -143,7 +143,7 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar_core::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::Aggregation;
     ///
     /// let agg = Aggregation::count("num_employees");
     /// ```
@@ -168,7 +168,7 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar_core::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::Aggregation;
     ///
     /// let agg = Aggregation::sum("total_salary", "salary");
     /// ```
@@ -193,7 +193,7 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar_core::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::Aggregation;
     ///
     /// let agg = Aggregation::sum_float("total_price", "price");
     /// ```
@@ -218,7 +218,7 @@ impl Aggregation {
     /// # Example
     ///
     /// ```
-    /// use relvar_core::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::Aggregation;
     ///
     /// let agg = Aggregation::avg("avg_salary", "salary");
     /// ```
@@ -245,7 +245,7 @@ impl Aggregation {
     ///
     /// ```
     /// use relvar_core::types::ScalarType;
-    /// use relvar_core::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::Aggregation;
     ///
     /// let agg = Aggregation::min("lowest_salary", "salary", ScalarType::Int);
     /// ```
@@ -272,7 +272,7 @@ impl Aggregation {
     ///
     /// ```
     /// use relvar_core::types::ScalarType;
-    /// use relvar_core::algebra::summarize::Aggregation;
+    /// use relvar_core::algebra::Aggregation;
     ///
     /// let agg = Aggregation::max("highest_salary", "salary", ScalarType::Int);
     /// ```

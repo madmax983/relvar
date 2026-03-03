@@ -34,14 +34,14 @@
 //! ).unwrap();
 //! ```
 
-pub mod check;
-pub mod expression;
-pub mod foreign_key;
-pub mod key;
-pub mod manager;
+pub(crate) mod check;
+pub(crate) mod expression;
+pub(crate) mod foreign_key;
+pub(crate) mod key;
+pub(crate) mod manager;
 /// Prepared constraint expressions for optimized evaluation.
-pub mod prepared;
-pub mod type_constraint;
+pub(crate) mod prepared;
+pub(crate) mod type_constraint;
 
 pub use check::{CheckConstraint, CheckConstraintError, CheckConstraints};
 pub use expression::{CmpOp, ConstraintExpression, ExpressionError, ValueOrRef};

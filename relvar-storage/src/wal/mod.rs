@@ -45,11 +45,11 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-pub mod error;
-pub mod lsn;
-pub mod manager;
-pub mod record;
-pub mod recovery;
+pub(crate) mod error;
+pub(crate) mod lsn;
+pub(crate) mod manager;
+pub(crate) mod record;
+pub(crate) mod recovery;
 
 pub(crate) use error::WalError;
 pub(crate) use lsn::{Lsn, TransactionId, TransactionIdGenerator};

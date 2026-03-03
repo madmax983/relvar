@@ -1,4 +1,4 @@
-use relvar_core::constraints::expression::ConstraintExpression;
+use relvar_core::ConstraintExpression;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};

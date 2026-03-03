@@ -14,7 +14,7 @@
 //! we form groups that represent the rolling window, which can then be aggregated
 //! using standard summation operators.
 
-use relvar_core::algebra::summarize::Aggregation;
+use relvar_core::algebra::Aggregation;
 use relvar_core::error::DatabaseError;
 use relvar_core::values::{Relation, ScalarValue};
 

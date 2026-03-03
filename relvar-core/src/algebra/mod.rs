@@ -91,41 +91,41 @@
 pub mod delta;
 
 /// Set difference operator (A MINUS B).
-pub mod difference;
+pub(crate) mod difference;
 
 /// Relational division operator.
-pub mod divide;
+pub(crate) mod divide;
 
 /// Extend operator for adding computed attributes.
-pub mod extend;
+pub(crate) mod extend;
 
 /// Group and ungroup operators for relation-valued attributes.
-pub mod group;
+pub(crate) mod group;
 
 /// Set intersection operator.
-pub mod intersect;
+pub(crate) mod intersect;
 
 /// Natural join and theta join operators.
-pub mod join;
+pub(crate) mod join;
 
 /// Project operator for attribute selection (π).
-pub mod project;
+pub(crate) mod project;
 
 /// Rename operator for attribute renaming (ρ).
-pub mod rename;
+pub(crate) mod rename;
 
 /// Restrict operator for tuple filtering (σ).
-pub mod restrict;
+pub(crate) mod restrict;
 
 /// Semijoin and semidifference (antijoin) operators.
-pub mod semijoin;
+pub(crate) mod semijoin;
 
 /// Summarize operator for aggregation with grouping.
-pub mod summarize;
+pub(crate) mod summarize;
 pub use summarize::{Aggregation, AggregationFn};
 
 /// Set union operator.
-pub mod union;
+pub(crate) mod union;
 
 /// Transitive closure operator (TCLOSE).
-pub mod tclose;
+pub(crate) mod tclose;

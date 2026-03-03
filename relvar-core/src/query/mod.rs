@@ -39,7 +39,7 @@
 //! println!("{}", query.explain());
 //! ```
 
-use crate::algebra::summarize::Aggregation;
+use crate::algebra::Aggregation;
 use crate::constraints::{ConstraintExpression, ExpressionError};
 use crate::error::DatabaseError;
 use crate::traits::QueryExecutor;

@@ -71,10 +71,10 @@
 //! The logical layer (`relvar-core`) interacts with `Database` and `Relation` abstractions,
 //! unaware of versions, snapshots, or transaction IDs.
 
-pub mod active_txn_table;
-pub mod gc;
-pub mod snapshot;
-pub mod visibility;
+pub(crate) mod active_txn_table;
+pub(crate) mod gc;
+pub(crate) mod snapshot;
+pub(crate) mod visibility;
 
 pub use active_txn_table::ActiveTransactionTable;
 pub use snapshot::TransactionSnapshot;

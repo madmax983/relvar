@@ -51,7 +51,7 @@
 
 use relvar_core::{
     Database, QueryExecutor,
-    algebra::summarize::Aggregation,
+    algebra::Aggregation,
     error::DatabaseError,
     storage_engine::StorageEngine,
     types::{RelationType, ScalarType, TupleType},

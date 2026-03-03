@@ -44,6 +44,7 @@ use crate::values::Relation;
 ///
 /// Applying a `Delta` to a relation `R` results in `(R - deleted) U inserted`.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub struct Delta {
     /// Tuples to be inserted.
     pub inserted: Relation,
@@ -51,6 +52,7 @@ pub struct Delta {
     pub deleted: Relation,
 }
 
+#[allow(dead_code)]
 impl Delta {
     /// Creates a new `Delta` from explicit inserted and deleted relations.
     ///
