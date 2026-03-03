@@ -731,3 +731,43 @@ mod tests {
         assert_eq!(tuple_from_vec, tuple_from_btree);
     }
 }
+
+#[cfg(test)]
+mod get_typed_tests {
+    use super::*;
+    use crate::types::{ScalarType, TupleType};
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_get_typed_coverage() {
+        let tuple_type = TupleType::new()
+            .with_attribute("i", ScalarType::Int)
+            .with_attribute("f", ScalarType::Float)
+            .with_attribute("s", ScalarType::String)
+            .with_attribute("b", ScalarType::Bool)
+            .with_attribute("by", ScalarType::Bytes);
+
+        let mut values = HashMap::new();
+        values.insert("i".to_string(), ScalarValue::Int(42));
+        values.insert("f".to_string(), ScalarValue::Float(3.14));
+        values.insert("s".to_string(), ScalarValue::String("hello".to_string()));
+        values.insert("b".to_string(), ScalarValue::Bool(true));
+        values.insert("by".to_string(), ScalarValue::Bytes(vec![1, 2, 3]));
+
+        let tuple = Tuple::new(tuple_type, values).unwrap();
+
+        // Test valid extraction
+        assert_eq!(tuple.get_typed::<i64>("i").unwrap(), 42);
+        assert_eq!(tuple.get_typed::<f64>("f").unwrap(), 3.14);
+        assert_eq!(tuple.get_typed::<String>("s").unwrap(), "hello");
+        assert_eq!(tuple.get_typed::<bool>("b").unwrap(), true);
+        assert_eq!(tuple.get_typed::<Vec<u8>>("by").unwrap(), vec![1, 2, 3]);
+
+        // Test invalid extraction (wrong type)
+        assert!(tuple.get_typed::<f64>("i").is_none());
+        assert!(tuple.get_typed::<String>("i").is_none());
+        assert!(tuple.get_typed::<bool>("i").is_none());
+        assert!(tuple.get_typed::<Vec<u8>>("i").is_none());
+        assert!(tuple.get_typed::<i64>("f").is_none());
+    }
+}
