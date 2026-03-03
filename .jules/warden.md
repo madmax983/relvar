@@ -180,3 +180,10 @@ The JSON importer (`relvar::tools::importer`) enforced `MAX_IMPORT_ROWS` (100,00
 2. `postcard` natively serializes data using varints without blindly trusting 64-bit length prefixes to perform unbounded `Vec` pre-allocations, inherently resolving the allocation bomb DoS vector.
 3. Updated `relvar-storage/src/storage/heap.rs` to detect versioned pages properly since `VERSIONED_PAGE_MAGIC` (0x4D564343) encodes to 5 bytes in `postcard`'s varint system.
 4. Removed all uses of legacy `bincode::options()` in `HeapFile` and `WalRecord` parsing, streamlining serialization error handling.
+
+## 2026-03-03 - atomic-polyfill Unmaintained Dependency
+**Threat:**
+The `postcard` dependency (version 1.1.3) enabled the `heapless-cas` and `heapless` default features. This pulled in `heapless` version 0.7.17, which depends on `atomic-polyfill` version 1.0.3. The `atomic-polyfill` crate is flagged as unmaintained (RUSTSEC-2023-0089). Using an unmaintained crate poses a supply chain security risk as future vulnerabilities will remain unpatched.
+
+**Defense:**
+Modified `Cargo.toml` to disable the default features of `postcard` by specifying `default-features = false`, explicitly only retaining the required `alloc` and `use-std` features. This eliminates the `heapless` and `atomic-polyfill` dependencies entirely, mitigating the risk of relying on an unmaintained crate.
