@@ -7,7 +7,7 @@
 //! Filters are applied by joining the image with itself (or shifted versions)
 //! and aggregating the results.
 
-use relvar_core::algebra::summarize::Aggregation;
+use relvar_core::algebra::Aggregation;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};

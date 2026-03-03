@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
+//! use relvar_core::{ConstraintExpression, CmpOp, ValueOrRef};
 //! use relvar_core::values::ScalarValue;
 //! use relvar_core::tuple;
 //!
@@ -126,7 +126,7 @@ pub enum ConstraintExpression {
     ///
     /// # Example
     /// ```
-    /// use relvar_core::constraints::expression::ConstraintExpression;
+    /// use relvar_core::ConstraintExpression;
     /// use relvar_core::tuple;
     ///
     /// // Matches "data_2024.csv", "data_final.csv", etc.
@@ -194,7 +194,7 @@ impl ConstraintExpression {
     /// # Example
     ///
     /// ```
-    /// use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
+    /// use relvar_core::{ConstraintExpression, CmpOp, ValueOrRef};
     /// use relvar_core::values::ScalarValue;
     /// use relvar_core::tuple;
     ///

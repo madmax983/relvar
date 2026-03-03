@@ -39,7 +39,7 @@
 //! # }
 //! ```
 
-use relvar_core::algebra::summarize::Aggregation;
+use relvar_core::algebra::Aggregation;
 use relvar_core::error::DatabaseError;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue, Tuple};

@@ -14,7 +14,7 @@
 //! - **Matrix Multiplication ($A \times B$)**: Performed via a Join on $A.col = B.row$,
 //!   extending with $A.val \times B.val$, and summarizing by $(A.row, B.col)$ to sum the products.
 
-use relvar_core::algebra::summarize::Aggregation;
+use relvar_core::algebra::Aggregation;
 use relvar_core::error::DatabaseError;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};

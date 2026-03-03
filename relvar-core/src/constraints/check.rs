@@ -13,8 +13,8 @@
 //! # Example
 //!
 //! ```
-//! use relvar_core::constraints::check::CheckConstraint;
-//! use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
+//! use relvar_core::CheckConstraint;
+//! use relvar_core::{ConstraintExpression, CmpOp, ValueOrRef};
 //! use relvar_core::values::ScalarValue;
 //! use relvar_core::tuple;
 //!
@@ -82,8 +82,8 @@ impl CheckConstraint {
     /// # Example
     ///
     /// ```
-    /// use relvar_core::constraints::check::CheckConstraint;
-    /// use relvar_core::constraints::expression::{ConstraintExpression, CmpOp, ValueOrRef};
+    /// use relvar_core::CheckConstraint;
+    /// use relvar_core::{ConstraintExpression, CmpOp, ValueOrRef};
     /// use relvar_core::values::ScalarValue;
     ///
     /// let constraint = CheckConstraint::new(

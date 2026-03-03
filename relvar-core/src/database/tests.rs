@@ -1,7 +1,7 @@
 use super::*;
 use crate::constraints::ConstraintManagerError;
-use crate::constraints::check::{CheckConstraint, CheckConstraints};
 use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
+use crate::constraints::{CheckConstraint, CheckConstraints};
 use crate::storage_engine::{InMemoryEngine, StorageError};
 use crate::tuple;
 use crate::types::{ScalarType, TupleType};
