@@ -45,3 +45,7 @@
 ## 2027-08-15 - Integer Truncation and Overflow in Storage Layers
 **Learning:** `WalManager` and `PageFile` were casting `u64` length prefixes to `usize` without checking for truncation (on 32-bit systems) or overflow during offset calculation. This allowed malicious payloads to cause panics or potentially bypass size checks.
 **Action:** Always validate `u64` values from external sources (disk/network) using `checked_add` and `usize::try_from` before using them for memory indexing or allocation.
+
+## 2025-03-01 - Avoid unwrap in Ord implementations
+**Learning:** Found a ticking time bomb `.unwrap()` inside the `Ord` implementation for `ScalarType::Relation` when comparing attribute types. While technically safe due to prior invariants, it's brittle and fails Sentry's zero-unwrap philosophy for core logic.
+**Action:** When extracting data from nested maps/structures during ordering or equality checks, prefer direct iterators (`.attributes()`) that yield both key and value simultaneously over extracting keys and doing secondary `.get().unwrap()` lookups. This is both safer (no panics) and more performant.

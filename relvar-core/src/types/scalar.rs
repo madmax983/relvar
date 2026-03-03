@@ -398,27 +398,16 @@ impl Ord for ScalarType {
                     (ScalarType::Relation(a), ScalarType::Relation(b)) => {
                         // Compare relation types by their headings
                         // Since TupleType doesn't have Ord, we need a custom comparison
-                        let a_attrs: Vec<_> = a
-                            .heading()
-                            .attribute_names()
-                            .map(|n| (n, a.heading().get_attribute_type(n).unwrap()))
-                            .collect();
-                        let b_attrs: Vec<_> = b
-                            .heading()
-                            .attribute_names()
-                            .map(|n| (n, b.heading().get_attribute_type(n).unwrap()))
-                            .collect();
+                        let a_attrs: Vec<_> = a.heading().attributes().iter().collect();
+                        let b_attrs: Vec<_> = b.heading().attributes().iter().collect();
 
                         // Compare by count first, then by sorted attributes
                         match a_attrs.len().cmp(&b_attrs.len()) {
                             Ordering::Equal => {
-                                let mut a_sorted = a_attrs;
-                                let mut b_sorted = b_attrs;
-                                a_sorted.sort_by_key(|(name, _)| *name);
-                                b_sorted.sort_by_key(|(name, _)| *name);
-
+                                // BTreeMap iterators are already sorted by key, so we don't need
+                                // to sort again.
                                 for ((a_name, a_ty), (b_name, b_ty)) in
-                                    a_sorted.iter().zip(b_sorted.iter())
+                                    a_attrs.iter().zip(b_attrs.iter())
                                 {
                                     match a_name.cmp(b_name) {
                                         Ordering::Equal => match a_ty.cmp(b_ty) {
@@ -777,5 +766,46 @@ impl TryFrom<ScalarTypeUnchecked> for ScalarType {
             ));
         }
         Ok(ty)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::tuple_type::TupleType;
+    use crate::types::relation_type::RelationType;
+
+    #[test]
+    fn should_treat_relations_with_different_headings_as_unequal() {
+        let t1 = TupleType::new().with_attribute("a", ScalarType::Int);
+        let rel1 = RelationType::new(t1);
+
+        let t2 = TupleType::new().with_attribute("b", ScalarType::Int);
+        let rel2 = RelationType::new(t2);
+
+        let s1 = ScalarType::Relation(Box::new(rel1));
+        let s2 = ScalarType::Relation(Box::new(rel2));
+
+        assert!(s1 != s2);
+        assert!(s1.cmp(&s2) != std::cmp::Ordering::Equal);
+    }
+
+    #[test]
+    fn should_compare_relation_types_deterministically() {
+        let t1 = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::String);
+        let rel1 = RelationType::new(t1);
+
+        let t2 = TupleType::new()
+            .with_attribute("b", ScalarType::String)
+            .with_attribute("a", ScalarType::Int);
+        let rel2 = RelationType::new(t2);
+
+        let s1 = ScalarType::Relation(Box::new(rel1));
+        let s2 = ScalarType::Relation(Box::new(rel2));
+
+        assert!(s1 == s2);
+        assert!(s1.cmp(&s2) == std::cmp::Ordering::Equal);
     }
 }
