@@ -1,6 +1,26 @@
+//! Pure Data Manipulation Language (DML) logic for relations.
+//!
+//! This module contains the core computation logic for `DELETE` and `UPDATE`
+//! operations. By extracting this logic from the main `Database` struct,
+//! we achieve a cleaner separation of concerns and simpler unit testing.
+
 use crate::error::DatabaseError;
 use crate::values::{Relation, Tuple};
 
+/// Computes a new relation after applying a delete operation.
+///
+/// Tuples matching the given predicate are filtered out.
+///
+/// # Arguments
+///
+/// * `current_relation` - The relation to delete tuples from.
+/// * `predicate` - A closure that returns `true` for tuples that should be deleted.
+///
+/// # Returns
+///
+/// A tuple containing:
+/// 1. The resulting `Relation` after the deletions.
+/// 2. The number of tuples that were deleted.
 pub(crate) fn compute_relation_after_delete<F>(
     current_relation: Relation,
     predicate: F,
@@ -23,6 +43,29 @@ where
     Ok((new_relation, delete_count))
 }
 
+/// Computes a new relation after applying an update operation.
+///
+/// Tuples matching the given predicate are transformed by the `updater` function.
+/// The updated tuples must still conform to the original relation's heading.
+/// This function uses an optimized `try_fold` with a guard clause to perform
+/// the update and validation in a single pass.
+///
+/// # Arguments
+///
+/// * `current_relation` - The relation to update.
+/// * `predicate` - A closure that returns `true` for tuples that should be updated.
+/// * `updater` - A closure that receives a tuple and returns a modified version of it.
+///
+/// # Returns
+///
+/// A tuple containing:
+/// 1. The resulting `Relation` after the updates.
+/// 2. The number of tuples that were updated.
+///
+/// # Errors
+///
+/// Returns `DatabaseError::TupleMismatch` if the updated tuple does not conform
+/// to the relation's heading.
 pub(crate) fn compute_relation_after_update<F, U>(
     current_relation: Relation,
     predicate: F,
