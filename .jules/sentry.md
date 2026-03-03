@@ -45,3 +45,6 @@
 ## 2027-08-15 - Integer Truncation and Overflow in Storage Layers
 **Learning:** `WalManager` and `PageFile` were casting `u64` length prefixes to `usize` without checking for truncation (on 32-bit systems) or overflow during offset calculation. This allowed malicious payloads to cause panics or potentially bypass size checks.
 **Action:** Always validate `u64` values from external sources (disk/network) using `checked_add` and `usize::try_from` before using them for memory indexing or allocation.
+## 2025-03-03 - Delta Error Paths
+**Learning:** The `DatabaseError::AlgebraError` return paths for type mismatch in the `Delta` struct (`new`, `between`, `apply`, `compose`) were entirely untested, despite being standard error branches.
+**Action:** When testing algebra structs, explicitly check that all operations fail correctly when passed relations with mismatched types.
