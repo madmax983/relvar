@@ -479,10 +479,10 @@ impl Relation {
             result_tuples.push(tuple);
         }
 
-        Ok(
-            Relation::from_tuples(RelationType::new(result_heading), result_tuples)
-                .expect("Summarized tuples should conform to result relation type"),
-        )
+        Ok(Relation::from_tuples_unchecked(
+            RelationType::new(result_heading),
+            result_tuples,
+        ))
     }
 
     fn validate_grouping_attributes(&self, group_by: &[&str]) -> Result<(), SummarizeError> {

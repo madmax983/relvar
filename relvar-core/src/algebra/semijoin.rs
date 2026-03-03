@@ -152,8 +152,7 @@ impl Relation {
             }
         }
 
-        Relation::from_tuples(self.relation_type().clone(), matched)
-            .expect("Semijoin tuples conform to self's relation type")
+        Relation::from_tuples_unchecked(self.relation_type().clone(), matched)
     }
 
     /// Alias for [`semijoin`](Self::semijoin) using Tutorial D naming (MATCHING).
@@ -250,8 +249,7 @@ impl Relation {
             }
         }
 
-        Relation::from_tuples(self.relation_type().clone(), non_matched)
-            .expect("Semidifference tuples conform to self's relation type")
+        Relation::from_tuples_unchecked(self.relation_type().clone(), non_matched)
     }
 
     /// Alias for [`semidifference`](Self::semidifference) using Tutorial D naming (NOT MATCHING).

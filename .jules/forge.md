@@ -526,3 +526,6 @@ Build it right, make it fast, keep it simple.
 ## 2025-06-03 - Algebraic Operator Refactoring
 **Learning:** Complex algebraic operators like `group` and `ungroup` often mix validation, schema derivation, and tuple processing. Extracting these into distinct phases (`validate`, `build_heading`, `compute_tuples`) improves readability and testability.
 **Action:** Apply this "Three-Phase Operator" pattern when refactoring other complex operators like `join` or `summarize`.
+## 2025-06-03 - Redundant Tuple Validation in Algebra Operators
+**Learning:** `Relation::from_tuples` performs O(N*M) validation (where N is tuple count and M is degree) to ensure tuples conform to the given heading. Several algebraic operators (`group`, `ungroup`, `summarize`, `extend`, `divide`, `semijoin`, `semidifference`) compute the heading and matching tuples dynamically in a way that inherently guarantees type conformance. They were redundantly calling `from_tuples` and using `.expect()` or `.map_err()` because they knew it shouldn't fail.
+**Action:** Replaced these specific, guaranteed-safe calls with `Relation::from_tuples_unchecked` to improve performance and remove redundant error handling paths, maintaining strict semantic equivalence.

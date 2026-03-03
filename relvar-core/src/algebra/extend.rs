@@ -106,8 +106,10 @@ impl Relation {
             })
             .collect::<Result<_, _>>()?;
 
-        Ok(Relation::from_tuples(new_rel_type, extended_tuples)
-            .expect("Extended tuples should conform to new relation type"))
+        Ok(Relation::from_tuples_unchecked(
+            new_rel_type,
+            extended_tuples,
+        ))
     }
 }
 

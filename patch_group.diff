@@ -1,0 +1,36 @@
+<<<<<<< SEARCH
+        Ok(
+            Relation::from_tuples(RelationType::new(result_heading), result_tuples)
+                .expect("Grouped tuples should conform to result relation type"),
+        )
+=======
+        Ok(Relation::from_tuples_unchecked(
+            RelationType::new(result_heading),
+            result_tuples,
+        ))
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+        Ok(
+            Relation::from_tuples(RelationType::new(result_heading), result_tuples)
+                .expect("Ungrouped tuples should conform to result relation type"),
+        )
+=======
+        Ok(Relation::from_tuples_unchecked(
+            RelationType::new(result_heading),
+            result_tuples,
+        ))
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+        // Create RVA relation
+        let rva_relation =
+            Relation::from_tuples(RelationType::new(rva_heading.clone()), rva_tuples)
+                .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
+        values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
+=======
+        // Create RVA relation
+        let rva_relation = Relation::from_tuples_unchecked(
+            RelationType::new(rva_heading.clone()),
+            rva_tuples,
+        );
+        values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
+>>>>>>> REPLACE
