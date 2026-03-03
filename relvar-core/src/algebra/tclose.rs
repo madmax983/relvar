@@ -19,8 +19,28 @@
 //!    - Update `result = result UNION new_tuples`.
 //!    - Update `delta = new_tuples`.
 
-use crate::error::DatabaseError;
 use crate::values::Relation;
+use thiserror::Error;
+
+/// Errors that can occur during transitive closure operations.
+#[derive(Debug, Error)]
+pub enum TCloseError {
+    /// The relation is not binary.
+    #[error("TCLOSE requires a binary relation (degree 2), but relation has degree {0}")]
+    NotBinary(usize),
+
+    /// The attributes of the relation do not have the same type.
+    #[error("TCLOSE requires both attributes to have the same type: {0} != {1}")]
+    TypeMismatch(String, String),
+
+    /// One of the required attributes is missing.
+    #[error("Attribute '{0}' not found in relation '{1}'")]
+    AttributeNotFound(String, String),
+
+    /// Error during underlying relational algebra operation.
+    #[error("Algebra error: {0}")]
+    AlgebraError(String),
+}
 
 impl Relation {
     /// Computes the transitive closure of a binary relation.
@@ -65,29 +85,28 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// Returns `DatabaseError` if:
+    /// # Errors
+    ///
+    /// Returns `TCloseError` if:
     /// - The relation is not binary (degree != 2).
     /// - The specified attributes do not exist.
     /// - The attributes have different types.
     /// - An algebraic operation fails.
-    pub fn tclose(&self, from_attr: &str, to_attr: &str) -> Result<Relation, DatabaseError> {
+    pub fn tclose(&self, from_attr: &str, to_attr: &str) -> Result<Relation, TCloseError> {
         // 1. Validation
         if self.degree() != 2 {
-            return Err(DatabaseError::AlgebraError(format!(
-                "TCLOSE requires a binary relation (degree 2), found degree {}",
-                self.degree()
-            )));
+            return Err(TCloseError::NotBinary(self.degree()));
         }
 
         let heading = self.relation_type().heading();
         if !heading.has_attribute(from_attr) {
-            return Err(DatabaseError::AttributeNotFound(
+            return Err(TCloseError::AttributeNotFound(
                 from_attr.to_string(),
                 "relation".to_string(),
             ));
         }
         if !heading.has_attribute(to_attr) {
-            return Err(DatabaseError::AttributeNotFound(
+            return Err(TCloseError::AttributeNotFound(
                 to_attr.to_string(),
                 "relation".to_string(),
             ));
@@ -97,10 +116,10 @@ impl Relation {
         let to_type = heading.get_attribute_type(to_attr).unwrap();
 
         if from_type != to_type {
-            return Err(DatabaseError::AlgebraError(format!(
-                "Attributes {} and {} must have the same type for TCLOSE. Found {:?} and {:?}",
-                from_attr, to_attr, from_type, to_type
-            )));
+            return Err(TCloseError::TypeMismatch(
+                format!("{:?}", from_type),
+                format!("{:?}", to_type),
+            ));
         }
 
         // Semi-naive algorithm setup
@@ -133,7 +152,7 @@ impl Relation {
             let delta_renamed = r_delta.rename(&delta_mappings);
 
             // 3. Join: r_delta(from, temp) JOIN edges(temp, to) -> (from, temp, to)
-            let joined = delta_renamed.join(&edges)?;
+            let joined = delta_renamed.join(&edges).map_err(|e| TCloseError::AlgebraError(e.to_string()))?;
 
             // 4. Project: keep (from, to), discard temp
             let new_paths = joined.project(&[from_attr, to_attr]);
@@ -142,7 +161,7 @@ impl Relation {
             // This filters out paths we already know about.
             let new_unique_paths = new_paths
                 .difference(&r_total)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+                .map_err(|e| TCloseError::AlgebraError(e.to_string()))?;
 
             // 6. Termination check
             if new_unique_paths.is_empty() {
@@ -153,7 +172,7 @@ impl Relation {
             // r_total = r_total UNION new_unique_paths
             r_total = r_total
                 .union(&new_unique_paths)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+                .map_err(|e| TCloseError::AlgebraError(e.to_string()))?;
 
             // r_delta = new_unique_paths (only extend from newly found paths)
             r_delta = new_unique_paths;
