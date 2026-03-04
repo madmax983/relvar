@@ -1,3 +1,6 @@
 ## 2024-03-XX - Module Encapsulation Cleanup
 **Tangle:** Broad visibility (`pub mod`) across many internal modules (`algebra`, `values`, `types`, etc.) leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core`, `relvar-storage`, and `relvar` to `pub(crate) mod`. Re-exported necessary types via their respective `mod.rs` files, ensuring clean, intention-revealing public APIs while maintaining low coupling between internal components.
+## 2026-03-04 - Virtual Relvar Evaluator Closure
+**Tangle:** Virtual relvars defined their evaluator as a raw function pointer `fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>`. This prevented closures from capturing external state, significantly limiting how virtual relvars could be dynamically constructed.
+**Blueprint:** Refactored `VirtualRelvarDefinition` to use `Arc<dyn Fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError> + Send + Sync>`. This allows the evaluator to be any state-capturing closure or function that implements `Fn`, vastly improving flexibility while remaining safe and thread-safe. A custom `fmt::Debug` was also implemented to handle the non-debuggable closure.

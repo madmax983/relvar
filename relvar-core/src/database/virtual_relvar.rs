@@ -2,11 +2,13 @@ use crate::error::DatabaseError;
 use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::Relation;
+use std::fmt;
+use std::sync::Arc;
 
 /// Definition of a virtual relvar (view).
 ///
 /// Stores the metadata required to evaluate a virtual relvar on demand.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct VirtualRelvarDefinition {
     /// The relation type (heading) of the view.
     ///
@@ -19,7 +21,7 @@ pub(crate) struct VirtualRelvarDefinition {
     ///
     /// # Signature
     ///
-    /// `fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>`
+    /// `Arc<dyn Fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError> + Send + Sync>`
     ///
     /// - **Input**: A `&dyn QueryExecutor`, which allows the view
     ///   to query other relvars (base or virtual) in the database.
@@ -29,5 +31,14 @@ pub(crate) struct VirtualRelvarDefinition {
     ///
     /// The evaluator is passed a read-only reference (`&`), ensuring that
     /// viewing a relation cannot cause side effects (mutations) in the database.
-    pub evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+    pub evaluator: Arc<dyn Fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError> + Send + Sync>,
+}
+
+impl fmt::Debug for VirtualRelvarDefinition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VirtualRelvarDefinition")
+            .field("relation_type", &self.relation_type)
+            .field("evaluator", &"<closure>")
+            .finish()
+    }
 }

@@ -866,12 +866,15 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns an error if a relvar with this name already exists.
-    pub fn define_virtual_relvar(
+    pub fn define_virtual_relvar<F>(
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
-    ) -> Result<(), DatabaseError> {
+        evaluator: F,
+    ) -> Result<(), DatabaseError>
+    where
+        F: Fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError> + Send + Sync + 'static,
+    {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
         }
@@ -880,7 +883,7 @@ impl<E: StorageEngine> Database<E> {
             name.to_string(),
             VirtualRelvarDefinition {
                 relation_type,
-                evaluator,
+                evaluator: std::sync::Arc::new(evaluator),
             },
         );
 
