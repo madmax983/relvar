@@ -30,9 +30,11 @@
 //! ```
 
 use super::prepared::PreparedConstraintExpression;
+use crate::utils::recursion::DepthGuarded;
 use crate::values::{ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::convert::TryFrom;
 use thiserror::Error;
 
 /// Errors that can occur during constraint expression evaluation.
@@ -90,6 +92,7 @@ pub enum CmpOp {
 /// - **Set membership**: In
 /// - **Pattern matching**: Like
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(try_from = "ConstraintExpressionUnchecked")]
 pub enum ConstraintExpression {
     /// Comparison: left_attr op right_value_or_ref
     Cmp {
@@ -139,6 +142,52 @@ pub enum ConstraintExpression {
     /// assert!(!case_expr.evaluate(&tuple! { code: "abc" }).unwrap());
     /// ```
     Like(String, String),
+}
+
+#[derive(Debug, Deserialize)]
+enum ConstraintExpressionUnchecked {
+    Cmp {
+        left: String,
+        op: CmpOp,
+        right: ValueOrRef,
+    },
+    And(DepthGuarded<Box<ConstraintExpressionUnchecked>>, DepthGuarded<Box<ConstraintExpressionUnchecked>>),
+    Or(DepthGuarded<Box<ConstraintExpressionUnchecked>>, DepthGuarded<Box<ConstraintExpressionUnchecked>>),
+    Not(DepthGuarded<Box<ConstraintExpressionUnchecked>>),
+    In(String, Vec<ScalarValue>),
+    Like(String, String),
+}
+
+impl TryFrom<ConstraintExpressionUnchecked> for ConstraintExpression {
+    type Error = String;
+
+    fn try_from(unchecked: ConstraintExpressionUnchecked) -> Result<Self, Self::Error> {
+        match unchecked {
+            ConstraintExpressionUnchecked::Cmp { left, op, right } => {
+                Ok(ConstraintExpression::Cmp { left, op, right })
+            }
+            ConstraintExpressionUnchecked::And(l, r) => {
+                let left = ConstraintExpression::try_from(*(l.0))?;
+                let right = ConstraintExpression::try_from(*(r.0))?;
+                Ok(ConstraintExpression::And(Box::new(left), Box::new(right)))
+            }
+            ConstraintExpressionUnchecked::Or(l, r) => {
+                let left = ConstraintExpression::try_from(*(l.0))?;
+                let right = ConstraintExpression::try_from(*(r.0))?;
+                Ok(ConstraintExpression::Or(Box::new(left), Box::new(right)))
+            }
+            ConstraintExpressionUnchecked::Not(e) => {
+                let expr = ConstraintExpression::try_from(*(e.0))?;
+                Ok(ConstraintExpression::Not(Box::new(expr)))
+            }
+            ConstraintExpressionUnchecked::In(attr, values) => {
+                Ok(ConstraintExpression::In(attr, values))
+            }
+            ConstraintExpressionUnchecked::Like(attr, pattern) => {
+                Ok(ConstraintExpression::Like(attr, pattern))
+            }
+        }
+    }
 }
 
 impl ConstraintExpression {
