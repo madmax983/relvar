@@ -48,3 +48,7 @@
 ## 2025-03-03 - Delta Error Paths
 **Learning:** The `DatabaseError::AlgebraError` return paths for type mismatch in the `Delta` struct (`new`, `between`, `apply`, `compose`) were entirely untested, despite being standard error branches.
 **Action:** When testing algebra structs, explicitly check that all operations fail correctly when passed relations with mismatched types.
+
+## 2025-03-04 - ScalarType Coverage Gaps
+**Learning:** Certain `ScalarType` recursive boundaries and unreachable trait implementations (`Ord` match) were entirely missing coverage, masking potential issues if the type structure were to change. Additionally, type mismatch errors in the `selector` logic lacked tests verifying correct error string output.
+**Action:** Always ensure full trait coverage, including unreachable branches when logic relies on matched enum variants, and systematically test recursion depth guards with deep structures.
