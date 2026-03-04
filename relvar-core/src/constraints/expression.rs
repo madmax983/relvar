@@ -151,8 +151,14 @@ enum ConstraintExpressionUnchecked {
         op: CmpOp,
         right: ValueOrRef,
     },
-    And(DepthGuarded<Box<ConstraintExpressionUnchecked>>, DepthGuarded<Box<ConstraintExpressionUnchecked>>),
-    Or(DepthGuarded<Box<ConstraintExpressionUnchecked>>, DepthGuarded<Box<ConstraintExpressionUnchecked>>),
+    And(
+        DepthGuarded<Box<ConstraintExpressionUnchecked>>,
+        DepthGuarded<Box<ConstraintExpressionUnchecked>>,
+    ),
+    Or(
+        DepthGuarded<Box<ConstraintExpressionUnchecked>>,
+        DepthGuarded<Box<ConstraintExpressionUnchecked>>,
+    ),
     Not(DepthGuarded<Box<ConstraintExpressionUnchecked>>),
     In(String, Vec<ScalarValue>),
     Like(String, String),
