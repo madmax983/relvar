@@ -468,7 +468,7 @@ impl Relation {
 
             // Add grouping attribute values
             for (i, attr) in group_by.iter().enumerate() {
-                values.insert(attr.to_string(), key[i].clone());
+                values.insert(attr.to_string(), (*key[i]).clone());
             }
 
             // Compute aggregations
@@ -526,7 +526,10 @@ impl Relation {
         Ok(result_heading)
     }
 
-    fn group_tuples<'a>(&'a self, group_by: &[&str]) -> HashMap<Vec<ScalarValue>, Vec<&'a Tuple>> {
+    fn group_tuples<'a>(
+        &'a self,
+        group_by: &[&str],
+    ) -> HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>> {
         if group_by.is_empty() {
             // No grouping - all tuples in one group
             let mut map = HashMap::new();
@@ -535,11 +538,11 @@ impl Relation {
             map
         } else {
             // Group by specified attributes
-            let mut groups: HashMap<Vec<ScalarValue>, Vec<&Tuple>> = HashMap::new();
+            let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<&Tuple>> = HashMap::new();
             for tuple in self.tuples() {
-                let key: Vec<ScalarValue> = group_by
+                let key: Vec<&ScalarValue> = group_by
                     .iter()
-                    .map(|attr| tuple.get(attr).unwrap().clone())
+                    .map(|attr| tuple.get(attr).unwrap())
                     .collect();
                 groups.entry(key).or_default().push(tuple);
             }
