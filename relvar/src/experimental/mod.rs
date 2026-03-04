@@ -17,6 +17,7 @@
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 
 pub mod automl;
+pub mod cellular_automata;
 pub mod ecs;
 pub mod graph;
 pub mod image;
