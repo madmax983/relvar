@@ -723,7 +723,7 @@ impl HeapFile {
 
         // Find a page with enough space, or create a new one
         self.find_page_for_insertion(|heap, page_id| {
-            heap.try_insert_into_page_versioned(page_id, &tuple_data, txn_id)
+            heap.try_insert_into_page_versioned(page_id, &tuple_data, txn_id, None)
                 .map(|slot| TupleId { page_id, slot })
         })
     }
@@ -770,6 +770,7 @@ impl HeapFile {
         page_id: PageId,
         tuple_data: &[u8],
         txn_id: crate::wal::TransactionId,
+        prev_version: Option<TupleId>,
     ) -> Result<u32, HeapError> {
         // Read the page (or create empty if doesn't exist)
         let page = self.page_file.read_page(page_id)?;
@@ -808,7 +809,7 @@ impl HeapFile {
             length: tuple_data.len() as u32,
             xmin: txn_id,
             xmax: None,
-            prev_version: None,
+            prev_version,
         });
 
         // Calculate required space using ACTUAL serialized size
@@ -1090,95 +1091,14 @@ impl HeapFile {
 
         // Find a page with space for new version
         self.find_page_for_insertion(|heap, page_id| {
-            heap.try_insert_new_version(page_id, &new_tuple_data, txn_id, old_tuple_id)
-                .map(|slot| TupleId { page_id, slot })
+            heap.try_insert_into_page_versioned(
+                page_id,
+                &new_tuple_data,
+                txn_id,
+                Some(old_tuple_id),
+            )
+            .map(|slot| TupleId { page_id, slot })
         })
-    }
-
-    /// Try to insert a new version into a specific page (used by update)
-    fn try_insert_new_version(
-        &mut self,
-        page_id: PageId,
-        tuple_data: &[u8],
-        txn_id: crate::wal::TransactionId,
-        prev_version: TupleId,
-    ) -> Result<u32, HeapError> {
-        // Read the page (or create empty if doesn't exist)
-        let page = self.page_file.read_page(page_id)?;
-
-        // Read existing tuples from the page
-        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-        let mut versioned_page = if page.is_empty() {
-            VersionedSlottedPage {
-                magic: VERSIONED_PAGE_MAGIC,
-                slot_count: 0,
-                slots: Vec::new(),
-            }
-        } else {
-            let vp = self.deserialize_versioned_page(&page)?;
-
-            // Extract existing tuple data
-            // Maintain alignment with slots: push empty Vec for None slots
-            for slot_option in vp.slots.iter() {
-                if let Some(slot_entry) = slot_option {
-                    let raw_data =
-                        self.extract_raw_tuple_data(&page, slot_entry.offset, slot_entry.length)?;
-                    existing_tuples.push(raw_data);
-                } else {
-                    existing_tuples.push(Vec::new());
-                }
-            }
-
-            vp
-        };
-
-        // Find free slot or add new one
-        let slot_number =
-            Self::find_or_allocate_slot(&mut versioned_page.slots, &mut versioned_page.slot_count);
-
-        // Add new tuple to the list (overwrite if reusing slot, append if new)
-        if (slot_number as usize) < existing_tuples.len() {
-            existing_tuples[slot_number as usize] = tuple_data.to_vec();
-        } else {
-            existing_tuples.push(tuple_data.to_vec());
-        }
-
-        // Initialize the new slot
-        versioned_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
-            offset: 0,
-            length: tuple_data.len() as u32,
-            xmin: txn_id,
-            xmax: None,
-            prev_version: Some(prev_version),
-        });
-
-        // Calculate required space using ACTUAL serialized size
-        let slot_dir = serialize_compat(&versioned_page)?;
-        let header_size = V2_HEADER_SIZE + slot_dir.len();
-
-        let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
-        let required_space = header_size + total_tuple_data_size;
-
-        if required_space > USABLE_PAGE_SIZE_V2 {
-            return Err(HeapError::PageFull);
-        }
-
-        // Repack slots
-        Self::repack_slots(
-            &mut versioned_page.slots,
-            &existing_tuples,
-            USABLE_PAGE_SIZE_V2,
-        )?;
-
-        // Serialize the updated page with all tuples
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
-
-        // Write the page
-        let updated_page = Page::from_data(page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
-
-        Ok(slot_number)
     }
 
     /// Deletes a tuple by marking it with xmax (MVCC soft delete).
