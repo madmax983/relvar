@@ -1,3 +1,8 @@
+//! Virtual Relvar (View) Definitions.
+//!
+//! This module defines the metadata and evaluation structures for Virtual Relvars,
+//! which are the relational equivalent of SQL Views. Unlike base relvars, virtual relvars
+//! do not store data; they store an expression (a query) that is evaluated on demand.
 use crate::error::DatabaseError;
 use crate::traits::QueryExecutor;
 use crate::types::RelationType;

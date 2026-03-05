@@ -219,7 +219,7 @@ pub enum ScalarType {
 }
 
 impl ScalarType {
-    /// Returns the name of the type
+    /// Retrieves the textual name of the type.
     pub fn name(&self) -> &str {
         match self {
             ScalarType::Int => "Int",
@@ -232,7 +232,7 @@ impl ScalarType {
         }
     }
 
-    /// Returns the nesting depth of this type.
+    /// Calculates the nesting depth of this type to prevent unbounded recursion.
     ///
     /// - Primitive types have depth 1.
     /// - Recursive types (UserDefined, Relation) have 1 + depth of inner type.

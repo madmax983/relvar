@@ -1,3 +1,9 @@
+//! Data Manipulation Language (DML) primitives.
+//!
+//! This module contains pure functions for computing the resulting state of a relation
+//! after applying `UPDATE` or `DELETE` operations. These functions are intentionally decoupled
+//! from the `Database` struct and storage engine to facilitate testing and optimize
+//! tuple evaluation loops.
 use crate::error::DatabaseError;
 use crate::values::{Relation, Tuple};
 

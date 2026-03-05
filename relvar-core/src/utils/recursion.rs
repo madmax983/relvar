@@ -1,3 +1,8 @@
+//! Bounded Recursion Safety.
+//!
+//! This module provides a simple `DepthGuarded` wrapper to enforce maximum recursion
+//! limits (`MAX_TYPE_DEPTH`) on nested tree structures (like ASTs or nested Types).
+//! This prevents stack overflows, particularly against deeply nested payload attacks.
 use serde::Deserialize;
 use std::cell::Cell;
 

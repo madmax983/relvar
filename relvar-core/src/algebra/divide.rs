@@ -1,3 +1,41 @@
+//! The relational division (÷) operator.
+//!
+//! This module implements the `Divide` algebraic operation. Relational division is analogous
+//! to integer division but operates on sets. It is commonly used to answer queries involving
+//! "for all" conditions (e.g., "Find all suppliers who supply *all* parts").
+//!
+//! # Examples
+//!
+//! ```
+//! use relvar_core::types::{RelationType, TupleType, ScalarType};
+//! use relvar_core::values::{Relation, Tuple};
+//! use relvar_core::tuple;
+//!
+//! // "Completed Tasks" - employee_id, task_id
+//! let dividend_heading = TupleType::new()
+//!     .with_attribute("employee_id", ScalarType::Int)
+//!     .with_attribute("task_id", ScalarType::String);
+//!
+//! let mut completed = Relation::new(RelationType::new(dividend_heading.clone()));
+//! completed.insert(Tuple::new(dividend_heading.clone(), vec![("employee_id".to_string(), relvar_core::values::ScalarValue::Int(1)), ("task_id".to_string(), relvar_core::values::ScalarValue::String("A".to_string()))]).unwrap()).unwrap();
+//! completed.insert(Tuple::new(dividend_heading.clone(), vec![("employee_id".to_string(), relvar_core::values::ScalarValue::Int(1)), ("task_id".to_string(), relvar_core::values::ScalarValue::String("B".to_string()))]).unwrap()).unwrap();
+//! completed.insert(Tuple::new(dividend_heading.clone(), vec![("employee_id".to_string(), relvar_core::values::ScalarValue::Int(2)), ("task_id".to_string(), relvar_core::values::ScalarValue::String("A".to_string()))]).unwrap()).unwrap();
+//!
+//! // "Required Tasks" - task_id
+//! let divisor_heading = TupleType::new()
+//!     .with_attribute("task_id", ScalarType::String);
+//!
+//! let mut required = Relation::new(RelationType::new(divisor_heading.clone()));
+//! required.insert(Tuple::new(divisor_heading.clone(), vec![("task_id".to_string(), relvar_core::values::ScalarValue::String("A".to_string()))]).unwrap()).unwrap();
+//! required.insert(Tuple::new(divisor_heading.clone(), vec![("task_id".to_string(), relvar_core::values::ScalarValue::String("B".to_string()))]).unwrap()).unwrap();
+//!
+//! // Who completed ALL required tasks?
+//! let result = completed.divide(&required).unwrap();
+//!
+//! // Only employee 1 completed both A and B
+//! assert_eq!(result.cardinality(), 1);
+//! assert!(result.contains(&Tuple::new(result.relation_type().tuple_type().clone(), vec![("employee_id".to_string(), relvar_core::values::ScalarValue::Int(1))]).unwrap()));
+//! ```
 use crate::values::Relation;
 use thiserror::Error;
 

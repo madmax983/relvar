@@ -1,3 +1,9 @@
+//! Pre-compiled Execution Plans for Constraints.
+//!
+//! This module contains `PreparedConstraint`, which is an optimized, read-only
+//! version of a `ConstraintExpression`. By pre-compiling `IN` lists to HashSets
+//! and string patterns to compiled regexers, evaluating these constraints during
+//! filtering loops is O(1) instead of O(N) per tuple.
 use super::expression::{CmpOp, ConstraintExpression, ExpressionError, ValueOrRef};
 use crate::values::{ScalarValue, Tuple};
 use std::collections::HashSet;
