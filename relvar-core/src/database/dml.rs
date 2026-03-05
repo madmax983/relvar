@@ -66,3 +66,97 @@ where
 
     Ok((new_relation, update_count))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+
+    fn test_relation_type() -> RelationType {
+        let tuple_type = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String);
+        RelationType::new(tuple_type)
+    }
+
+    fn test_relation() -> Relation {
+        let rel_type = test_relation_type();
+        let mut relation = Relation::new(rel_type);
+        relation.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+        relation.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
+        relation
+            .insert(tuple! { id: 3i64, name: "Charlie" })
+            .unwrap();
+        relation
+    }
+
+    #[test]
+    fn should_delete_matching_tuples() {
+        let relation = test_relation();
+        let (new_relation, delete_count) =
+            compute_relation_after_delete(relation, |t| t.get_typed::<i64>("id").unwrap() == 2)
+                .unwrap();
+
+        assert_eq!(delete_count, 1);
+        assert_eq!(new_relation.cardinality(), 2);
+        assert!(!new_relation.contains(&tuple! { id: 2i64, name: "Bob" }));
+        assert!(new_relation.contains(&tuple! { id: 1i64, name: "Alice" }));
+        assert!(new_relation.contains(&tuple! { id: 3i64, name: "Charlie" }));
+    }
+
+    #[test]
+    fn should_return_zero_deletes_when_no_match() {
+        let relation = test_relation();
+        let (new_relation, delete_count) =
+            compute_relation_after_delete(relation, |t| t.get_typed::<i64>("id").unwrap() == 99)
+                .unwrap();
+
+        assert_eq!(delete_count, 0);
+        assert_eq!(new_relation.cardinality(), 3);
+    }
+
+    #[test]
+    fn should_update_matching_tuples() {
+        let relation = test_relation();
+        let (new_relation, update_count) = compute_relation_after_update(
+            relation,
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |t| tuple! { id: t.get_typed::<i64>("id").unwrap(), name: "Robert" },
+        )
+        .unwrap();
+
+        assert_eq!(update_count, 1);
+        assert_eq!(new_relation.cardinality(), 3);
+        assert!(!new_relation.contains(&tuple! { id: 2i64, name: "Bob" }));
+        assert!(new_relation.contains(&tuple! { id: 2i64, name: "Robert" }));
+        assert!(new_relation.contains(&tuple! { id: 1i64, name: "Alice" }));
+    }
+
+    #[test]
+    fn should_return_zero_updates_when_no_match() {
+        let relation = test_relation();
+        let (new_relation, update_count) = compute_relation_after_update(
+            relation,
+            |t| t.get_typed::<i64>("id").unwrap() == 99,
+            |t| t.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(update_count, 0);
+        assert_eq!(new_relation.cardinality(), 3);
+    }
+
+    #[test]
+    fn should_return_error_when_updater_creates_invalid_tuple() {
+        let relation = test_relation();
+
+        let result = compute_relation_after_update(
+            relation,
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |_t| tuple! { id: 2i64, age: 30i64 }, // Invalid tuple type
+        );
+
+        assert!(matches!(result, Err(DatabaseError::TupleMismatch)));
+    }
+}
