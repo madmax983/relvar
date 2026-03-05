@@ -165,58 +165,6 @@ struct VersionedSlotEntry {
     prev_version: Option<TupleId>,
 }
 
-/// Helper trait to abstract over SlotEntry and VersionedSlotEntry
-trait SlotDescriptor {
-    fn offset(&self) -> u32;
-    fn length(&self) -> u32;
-}
-
-/// Helper trait to abstract over SlotEntry and VersionedSlotEntry modifications
-trait MutableSlot: SlotDescriptor {
-    fn set_offset(&mut self, offset: u32);
-    fn set_length(&mut self, length: u32);
-}
-
-impl SlotDescriptor for SlotEntry {
-    fn offset(&self) -> u32 {
-        self.offset
-    }
-
-    fn length(&self) -> u32 {
-        self.length
-    }
-}
-
-impl MutableSlot for SlotEntry {
-    fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-}
-
-impl SlotDescriptor for VersionedSlotEntry {
-    fn offset(&self) -> u32 {
-        self.offset
-    }
-
-    fn length(&self) -> u32 {
-        self.length
-    }
-}
-
-impl MutableSlot for VersionedSlotEntry {
-    fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-}
-
 /// Page layout: `[slot_count (4 bytes)] [slot_entries...] [free_space] [...tuple_data]`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SlottedPage {
@@ -236,6 +184,29 @@ const VERSIONED_PAGE_MAGIC: u32 = 0x4D564343; // "MVCC" in ASCII
 
 // Page format version to handle serialization changes
 const PAGE_FORMAT_VERSION: u8 = 2; // Version 2: length-prefixed slot directory
+
+macro_rules! repack_slots {
+    ($slots:expr, $tuples:expr, $usable_size:expr) => {{
+        let mut _repack = || -> Result<(), HeapError> {
+            let mut current_offset: usize = $usable_size;
+            for (idx, tuple) in $tuples.iter().enumerate().rev() {
+                if tuple.is_empty() {
+                    continue;
+                }
+
+                if let Some(slot) = $slots.get_mut(idx).and_then(|s| s.as_mut()) {
+                    current_offset = current_offset
+                        .checked_sub(tuple.len())
+                        .ok_or(HeapError::PageFull)?;
+                    slot.offset = current_offset as u32;
+                    slot.length = tuple.len() as u32;
+                }
+            }
+            Ok(())
+        };
+        _repack()
+    }};
+}
 
 const USABLE_PAGE_SIZE_V1: usize = PAGE_SIZE - 8;
 const USABLE_PAGE_SIZE_V2: usize = PAGE_SIZE - 8;
@@ -332,31 +303,6 @@ impl HeapFile {
         Ok(())
     }
 
-    /// Helper to repack slots and calculate offsets.
-    /// Iterates backward from the end of the available space.
-    /// Assumes slots are already populated (Some) for valid tuples.
-    fn repack_slots<T: MutableSlot>(
-        slots: &mut [Option<T>],
-        tuples: &[Vec<u8>],
-        usable_size: usize,
-    ) -> Result<(), HeapError> {
-        let mut current_offset = usable_size;
-        for (idx, tuple) in tuples.iter().enumerate().rev() {
-            if tuple.is_empty() {
-                continue;
-            }
-
-            if let Some(slot) = slots.get_mut(idx).and_then(|s| s.as_mut()) {
-                current_offset = current_offset
-                    .checked_sub(tuple.len())
-                    .ok_or(HeapError::PageFull)?;
-                slot.set_offset(current_offset as u32);
-                slot.set_length(tuple.len() as u32);
-            }
-        }
-        Ok(())
-    }
-
     /// Helper to find a free slot or allocate a new one.
     fn find_or_allocate_slot<T>(slots: &mut Vec<Option<T>>, slot_count: &mut u32) -> u32 {
         if let Some(pos) = slots.iter().position(|s| s.is_none()) {
@@ -370,18 +316,13 @@ impl HeapFile {
     }
 
     /// Helper to extract tuples from a sequence of slots.
-    fn extract_tuples_from_slots<'a, I, S>(
-        &self,
-        page: &Page,
-        slots: I,
-    ) -> Result<Vec<Tuple>, HeapError>
+    fn extract_tuples_from_slots<I>(&self, page: &Page, slots: I) -> Result<Vec<Tuple>, HeapError>
     where
-        I: Iterator<Item = &'a S>,
-        S: SlotDescriptor + 'a,
+        I: Iterator<Item = (u32, u32)>,
     {
         let mut results = Vec::new();
-        for slot in slots {
-            let tuple = self.extract_tuple_from_page(page, slot.offset(), slot.length())?;
+        for (offset, length) in slots {
+            let tuple = self.extract_tuple_from_page(page, offset, length)?;
             results.push(tuple);
         }
         Ok(results)
@@ -389,17 +330,14 @@ impl HeapFile {
 
     /// Helper to extract all tuples from a page based on slot entries.
     /// This abstracts the common logic used in insert, update, delete, and GC operations.
-    fn extract_all_tuples<T: SlotDescriptor>(
-        &self,
-        page: &Page,
-        slots: &[Option<T>],
-    ) -> Result<Vec<Vec<u8>>, HeapError> {
+    fn extract_all_tuples<I>(&self, page: &Page, slots: I) -> Result<Vec<Vec<u8>>, HeapError>
+    where
+        I: Iterator<Item = Option<(u32, u32)>>,
+    {
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
-        // Maintain alignment with slots: push empty Vec for None slots
-        for slot_option in slots.iter() {
-            if let Some(slot_entry) = slot_option {
-                let raw_data =
-                    self.extract_raw_tuple_data(page, slot_entry.offset(), slot_entry.length())?;
+        for slot_option in slots {
+            if let Some((offset, length)) = slot_option {
+                let raw_data = self.extract_raw_tuple_data(page, offset, length)?;
                 existing_tuples.push(raw_data);
             } else {
                 existing_tuples.push(Vec::new());
@@ -447,7 +385,12 @@ impl HeapFile {
             )
         } else {
             let sp = self.deserialize_slotted_page(&page)?;
-            let tuples = self.extract_all_tuples(&page, &sp.slots)?;
+            let tuples = self.extract_all_tuples(
+                &page,
+                sp.slots
+                    .iter()
+                    .map(|s| s.as_ref().map(|e| (e.offset, e.length))),
+            )?;
             (sp, tuples)
         };
 
@@ -480,11 +423,7 @@ impl HeapFile {
         }
 
         // Repack slots
-        Self::repack_slots(
-            &mut slotted_page.slots,
-            &existing_tuples,
-            USABLE_PAGE_SIZE_V1,
-        )?;
+        repack_slots!(slotted_page.slots, existing_tuples, USABLE_PAGE_SIZE_V1)?;
 
         // Serialize the updated page with all tuples
         let page_data = self.serialize_slotted_page_with_tuples(&slotted_page, &existing_tuples)?;
@@ -629,13 +568,27 @@ impl HeapFile {
                 // Versioned page format (MVCC)
                 let versioned_page = self.deserialize_versioned_page(&page)?;
                 results.extend(
-                    self.extract_tuples_from_slots(&page, versioned_page.slots.iter().flatten())?,
+                    self.extract_tuples_from_slots(
+                        &page,
+                        versioned_page
+                            .slots
+                            .iter()
+                            .flatten()
+                            .map(|s| (s.offset, s.length)),
+                    )?,
                 );
             } else {
                 // Old slotted page format (non-MVCC)
                 let slotted_page = self.deserialize_slotted_page(&page)?;
                 results.extend(
-                    self.extract_tuples_from_slots(&page, slotted_page.slots.iter().flatten())?,
+                    self.extract_tuples_from_slots(
+                        &page,
+                        slotted_page
+                            .slots
+                            .iter()
+                            .flatten()
+                            .map(|s| (s.offset, s.length)),
+                    )?,
                 );
             }
 
@@ -786,7 +739,12 @@ impl HeapFile {
             )
         } else {
             let vp = self.deserialize_versioned_page(&page)?;
-            let tuples = self.extract_all_tuples(&page, &vp.slots)?;
+            let tuples = self.extract_all_tuples(
+                &page,
+                vp.slots
+                    .iter()
+                    .map(|s| s.as_ref().map(|e| (e.offset, e.length))),
+            )?;
             (vp, tuples)
         };
 
@@ -825,11 +783,7 @@ impl HeapFile {
         }
 
         // Repack slots
-        Self::repack_slots(
-            &mut versioned_page.slots,
-            &existing_tuples,
-            USABLE_PAGE_SIZE_V2,
-        )?;
+        repack_slots!(versioned_page.slots, existing_tuples, USABLE_PAGE_SIZE_V2)?;
 
         // Serialize the updated page with all tuples
         let page_data =
@@ -1073,7 +1027,13 @@ impl HeapFile {
         old_slot.xmax = Some(txn_id);
 
         // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
+        let existing_tuples = self.extract_all_tuples(
+            &page,
+            versioned_page
+                .slots
+                .iter()
+                .map(|s| s.as_ref().map(|e| (e.offset, e.length))),
+        )?;
 
         // Serialize and write updated page with old version marked
         let page_data =
@@ -1164,11 +1124,7 @@ impl HeapFile {
         }
 
         // Repack slots
-        Self::repack_slots(
-            &mut versioned_page.slots,
-            &existing_tuples,
-            USABLE_PAGE_SIZE_V2,
-        )?;
+        repack_slots!(versioned_page.slots, existing_tuples, USABLE_PAGE_SIZE_V2)?;
 
         // Serialize the updated page with all tuples
         let page_data =
@@ -1224,7 +1180,13 @@ impl HeapFile {
         slot.xmax = Some(txn_id);
 
         // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
+        let existing_tuples = self.extract_all_tuples(
+            &page,
+            versioned_page
+                .slots
+                .iter()
+                .map(|s| s.as_ref().map(|e| (e.offset, e.length))),
+        )?;
 
         // Serialize and write updated page
         let page_data =
@@ -1282,7 +1244,13 @@ impl HeapFile {
             };
 
             // Extract existing tuple data
-            let mut existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
+            let mut existing_tuples = self.extract_all_tuples(
+                &page,
+                versioned_page
+                    .slots
+                    .iter()
+                    .map(|s| s.as_ref().map(|e| (e.offset, e.length))),
+            )?;
 
             let mut page_modified = false;
 
@@ -1312,11 +1280,7 @@ impl HeapFile {
             // Write page back if modified
             if page_modified {
                 // Repack slots
-                Self::repack_slots(
-                    &mut versioned_page.slots,
-                    &existing_tuples,
-                    USABLE_PAGE_SIZE_V2,
-                )?;
+                repack_slots!(versioned_page.slots, existing_tuples, USABLE_PAGE_SIZE_V2)?;
 
                 let page_data =
                     self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
@@ -3526,13 +3490,21 @@ mod tests {
             // So we need to be careful.
             // Let's re-read the page as it was on disk to get the data
             let original_sp = heap.deserialize_slotted_page(&page).unwrap();
-            let mut existing_tuples = heap.extract_all_tuples(&page, &original_sp.slots).unwrap();
+            let mut existing_tuples = heap
+                .extract_all_tuples(
+                    &page,
+                    original_sp
+                        .slots
+                        .iter()
+                        .map(|s| s.as_ref().map(|e| (e.offset, e.length))),
+                )
+                .unwrap();
 
             // Mark tuple B as empty
             existing_tuples[1] = Vec::new();
 
             // Repack and write back
-            HeapFile::repack_slots(&mut sp.slots, &existing_tuples, USABLE_PAGE_SIZE_V1).unwrap();
+            repack_slots!(sp.slots, existing_tuples, USABLE_PAGE_SIZE_V1).unwrap();
             let new_page_data = heap
                 .serialize_slotted_page_with_tuples(&sp, &existing_tuples)
                 .unwrap();
@@ -3586,7 +3558,7 @@ mod tests {
         // Usable size = 200
         let usable_size = 200;
 
-        HeapFile::repack_slots(&mut slots, &tuples, usable_size).unwrap();
+        repack_slots!(slots, tuples, usable_size).unwrap();
 
         // Check offsets
         // Last tuple (index 1) gets offset: 200 - 100 = 100
@@ -3598,8 +3570,8 @@ mod tests {
         assert_eq!(slots[0].as_ref().unwrap().length, 100);
 
         // Test overflow (too many tuples)
-        let tuples_overflow = vec![vec![0u8; 100], vec![0u8; 100], vec![0u8; 1]]; // Total 201
-        let mut slots_overflow = vec![
+        let tuples_overflow = [vec![0u8; 100], vec![0u8; 100], vec![0u8; 1]]; // Total 201
+        let mut slots_overflow = [
             Some(SlotEntry {
                 offset: 0,
                 length: 100,
@@ -3614,7 +3586,7 @@ mod tests {
             }),
         ];
 
-        let result = HeapFile::repack_slots(&mut slots_overflow, &tuples_overflow, usable_size);
+        let result = repack_slots!(slots_overflow, tuples_overflow, usable_size);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), HeapError::PageFull));
     }
