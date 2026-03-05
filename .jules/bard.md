@@ -47,3 +47,7 @@ This ensures the map matches the territory.
 
 **Confusion:** The `Delta` module in `relvar-core/src/algebra/delta.rs` was largely undocumented. It had basic struct descriptions, but no module-level documentation (`//!`) to explain *why* it exists or how it works. Additionally, the public methods (`new`, `between`, `apply`, `invert`, `compose`) lacked executable doc-tests (`## Examples`), leaving users guessing about their usage and the difference between them.
 **Clarification:** I rewrote the entire documentation for the `delta.rs` module. I added a module-level `//!` comment explaining its purpose (Materialized View Maintenance, Triggers, Replication). For every public method, I added detailed `///` comments explaining the parameters, `# Errors` sections for panics/failures, and executable `## Example` blocks demonstrating exact usage with code.
+
+## 2024-05-29 - Missing Module Docs and Redundant Boilerplate Comments
+**Confusion:** Several modules in `relvar-core` lacked module-level (`//!`) documentation explaining their purpose, causing the "Black Box" problem. Additionally, getter functions had repetitive, unhelpful documentation like "Returns the x".
+**Clarification:** I added module-level documentation to `dml.rs`, `virtual_relvar.rs`, `traits.rs`, `recursion.rs`, `mod.rs`, `divide.rs`, and `prepared.rs`. I also replaced "Gets the x" and "Returns the x" comments with descriptive verbs and context across `types`, `values`, and `constraints` modules.

@@ -122,7 +122,7 @@ pub enum ScalarValue {
 }
 
 impl ScalarValue {
-    /// Returns the scalar type of this value.
+    /// Resolves the concrete scalar type of this value instance.
     ///
     /// Every value in the relational model carries its type. This method
     /// allows introspection of the value's type at runtime.

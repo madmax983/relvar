@@ -311,7 +311,7 @@ impl Relation {
         }
     }
 
-    /// Returns the relation type (heading) of this relation.
+    /// Retrieves the relation type (heading) defining this relation's structure.
     ///
     /// # Example
     ///
@@ -331,7 +331,7 @@ impl Relation {
         &self.relation_type
     }
 
-    /// Returns the cardinality (number of tuples) of this relation.
+    /// Calculates the cardinality (total number of tuples) currently held in this relation.
     ///
     /// # Example
     ///
@@ -353,7 +353,7 @@ impl Relation {
         self.body.len()
     }
 
-    /// Returns the degree (number of attributes) of this relation.
+    /// Calculates the degree (number of attributes) defined by this relation's heading.
     ///
     /// This is determined by the relation type's heading.
     ///
@@ -439,7 +439,7 @@ impl Relation {
         self.body.contains(tuple)
     }
 
-    /// Returns an iterator over the tuples in this relation.
+    /// Provides an iterator yielding all tuples currently in the relation.
     ///
     /// Per TTM Proscription 3, tuples have no inherent ordering. The
     /// iteration order is not guaranteed to be consistent.

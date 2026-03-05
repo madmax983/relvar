@@ -97,14 +97,14 @@ impl RelationType {
         Self { heading }
     }
 
-    /// Returns the nesting depth of this relation type.
+    /// Calculates the nesting depth of this relation type.
     ///
     /// This is 1 + the depth of its heading.
     pub fn depth(&self) -> usize {
         1 + self.heading.depth()
     }
 
-    /// Returns the heading (tuple type) of this relation type.
+    /// Retrieves the heading (tuple type) of this relation type.
     ///
     /// The heading defines what attributes tuples in this relation must have.
     ///
@@ -123,7 +123,7 @@ impl RelationType {
         &self.heading
     }
 
-    /// Returns the degree (number of attributes) of this relation type.
+    /// Calculates the degree (number of attributes) of this relation type.
     ///
     /// This is equivalent to `self.heading().degree()`.
     ///
@@ -143,7 +143,7 @@ impl RelationType {
         self.heading.degree()
     }
 
-    /// Returns the tuple type (heading) of this relation type.
+    /// Retrieves the tuple type (heading) of this relation type.
     ///
     /// This is an alias for [`heading()`](Self::heading).
     ///

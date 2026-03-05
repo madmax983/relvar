@@ -115,17 +115,17 @@ impl CheckConstraint {
         }
     }
 
-    /// Returns the constraint name.
+    /// Retrieves the identifier name of the constraint.
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// Returns the constraint description.
+    /// Retrieves the human-readable description of the constraint.
     pub fn description(&self) -> &str {
         &self.description
     }
 
-    /// Returns the constraint expression.
+    /// Accesses the underlying logical expression of the constraint.
     pub fn expression(&self) -> &ConstraintExpression {
         &self.expression
     }
@@ -189,12 +189,12 @@ impl CheckConstraints {
         Ok(true)
     }
 
-    /// Returns all constraints.
+    /// Provides a slice containing all configured check constraints.
     pub fn constraints(&self) -> &[CheckConstraint] {
         &self.constraints
     }
 
-    /// Returns the set of all attribute names referenced in all constraints.
+    /// Aggregates a unified set of all attribute names referenced across all constraints.
     pub fn referenced_attributes(&self) -> HashSet<String> {
         let mut attributes = HashSet::new();
         for constraint in &self.constraints {

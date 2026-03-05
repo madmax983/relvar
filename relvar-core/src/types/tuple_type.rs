@@ -125,7 +125,7 @@ impl TupleType {
         self
     }
 
-    /// Gets the type of an attribute by name.
+    /// Retrieves the underlying scalar type for a named attribute.
     ///
     /// Returns `None` if no attribute with the given name exists.
     ///
@@ -169,7 +169,7 @@ impl TupleType {
         self.attributes.contains_key(name)
     }
 
-    /// Returns an iterator over all attribute names.
+    /// Provides an iterator over all attribute names in the tuple type.
     ///
     /// Per TTM Proscription 4, the order of iteration is arbitrary and
     /// should not be relied upon. Attributes are identified by name only.
@@ -190,7 +190,7 @@ impl TupleType {
         self.attributes.keys()
     }
 
-    /// Returns the maximum depth of any attribute type + 1.
+    /// Calculates the maximum nesting depth of any attribute type plus one.
     ///
     /// If there are no attributes, returns 1.
     pub fn depth(&self) -> usize {
@@ -202,7 +202,7 @@ impl TupleType {
             + 1
     }
 
-    /// Returns the degree (number of attributes) of this tuple type.
+    /// Calculates the degree (number of attributes) of this tuple type.
     ///
     /// The degree is the count of distinct attributes in the heading.
     ///
@@ -222,7 +222,7 @@ impl TupleType {
         self.attributes.len()
     }
 
-    /// Returns a reference to the underlying attribute map.
+    /// Exposes read-only access to the underlying attribute map.
     ///
     /// This provides access to all attribute definitions as a map from
     /// names to types.

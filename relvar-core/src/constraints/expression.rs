@@ -142,7 +142,7 @@ pub enum ConstraintExpression {
 }
 
 impl ConstraintExpression {
-    /// Returns the set of all attribute names referenced in this expression.
+    /// Scans the expression tree to collect all referenced attribute names.
     ///
     /// This includes:
     /// - Attributes on the left side of comparisons
