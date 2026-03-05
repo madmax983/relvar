@@ -291,7 +291,9 @@ fn probe_and_combine_single<'a>(
     attr: &str,
     result_heading: &Arc<TupleType>,
 ) -> Result<Vec<Tuple>, DatabaseError> {
-    let mut joined_tuples = Vec::new();
+    // Optimization: Pre-allocate capacity based on the larger relation.
+    // This avoids resizing allocations in the hot loop.
+    let mut joined_tuples = Vec::with_capacity(probe_rel.cardinality());
 
     for probe_tuple in probe_rel.tuples() {
         let val = probe_tuple.get(attr).ok_or_else(|| {
@@ -365,7 +367,9 @@ fn probe_and_combine<'t, 'a>(
     common_attrs: &'a [String],
     result_heading: &Arc<TupleType>,
 ) -> Result<Vec<Tuple>, DatabaseError> {
-    let mut joined_tuples = Vec::new();
+    // Optimization: Pre-allocate capacity based on the larger relation.
+    // This avoids resizing allocations in the hot loop.
+    let mut joined_tuples = Vec::with_capacity(probe_rel.cardinality());
 
     for probe_tuple in probe_rel.tuples() {
         let key = JoinKey {
@@ -424,7 +428,10 @@ fn compute_theta_join_tuples<F>(
 where
     F: Fn(&Tuple, &Tuple) -> bool,
 {
-    let mut joined_tuples = Vec::new();
+    // Optimization: Use `std::cmp::max` to pre-allocate an initial capacity
+    // to reduce vector re-allocations during the cross product.
+    let capacity = std::cmp::max(left.cardinality(), right.cardinality());
+    let mut joined_tuples = Vec::with_capacity(capacity);
 
     for tuple1 in left.tuples() {
         for tuple2 in right.tuples() {

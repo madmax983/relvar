@@ -139,21 +139,21 @@ impl Relation {
             });
         }
 
-        let mut matched = Vec::new();
-
-        for tuple in self.tuples() {
-            let key = SemijoinKey {
-                tuple,
-                attributes: &common_attrs,
-            };
-
-            if other_keys.contains(&key) {
-                matched.push(tuple.clone());
-            }
-        }
-
-        Relation::from_tuples(self.relation_type().clone(), matched)
-            .expect("Semijoin tuples conform to self's relation type")
+        // Optimization: Pass an iterator directly to `from_tuples_unchecked` instead of
+        // collecting into an intermediate `Vec`. The tuples are guaranteed to be valid
+        // since they come from `self`.
+        Relation::from_tuples_unchecked(
+            self.relation_type().clone(),
+            self.tuples()
+                .filter(|tuple| {
+                    let key = SemijoinKey {
+                        tuple,
+                        attributes: &common_attrs,
+                    };
+                    other_keys.contains(&key)
+                })
+                .cloned(),
+        )
     }
 
     /// Alias for [`semijoin`](Self::semijoin) using Tutorial D naming (MATCHING).
@@ -237,21 +237,21 @@ impl Relation {
             });
         }
 
-        let mut non_matched = Vec::new();
-
-        for tuple in self.tuples() {
-            let key = SemijoinKey {
-                tuple,
-                attributes: &common_attrs,
-            };
-
-            if !other_keys.contains(&key) {
-                non_matched.push(tuple.clone());
-            }
-        }
-
-        Relation::from_tuples(self.relation_type().clone(), non_matched)
-            .expect("Semidifference tuples conform to self's relation type")
+        // Optimization: Pass an iterator directly to `from_tuples_unchecked` instead of
+        // collecting into an intermediate `Vec`. The tuples are guaranteed to be valid
+        // since they come from `self`.
+        Relation::from_tuples_unchecked(
+            self.relation_type().clone(),
+            self.tuples()
+                .filter(|tuple| {
+                    let key = SemijoinKey {
+                        tuple,
+                        attributes: &common_attrs,
+                    };
+                    !other_keys.contains(&key)
+                })
+                .cloned(),
+        )
     }
 
     /// Alias for [`semidifference`](Self::semidifference) using Tutorial D naming (NOT MATCHING).
