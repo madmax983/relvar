@@ -7,3 +7,8 @@
 **Bloat:** `RelationSource` trait. It was a "One-Time Trait" implemented only by `Database`, adding unnecessary abstraction and indirection for speculative "Future Proofing".
 **Cut:** Removed `RelationSource` trait and updated `Query::execute` to depend directly on `Database`.
 **Saved:** Removed 1 file (`traits.rs`), removed ~20 lines of code, reduced cognitive load by removing an unnecessary abstraction layer.
+
+## [Reduction]
+ **Bloat:** `QueryExecutor` trait in `relvar-core/src/traits.rs`. It was a "One-Time Trait" implemented exclusively by `Database<E>`, adding unnecessary abstraction and indirection.
+ **Cut:** Removed `QueryExecutor` trait, replaced its usages with the concrete `Database<E>` structure.
+ **Saved:** Removed `traits.rs` file, simplified generic bounds in `query` and `search` logic, and deleted ~30 LOC of boilerplate trait definitions and implementations.
