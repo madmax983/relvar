@@ -1,10 +1,42 @@
+//! # Transaction Snapshots
+//!
+//! Provides the core abstraction for Snapshot Isolation. A snapshot represents
+//! a point in time view of the database. When a transaction starts, it receives
+//! a snapshot that defines what data versions it is allowed to see.
+
 use crate::wal::{Lsn, TransactionId};
 use std::collections::HashSet;
 
 /// Snapshot of transaction state at a point in time.
 ///
-/// Captures which transactions were active when this transaction began,
-/// enabling snapshot isolation (each transaction sees a consistent view of data).
+/// A `TransactionSnapshot` is created when a transaction begins. It captures:
+/// 1. The transaction's own ID.
+/// 2. The Log Sequence Number (LSN) at the time it started.
+/// 3. The exact set of *other* transactions that were running (uncommitted) at that moment.
+///
+/// This structure is strictly read-only after creation and is passed to the visibility
+/// checker to ensure that any changes made by the `active_txns` are hidden from this transaction.
+///
+/// ## Examples
+///
+/// ```
+/// use relvar_storage::mvcc::TransactionSnapshot;
+/// use relvar_storage::wal::{Lsn, TransactionId};
+///
+/// let my_txn = TransactionId::new(42);
+/// let current_lsn = Lsn::new(100);
+/// // Imagine transactions 40 and 41 are currently running
+/// let active = vec![TransactionId::new(40), TransactionId::new(41)];
+///
+/// let snapshot = TransactionSnapshot::new(my_txn, current_lsn, active);
+///
+/// // We know that txn 40 was active when we started, so we must NOT see its changes.
+/// assert!(snapshot.is_active(TransactionId::new(40)));
+///
+/// // Txn 39 is NOT in the active list, meaning it committed before we started.
+/// // We ARE allowed to see its changes.
+/// assert!(!snapshot.is_active(TransactionId::new(39)));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionSnapshot {
     /// The transaction ID this snapshot belongs to
@@ -18,10 +50,28 @@ pub struct TransactionSnapshot {
 impl TransactionSnapshot {
     /// Creates a new transaction snapshot.
     ///
+    /// This is typically called exclusively by the `ActiveTransactionTable` when
+    /// a new transaction is registered.
+    ///
     /// # Arguments
-    /// * `txn_id` - The transaction ID this snapshot is for
-    /// * `snapshot_lsn` - The LSN at snapshot creation time
-    /// * `active` - List of transaction IDs that were active at snapshot time
+    /// * `txn_id` - The transaction ID this snapshot is for.
+    /// * `snapshot_lsn` - The LSN at the exact moment the snapshot was created.
+    /// * `active` - A list of transaction IDs that are currently uncommitted.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use relvar_storage::mvcc::TransactionSnapshot;
+    /// use relvar_storage::wal::{Lsn, TransactionId};
+    ///
+    /// let snapshot = TransactionSnapshot::new(
+    ///     TransactionId::new(10),
+    ///     Lsn::new(500),
+    ///     vec![TransactionId::new(8), TransactionId::new(9)]
+    /// );
+    ///
+    /// assert_eq!(snapshot.txn_id, TransactionId::new(10));
+    /// ```
     pub fn new(txn_id: TransactionId, snapshot_lsn: Lsn, active: Vec<TransactionId>) -> Self {
         Self {
             txn_id,
@@ -30,13 +80,32 @@ impl TransactionSnapshot {
         }
     }
 
-    /// Checks if a transaction was active when this snapshot was taken.
+    /// Checks if a given transaction was active (uncommitted) when this snapshot was created.
+    ///
+    /// This is the primary method used by the visibility engine. If a tuple version
+    /// was created or deleted by a transaction that returns `true` here, that version's
+    /// state is considered "in flux" and must be ignored by the transaction holding this snapshot.
     ///
     /// # Arguments
-    /// * `txn_id` - The transaction ID to check
+    /// * `txn_id` - The transaction ID to check.
     ///
     /// # Returns
-    /// `true` if the transaction was active (uncommitted) at snapshot time
+    /// `true` if the transaction was active (uncommitted) at snapshot time, `false` otherwise.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use relvar_storage::mvcc::TransactionSnapshot;
+    /// use relvar_storage::wal::{Lsn, TransactionId};
+    ///
+    /// let t1 = TransactionId::new(1);
+    /// let t2 = TransactionId::new(2);
+    ///
+    /// let snapshot = TransactionSnapshot::new(t2, Lsn::new(100), vec![t1]);
+    ///
+    /// assert!(snapshot.is_active(t1)); // T1 was running
+    /// assert!(!snapshot.is_active(TransactionId::new(0))); // T0 was not running
+    /// ```
     pub fn is_active(&self, txn_id: TransactionId) -> bool {
         self.active_txns.contains(&txn_id)
     }
