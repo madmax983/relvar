@@ -78,4 +78,4 @@ pub(crate) mod visibility;
 
 pub use active_txn_table::ActiveTransactionTable;
 pub use snapshot::TransactionSnapshot;
-pub use visibility::{is_visible, VersionMetadata};
+pub use visibility::{VersionMetadata, is_visible};
