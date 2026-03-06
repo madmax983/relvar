@@ -1,15 +1,43 @@
-// Visibility rules for MVCC
-//
-// A tuple version is visible to transaction T if:
-// 1. version.xmin committed before T.snapshot_lsn AND
-// 2. version.xmin not in T.active_txns (not concurrent uncommitted) AND
-// 3. version.xmax is None OR (version.xmax committed after T.snapshot_lsn OR version.xmax in T.active_txns)
+//! # MVCC Visibility Rules
+//!
+//! This module contains the core logic for Snapshot Isolation: determining if a
+//! specific tuple version is visible to a specific transaction.
+//!
+//! A tuple version is visible to transaction `T` if:
+//! 1. `version.xmin` committed before `T.snapshot_lsn` AND
+//! 2. `version.xmin` not in `T.active_txns` (not concurrent uncommitted) AND
+//! 3. `version.xmax` is `None` OR (`version.xmax` committed after `T.snapshot_lsn` OR `version.xmax` in `T.active_txns`)
 
 use crate::mvcc::TransactionSnapshot;
 use crate::wal::TransactionId;
 use std::collections::HashSet;
 
 /// Version metadata stored with each tuple.
+///
+/// Every tuple in the heap contains this header. It tracks which transaction
+/// inserted the tuple (`xmin`) and which transaction deleted or updated it (`xmax`).
+///
+/// If `xmax` is `None`, the tuple is considered "alive" (subject to visibility rules).
+/// If `xmax` is `Some`, the tuple is a tombstone (deleted or an older version of an update).
+///
+/// ## Examples
+///
+/// ```
+/// use relvar_storage::mvcc::VersionMetadata;
+/// use relvar_storage::wal::TransactionId;
+///
+/// // A newly inserted tuple
+/// let inserted = VersionMetadata {
+///     xmin: TransactionId::new(42),
+///     xmax: None, // Still alive!
+/// };
+///
+/// // A deleted tuple
+/// let deleted = VersionMetadata {
+///     xmin: TransactionId::new(42),
+///     xmax: Some(TransactionId::new(45)), // Txn 45 deleted this
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionMetadata {
     /// Transaction that created this version
@@ -20,19 +48,47 @@ pub struct VersionMetadata {
 
 /// Determines if a tuple version is visible to a transaction.
 ///
-/// # Arguments
-/// * `version` - The version metadata to check
-/// * `snapshot` - The transaction's snapshot
-/// * `committed` - Set of all committed transaction IDs
-///
-/// # Returns
-/// `true` if the version is visible to the transaction, `false` otherwise
+/// This function enforces the Snapshot Isolation guarantees. It evaluates the
+/// `version` metadata against the transaction's `snapshot` and the global `committed` set.
 ///
 /// # Visibility Rules
 /// A version is visible if:
-/// 1. xmin is committed (in committed set)
-/// 2. xmin is NOT in the snapshot's active_txns (wasn't concurrent uncommitted)
-/// 3. xmax is None (not deleted) OR xmax is NOT committed OR xmax was concurrent
+/// 1. `xmin` is committed (in `committed` set).
+/// 2. `xmin` is NOT in the snapshot's `active_txns` (wasn't concurrent uncommitted).
+/// 3. `xmax` is `None` (not deleted) OR `xmax` is NOT committed OR `xmax` was concurrent.
+///
+/// **Exception:** A transaction can always see its own uncommitted changes.
+///
+/// # Arguments
+/// * `version` - The version metadata attached to the tuple.
+/// * `snapshot` - The snapshot defining the reading transaction's point-in-time view.
+/// * `committed` - The global set of all transaction IDs that have successfully committed.
+///
+/// # Returns
+/// `true` if the version should be returned by a scan, `false` if it should be skipped.
+///
+/// ## Examples
+///
+/// ```
+/// use relvar_storage::mvcc::{is_visible, VersionMetadata, TransactionSnapshot};
+/// use relvar_storage::wal::{Lsn, TransactionId};
+/// use std::collections::HashSet;
+///
+/// let t1 = TransactionId::new(1); // Committed txn
+/// let t2 = TransactionId::new(2); // Our scanning txn
+///
+/// let mut committed = HashSet::new();
+/// committed.insert(t1);
+///
+/// // T2 starts, T1 is already committed, no active txns
+/// let snapshot = TransactionSnapshot::new(t2, Lsn::new(100), vec![]);
+///
+/// // Tuple inserted by T1, never deleted
+/// let version = VersionMetadata { xmin: t1, xmax: None };
+///
+/// // T2 can see T1's insert because T1 is committed and wasn't active during T2's start
+/// assert!(is_visible(&version, &snapshot, &committed));
+/// ```
 pub fn is_visible(
     version: &VersionMetadata,
     snapshot: &TransactionSnapshot,

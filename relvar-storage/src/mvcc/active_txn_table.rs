@@ -1,11 +1,49 @@
-// Active Transaction Table - tracks concurrent transactions
-// Will be implemented in Phase 1.2
+//! # Active Transaction Table (ATT)
+//!
+//! Tracks concurrent, uncommitted transactions to provide snapshot isolation.
+//!
+//! The ATT is the source of truth for which transactions are currently running
+//! in the database engine. By capturing a snapshot of the ATT at the moment a
+//! new transaction begins, the database knows exactly which concurrent changes
+//! must be hidden from the new transaction's view (Snapshot Isolation).
 
 use crate::mvcc::TransactionSnapshot;
 use crate::wal::{Lsn, TransactionId};
 use std::collections::HashMap;
 
 /// Tracks all active (uncommitted) transactions.
+///
+/// This structure is central to Snapshot Isolation. It maintains the set of all
+/// transactions that have begun but not yet committed or aborted. When a new
+/// transaction starts, it copies the keys of this table into its [`TransactionSnapshot`].
+///
+/// ## Examples
+///
+/// ```
+/// use relvar_storage::mvcc::ActiveTransactionTable;
+/// use relvar_storage::wal::{Lsn, TransactionId};
+///
+/// let mut att = ActiveTransactionTable::new();
+///
+/// // Start transaction 1
+/// let t1 = TransactionId::new(1);
+/// let snapshot1 = att.begin(t1, Lsn::new(100));
+/// assert!(!snapshot1.is_active(t1)); // Not active when snapshot was taken
+///
+/// // Start transaction 2 concurrently
+/// let t2 = TransactionId::new(2);
+/// let snapshot2 = att.begin(t2, Lsn::new(150));
+/// assert!(snapshot2.is_active(t1)); // T2 sees T1 as an active, uncommitted transaction
+///
+/// // T1 finishes
+/// att.commit(t1);
+///
+/// // Start transaction 3
+/// let t3 = TransactionId::new(3);
+/// let snapshot3 = att.begin(t3, Lsn::new(200));
+/// assert!(!snapshot3.is_active(t1)); // T1 committed, so it's no longer active
+/// assert!(snapshot3.is_active(t2));  // T2 is still running
+/// ```
 #[derive(Debug)]
 pub struct ActiveTransactionTable {
     transactions: HashMap<TransactionId, TransactionSnapshot>,
@@ -29,14 +67,32 @@ impl Default for ActiveTransactionTable {
 }
 
 impl ActiveTransactionTable {
-    /// Begin a new transaction and create its snapshot.
+    /// Begins a new transaction and generates its snapshot.
+    ///
+    /// This method performs two critical operations atomically:
+    /// 1. Takes a "picture" of all currently running transactions to form a [`TransactionSnapshot`].
+    /// 2. Registers the new `txn_id` as an active transaction so future transactions will see it.
     ///
     /// # Arguments
-    /// * `txn_id` - The new transaction ID
-    /// * `lsn` - Current LSN at begin time
+    /// * `txn_id` - The unique identifier for the new transaction.
+    /// * `lsn` - The Current Log Sequence Number (LSN) marking the point in time this transaction began.
     ///
     /// # Returns
-    /// TransactionSnapshot capturing all currently active transactions
+    /// A [`TransactionSnapshot`] that the transaction will carry for its entire lifetime
+    /// to determine tuple visibility.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use relvar_storage::mvcc::ActiveTransactionTable;
+    /// use relvar_storage::wal::{Lsn, TransactionId};
+    ///
+    /// let mut att = ActiveTransactionTable::new();
+    /// let snapshot = att.begin(TransactionId::new(42), Lsn::new(100));
+    ///
+    /// assert_eq!(snapshot.txn_id, TransactionId::new(42));
+    /// assert_eq!(snapshot.snapshot_lsn, Lsn::new(100));
+    /// ```
     pub fn begin(&mut self, txn_id: TransactionId, lsn: Lsn) -> TransactionSnapshot {
         // Update current LSN
         self.current_lsn = lsn;
@@ -53,29 +109,70 @@ impl ActiveTransactionTable {
         snapshot
     }
 
-    /// Commit a transaction (remove from active set).
+    /// Commits a transaction, removing it from the active set.
+    ///
+    /// Once removed, any *new* transactions that begin will no longer see this `txn_id`
+    /// in their snapshot, meaning this transaction's changes will be visible to them.
     ///
     /// # Arguments
-    /// * `txn_id` - Transaction to commit
+    /// * `txn_id` - The transaction that is committing.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use relvar_storage::mvcc::ActiveTransactionTable;
+    /// use relvar_storage::wal::{Lsn, TransactionId};
+    ///
+    /// let mut att = ActiveTransactionTable::new();
+    /// let t1 = TransactionId::new(1);
+    ///
+    /// att.begin(t1, Lsn::new(100));
+    /// // T1 does some work...
+    /// att.commit(t1); // T1's changes are now universally visible to new txns
+    /// ```
     pub fn commit(&mut self, txn_id: TransactionId) {
         self.transactions.remove(&txn_id);
     }
 
-    /// Abort a transaction (remove from active set).
+    /// Aborts a transaction, removing it from the active set.
+    ///
+    /// Similar to `commit`, this removes the transaction from the ATT. However,
+    /// the transaction's changes will remain invisible to future transactions
+    /// because aborted transactions never enter the "Committed Transactions" list
+    /// maintained elsewhere in the engine.
     ///
     /// # Arguments
-    /// * `txn_id` - Transaction to abort
+    /// * `txn_id` - The transaction that is rolling back.
     pub fn abort(&mut self, txn_id: TransactionId) {
         self.transactions.remove(&txn_id);
     }
 
-    /// Get the oldest LSN of any active transaction.
+    /// Gets the oldest LSN of any currently active transaction.
     ///
-    /// Used by garbage collection to determine which versions are safe to remove.
+    /// This is a critical method for the Vacuum/Garbage Collection (GC) subsystem.
+    /// Any tuple version that was deleted *before* this `oldest_active_lsn` is
+    /// guaranteed to be invisible to *all* currently running and future transactions.
+    /// Therefore, the GC engine can safely physically delete those tuple versions from disk.
     ///
     /// # Returns
-    /// * `Some(Lsn)` - Oldest LSN if any transactions are active
-    /// * `None` - No active transactions
+    /// * `Some(Lsn)` - The lowest `snapshot_lsn` among all active transactions.
+    /// * `None` - If no transactions are currently active.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use relvar_storage::mvcc::ActiveTransactionTable;
+    /// use relvar_storage::wal::{Lsn, TransactionId};
+    ///
+    /// let mut att = ActiveTransactionTable::new();
+    /// assert_eq!(att.oldest_active_lsn(), None);
+    ///
+    /// att.begin(TransactionId::new(1), Lsn::new(100));
+    /// att.begin(TransactionId::new(2), Lsn::new(200));
+    ///
+    /// // The oldest transaction started at LSN 100
+    /// assert_eq!(att.oldest_active_lsn(), Some(Lsn::new(100)));
+    /// ```
     pub fn oldest_active_lsn(&self) -> Option<Lsn> {
         self.transactions
             .values()
@@ -83,14 +180,14 @@ impl ActiveTransactionTable {
             .min()
     }
 
-    /// Get the snapshot for a specific transaction.
+    /// Retrieves the original snapshot generated for an active transaction.
     ///
     /// # Arguments
-    /// * `txn_id` - Transaction ID to lookup
+    /// * `txn_id` - The transaction ID to lookup.
     ///
     /// # Returns
-    /// * `Some(&TransactionSnapshot)` - Snapshot if transaction is active
-    /// * `None` - Transaction not found (committed/aborted/never existed)
+    /// * `Some(&TransactionSnapshot)` - The snapshot if the transaction is currently active.
+    /// * `None` - If the transaction has committed, aborted, or never existed.
     pub fn get_snapshot(&self, txn_id: TransactionId) -> Option<&TransactionSnapshot> {
         self.transactions.get(&txn_id)
     }
