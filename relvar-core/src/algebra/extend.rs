@@ -35,25 +35,9 @@
 //! ```
 
 use crate::values::{Relation, ScalarValue, Tuple};
-use thiserror::Error;
+use crate::error::DatabaseError;
 
-/// Errors that can occur during extend operations.
-#[derive(Debug, Error)]
-pub enum ExtendError {
-    /// The new attribute name conflicts with an existing attribute.
-    ///
-    /// Each attribute in a relation must have a unique name. Use rename
-    /// first if you need to replace an existing attribute.
-    #[error("Attribute '{0}' already exists in relation")]
-    AttributeExists(String),
 
-    /// Failed to create a tuple with the extended attributes.
-    ///
-    /// This can occur if the computed value type doesn't match the
-    /// declared result type.
-    #[error("Failed to create extended tuple: {0}")]
-    TupleCreation(String),
-}
 
 impl Relation {
     /// Extends the relation with a new computed attribute.
@@ -75,20 +59,20 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// Returns [`ExtendError::AttributeExists`] if an attribute with the
+    /// Returns [`DatabaseError::DuplicateAttributeName`] if an attribute with the
     /// given name already exists in the relation.
     pub fn extend<F>(
         &self,
         attr_name: &str,
         attr_type: crate::types::ScalarType,
         compute: F,
-    ) -> Result<Relation, ExtendError>
+    ) -> Result<Relation, DatabaseError>
     where
         F: Fn(&Tuple) -> ScalarValue,
     {
         // Check if attribute already exists
         if self.relation_type().has_attribute(attr_name) {
-            return Err(ExtendError::AttributeExists(attr_name.to_string()));
+            return Err(DatabaseError::DuplicateAttributeName(attr_name.to_string()));
         }
 
         // Create new heading with the additional attribute
@@ -118,7 +102,7 @@ fn create_extended_tuple<F>(
     attr_type: &crate::types::ScalarType,
     new_heading: &std::sync::Arc<crate::types::TupleType>,
     compute: &F,
-) -> Result<Tuple, ExtendError>
+) -> Result<Tuple, DatabaseError>
 where
     F: Fn(&Tuple) -> ScalarValue,
 {
@@ -128,7 +112,7 @@ where
     // We only need to check this one value because the existing values
     // come from a valid tuple and are guaranteed to match the rest of the heading.
     if !computed_value.is_type(attr_type) {
-        return Err(ExtendError::TupleCreation(format!(
+        return Err(DatabaseError::AlgebraError(format!(
             "Type mismatch for attribute '{}': expected {}, got {}",
             attr_name,
             attr_type.name(),
@@ -210,7 +194,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            ExtendError::AttributeExists(_)
+            DatabaseError::DuplicateAttributeName(_)
         ));
     }
 
@@ -288,7 +272,7 @@ mod tests {
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            ExtendError::TupleCreation(msg) => {
+            DatabaseError::AlgebraError(msg) => {
                 assert!(msg.contains("Type mismatch"));
                 assert!(msg.contains("expected String"));
                 assert!(msg.contains("got Int"));

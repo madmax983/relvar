@@ -1,3 +1,7 @@
 ## 2024-03-XX - Module Encapsulation Cleanup
 **Tangle:** Broad visibility (`pub mod`) across many internal modules (`algebra`, `values`, `types`, etc.) leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core`, `relvar-storage`, and `relvar` to `pub(crate) mod`. Re-exported necessary types via their respective `mod.rs` files, ensuring clean, intention-revealing public APIs while maintaining low coupling between internal components.
+
+## 2024-03-XX - Unify Algebra Error Handling
+**Tangle:** The `relvar-core/src/algebra/*` modules each defined their own specific error enums (e.g., `DifferenceError`, `UnionError`, `DivideError`, `IntersectError`, `GroupError`, `UngroupError`, `SummarizeError`, `ExtendError`), leading to fragmented error handling that violated standardization rules and complicated integration with the rest of the system which expected `DatabaseError`.
+**Blueprint:** Replaced all module-specific error enums in the algebra modules with the centralized `DatabaseError` enum. Reused variants like `DatabaseError::TupleMismatch`, `DatabaseError::AttributeNotFound`, and `DatabaseError::DuplicateAttributeName`, falling back on `DatabaseError::AlgebraError(String)` where necessary. Removed all specific error enum exports from `relvar-core/src/algebra/mod.rs` to enforce a standardized error interface.

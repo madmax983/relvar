@@ -37,23 +37,9 @@
 //! assert!(result.contains(&Tuple::new(result.relation_type().tuple_type().clone(), vec![("employee_id".to_string(), relvar_core::values::ScalarValue::Int(1))]).unwrap()));
 //! ```
 use crate::values::Relation;
-use thiserror::Error;
+use crate::error::DatabaseError;
 
-/// Errors that can occur during relational division.
-#[derive(Debug, Error)]
-pub enum DivideError {
-    /// An attribute in the divisor is not found in the dividend.
-    #[error("Divisor attribute '{0}' not found in dividend")]
-    MissingAttribute(String),
 
-    /// Type mismatch for a common attribute.
-    #[error("Type mismatch for attribute '{0}'")]
-    TypeMismatch(String),
-
-    /// The divisor heading equals the dividend heading (no remainder attributes).
-    #[error("Divisor heading cannot equal dividend heading (no remainder attributes)")]
-    EmptyRemainder,
-}
 
 impl Relation {
     /// Relational division operator (÷)
@@ -122,7 +108,7 @@ impl Relation {
     /// - Divisor has attributes not in dividend
     /// - Attribute types don't match
     /// - Divisor heading equals dividend heading (no remainder)
-    pub fn divide(&self, divisor: &Relation) -> Result<Relation, DivideError> {
+    pub fn divide(&self, divisor: &Relation) -> Result<Relation, DatabaseError> {
         let dividend_heading = self.relation_type().heading();
         let divisor_heading = divisor.relation_type().heading();
 
@@ -158,18 +144,18 @@ impl Relation {
 fn validate_division_compatibility(
     dividend_heading: &crate::types::TupleType,
     divisor_heading: &crate::types::TupleType,
-) -> Result<(), DivideError> {
+) -> Result<(), DatabaseError> {
     for attr_name in divisor_heading.attribute_names() {
         // Check if attribute exists in dividend
         match dividend_heading.get_attribute_type(attr_name) {
             None => {
-                return Err(DivideError::MissingAttribute(attr_name.clone()));
+                return Err(DatabaseError::AttributeNotFound(attr_name.clone(), "dividend".to_string()));
             }
             Some(dividend_type) => {
                 // Check if types match
                 let divisor_type = divisor_heading.get_attribute_type(attr_name).unwrap();
                 if dividend_type != divisor_type {
-                    return Err(DivideError::TypeMismatch(attr_name.clone()));
+                    return Err(DatabaseError::TupleMismatch);
                 }
             }
         }
@@ -182,7 +168,7 @@ fn validate_division_compatibility(
 fn compute_remainder_attributes(
     dividend_heading: &crate::types::TupleType,
     divisor_heading: &crate::types::TupleType,
-) -> Result<Vec<String>, DivideError> {
+) -> Result<Vec<String>, DatabaseError> {
     let remainder_attrs: Vec<String> = dividend_heading
         .attribute_names()
         .filter(|attr| !divisor_heading.has_attribute(attr))
@@ -190,7 +176,7 @@ fn compute_remainder_attributes(
         .collect();
 
     if remainder_attrs.is_empty() {
-        return Err(DivideError::EmptyRemainder);
+        return Err(DatabaseError::AlgebraError("Divisor heading cannot equal dividend heading (no remainder attributes)".to_string()));
     }
 
     Ok(remainder_attrs)
@@ -450,7 +436,7 @@ mod tests {
 
         assert!(result.is_err());
         match result {
-            Err(DivideError::MissingAttribute(attr)) => {
+            Err(DatabaseError::AttributeNotFound(attr, _)) => {
                 assert_eq!(attr, "color");
             }
             _ => panic!("Expected MissingAttribute error"),
@@ -475,8 +461,8 @@ mod tests {
 
         assert!(result.is_err());
         match result {
-            Err(DivideError::TypeMismatch(attr)) => {
-                assert_eq!(attr, "part_id");
+            Err(DatabaseError::TupleMismatch) => {
+                // Expected
             }
             _ => panic!("Expected TypeMismatch error"),
         }
@@ -499,7 +485,7 @@ mod tests {
 
         assert!(result.is_err());
         match result {
-            Err(DivideError::EmptyRemainder) => {
+            Err(DatabaseError::AlgebraError(_msg)) => {
                 // Expected
             }
             _ => panic!("Expected EmptyRemainder error"),
