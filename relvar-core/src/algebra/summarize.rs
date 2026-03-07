@@ -408,17 +408,17 @@ impl Aggregation {
         let first = tuples[0].get(attr_name).ok_or_else(|| {
             SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
         })?;
-        let mut extremum = first.clone();
+        let mut extremum = first;
 
         for tuple in tuples.iter().skip(1) {
             let value = tuple.get(attr_name).ok_or_else(|| {
                 SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
             })?;
-            if compare(value, &extremum) {
-                extremum = value.clone();
+            if compare(value, extremum) {
+                extremum = value;
             }
         }
-        Ok(extremum)
+        Ok(extremum.clone())
     }
 }
 
