@@ -3595,7 +3595,6 @@ mod security_tests {
 mod read_tests {
     use super::*;
     use relvar_core::types::{ScalarType, TupleType};
-    use tempfile::NamedTempFile;
 
     fn create_test_relation_type() -> RelationType {
         let heading = TupleType::new()
