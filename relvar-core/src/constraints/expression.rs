@@ -970,3 +970,94 @@ mod like_tests {
         assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
     }
 }
+
+#[cfg(test)]
+mod tests_coverage {
+    use super::*;
+    use crate::values::ScalarValue;
+
+    #[test]
+    fn test_constraint_expression_unchecked_try_from() {
+        let unchecked = ConstraintExpressionUnchecked::Cmp {
+            left: "test".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(1)),
+        };
+        let checked = ConstraintExpression::try_from(unchecked).unwrap();
+        assert!(matches!(checked, ConstraintExpression::Cmp { .. }));
+    }
+
+    #[test]
+    fn test_constraint_expression_unchecked_try_from_and() {
+        let left = ConstraintExpressionUnchecked::Cmp {
+            left: "test".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(1)),
+        };
+        let right = ConstraintExpressionUnchecked::Cmp {
+            left: "test2".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(2)),
+        };
+        let unchecked = ConstraintExpressionUnchecked::And(
+            Box::new(crate::utils::recursion::DepthGuarded(left)),
+            Box::new(crate::utils::recursion::DepthGuarded(right)),
+        );
+        let checked = ConstraintExpression::try_from(unchecked).unwrap();
+        assert!(matches!(checked, ConstraintExpression::And(..)));
+    }
+
+    #[test]
+    fn test_constraint_expression_unchecked_try_from_or() {
+        let left = ConstraintExpressionUnchecked::Cmp {
+            left: "test".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(1)),
+        };
+        let right = ConstraintExpressionUnchecked::Cmp {
+            left: "test2".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(2)),
+        };
+        let unchecked = ConstraintExpressionUnchecked::Or(
+            Box::new(crate::utils::recursion::DepthGuarded(left)),
+            Box::new(crate::utils::recursion::DepthGuarded(right)),
+        );
+        let checked = ConstraintExpression::try_from(unchecked).unwrap();
+        assert!(matches!(checked, ConstraintExpression::Or(..)));
+    }
+
+    #[test]
+    fn test_constraint_expression_unchecked_try_from_not() {
+        let inner = ConstraintExpressionUnchecked::Cmp {
+            left: "test".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(1)),
+        };
+        let unchecked = ConstraintExpressionUnchecked::Not(
+            Box::new(crate::utils::recursion::DepthGuarded(inner)),
+        );
+        let checked = ConstraintExpression::try_from(unchecked).unwrap();
+        assert!(matches!(checked, ConstraintExpression::Not(..)));
+    }
+
+    #[test]
+    fn test_constraint_expression_unchecked_try_from_in() {
+        let unchecked = ConstraintExpressionUnchecked::In(
+            "test".to_string(),
+            vec![ScalarValue::Int(1)],
+        );
+        let checked = ConstraintExpression::try_from(unchecked).unwrap();
+        assert!(matches!(checked, ConstraintExpression::In(..)));
+    }
+
+    #[test]
+    fn test_constraint_expression_unchecked_try_from_like() {
+        let unchecked = ConstraintExpressionUnchecked::Like(
+            "test".to_string(),
+            "pattern".to_string(),
+        );
+        let checked = ConstraintExpression::try_from(unchecked).unwrap();
+        assert!(matches!(checked, ConstraintExpression::Like(..)));
+    }
+}
