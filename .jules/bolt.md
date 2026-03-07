@@ -27,3 +27,6 @@
 ## 2024-03-01 - [Zero-Copy Primitive Extraction]
 **Learning:** `Tuple::get_typed<T>` was invoking `.clone()` on the `ScalarValue` enum purely to satisfy the `TryFrom<ScalarValue>` trait bound, causing a 24-byte enum copy for every extraction.
 **Action:** Changed trait bound to `T: for<'a> TryFrom<&'a ScalarValue>` to enable extraction by reference and avoid the enum wrapper clone, while preserving type safety.
+## 2026-03-07 - Avoiding Intermediate Allocations in Division Iterator
+**Learning:** The `filter_matching_candidates` helper in `relvar-core/src/algebra/divide.rs` originally used `.collect::<Vec<_>>()` to allocate a buffer of tuples before passing them to `Relation::from_tuples`.
+**Action:** Use `impl Iterator<Item = Tuple> + 'a` and add `move` to the `.filter` closure to return the iterator instead of allocating a `Vec`. Pass it directly into `Relation::from_tuples_unchecked` to eliminate validation overhead and allocation.
