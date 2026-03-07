@@ -3611,8 +3611,14 @@ mod read_tests {
             heading,
             vec![
                 ("id".to_string(), relvar_core::values::ScalarValue::Int(id)),
-                ("name".to_string(), relvar_core::values::ScalarValue::String(name.to_string())),
-                ("score".to_string(), relvar_core::values::ScalarValue::Float(score)),
+                (
+                    "name".to_string(),
+                    relvar_core::values::ScalarValue::String(name.to_string()),
+                ),
+                (
+                    "score".to_string(),
+                    relvar_core::values::ScalarValue::Float(score),
+                ),
             ],
         )
         .unwrap()
@@ -3627,7 +3633,10 @@ mod read_tests {
         let t1 = create_test_tuple(1, "Tuple1", 10.0);
         heap.insert_tuple(&t1)?;
 
-        let tuple_id = TupleId { page_id: 0, slot: 0 };
+        let tuple_id = TupleId {
+            page_id: 0,
+            slot: 0,
+        };
         let read_t1 = heap.read_tuple(tuple_id)?;
         assert_eq!(t1, read_t1);
 
