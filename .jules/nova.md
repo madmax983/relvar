@@ -7,3 +7,7 @@
 **Concept:** Modeled sparse matrices as relations with `row`, `col`, and `val` attributes. Implemented matrix addition and multiplication using standard relational algebra operators like Join, Extend, Summarize, and Union.
 **Fate:** Merged
 **Lesson:** Mathematical operations from linear algebra can map quite elegantly to relational operations, though handling multiplicities in operations like addition (where set semantics naturally deduplicate) requires careful tagging to distinguish sources before aggregation.
+## Relational Markov Chain
+**Concept:** Implemented `MarkovChain` struct using purely relational algebra (Extend, Rename, Join, Summarize) to extract state transitions and calculate their probabilities from a sequence dataset.
+**Fate:** Merged
+**Lesson:** Markov Chains can be elegantly implemented on top of a relational database by shifting and joining a sequence relation with itself, avoiding explicit graph traversal during training and relying solely on standard relational operators.
