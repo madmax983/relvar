@@ -191,6 +191,45 @@ impl Tuple {
         })
     }
 
+    /// Creates a new tuple from an Arc-wrapped type and a BTreeMap of values.
+    ///
+    /// This method is more efficient than `new` when the `TupleType` is already wrapped in an `Arc`,
+    /// as it avoids the overhead of converting and potentially allocating a new `Arc`.
+    ///
+    /// Validates that all attributes defined in the tuple type have
+    /// corresponding values and that all values match their expected types.
+    pub fn new_with_arc(
+        tuple_type: Arc<TupleType>,
+        values_map: BTreeMap<String, ScalarValue>,
+    ) -> Result<Self, TupleError> {
+        // Verify all attributes have values
+        for attr_name in tuple_type.attribute_names() {
+            if !values_map.contains_key(attr_name) {
+                return Err(TupleError::MissingValue(attr_name.clone()));
+            }
+        }
+
+        // Verify all values match their types
+        for (attr_name, value) in &values_map {
+            if let Some(expected_type) = tuple_type.get_attribute_type(attr_name) {
+                if !value.is_type(expected_type) {
+                    return Err(TupleError::TypeMismatch(
+                        attr_name.clone(),
+                        expected_type.name().to_string(),
+                        value.scalar_type().name().to_string(),
+                    ));
+                }
+            } else {
+                return Err(TupleError::AttributeNotFound(attr_name.clone()));
+            }
+        }
+
+        Ok(Self {
+            tuple_type,
+            values: values_map,
+        })
+    }
+
     /// Creates a tuple skipping all validation checks.
     ///
     /// # Safety
