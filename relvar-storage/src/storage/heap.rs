@@ -544,18 +544,7 @@ impl HeapFile {
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
 
-        // Extract tuple data from page
-        let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
-
-        if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-
-        Ok(tuple)
+        self.extract_tuple_from_page(&page, slot_entry.offset, slot_entry.length)
     }
 
     /// Reads a tuple from a versioned page.
@@ -579,18 +568,7 @@ impl HeapFile {
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
 
-        // Extract tuple data from page
-        let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
-
-        if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-
-        Ok(tuple)
+        self.extract_tuple_from_page(&page, slot_entry.offset, slot_entry.length)
     }
 
     /// Scans all tuples in the heap file.
