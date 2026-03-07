@@ -187,3 +187,9 @@ The `postcard` dependency (version 1.1.3) enabled the `heapless-cas` and `heaple
 
 **Defense:**
 Modified `Cargo.toml` to disable the default features of `postcard` by specifying `default-features = false`, explicitly only retaining the required `alloc` and `use-std` features. This eliminates the `heapless` and `atomic-polyfill` dependencies entirely, mitigating the risk of relying on an unmaintained crate.
+
+## 2024-05-24 - ConstraintExpression Deserialization DoS
+
+**Threat:** The `ConstraintExpression` struct allowed unbounded recursive nesting of its logical variants (`And`, `Or`, `Not`) because it directly derived `serde::Deserialize`. An attacker could exploit this by providing a maliciously crafted, deeply nested JSON or postcard payload containing thousands of nested operations. When parsed, this could cause a stack overflow and crash the database process (Denial of Service).
+
+**Defense:** Enforced bounded recursion by removing `#[derive(Deserialize)]` from `ConstraintExpression` and manually implementing `TryFrom` over a new private struct `ConstraintExpressionUnchecked`. The unchecked struct wraps recursive variants in the `DepthGuarded` wrapper, leveraging `MAX_TYPE_DEPTH` to track recursion depth during deserialization. If the limit is exceeded, deserialization gracefully fails with an error rather than panicking.
