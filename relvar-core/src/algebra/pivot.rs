@@ -31,13 +31,12 @@
 //! the operator uses a **Last Write Wins** strategy based on the lexicographical order of the source tuples.
 //! The tuple that sorts last determines the final cell value.
 
-use relvar_core::error::DatabaseError;
-use relvar_core::types::{RelationType, TupleType};
-use relvar_core::values::{Relation, ScalarValue, Tuple};
+use crate::error::DatabaseError;
+use crate::types::{RelationType, TupleType};
+use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Trait extending Relation with pivot capabilities.
-pub trait Pivot {
+impl Relation {
     /// Pivots a relation.
     ///
     /// Transforms unique values from the `on_attr` column into new column headers,
@@ -63,7 +62,6 @@ pub trait Pivot {
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
     /// use relvar_core::values::{Relation, ScalarValue};
     /// use relvar_core::tuple;
-    /// use relvar::experimental::pivot::Pivot;
     ///
     /// // Create a relation: (Item, Color, Count)
     /// let heading = TupleType::new()
@@ -83,16 +81,7 @@ pub trait Pivot {
     /// // Shirt: Red=10, Blue=5
     /// // Pants: Red=0 (default), Blue=20
     /// ```
-    fn pivot(
-        &self,
-        on_attr: &str,
-        value_attr: &str,
-        default_value: ScalarValue,
-    ) -> Result<Relation, DatabaseError>;
-}
-
-impl Pivot for Relation {
-    fn pivot(
+    pub fn pivot(
         &self,
         on_attr: &str,
         value_attr: &str,
@@ -217,8 +206,8 @@ fn scalar_to_string_key(val: &ScalarValue) -> Result<String, DatabaseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use relvar_core::tuple;
-    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
 
     #[test]
     fn test_pivot_basic() {

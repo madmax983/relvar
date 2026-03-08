@@ -112,6 +112,9 @@ pub use intersect::IntersectError;
 /// Natural join and theta join operators.
 pub(crate) mod join;
 
+/// Pivot operator to transform row values into column headers.
+pub(crate) mod pivot;
+
 /// Project operator for attribute selection (π).
 pub(crate) mod project;
 
