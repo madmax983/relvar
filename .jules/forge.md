@@ -526,3 +526,7 @@ Build it right, make it fast, keep it simple.
 ## 2025-06-03 - Algebraic Operator Refactoring
 **Learning:** Complex algebraic operators like `group` and `ungroup` often mix validation, schema derivation, and tuple processing. Extracting these into distinct phases (`validate`, `build_heading`, `compute_tuples`) improves readability and testability.
 **Action:** Apply this "Three-Phase Operator" pattern when refactoring other complex operators like `join` or `summarize`.
+
+## 2025-10-24 - MVCC Deletion Duplication
+**Learning:** The implementation of MVCC soft-deletes within `HeapFile` (`delete_tuple_versioned` and `update_tuple_versioned`) contained identically duplicated logic for reading, marking `xmax`, and rewriting pages. This was a recurring anti-pattern whenever tuple metadata needed updates.
+**Action:** Extracted the core "mark deleted" phase into a shared `mark_version_deleted` helper, standardizing the soft-delete sequence and reducing boilerplate copy-pasting.

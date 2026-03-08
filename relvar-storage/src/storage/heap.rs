@@ -1033,32 +1033,7 @@ impl HeapFile {
         txn_id: crate::wal::TransactionId,
     ) -> Result<TupleId, HeapError> {
         // Step 1: Mark old version's xmax
-        let page = self.page_file.read_page(old_tuple_id.page_id)?;
-
-        if page.is_empty() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let mut versioned_page = self.deserialize_versioned_page(&page)?;
-
-        // Find the old slot
-        let old_slot = versioned_page
-            .slots
-            .get_mut(old_tuple_id.slot as usize)
-            .and_then(|s| s.as_mut())
-            .ok_or(HeapError::TupleNotFound)?;
-
-        // Mark old version as deleted by this transaction
-        old_slot.xmax = Some(txn_id);
-
-        // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
-
-        // Serialize and write updated page with old version marked
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
-        let updated_page = Page::from_data(old_tuple_id.page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
+        self.mark_version_deleted(old_tuple_id, txn_id)?;
 
         // Step 2: Insert new version
         let new_tuple_data = serialize_compat(new_tuple)?;
@@ -1102,7 +1077,15 @@ impl HeapFile {
         tuple_id: TupleId,
         txn_id: crate::wal::TransactionId,
     ) -> Result<(), HeapError> {
-        // Read the page containing the tuple
+        self.mark_version_deleted(tuple_id, txn_id)
+    }
+
+    /// Helper to mark a specific versioned tuple as deleted (sets its `xmax` to `txn_id`).
+    fn mark_version_deleted(
+        &mut self,
+        tuple_id: TupleId,
+        txn_id: crate::wal::TransactionId,
+    ) -> Result<(), HeapError> {
         let page = self.page_file.read_page(tuple_id.page_id)?;
 
         if page.is_empty() {
@@ -1111,20 +1094,16 @@ impl HeapFile {
 
         let mut versioned_page = self.deserialize_versioned_page(&page)?;
 
-        // Find and mark the tuple
         let slot = versioned_page
             .slots
             .get_mut(tuple_id.slot as usize)
             .and_then(|s| s.as_mut())
             .ok_or(HeapError::TupleNotFound)?;
 
-        // Mark as deleted by this transaction
         slot.xmax = Some(txn_id);
 
-        // Extract all existing tuple data
         let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
 
-        // Serialize and write updated page
         let page_data =
             self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
         let updated_page = Page::from_data(tuple_id.page_id, page_data)?;
@@ -1186,25 +1165,24 @@ impl HeapFile {
 
             // Check each slot for dead versions
             for (idx, slot_option) in versioned_page.slots.iter_mut().enumerate() {
-                if let Some(slot) = slot_option {
-                    // Check if this version is dead
-                    if let Some(xmax) = slot.xmax {
-                        // Has xmax - was deleted or updated
-                        if committed.contains(&xmax) {
-                            // xmax transaction committed
-                            // Check if it's old enough (before oldest active)
-                            // Note: We need to compare transaction IDs as proxy for LSN
-                            // since we don't track commit LSNs yet
-                            if xmax.value() < oldest_active_lsn.value() {
-                                // This version is dead - remove it
-                                *slot_option = None;
-                                existing_tuples[idx] = Vec::new();
-                                removed_count += 1;
-                                page_modified = true;
-                            }
-                        }
-                    }
+                let Some(slot) = slot_option else {
+                    continue;
+                };
+                let Some(xmax) = slot.xmax else {
+                    continue;
+                };
+                if !committed.contains(&xmax) {
+                    continue;
                 }
+                if xmax.value() >= oldest_active_lsn.value() {
+                    continue;
+                }
+
+                // This version is dead - remove it
+                *slot_option = None;
+                existing_tuples[idx] = Vec::new();
+                removed_count += 1;
+                page_modified = true;
             }
 
             // Write page back if modified
@@ -1273,24 +1251,25 @@ impl HeapFile {
 
             // Check each slot for visibility
             for slot_entry in versioned_page.slots.iter().flatten() {
-                // Create version metadata
                 let version_metadata = crate::mvcc::VersionMetadata {
                     xmin: slot_entry.xmin,
                     xmax: slot_entry.xmax,
                 };
 
-                // Check visibility
-                if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
-                    // Extract tuple data from page
-                    let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
-
-                    if end <= page.data().len() {
-                        let tuple_data = &page.data()[start..end];
-                        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-                        results.push(tuple);
-                    }
+                if !crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
+                    continue;
                 }
+
+                let start = slot_entry.offset as usize;
+                let end = start + slot_entry.length as usize;
+
+                if end > page.data().len() {
+                    continue;
+                }
+
+                let tuple_data = &page.data()[start..end];
+                let tuple: Tuple = deserialize_bounded(tuple_data)?;
+                results.push(tuple);
             }
 
             page_id += 1;
