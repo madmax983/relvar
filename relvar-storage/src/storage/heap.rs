@@ -2372,7 +2372,7 @@ mod tests {
         committed.insert(test_txn(3));
 
         // NOTE: Current implementation uses Read Committed isolation, not Snapshot Isolation
-        // TODO: Full snapshot isolation requires commit LSN tracking
+        // Note: Full snapshot isolation requires commit LSN tracking
         // With Read Committed, T2 sees T3's committed update
         let visible = heap.scan_visible(&snapshot_t2, &committed).unwrap();
 
@@ -2647,7 +2647,7 @@ mod tests {
         committed.insert(test_txn(3));
 
         // NOTE: With Read Committed, T2 sees the deletion
-        // TODO: Full snapshot isolation would preserve visibility
+        // Note: Full snapshot isolation would preserve visibility
         let visible = heap.scan_visible(&snapshot_t2, &committed).unwrap();
 
         assert_eq!(visible.len(), 0); // Read Committed: sees deletion
