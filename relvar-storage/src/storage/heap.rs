@@ -544,18 +544,7 @@ impl HeapFile {
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
 
-        // Extract tuple data from page
-        let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
-
-        if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-
-        Ok(tuple)
+        self.extract_tuple_from_page(&page, slot_entry.offset, slot_entry.length)
     }
 
     /// Reads a tuple from a versioned page.
@@ -579,18 +568,7 @@ impl HeapFile {
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
 
-        // Extract tuple data from page
-        let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
-
-        if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-
-        Ok(tuple)
+        self.extract_tuple_from_page(&page, slot_entry.offset, slot_entry.length)
     }
 
     /// Scans all tuples in the heap file.
@@ -3611,5 +3589,65 @@ mod security_tests {
             }
             _ => panic!("Expected TupleTooLarge, got {:?}", result),
         }
+    }
+}
+#[cfg(test)]
+mod read_tests {
+    use super::*;
+    use relvar_core::types::{ScalarType, TupleType};
+
+    fn create_test_relation_type() -> RelationType {
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String)
+            .with_attribute("score", ScalarType::Float);
+        RelationType::new(heading)
+    }
+
+    fn create_test_tuple(id: i64, name: &str, score: f64) -> Tuple {
+        let heading = create_test_relation_type().heading().clone();
+        Tuple::new(
+            heading,
+            vec![
+                ("id".to_string(), relvar_core::values::ScalarValue::Int(id)),
+                (
+                    "name".to_string(),
+                    relvar_core::values::ScalarValue::String(name.to_string()),
+                ),
+                (
+                    "score".to_string(),
+                    relvar_core::values::ScalarValue::Float(score),
+                ),
+            ],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_read_tuple_and_versioned() -> Result<(), HeapError> {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test_read.heap");
+        let mut heap = HeapFile::create(&file_path, create_test_relation_type())?;
+
+        let t1 = create_test_tuple(1, "Tuple1", 10.0);
+        heap.insert_tuple(&t1)?;
+
+        let tuple_id = TupleId {
+            page_id: 0,
+            slot: 0,
+        };
+        let read_t1 = heap.read_tuple(tuple_id)?;
+        assert_eq!(t1, read_t1);
+
+        let file_path2 = dir.path().join("test_read_v.heap");
+        let mut heap_v = HeapFile::create(&file_path2, create_test_relation_type())?;
+
+        let t2 = create_test_tuple(2, "Tuple2", 20.0);
+        let tuple_id_v = heap_v.insert_tuple_versioned(&t2, crate::wal::TransactionId::new(1))?;
+
+        let read_t2 = heap_v.read_tuple_versioned(tuple_id_v)?;
+        assert_eq!(t2, read_t2);
+
+        Ok(())
     }
 }
