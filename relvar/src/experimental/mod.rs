@@ -15,8 +15,10 @@
 //! - **[`search`](crate::experimental::search)**: Relational Full-Text Search.
 //! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
+//! - **[`cellular`](crate::experimental::cellular)**: Relational Cellular Automata (Game of Life).
 
 pub mod automl;
+pub mod cellular;
 pub mod ecs;
 pub mod graph;
 pub mod image;
