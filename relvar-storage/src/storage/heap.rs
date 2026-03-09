@@ -1020,38 +1020,7 @@ impl HeapFile {
         txn_id: crate::wal::TransactionId,
     ) -> Result<TupleId, HeapError> {
         // Step 1: Mark old version's xmax
-        let page = self.page_file.read_page(old_tuple_id.page_id)?;
-
-        if page.is_empty() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let mut versioned_page = self.deserialize_versioned_page(&page)?;
-
-        // Find the old slot
-        let old_slot = versioned_page
-            .slots
-            .get_mut(old_tuple_id.slot as usize)
-            .and_then(|s| s.as_mut())
-            .ok_or(HeapError::TupleNotFound)?;
-
-        // Mark old version as deleted by this transaction
-        old_slot.xmax = Some(txn_id);
-
-        // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(
-            &page,
-            versioned_page
-                .slots
-                .iter()
-                .map(|s| s.as_ref().map(|x| (x.offset, x.length))),
-        )?;
-
-        // Serialize and write updated page with old version marked
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
-        let updated_page = Page::from_data(old_tuple_id.page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
+        self.mark_version_deleted(old_tuple_id, txn_id)?;
 
         // Step 2: Insert new version
         let new_tuple_data = serialize_compat(new_tuple)?;
@@ -1070,6 +1039,52 @@ impl HeapFile {
             )
             .map(|slot| TupleId { page_id, slot })
         })
+    }
+
+    /// Marks a version as deleted by setting its xmax.
+    ///
+    /// Extracted helper to avoid duplication between `update_tuple_versioned`
+    /// and `delete_tuple_versioned`.
+    #[allow(dead_code)]
+    pub(crate) fn mark_version_deleted(
+        &mut self,
+        tuple_id: TupleId,
+        txn_id: crate::wal::TransactionId,
+    ) -> Result<(), HeapError> {
+        let page = self.page_file.read_page(tuple_id.page_id)?;
+
+        if page.is_empty() {
+            return Err(HeapError::TupleNotFound);
+        }
+
+        let mut versioned_page = self.deserialize_versioned_page(&page)?;
+
+        // Find the slot
+        let slot = versioned_page
+            .slots
+            .get_mut(tuple_id.slot as usize)
+            .and_then(|s| s.as_mut())
+            .ok_or(HeapError::TupleNotFound)?;
+
+        // Mark as deleted by this transaction
+        slot.xmax = Some(txn_id);
+
+        // Extract all existing tuple data
+        let existing_tuples = self.extract_all_tuples(
+            &page,
+            versioned_page
+                .slots
+                .iter()
+                .map(|s| s.as_ref().map(|x| (x.offset, x.length))),
+        )?;
+
+        // Serialize and write updated page with marked version
+        let page_data =
+            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+        let updated_page = Page::from_data(tuple_id.page_id, page_data)?;
+        self.page_file.write_page(&updated_page)?;
+
+        Ok(())
     }
 
     /// Deletes a tuple by marking it with xmax (MVCC soft delete).
@@ -1095,41 +1110,7 @@ impl HeapFile {
         tuple_id: TupleId,
         txn_id: crate::wal::TransactionId,
     ) -> Result<(), HeapError> {
-        // Read the page containing the tuple
-        let page = self.page_file.read_page(tuple_id.page_id)?;
-
-        if page.is_empty() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let mut versioned_page = self.deserialize_versioned_page(&page)?;
-
-        // Find and mark the tuple
-        let slot = versioned_page
-            .slots
-            .get_mut(tuple_id.slot as usize)
-            .and_then(|s| s.as_mut())
-            .ok_or(HeapError::TupleNotFound)?;
-
-        // Mark as deleted by this transaction
-        slot.xmax = Some(txn_id);
-
-        // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(
-            &page,
-            versioned_page
-                .slots
-                .iter()
-                .map(|s| s.as_ref().map(|x| (x.offset, x.length))),
-        )?;
-
-        // Serialize and write updated page
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
-        let updated_page = Page::from_data(tuple_id.page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
-
-        Ok(())
+        self.mark_version_deleted(tuple_id, txn_id)
     }
 
     /// Removes dead tuple versions for garbage collection.
