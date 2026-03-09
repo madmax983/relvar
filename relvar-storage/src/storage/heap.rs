@@ -1306,7 +1306,9 @@ mod tests {
     ) -> Result<VersionedSlottedPage, postcard::Error> {
         if page_data.len() >= 5 && page_data[0] == PAGE_FORMAT_VERSION {
             // New format: [version:1][length:4][slot_dir][tuples]
-            let slot_dir_len = u32::from_le_bytes(page_data[1..5].try_into().unwrap()) as usize;
+            let mut len_bytes = [0u8; 4];
+            len_bytes.copy_from_slice(&page_data[1..5]);
+            let slot_dir_len = u32::from_le_bytes(len_bytes) as usize;
             postcard::from_bytes(&page_data[5..5 + slot_dir_len])
         } else {
             // Old format: [slot_dir][tuples]
