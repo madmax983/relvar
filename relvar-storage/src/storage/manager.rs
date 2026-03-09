@@ -126,7 +126,7 @@ impl StorageManager {
 
         // Add to catalog
         self.catalog
-            .create_relation(name.to_string(), relation_type, heap_file_path.clone())
+            .create_relation(name.to_string(), relation_type, heap_file_path)
             .map_err(Self::convert_catalog_error)?;
 
         // Save catalog
