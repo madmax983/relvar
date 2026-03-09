@@ -1127,3 +1127,69 @@ fn test_virtual_relvar_immutability_enforcement() {
     // Query the view
     assert!(db.query("SAFE_VIEW").is_ok());
 }
+
+#[test]
+fn test_insert_type_mismatch() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String),
+    );
+
+    db.create_relvar("PEOPLE", rel_type.clone()).unwrap();
+
+    // Try inserting a tuple with the wrong type using new_unchecked to bypass Tuple::new validation
+    let bad_heading = TupleType::new()
+        .with_attribute("id", ScalarType::Int)
+        .with_attribute("name", ScalarType::Int);
+
+    let mut values = std::collections::BTreeMap::new();
+    values.insert("id".to_string(), ScalarValue::Int(1));
+    values.insert("name".to_string(), ScalarValue::Int(42));
+
+    let invalid_tuple = Tuple::new_unchecked(std::sync::Arc::new(bad_heading), values);
+
+    let result = db.insert("PEOPLE", invalid_tuple);
+
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            crate::constraints::ConstraintManagerError::TupleMismatch
+        ))
+    ));
+}
+
+#[test]
+fn test_validate_relation_constraints_check_violation() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("age", ScalarType::Int),
+    );
+
+    db.create_relvar("PERSONS", rel_type).unwrap();
+    db.insert("PERSONS", tuple! { id: 1i64, age: 25i64 })
+        .unwrap();
+
+    // Now set a check constraint that existing data violates
+    let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        "valid_age",
+        "Age must be under 20",
+        ConstraintExpression::Cmp {
+            left: "age".to_string(),
+            op: CmpOp::Lt,
+            right: ValueOrRef::Value(ScalarValue::Int(20)),
+        },
+    ));
+
+    // this triggers `validate_relation_constraints` which will loop through the relations
+    let result = db.set_check_constraints("PERSONS", constraints);
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            crate::constraints::ConstraintManagerError::CheckConstraintViolation(_)
+        ))
+    ));
+}
