@@ -460,8 +460,8 @@ impl ConstraintManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage_engine::in_memory::InMemoryEngine;
     use crate::storage_engine::StorageEngine;
+    use crate::storage_engine::in_memory::InMemoryEngine;
     use crate::tuple;
     use crate::types::{RelationType, ScalarType, TupleType};
     use crate::values::{Relation, ScalarValue};
@@ -472,7 +472,7 @@ mod tests {
         let rel_type = RelationType::new(
             TupleType::new()
                 .with_attribute("id", ScalarType::Int)
-                .with_attribute("name", ScalarType::String)
+                .with_attribute("name", ScalarType::String),
         );
         engine.create_relation("TEST", rel_type.clone()).unwrap();
 
@@ -480,7 +480,11 @@ mod tests {
 
         // Valid tuple
         let valid_tuple = tuple! { id: 1i64, name: "Alice" };
-        assert!(manager.validate_tuple_type(&engine, "TEST", &valid_tuple).is_ok());
+        assert!(
+            manager
+                .validate_tuple_type(&engine, "TEST", &valid_tuple)
+                .is_ok()
+        );
 
         // Invalid tuple (missing attribute, or wrong type)
         // Since tuple! requires types to match, we create a bad tuple manually
@@ -492,7 +496,8 @@ mod tests {
         values.insert("id".to_string(), ScalarValue::Int(1));
         values.insert("name".to_string(), ScalarValue::Int(42));
 
-        let invalid_tuple = crate::values::Tuple::new_unchecked(std::sync::Arc::new(bad_heading), values);
+        let invalid_tuple =
+            crate::values::Tuple::new_unchecked(std::sync::Arc::new(bad_heading), values);
 
         let result = manager.validate_tuple_type(&engine, "TEST", &invalid_tuple);
         assert!(matches!(result, Err(ConstraintManagerError::TupleMismatch)));
@@ -505,23 +510,27 @@ mod tests {
         let dept_type = RelationType::new(
             TupleType::new()
                 .with_attribute("dept_id", ScalarType::Int)
-                .with_attribute("dname", ScalarType::String)
+                .with_attribute("dname", ScalarType::String),
         );
         let emp_type = RelationType::new(
             TupleType::new()
                 .with_attribute("emp_id", ScalarType::Int)
-                .with_attribute("dept_id", ScalarType::Int)
+                .with_attribute("dept_id", ScalarType::Int),
         );
 
         engine.create_relation("DEPT", dept_type.clone()).unwrap();
         engine.create_relation("EMP", emp_type.clone()).unwrap();
 
         let mut dept_rel = Relation::new(dept_type.clone());
-        dept_rel.insert(tuple! { dept_id: 1i64, dname: "HR" }).unwrap();
+        dept_rel
+            .insert(tuple! { dept_id: 1i64, dname: "HR" })
+            .unwrap();
         engine.store_relation("DEPT", &dept_rel).unwrap();
 
         let mut emp_rel = Relation::new(emp_type.clone());
-        emp_rel.insert(tuple! { emp_id: 101i64, dept_id: 1i64 }).unwrap();
+        emp_rel
+            .insert(tuple! { emp_id: 101i64, dept_id: 1i64 })
+            .unwrap();
         engine.store_relation("EMP", &emp_rel).unwrap();
 
         let mut manager = ConstraintManager::new();
@@ -529,20 +538,24 @@ mod tests {
         let fk_constraint = crate::constraints::ForeignKey::new(
             vec!["dept_id".to_string()],
             "DEPT".to_string(),
-            vec!["dept_id".to_string()]
-        ).unwrap();
-        let fk_constraints = crate::constraints::ForeignKeyConstraints::new().with_foreign_key(fk_constraint);
-        manager.set_foreign_key_constraints(&mut engine, "EMP", fk_constraints).unwrap();
+            vec!["dept_id".to_string()],
+        )
+        .unwrap();
+        let fk_constraints =
+            crate::constraints::ForeignKeyConstraints::new().with_foreign_key(fk_constraint);
+        manager
+            .set_foreign_key_constraints(&mut engine, "EMP", fk_constraints)
+            .unwrap();
 
         // Simulating a state where we attempt to delete the DEPT record
         let empty_dept_rel = Relation::new(dept_type.clone());
 
-        let result = manager.validate_referencing_foreign_keys(
-            &mut engine,
-            "DEPT",
-            &empty_dept_rel
-        );
+        let result =
+            manager.validate_referencing_foreign_keys(&mut engine, "DEPT", &empty_dept_rel);
 
-        assert!(matches!(result, Err(ConstraintManagerError::ForeignKeyViolation(_))));
+        assert!(matches!(
+            result,
+            Err(ConstraintManagerError::ForeignKeyViolation(_))
+        ));
     }
 }

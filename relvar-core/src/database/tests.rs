@@ -1134,7 +1134,7 @@ fn test_insert_type_mismatch() {
     let rel_type = RelationType::new(
         TupleType::new()
             .with_attribute("id", ScalarType::Int)
-            .with_attribute("name", ScalarType::String)
+            .with_attribute("name", ScalarType::String),
     );
 
     db.create_relvar("PEOPLE", rel_type.clone()).unwrap();
@@ -1152,7 +1152,12 @@ fn test_insert_type_mismatch() {
 
     let result = db.insert("PEOPLE", invalid_tuple);
 
-    assert!(matches!(result, Err(DatabaseError::Constraint(crate::constraints::ConstraintManagerError::TupleMismatch))));
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            crate::constraints::ConstraintManagerError::TupleMismatch
+        ))
+    ));
 }
 
 #[test]
@@ -1165,7 +1170,8 @@ fn test_validate_relation_constraints_check_violation() {
     );
 
     db.create_relvar("PERSONS", rel_type).unwrap();
-    db.insert("PERSONS", tuple! { id: 1i64, age: 25i64 }).unwrap();
+    db.insert("PERSONS", tuple! { id: 1i64, age: 25i64 })
+        .unwrap();
 
     // Now set a check constraint that existing data violates
     let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
@@ -1180,5 +1186,10 @@ fn test_validate_relation_constraints_check_violation() {
 
     // this triggers `validate_relation_constraints` which will loop through the relations
     let result = db.set_check_constraints("PERSONS", constraints);
-    assert!(matches!(result, Err(DatabaseError::Constraint(crate::constraints::ConstraintManagerError::CheckConstraintViolation(_)))));
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            crate::constraints::ConstraintManagerError::CheckConstraintViolation(_)
+        ))
+    ));
 }
