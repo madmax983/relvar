@@ -101,6 +101,18 @@ impl Relation {
     /// - [`GroupError::NoAttributesSpecified`] - Empty attributes list
     /// - [`GroupError::AllAttributesGrouped`] - No grouping key attributes remain
     /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts
+    ///
+    /// # Performance
+    ///
+    /// Memory allocation for the resulting tuples is optimized by using `Vec::with_capacity`
+    /// based on the exact number of uniquely identified groups. This eliminates multiple
+    /// costly O(N) heap reallocation and copying operations during tuple aggregation.
+    ///
+    /// # Performance
+    ///
+    /// Memory allocation for the resulting tuples is optimized by using `Vec::with_capacity`
+    /// based on the exact number of uniquely identified groups. This eliminates multiple
+    /// costly O(N) heap reallocation and copying operations during tuple aggregation.
     pub fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError> {
         // 1. Validate request and determine grouping attributes
         let grouping_attrs = validate_group_request(self, attrs_to_group, rva_name)?;
@@ -278,7 +290,7 @@ fn compute_grouped_tuples(
     }
 
     // Build result tuples
-    let mut result_tuples = Vec::new();
+    let mut result_tuples = Vec::with_capacity(groups.len());
     let rva_relation_type = RelationType::new(rva_heading.clone());
     for (key, rva_tuples) in groups {
         let mut values = std::collections::BTreeMap::new();
@@ -362,7 +374,7 @@ fn compute_ungrouped_tuples(
     result_heading: &TupleType,
     rva_relation_type: &RelationType,
 ) -> Result<Vec<Tuple>, UngroupError> {
-    let mut result_tuples = Vec::new();
+    let mut result_tuples = Vec::with_capacity(relation.cardinality());
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
     for tuple in relation.tuples() {

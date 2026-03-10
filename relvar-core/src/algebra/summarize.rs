@@ -462,7 +462,7 @@ impl Relation {
         let groups = self.group_tuples(group_by);
 
         // Compute aggregations for each group
-        let mut result_tuples = Vec::new();
+        let mut result_tuples = Vec::with_capacity(groups.len());
         for (key, group_tuples) in groups {
             let mut values = std::collections::BTreeMap::new();
 
