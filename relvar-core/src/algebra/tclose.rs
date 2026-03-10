@@ -71,6 +71,15 @@ impl Relation {
     /// - The attributes have different types.
     /// - An algebraic operation fails.
     pub fn tclose(&self, from_attr: &str, to_attr: &str) -> Result<Relation, DatabaseError> {
+        self.validate_tclose_attributes(from_attr, to_attr)?;
+        self.compute_tclose(from_attr, to_attr)
+    }
+
+    fn validate_tclose_attributes(
+        &self,
+        from_attr: &str,
+        to_attr: &str,
+    ) -> Result<(), DatabaseError> {
         // 1. Validation
         if self.degree() != 2 {
             return Err(DatabaseError::AlgebraError(format!(
@@ -102,7 +111,10 @@ impl Relation {
                 from_attr, to_attr, from_type, to_type
             )));
         }
+        Ok(())
+    }
 
+    fn compute_tclose(&self, from_attr: &str, to_attr: &str) -> Result<Relation, DatabaseError> {
         // Semi-naive algorithm setup
         let mut r_total = self.clone();
         let mut r_delta = self.clone(); // Newly discovered paths
