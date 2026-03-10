@@ -7,6 +7,7 @@
 //!
 //! - **[`automl`](crate::experimental::automl)**: Relational Machine Learning (Naive Bayes).
 //! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
+//! - **[`fsa`](crate::experimental::fsa)**: Relational Finite State Automaton (Regex parsing).
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
 //! - **[`matrix`](crate::experimental::matrix)**: Relational Linear Algebra (Sparse Matrices).
@@ -18,6 +19,7 @@
 
 pub mod automl;
 pub mod ecs;
+pub mod fsa;
 pub mod graph;
 pub mod image;
 pub mod matrix;
