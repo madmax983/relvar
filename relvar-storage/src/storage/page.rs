@@ -309,9 +309,7 @@ impl PageFile {
             )));
         }
 
-        let mut len_bytes = [0u8; 8];
-        len_bytes.copy_from_slice(&buffer[0..8]);
-        let data_len_u64 = u64::from_le_bytes(len_bytes);
+        let data_len_u64 = u64::from_le_bytes(buffer[0..8].try_into().unwrap());
 
         // Check if data length exceeds PAGE_SIZE - 8 (maximum possible data)
         // We check this using u64 arithmetic BEFORE casting to usize to prevent

@@ -79,22 +79,6 @@ impl PersistentEngine {
     /// # Errors
     ///
     /// Returns an error if I/O operations fail.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use relvar_storage::PersistentEngine;
-    /// use tempfile::TempDir;
-    ///
-    /// // Create a new temporary directory
-    /// let temp_dir = TempDir::new().unwrap();
-    ///
-    /// // Open or create the database
-    /// let engine = PersistentEngine::open(temp_dir.path()).unwrap();
-    ///
-    /// // If we open it again, it loads the existing catalog
-    /// let engine2 = PersistentEngine::open(temp_dir.path()).unwrap();
-    /// ```
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
         let db_path = path.as_ref().to_path_buf();
         let wal_path = db_path.join("wal.log");
@@ -191,21 +175,6 @@ impl PersistentEngine {
     /// # Errors
     ///
     /// Returns an error if flushing or WAL operations fail.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use relvar_storage::PersistentEngine;
-    /// use tempfile::TempDir;
-    ///
-    /// let temp_dir = TempDir::new().unwrap();
-    /// let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
-    ///
-    /// // ... perform some inserts or updates ...
-    ///
-    /// // Force a checkpoint to flush WAL to heap files and trigger GC
-    /// engine.checkpoint().unwrap();
-    /// ```
     pub fn checkpoint(&mut self) -> Result<(), StorageError> {
         // CRITICAL: Flush WAL first to ensure all prior modifications are logged
         self.flush_wal()?;
@@ -1454,7 +1423,7 @@ mod tests {
         // NOTE: Current implementation uses active_txns list, not commit LSNs
         // T1 WILL see T2's insert because T2 was not in T1's active_txns
         // (T2 started after T1 took its snapshot)
-        // Note: For full snapshot isolation, track commit LSNs and check:
+        // TODO: For full snapshot isolation, track commit LSNs and check:
         //       committed_lsn[T2] < snapshot1.snapshot_lsn
         let rel1 = engine
             .load_relation_for_txn("TEST", snapshot1.txn_id)

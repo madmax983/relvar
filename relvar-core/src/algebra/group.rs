@@ -119,10 +119,10 @@ impl Relation {
             rva_name,
         )?;
 
-        Ok(Relation::from_tuples_unchecked(
-            RelationType::new(result_heading),
-            result_tuples,
-        ))
+        Ok(
+            Relation::from_tuples(RelationType::new(result_heading), result_tuples)
+                .expect("Grouped tuples should conform to result relation type"),
+        )
     }
 
     /// Ungroups a relation-valued attribute back into regular attributes.
@@ -154,10 +154,10 @@ impl Relation {
         let result_tuples =
             compute_ungrouped_tuples(self, rva_name, &result_heading, &rva_relation_type)?;
 
-        Ok(Relation::from_tuples_unchecked(
-            RelationType::new(result_heading),
-            result_tuples,
-        ))
+        Ok(
+            Relation::from_tuples(RelationType::new(result_heading), result_tuples)
+                .expect("Ungrouped tuples should conform to result relation type"),
+        )
     }
 }
 
@@ -278,8 +278,7 @@ fn compute_grouped_tuples(
     }
 
     // Build result tuples
-    // Optimization: Pre-allocate capacity based on groups.len() to reduce vector re-allocations.
-    let mut result_tuples = Vec::with_capacity(groups.len());
+    let mut result_tuples = Vec::new();
     let rva_relation_type = RelationType::new(rva_heading.clone());
     for (key, rva_tuples) in groups {
         let mut values = std::collections::BTreeMap::new();
@@ -290,7 +289,8 @@ fn compute_grouped_tuples(
         }
 
         // Create RVA relation
-        let rva_relation = Relation::from_tuples_unchecked(rva_relation_type.clone(), rva_tuples);
+        let rva_relation = Relation::from_tuples(rva_relation_type.clone(), rva_tuples)
+            .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
         values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
 
         let tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
@@ -362,8 +362,7 @@ fn compute_ungrouped_tuples(
     result_heading: &TupleType,
     rva_relation_type: &RelationType,
 ) -> Result<Vec<Tuple>, UngroupError> {
-    // Optimization: Pre-allocate capacity based on relation.cardinality() to reduce vector re-allocations.
-    let mut result_tuples = Vec::with_capacity(relation.cardinality());
+    let mut result_tuples = Vec::new();
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
     for tuple in relation.tuples() {

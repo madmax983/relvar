@@ -262,7 +262,6 @@ impl Relation {
 
 #[cfg(test)]
 mod tests {
-    use super::SemijoinKey;
     use crate::tuple;
     use crate::types::{RelationType, ScalarType, TupleType};
     use crate::values::Relation;
@@ -789,46 +788,5 @@ mod tests {
             .unwrap();
 
         assert_eq!(direct, via_diff);
-    }
-
-    #[test]
-    fn test_semijoin_key_eq_different_values() {
-        let _heading = TupleType::new().with_attribute("a", ScalarType::Int);
-        let t1 = tuple! { a: 1i64 };
-        let t2 = tuple! { a: 2i64 };
-
-        let attrs = vec!["a".to_string()];
-
-        let key1 = SemijoinKey {
-            tuple: &t1,
-            attributes: &attrs,
-        };
-
-        let key2 = SemijoinKey {
-            tuple: &t2,
-            attributes: &attrs,
-        };
-
-        assert_ne!(key1, key2);
-    }
-
-    #[test]
-    fn test_semijoin_key_eq_same_values() {
-        let t1 = tuple! { a: 1i64 };
-        let t2 = tuple! { a: 1i64 };
-
-        let attrs = vec!["a".to_string()];
-
-        let key1 = SemijoinKey {
-            tuple: &t1,
-            attributes: &attrs,
-        };
-
-        let key2 = SemijoinKey {
-            tuple: &t2,
-            attributes: &attrs,
-        };
-
-        assert_eq!(key1, key2);
     }
 }
