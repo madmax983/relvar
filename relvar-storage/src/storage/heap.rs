@@ -517,7 +517,9 @@ impl HeapFile {
                 let offset = entry.offset as usize;
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                    let end = offset.checked_add(length).ok_or_else(|| HeapError::Serialization("Slot overflow".to_string()))?;
+                    if end > data.len() { return Err(HeapError::Serialization("Slot points outside buffer".to_string())); }
+                    data[offset..end].copy_from_slice(&tuples[idx]);
                 }
             }
         }
@@ -873,7 +875,8 @@ impl HeapFile {
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
                     // Validate that offset + length doesn't exceed buffer
-                    if offset + length > data.len() {
+                    let end = offset.checked_add(length).ok_or_else(|| HeapError::Serialization("Slot overflow".to_string()))?;
+                    if end > data.len() {
                         return Err(HeapError::Serialization(format!(
                             "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
                             idx,
@@ -882,7 +885,7 @@ impl HeapFile {
                             data.len()
                         )));
                     }
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                    data[offset..end].copy_from_slice(&tuples[idx]);
                 }
             }
         }
@@ -1283,7 +1286,7 @@ impl HeapFile {
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
                     let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
+                    let end = start.checked_add(slot_entry.length as usize).ok_or_else(|| HeapError::Serialization("Slot overflow".to_string()))?;
 
                     if end <= page.data().len() {
                         let tuple_data = &page.data()[start..end];
