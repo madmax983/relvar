@@ -123,7 +123,7 @@ impl WalManager {
 
     /// Logs a record to the WAL buffer.
     ///
-    /// Returns the LSN assigned to this record. If the buffer is full,
+    /// Provides the newly assigned LSN for this record. If the buffer is full,
     /// it will be automatically flushed before adding the new record.
     ///
     /// # Errors
@@ -180,17 +180,26 @@ impl WalManager {
         Ok(())
     }
 
-    /// Returns the current LSN (next to be assigned).
+    /// Retrieves the current LSN, representing the next sequential identifier to be assigned.
+    ///
+    /// This is useful for checking the current logical position within the WAL
+    /// before performing new log writes.
     pub fn current_lsn(&self) -> Lsn {
         self.current_lsn
     }
 
-    /// Returns the LSN of the last flushed record.
+    /// Retrieves the LSN corresponding to the most recently flushed record.
+    ///
+    /// Any record with an LSN less than or equal to this value is guaranteed to
+    /// be durably persisted to disk. This is heavily utilized during checkpoints.
     pub fn flush_lsn(&self) -> Lsn {
         self.flush_lsn
     }
 
-    /// Returns the current buffer size in bytes.
+    /// Retrieves the total size of the un-flushed log record buffer in bytes.
+    ///
+    /// This metric tracks how many bytes of WAL records are currently held in memory
+    /// pending a sync to disk. Once it exceeds `buffer_capacity`, a flush is triggered automatically.
     pub fn buffer_size(&self) -> usize {
         self.buffer.len()
     }

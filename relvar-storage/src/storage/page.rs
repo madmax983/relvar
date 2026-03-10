@@ -155,7 +155,20 @@ impl Page {
         Ok(Self { id, data })
     }
 
-    /// Returns the page's unique identifier.
+    /// Obtains the `PageId`, which serves as the physical address of this page on disk.
+    ///
+    /// The page ID corresponds to the offset in the page file (`page_id * PAGE_SIZE`).
+    /// This is strictly for internal storage engine routing and is never exposed to
+    /// the logical relational layer (TTM Proscription 6).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::storage::Page;
+    ///
+    /// let page = Page::new(42);
+    /// assert_eq!(page.id(), 42);
+    /// ```
     pub fn id(&self) -> PageId {
         self.id
     }
@@ -178,7 +191,21 @@ impl Page {
         Ok(())
     }
 
-    /// Returns the number of bytes available in this page.
+    /// Calculates the remaining free space in bytes within this page.
+    ///
+    /// This is used by the `HeapFile` during inserts to quickly determine if a given
+    /// serialized tuple can fit into the currently loaded page without needing to
+    /// allocate a new one.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::storage::{Page, PAGE_SIZE};
+    ///
+    /// let page = Page::new(1);
+    /// // A new page starts completely empty (data length is 0).
+    /// assert_eq!(page.available_space(), PAGE_SIZE);
+    /// ```
     ///
     /// This is `PAGE_SIZE - data.len()`.
     pub fn available_space(&self) -> usize {

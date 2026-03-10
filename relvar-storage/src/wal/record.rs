@@ -158,7 +158,23 @@ impl WalRecord {
         Ok(record)
     }
 
-    /// Returns the transaction ID associated with this record, if any.
+    /// Extracts the associated `TransactionId` if the record belongs to a transaction.
+    ///
+    /// During the WAL analysis phase, this is used to identify which transaction
+    /// created the record so the engine can track its commit/abort status. Note
+    /// that some administrative records (like `Checkpoint`) are not bound to any
+    /// specific transaction and will return `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use relvar_storage::wal::{WalRecord, TransactionId};
+    ///
+    /// let txn_id = TransactionId::new(5);
+    /// let record = WalRecord::Begin { txn_id };
+    ///
+    /// assert_eq!(record.txn_id(), Some(txn_id));
+    /// ```
     ///
     /// Checkpoint records don't have a transaction ID.
     pub fn txn_id(&self) -> Option<TransactionId> {

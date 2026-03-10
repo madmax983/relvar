@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use relvar_storage::wal::Lsn;
 ///
 /// let lsn1 = Lsn::new(1);
@@ -34,7 +34,7 @@ pub struct Lsn(u64);
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use relvar_storage::wal::TransactionId;
 ///
 /// let txn1 = TransactionId::new(1);
@@ -59,11 +59,11 @@ impl Lsn {
         Self(value)
     }
 
-    /// Returns the next LSN in sequence.
+    /// Generates and provides the next sequential LSN.
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use relvar_storage::wal::Lsn;
     ///
     /// let lsn = Lsn::new(42);
@@ -73,7 +73,18 @@ impl Lsn {
         Self(self.0 + 1)
     }
 
-    /// Returns the raw u64 value of this LSN.
+    /// Extracts the raw numerical value of this `Lsn`.
+    ///
+    /// This is typically used when serializing the LSN into page headers or WAL records.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::wal::Lsn;
+    ///
+    /// let lsn = Lsn::new(42);
+    /// assert_eq!(lsn.value(), 42);
+    /// ```
     pub fn value(self) -> u64 {
         self.0
     }
@@ -85,7 +96,18 @@ impl TransactionId {
         Self(value)
     }
 
-    /// Returns the raw u64 value of this transaction ID.
+    /// Extracts the raw numerical value of this `TransactionId`.
+    ///
+    /// This is commonly used during serialization or when logging transaction details.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::wal::TransactionId;
+    ///
+    /// let txn = TransactionId::new(100);
+    /// assert_eq!(txn.value(), 100);
+    /// ```
     pub fn value(self) -> u64 {
         self.0
     }
