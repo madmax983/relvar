@@ -305,6 +305,18 @@ impl std::hash::Hash for Tuple {
     }
 }
 
+/// Enables zero-copy extraction of string attributes from a Tuple.
+/// This prevents unnecessary heap allocations when borrowing as `&str` is sufficient.
+impl<'a> TryFrom<&'a ScalarValue> for &'a str {
+    type Error = ();
+    fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
+        match value {
+            ScalarValue::String(v) => Ok(v.as_str()),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Helper macro for creating tuples
 #[macro_export]
 macro_rules! tuple {

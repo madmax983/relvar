@@ -27,3 +27,7 @@
 ## 2024-03-01 - [Zero-Copy Primitive Extraction]
 **Learning:** `Tuple::get_typed<T>` was invoking `.clone()` on the `ScalarValue` enum purely to satisfy the `TryFrom<ScalarValue>` trait bound, causing a 24-byte enum copy for every extraction.
 **Action:** Changed trait bound to `T: for<'a> TryFrom<&'a ScalarValue>` to enable extraction by reference and avoid the enum wrapper clone, while preserving type safety.
+
+## 2026-03-06 - [Zero-Copy String Extraction]
+**Learning:** `Tuple::get_typed<T>` was invoking `.clone()` on the `ScalarValue::String` enum purely to satisfy the `TryFrom<&'a ScalarValue> for String` trait bound. This caused unnecessary heap allocations when borrowing as `&str` was sufficient.
+**Action:** Implemented `TryFrom<&'a ScalarValue> for &'a str` to enable zero-copy string extraction via `Tuple::get_typed::<&str>`, saving a heap allocation on every hot-path string extraction.
