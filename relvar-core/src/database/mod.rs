@@ -593,7 +593,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Delete tuples matching a predicate.
     ///
-    /// Returns the number of tuples deleted.
+    /// Retrieves the total count of tuples removed from the relation.
     ///
     /// # Errors
     ///
@@ -658,7 +658,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Update tuples matching a predicate.
     ///
-    /// Returns the number of tuples updated.
+    /// Retrieves the total count of tuples modified during the operation.
     ///
     /// # Errors
     ///

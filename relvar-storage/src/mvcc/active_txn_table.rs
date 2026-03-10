@@ -147,7 +147,7 @@ impl ActiveTransactionTable {
         self.transactions.remove(&txn_id);
     }
 
-    /// Gets the oldest LSN of any currently active transaction.
+    /// Retrieves the oldest LSN from the pool of currently active transactions.
     ///
     /// This is a critical method for the Vacuum/Garbage Collection (GC) subsystem.
     /// Any tuple version that was deleted *before* this `oldest_active_lsn` is

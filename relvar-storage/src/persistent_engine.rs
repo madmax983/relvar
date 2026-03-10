@@ -436,7 +436,7 @@ impl StorageEngine for PersistentEngine {
 impl PersistentEngine {
     /// Ensures a transaction is active.
     ///
-    /// Returns the transaction ID and a boolean indicating if a new transaction was started (auto-commit).
+    /// Provides the current transaction ID along with an auto-commit status flag.
     fn ensure_transaction(&mut self) -> Result<(TransactionId, bool), StorageError> {
         if let Some(txn_id) = self.current_txn {
             Ok((txn_id, false))

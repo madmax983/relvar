@@ -31,7 +31,7 @@ use relvar_core::values::{Relation, ScalarValue};
 /// The name of the Point type.
 pub const POINT_TYPE_NAME: &str = "Point";
 
-/// Returns the scalar type definition for a Point.
+/// Defines and provides the required `ScalarType` representing a spatial point.
 ///
 /// A Point is a User-Defined Type wrapping a Relation with heading `{x: Float, y: Float}`.
 pub fn point_type() -> ScalarType {
