@@ -55,3 +55,6 @@
 ## 2025-03-07 - DML Functions Coverage
 **Learning:** `relvar-core/src/database/dml.rs` contained pure computation logic for updates and deletes (`compute_relation_after_delete` and `compute_relation_after_update`), but completely lacked unit test coverage for filtering logic and error paths like `DatabaseError::TupleMismatch`.
 **Action:** When extracting pure logic into standalone modules (like `dml.rs`), always ensure they have dedicated unit test blocks (`mod tests`) validating both their success permutations and error boundaries, completely separated from integration tests.
+## 2024-03-10 - [test coverage for PreparedConstraintExpression]
+**Learning:** Found an untested execution path in `relvar-core/src/constraints/prepared.rs` where the `evaluate` method lacked specific test coverage for `!=`, `<`, `<=`, `>`, `>=` operators, logical ops, and missing attribute error paths.
+**Action:** Always create exhaustive test scenarios covering all variants of logic match arms, especially for public core evaluation paths, to eliminate panic/silent failure risks.
