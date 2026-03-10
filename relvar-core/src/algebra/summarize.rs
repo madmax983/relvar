@@ -408,17 +408,17 @@ impl Aggregation {
         let first = tuples[0].get(attr_name).ok_or_else(|| {
             SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
         })?;
-        let mut extremum = first.clone();
+        let mut extremum = first;
 
         for tuple in tuples.iter().skip(1) {
             let value = tuple.get(attr_name).ok_or_else(|| {
                 SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
             })?;
-            if compare(value, &extremum) {
-                extremum = value.clone();
+            if compare(value, extremum) {
+                extremum = value;
             }
         }
-        Ok(extremum)
+        Ok(extremum.clone())
     }
 }
 
@@ -462,7 +462,7 @@ impl Relation {
         let groups = self.group_tuples(group_by);
 
         // Compute aggregations for each group
-        let mut result_tuples = Vec::new();
+        let mut result_tuples = Vec::with_capacity(groups.len());
         for (key, group_tuples) in groups {
             let mut values = std::collections::BTreeMap::new();
 
@@ -483,8 +483,10 @@ impl Relation {
             result_tuples.push(tuple);
         }
 
-        Ok(Relation::from_tuples(result_rel_type, result_tuples)
-            .expect("Summarized tuples should conform to result relation type"))
+        Ok(Relation::from_tuples_unchecked(
+            result_rel_type,
+            result_tuples,
+        ))
     }
 
     fn validate_grouping_attributes(&self, group_by: &[&str]) -> Result<(), SummarizeError> {

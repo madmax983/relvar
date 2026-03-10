@@ -165,58 +165,6 @@ struct VersionedSlotEntry {
     prev_version: Option<TupleId>,
 }
 
-/// Helper trait to abstract over SlotEntry and VersionedSlotEntry
-trait SlotDescriptor {
-    fn offset(&self) -> u32;
-    fn length(&self) -> u32;
-}
-
-/// Helper trait to abstract over SlotEntry and VersionedSlotEntry modifications
-trait MutableSlot: SlotDescriptor {
-    fn set_offset(&mut self, offset: u32);
-    fn set_length(&mut self, length: u32);
-}
-
-impl SlotDescriptor for SlotEntry {
-    fn offset(&self) -> u32 {
-        self.offset
-    }
-
-    fn length(&self) -> u32 {
-        self.length
-    }
-}
-
-impl MutableSlot for SlotEntry {
-    fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-}
-
-impl SlotDescriptor for VersionedSlotEntry {
-    fn offset(&self) -> u32 {
-        self.offset
-    }
-
-    fn length(&self) -> u32 {
-        self.length
-    }
-}
-
-impl MutableSlot for VersionedSlotEntry {
-    fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-}
-
 /// Page layout: `[slot_count (4 bytes)] [slot_entries...] [free_space] [...tuple_data]`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SlottedPage {
@@ -335,8 +283,8 @@ impl HeapFile {
     /// Helper to repack slots and calculate offsets.
     /// Iterates backward from the end of the available space.
     /// Assumes slots are already populated (Some) for valid tuples.
-    fn repack_slots<T: MutableSlot>(
-        slots: &mut [Option<T>],
+    fn repack_slots(
+        slots: &mut [Option<SlotEntry>],
         tuples: &[Vec<u8>],
         usable_size: usize,
     ) -> Result<(), HeapError> {
@@ -350,8 +298,30 @@ impl HeapFile {
                 current_offset = current_offset
                     .checked_sub(tuple.len())
                     .ok_or(HeapError::PageFull)?;
-                slot.set_offset(current_offset as u32);
-                slot.set_length(tuple.len() as u32);
+                slot.offset = current_offset as u32;
+                slot.length = tuple.len() as u32;
+            }
+        }
+        Ok(())
+    }
+
+    fn repack_versioned_slots(
+        slots: &mut [Option<VersionedSlotEntry>],
+        tuples: &[Vec<u8>],
+        usable_size: usize,
+    ) -> Result<(), HeapError> {
+        let mut current_offset = usable_size;
+        for (idx, tuple) in tuples.iter().enumerate().rev() {
+            if tuple.is_empty() {
+                continue;
+            }
+
+            if let Some(slot) = slots.get_mut(idx).and_then(|s| s.as_mut()) {
+                current_offset = current_offset
+                    .checked_sub(tuple.len())
+                    .ok_or(HeapError::PageFull)?;
+                slot.offset = current_offset as u32;
+                slot.length = tuple.len() as u32;
             }
         }
         Ok(())
@@ -370,18 +340,13 @@ impl HeapFile {
     }
 
     /// Helper to extract tuples from a sequence of slots.
-    fn extract_tuples_from_slots<'a, I, S>(
-        &self,
-        page: &Page,
-        slots: I,
-    ) -> Result<Vec<Tuple>, HeapError>
+    fn extract_tuples_from_slots<I>(&self, page: &Page, slots: I) -> Result<Vec<Tuple>, HeapError>
     where
-        I: Iterator<Item = &'a S>,
-        S: SlotDescriptor + 'a,
+        I: Iterator<Item = (u32, u32)>,
     {
         let mut results = Vec::new();
-        for slot in slots {
-            let tuple = self.extract_tuple_from_page(page, slot.offset(), slot.length())?;
+        for (offset, length) in slots {
+            let tuple = self.extract_tuple_from_page(page, offset, length)?;
             results.push(tuple);
         }
         Ok(results)
@@ -389,17 +354,15 @@ impl HeapFile {
 
     /// Helper to extract all tuples from a page based on slot entries.
     /// This abstracts the common logic used in insert, update, delete, and GC operations.
-    fn extract_all_tuples<T: SlotDescriptor>(
-        &self,
-        page: &Page,
-        slots: &[Option<T>],
-    ) -> Result<Vec<Vec<u8>>, HeapError> {
+    fn extract_all_tuples<I>(&self, page: &Page, slots: I) -> Result<Vec<Vec<u8>>, HeapError>
+    where
+        I: Iterator<Item = Option<(u32, u32)>>,
+    {
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
         // Maintain alignment with slots: push empty Vec for None slots
-        for slot_option in slots.iter() {
-            if let Some(slot_entry) = slot_option {
-                let raw_data =
-                    self.extract_raw_tuple_data(page, slot_entry.offset(), slot_entry.length())?;
+        for slot_option in slots {
+            if let Some((offset, length)) = slot_option {
+                let raw_data = self.extract_raw_tuple_data(page, offset, length)?;
                 existing_tuples.push(raw_data);
             } else {
                 existing_tuples.push(Vec::new());
@@ -447,7 +410,12 @@ impl HeapFile {
             )
         } else {
             let sp = self.deserialize_slotted_page(&page)?;
-            let tuples = self.extract_all_tuples(&page, &sp.slots)?;
+            let tuples = self.extract_all_tuples(
+                &page,
+                sp.slots
+                    .iter()
+                    .map(|s| s.as_ref().map(|x| (x.offset, x.length))),
+            )?;
             (sp, tuples)
         };
 
@@ -544,18 +512,7 @@ impl HeapFile {
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
 
-        // Extract tuple data from page
-        let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
-
-        if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-
-        Ok(tuple)
+        self.extract_tuple_from_page(&page, slot_entry.offset, slot_entry.length)
     }
 
     /// Reads a tuple from a versioned page.
@@ -579,18 +536,7 @@ impl HeapFile {
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
 
-        // Extract tuple data from page
-        let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
-
-        if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-
-        Ok(tuple)
+        self.extract_tuple_from_page(&page, slot_entry.offset, slot_entry.length)
     }
 
     /// Scans all tuples in the heap file.
@@ -629,13 +575,27 @@ impl HeapFile {
                 // Versioned page format (MVCC)
                 let versioned_page = self.deserialize_versioned_page(&page)?;
                 results.extend(
-                    self.extract_tuples_from_slots(&page, versioned_page.slots.iter().flatten())?,
+                    self.extract_tuples_from_slots(
+                        &page,
+                        versioned_page
+                            .slots
+                            .iter()
+                            .flatten()
+                            .map(|s| (s.offset, s.length)),
+                    )?,
                 );
             } else {
                 // Old slotted page format (non-MVCC)
                 let slotted_page = self.deserialize_slotted_page(&page)?;
                 results.extend(
-                    self.extract_tuples_from_slots(&page, slotted_page.slots.iter().flatten())?,
+                    self.extract_tuples_from_slots(
+                        &page,
+                        slotted_page
+                            .slots
+                            .iter()
+                            .flatten()
+                            .map(|s| (s.offset, s.length)),
+                    )?,
                 );
             }
 
@@ -787,7 +747,12 @@ impl HeapFile {
             )
         } else {
             let vp = self.deserialize_versioned_page(&page)?;
-            let tuples = self.extract_all_tuples(&page, &vp.slots)?;
+            let tuples = self.extract_all_tuples(
+                &page,
+                vp.slots
+                    .iter()
+                    .map(|s| s.as_ref().map(|x| (x.offset, x.length))),
+            )?;
             (vp, tuples)
         };
 
@@ -826,7 +791,7 @@ impl HeapFile {
         }
 
         // Repack slots
-        Self::repack_slots(
+        Self::repack_versioned_slots(
             &mut versioned_page.slots,
             &existing_tuples,
             USABLE_PAGE_SIZE_V2,
@@ -1055,32 +1020,7 @@ impl HeapFile {
         txn_id: crate::wal::TransactionId,
     ) -> Result<TupleId, HeapError> {
         // Step 1: Mark old version's xmax
-        let page = self.page_file.read_page(old_tuple_id.page_id)?;
-
-        if page.is_empty() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let mut versioned_page = self.deserialize_versioned_page(&page)?;
-
-        // Find the old slot
-        let old_slot = versioned_page
-            .slots
-            .get_mut(old_tuple_id.slot as usize)
-            .and_then(|s| s.as_mut())
-            .ok_or(HeapError::TupleNotFound)?;
-
-        // Mark old version as deleted by this transaction
-        old_slot.xmax = Some(txn_id);
-
-        // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
-
-        // Serialize and write updated page with old version marked
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
-        let updated_page = Page::from_data(old_tuple_id.page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
+        self.mark_version_deleted(old_tuple_id, txn_id)?;
 
         // Step 2: Insert new version
         let new_tuple_data = serialize_compat(new_tuple)?;
@@ -1099,6 +1039,52 @@ impl HeapFile {
             )
             .map(|slot| TupleId { page_id, slot })
         })
+    }
+
+    /// Marks a version as deleted by setting its xmax.
+    ///
+    /// Extracted helper to avoid duplication between `update_tuple_versioned`
+    /// and `delete_tuple_versioned`.
+    #[allow(dead_code)]
+    pub(crate) fn mark_version_deleted(
+        &mut self,
+        tuple_id: TupleId,
+        txn_id: crate::wal::TransactionId,
+    ) -> Result<(), HeapError> {
+        let page = self.page_file.read_page(tuple_id.page_id)?;
+
+        if page.is_empty() {
+            return Err(HeapError::TupleNotFound);
+        }
+
+        let mut versioned_page = self.deserialize_versioned_page(&page)?;
+
+        // Find the slot
+        let slot = versioned_page
+            .slots
+            .get_mut(tuple_id.slot as usize)
+            .and_then(|s| s.as_mut())
+            .ok_or(HeapError::TupleNotFound)?;
+
+        // Mark as deleted by this transaction
+        slot.xmax = Some(txn_id);
+
+        // Extract all existing tuple data
+        let existing_tuples = self.extract_all_tuples(
+            &page,
+            versioned_page
+                .slots
+                .iter()
+                .map(|s| s.as_ref().map(|x| (x.offset, x.length))),
+        )?;
+
+        // Serialize and write updated page with marked version
+        let page_data =
+            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+        let updated_page = Page::from_data(tuple_id.page_id, page_data)?;
+        self.page_file.write_page(&updated_page)?;
+
+        Ok(())
     }
 
     /// Deletes a tuple by marking it with xmax (MVCC soft delete).
@@ -1124,35 +1110,7 @@ impl HeapFile {
         tuple_id: TupleId,
         txn_id: crate::wal::TransactionId,
     ) -> Result<(), HeapError> {
-        // Read the page containing the tuple
-        let page = self.page_file.read_page(tuple_id.page_id)?;
-
-        if page.is_empty() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let mut versioned_page = self.deserialize_versioned_page(&page)?;
-
-        // Find and mark the tuple
-        let slot = versioned_page
-            .slots
-            .get_mut(tuple_id.slot as usize)
-            .and_then(|s| s.as_mut())
-            .ok_or(HeapError::TupleNotFound)?;
-
-        // Mark as deleted by this transaction
-        slot.xmax = Some(txn_id);
-
-        // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
-
-        // Serialize and write updated page
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
-        let updated_page = Page::from_data(tuple_id.page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
-
-        Ok(())
+        self.mark_version_deleted(tuple_id, txn_id)
     }
 
     /// Removes dead tuple versions for garbage collection.
@@ -1202,7 +1160,13 @@ impl HeapFile {
             };
 
             // Extract existing tuple data
-            let mut existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
+            let mut existing_tuples = self.extract_all_tuples(
+                &page,
+                versioned_page
+                    .slots
+                    .iter()
+                    .map(|s| s.as_ref().map(|x| (x.offset, x.length))),
+            )?;
 
             let mut page_modified = false;
 
@@ -1232,7 +1196,7 @@ impl HeapFile {
             // Write page back if modified
             if page_modified {
                 // Repack slots
-                Self::repack_slots(
+                Self::repack_versioned_slots(
                     &mut versioned_page.slots,
                     &existing_tuples,
                     USABLE_PAGE_SIZE_V2,
@@ -1342,7 +1306,9 @@ mod tests {
     ) -> Result<VersionedSlottedPage, postcard::Error> {
         if page_data.len() >= 5 && page_data[0] == PAGE_FORMAT_VERSION {
             // New format: [version:1][length:4][slot_dir][tuples]
-            let slot_dir_len = u32::from_le_bytes(page_data[1..5].try_into().unwrap()) as usize;
+            let mut len_bytes = [0u8; 4];
+            len_bytes.copy_from_slice(&page_data[1..5]);
+            let slot_dir_len = u32::from_le_bytes(len_bytes) as usize;
             postcard::from_bytes(&page_data[5..5 + slot_dir_len])
         } else {
             // Old format: [slot_dir][tuples]
@@ -2372,7 +2338,7 @@ mod tests {
         committed.insert(test_txn(3));
 
         // NOTE: Current implementation uses Read Committed isolation, not Snapshot Isolation
-        // TODO: Full snapshot isolation requires commit LSN tracking
+        // Note: Full snapshot isolation requires commit LSN tracking
         // With Read Committed, T2 sees T3's committed update
         let visible = heap.scan_visible(&snapshot_t2, &committed).unwrap();
 
@@ -2647,7 +2613,7 @@ mod tests {
         committed.insert(test_txn(3));
 
         // NOTE: With Read Committed, T2 sees the deletion
-        // TODO: Full snapshot isolation would preserve visibility
+        // Note: Full snapshot isolation would preserve visibility
         let visible = heap.scan_visible(&snapshot_t2, &committed).unwrap();
 
         assert_eq!(visible.len(), 0); // Read Committed: sees deletion
@@ -3446,7 +3412,15 @@ mod tests {
             // So we need to be careful.
             // Let's re-read the page as it was on disk to get the data
             let original_sp = heap.deserialize_slotted_page(&page).unwrap();
-            let mut existing_tuples = heap.extract_all_tuples(&page, &original_sp.slots).unwrap();
+            let mut existing_tuples = heap
+                .extract_all_tuples(
+                    &page,
+                    original_sp
+                        .slots
+                        .iter()
+                        .map(|s| s.as_ref().map(|x| (x.offset, x.length))),
+                )
+                .unwrap();
 
             // Mark tuple B as empty
             existing_tuples[1] = Vec::new();
@@ -3611,5 +3585,65 @@ mod security_tests {
             }
             _ => panic!("Expected TupleTooLarge, got {:?}", result),
         }
+    }
+}
+#[cfg(test)]
+mod read_tests {
+    use super::*;
+    use relvar_core::types::{ScalarType, TupleType};
+
+    fn create_test_relation_type() -> RelationType {
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String)
+            .with_attribute("score", ScalarType::Float);
+        RelationType::new(heading)
+    }
+
+    fn create_test_tuple(id: i64, name: &str, score: f64) -> Tuple {
+        let heading = create_test_relation_type().heading().clone();
+        Tuple::new(
+            heading,
+            vec![
+                ("id".to_string(), relvar_core::values::ScalarValue::Int(id)),
+                (
+                    "name".to_string(),
+                    relvar_core::values::ScalarValue::String(name.to_string()),
+                ),
+                (
+                    "score".to_string(),
+                    relvar_core::values::ScalarValue::Float(score),
+                ),
+            ],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_read_tuple_and_versioned() -> Result<(), HeapError> {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test_read.heap");
+        let mut heap = HeapFile::create(&file_path, create_test_relation_type())?;
+
+        let t1 = create_test_tuple(1, "Tuple1", 10.0);
+        heap.insert_tuple(&t1)?;
+
+        let tuple_id = TupleId {
+            page_id: 0,
+            slot: 0,
+        };
+        let read_t1 = heap.read_tuple(tuple_id)?;
+        assert_eq!(t1, read_t1);
+
+        let file_path2 = dir.path().join("test_read_v.heap");
+        let mut heap_v = HeapFile::create(&file_path2, create_test_relation_type())?;
+
+        let t2 = create_test_tuple(2, "Tuple2", 20.0);
+        let tuple_id_v = heap_v.insert_tuple_versioned(&t2, crate::wal::TransactionId::new(1))?;
+
+        let read_t2 = heap_v.read_tuple_versioned(tuple_id_v)?;
+        assert_eq!(t2, read_t2);
+
+        Ok(())
     }
 }

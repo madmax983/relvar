@@ -1,59 +1,63 @@
---- relvar-core/src/values/tuple.rs
-+++ relvar-core/src/values/tuple.rs
-@@ -410,6 +410,56 @@
-     }
- }
+--- relvar/src/tools/importer.rs
++++ relvar/src/tools/importer.rs
+@@ -469,19 +469,21 @@
+     // Trim newline for parsing
+     let header_line_trimmed = header_line.trim_end();
 
-+impl<'a> TryFrom<&'a ScalarValue> for i64 {
-+    type Error = ();
-+    fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-+        match value {
-+            ScalarValue::Int(v) => Ok(*v),
-+            _ => Err(()),
+-    let headers: Vec<String> = parse_csv_line(header_line_trimmed, delimiter);
++    let parsed_headers: Vec<String> = parse_csv_line(header_line_trimmed, delimiter);
++    let mut headers: Vec<Option<String>> = vec![None; parsed_headers.len()];
+
+     // Validate headers
+-    for attr_name in heading.attribute_names() {
+-        if !headers.contains(attr_name) {
+-            return Err(ImporterError::MissingValue(format!(
+-                "Header missing attribute '{}'",
+-                attr_name
+-            )));
+-        }
++    for (attr_name, _) in heading.attributes() {
++        if let Some(pos) = parsed_headers.iter().position(|h| h == attr_name) {
++            headers[pos] = Some(attr_name.clone());
++        } else {
++            return Err(ImporterError::MissingValue(format!(
++                "Header missing attribute '{}'",
++                attr_name
++            )));
 +        }
-+    }
-+}
-+
-+impl<'a> TryFrom<&'a ScalarValue> for f64 {
-+    type Error = ();
-+    fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-+        match value {
-+            ScalarValue::Float(v) => Ok(*v),
-+            _ => Err(()),
-+        }
-+    }
-+}
-+
-+impl<'a> TryFrom<&'a ScalarValue> for String {
-+    type Error = ();
-+    fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-+        match value {
-+            ScalarValue::String(v) => Ok(v.clone()),
-+            _ => Err(()),
-+        }
-+    }
-+}
-+
-+impl<'a> TryFrom<&'a ScalarValue> for bool {
-+    type Error = ();
-+    fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-+        match value {
-+            ScalarValue::Bool(v) => Ok(*v),
-+            _ => Err(()),
-+        }
-+    }
-+}
-+
-+impl<'a> TryFrom<&'a ScalarValue> for Vec<u8> {
-+    type Error = ();
-+    fn try_from(value: &'a ScalarValue) -> Result<Self, Self::Error> {
-+        match value {
-+            ScalarValue::Bytes(v) => Ok(v.clone()),
-+            _ => Err(()),
-+        }
-+    }
-+}
-+
- #[cfg(test)]
- mod tests {
-     use super::*;
+     }
+
+     // 2. Read Rows
+     let mut line_buf = String::new();
+     let mut line_idx = 0;
+@@ -511,18 +513,18 @@
+         let mut values = BTreeMap::new();
+
+         for (i, field) in fields.iter().enumerate() {
+-            let attr_name = &headers[i];
+-
+-            if let Some(attr_type) = heading.get_attribute_type(attr_name) {
+-                let scalar_val = str_to_scalar(field, attr_type).map_err(|e| {
+-                    ImporterError::TypeError(
+-                        attr_name.clone(),
+-                        format!("{:?}", attr_type),
+-                        e.to_string(),
+-                    )
+-                })?;
+-                values.insert(attr_name.clone(), scalar_val);
+-            }
++            if let Some(attr_name) = &headers[i] {
++                if let Some(attr_type) = heading.get_attribute_type(attr_name) {
++                    let scalar_val = str_to_scalar(field, attr_type).map_err(|e| {
++                        ImporterError::TypeError(
++                            attr_name.clone(),
++                            format!("{:?}", attr_type),
++                            e.to_string(),
++                        )
++                    })?;
++                    values.insert(attr_name.clone(), scalar_val);
++                }
++            }
+         }
+
+         let tuple = Tuple::new_with_arc(heading_arc.clone(), values)
