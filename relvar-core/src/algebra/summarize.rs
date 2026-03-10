@@ -459,7 +459,7 @@ impl Relation {
         let result_rel_type = RelationType::new(result_heading.clone());
         let result_heading_arc = std::sync::Arc::new(result_heading);
 
-        let groups = self.group_tuples(group_by);
+        let groups = self.group_tuples(group_by)?;
 
         // Compute aggregations for each group
         let mut result_tuples = Vec::new();
@@ -509,7 +509,7 @@ impl Relation {
                 .relation_type()
                 .tuple_type()
                 .get_attribute_type(attr)
-                .unwrap();
+                .ok_or_else(|| SummarizeError::GroupingAttributeNotFound(attr.to_string()))?;
             result_heading = result_heading.with_attribute(attr.to_string(), attr_type.clone());
         }
 
@@ -529,24 +529,27 @@ impl Relation {
     fn group_tuples<'a>(
         &'a self,
         group_by: &[&str],
-    ) -> HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>> {
+    ) -> Result<HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>>, SummarizeError> {
         if group_by.is_empty() {
             // No grouping - all tuples in one group
             let mut map = HashMap::new();
             let all_tuples: Vec<&Tuple> = self.tuples().collect();
             map.insert(Vec::new(), all_tuples);
-            map
+            Ok(map)
         } else {
             // Group by specified attributes
             let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<&Tuple>> = HashMap::new();
             for tuple in self.tuples() {
-                let key: Vec<&ScalarValue> = group_by
-                    .iter()
-                    .map(|attr| tuple.get(attr).unwrap())
-                    .collect();
+                let mut key = Vec::with_capacity(group_by.len());
+                for attr in group_by {
+                    let val = tuple.get(attr).ok_or_else(|| {
+                        SummarizeError::GroupingAttributeNotFound(attr.to_string())
+                    })?;
+                    key.push(val);
+                }
                 groups.entry(key).or_default().push(tuple);
             }
-            groups
+            Ok(groups)
         }
     }
 }

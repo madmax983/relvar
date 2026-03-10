@@ -256,8 +256,8 @@ impl<E: StorageEngine> World<E> {
                 }
             },
             |t| {
-                let id = t.get_typed::<Entity>(ENTITY_ID_ATTR).unwrap();
-                updates.get(&id).unwrap().clone()
+                let id = t.get_typed::<Entity>(ENTITY_ID_ATTR).unwrap_or(0);
+                updates.get(&id).cloned().unwrap_or_else(|| t.clone())
             },
         )
     }

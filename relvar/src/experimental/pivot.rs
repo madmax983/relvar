@@ -122,9 +122,10 @@ impl Pivot for Relation {
         // Scan for new columns
         let mut new_columns = BTreeSet::new();
         for tuple in self.tuples() {
-            let val = tuple.get(on_attr).unwrap();
-            let col_name = scalar_to_string_key(val)?;
-            new_columns.insert(col_name);
+            if let Some(val) = tuple.get(on_attr) {
+                let col_name = scalar_to_string_key(val)?;
+                new_columns.insert(col_name);
+            }
         }
 
         // Check collisions
@@ -140,11 +141,15 @@ impl Pivot for Relation {
         // Construct new heading
         let mut new_heading = TupleType::new();
         for attr in &group_attrs {
-            let ty = heading.get_attribute_type(attr).unwrap();
+            let ty = heading.get_attribute_type(attr).ok_or_else(|| {
+                DatabaseError::AttributeNotFound(attr.to_string(), "relation".to_string())
+            })?;
             new_heading = new_heading.with_attribute(attr, ty.clone());
         }
 
-        let value_type = heading.get_attribute_type(value_attr).unwrap();
+        let value_type = heading.get_attribute_type(value_attr).ok_or_else(|| {
+            DatabaseError::AttributeNotFound(value_attr.to_string(), "relation".to_string())
+        })?;
         if !default_value.is_type(value_type) {
             return Err(DatabaseError::AlgebraError(format!(
                 "Default value type ({:?}) mismatch with value attribute ({:?})",
@@ -170,17 +175,20 @@ impl Pivot for Relation {
         for tuple in sorted_tuples {
             let mut group_key = Vec::with_capacity(group_attrs.len());
             for attr in &group_attrs {
-                group_key.push(tuple.get(attr).unwrap().clone());
+                if let Some(val) = tuple.get(attr) {
+                    group_key.push(val.clone());
+                }
             }
 
-            let pivot_val = tuple.get(on_attr).unwrap();
-            let col_name = scalar_to_string_key(pivot_val)?;
-            let cell_val = tuple.get(value_attr).unwrap().clone();
-
-            groups
-                .entry(group_key)
-                .or_default()
-                .insert(col_name, cell_val);
+            if let Some(pivot_val) = tuple.get(on_attr) {
+                let col_name = scalar_to_string_key(pivot_val)?;
+                if let Some(cell_val) = tuple.get(value_attr) {
+                    groups
+                        .entry(group_key)
+                        .or_default()
+                        .insert(col_name, cell_val.clone());
+                }
+            }
         }
 
         // Build result tuples

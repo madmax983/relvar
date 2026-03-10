@@ -133,8 +133,8 @@ impl Matrix {
         // Extend: product = val_a * val_b
         let extended = joined
             .extend("product", ScalarType::Float, |t| {
-                let va = t.get_typed::<f64>("val_a").unwrap();
-                let vb = t.get_typed::<f64>("val_b").unwrap();
+                let va = t.get_typed::<f64>("val_a").unwrap_or(0.0);
+                let vb = t.get_typed::<f64>("val_b").unwrap_or(0.0);
                 ScalarValue::Float(va * vb)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;

@@ -171,6 +171,7 @@ The JSON importer (`relvar::tools::importer`) enforced `MAX_IMPORT_ROWS` (100,00
 2. This guard enforces a strict recursion limit (`MAX_RECURSION_DEPTH = 64`) using a thread-local counter during deserialization.
 3. Updated `ScalarValue` and `ScalarType` internal deserialization logic (`ScalarValueUnchecked`, `ScalarTypeUnchecked`) to wrap recursive fields in `DepthGuarded`.
 4. This ensures that any deserialization attempt exceeding the limit fails gracefully with a "Recursion limit exceeded" error, regardless of the underlying format (JSON, Bincode, etc.).
+
 ## 2026-03-01 - Bincode Unmaintained & Allocation Bomb Migration
 **Threat:**
 `relvar-storage` and `relvar-core` used `bincode = 1.3.3`, which has been permanently abandoned (RUSTSEC-2025-0141). Although previous mitigations (`bincode::options().with_limit(...)`) protected against bounded allocation attacks, relying on an unmaintained serialization library is an inherent long-term security risk and leaves the project vulnerable to future exploits with no patch path.
@@ -187,3 +188,14 @@ The `postcard` dependency (version 1.1.3) enabled the `heapless-cas` and `heaple
 
 **Defense:**
 Modified `Cargo.toml` to disable the default features of `postcard` by specifying `default-features = false`, explicitly only retaining the required `alloc` and `use-std` features. This eliminates the `heapless` and `atomic-polyfill` dependencies entirely, mitigating the risk of relying on an unmaintained crate.
+
+## 2026-03-03 - Denial of Service (DoS) via Panics on User Input
+**Threat:**
+Several experimental modules (`ecs.rs`, `image.rs`, `automl.rs`, `matrix.rs`, `pivot.rs`, `spatial.rs`, `timeseries.rs`) and the core `summarize.rs` module heavily relied on `unwrap()` when extracting typed values from `Tuple`s. If an unexpected schema was provided by a user or malicious actor, these modules would trigger a Rust panic, leading to an immediate crash and Denial of Service (DoS).
+Furthermore, `moving_average` in `timeseries.rs` had a known logic bug that caused panics due to hardcoded attribute suffix collisions (`_prev`).
+Finally, mathematical operations in `image.rs` and `graph.rs` were vulnerable to integer overflow panics.
+
+**Defense:**
+1. Systematically audited and removed `unwrap()` calls in `relvar-core/src/algebra/summarize.rs` and all `relvar/src/experimental/` modules, replacing them with graceful `Result` propagation (`ok_or_else`) or safe defaults (`unwrap_or`, `unwrap_or_default`).
+2. Replaced unguarded arithmetic operations with `saturating_add` and `saturating_mul` in `image.rs` and `graph.rs`.
+3. Refactored `moving_average` to dynamically generate a safe, collision-free suffix (`_prev_N`) by inspecting the input schema before performing a self-join.

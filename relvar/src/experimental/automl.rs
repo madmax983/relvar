@@ -116,8 +116,12 @@ impl NaiveBayesClassifier {
         let mut class_counts_map = HashMap::new(); // Store raw counts for conditional calc
 
         for tuple in class_counts_rel.tuples() {
-            let class_val = tuple.get(target_attr).unwrap();
-            let count = tuple.get_typed::<i64>("count").unwrap() as f64;
+            let class_val = tuple.get(target_attr).ok_or_else(|| {
+                DatabaseError::AlgebraError("Missing target attribute in summary".into())
+            })?;
+            let count = tuple.get_typed::<i64>("count").ok_or_else(|| {
+                DatabaseError::AlgebraError("Missing count attribute in summary".into())
+            })? as f64;
             let class_str = scalar_to_string(class_val);
 
             // P(C) = count(C) / total
@@ -144,9 +148,15 @@ impl NaiveBayesClassifier {
             let mut vocab: HashMap<String, std::collections::HashSet<String>> = HashMap::new(); // Class -> Set of Feature Values
 
             for tuple in feat_counts_rel.tuples() {
-                let class_val = tuple.get(target_attr).unwrap();
-                let feat_val = tuple.get(feature).unwrap();
-                let count = tuple.get_typed::<i64>("count").unwrap() as f64;
+                let class_val = tuple.get(target_attr).ok_or_else(|| {
+                    DatabaseError::AlgebraError("Missing target attribute in summary".into())
+                })?;
+                let feat_val = tuple.get(feature).ok_or_else(|| {
+                    DatabaseError::AlgebraError("Missing feature attribute in summary".into())
+                })?;
+                let count = tuple.get_typed::<i64>("count").ok_or_else(|| {
+                    DatabaseError::AlgebraError("Missing count attribute in summary".into())
+                })? as f64;
 
                 let class_str = scalar_to_string(class_val);
                 let feat_str = scalar_to_string(feat_val);
@@ -162,8 +172,9 @@ impl NaiveBayesClassifier {
             // First, find global vocabulary size for this feature
             let mut global_vocab = std::collections::HashSet::new();
             for tuple in relation.tuples() {
-                let val = tuple.get(feature).unwrap();
-                global_vocab.insert(scalar_to_string(val));
+                if let Some(val) = tuple.get(feature) {
+                    global_vocab.insert(scalar_to_string(val));
+                }
             }
             let vocab_size = global_vocab.len() as f64;
 

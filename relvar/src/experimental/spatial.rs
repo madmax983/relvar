@@ -140,7 +140,7 @@ fn extract_coords(p: &ScalarValue) -> Result<(f64, f64), String> {
             if rel.cardinality() != 1 {
                 return Err("Point relation must have exactly 1 tuple".to_string());
             }
-            let tuple = rel.tuples().next().unwrap();
+            let tuple = rel.tuples().next().ok_or("Point relation is empty")?;
             let x = tuple.get_typed::<f64>("x").ok_or("Missing x coordinate")?;
             let y = tuple.get_typed::<f64>("y").ok_or("Missing y coordinate")?;
             Ok((x, y))

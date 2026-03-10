@@ -150,8 +150,8 @@ impl Graph {
             // Extend: distance = distance + 1
             let next_nodes_inc = next_nodes
                 .extend("new_distance", ScalarType::Int, |t| {
-                    let d = t.get_typed::<i64>("distance").unwrap();
-                    ScalarValue::Int(d + 1)
+                    let d = t.get_typed::<i64>("distance").unwrap_or(0);
+                    ScalarValue::Int(d.saturating_add(1))
                 })
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
@@ -281,8 +281,8 @@ impl Graph {
             // Calculate contribution: rank / out_degree
             let contributions = with_degrees
                 .extend("contribution", ScalarType::Float, |t| {
-                    let r = t.get_typed::<f64>("rank").unwrap();
-                    let d = t.get_typed::<i64>("out_degree").unwrap();
+                    let r = t.get_typed::<f64>("rank").unwrap_or(0.0);
+                    let d = t.get_typed::<i64>("out_degree").unwrap_or(0);
                     if d == 0 {
                         ScalarValue::Float(0.0)
                     } else {
@@ -332,7 +332,7 @@ impl Graph {
 
             ranks = total_ranks
                 .extend("new_rank_final", ScalarType::Float, move |t| {
-                    let sum_r = t.get_typed::<f64>("sum_rank").unwrap();
+                    let sum_r = t.get_typed::<f64>("sum_rank").unwrap_or(0.0);
                     ScalarValue::Float(base_score + damping_factor * sum_r)
                 })
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?

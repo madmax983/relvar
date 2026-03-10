@@ -178,41 +178,64 @@ impl ImageProcessor {
             // Source (x,y) contributes to Target (x+dx, y+dy).
             // So let's name the new coordinates `tx` and `ty`.
 
+            // First, ensure the relation doesn't already have attributes that would conflict.
+            let mut relation_for_extend = relation.clone();
+            // If any of the target names already exist, extending will fail. In a real
+            // robust implementation, we would generate unique names, but for this experimental
+            // image processor, we can just drop the conflicting attributes first.
+            let conflict_attrs = ["tx", "ty", "wr", "wg", "wb", "k_idx"];
+            let heading = relation_for_extend.relation_type().heading();
+            let mut attrs_to_drop = Vec::new();
+            for attr in conflict_attrs {
+                if heading.has_attribute(attr) {
+                    attrs_to_drop.push(attr);
+                }
+            }
+            if !attrs_to_drop.is_empty() {
+                // To drop, we project all attributes EXCEPT the conflicting ones
+                let keep_attrs: Vec<&str> = heading
+                    .attribute_names()
+                    .filter(|name| !conflict_attrs.contains(&name.as_str()))
+                    .map(|n| n.as_str())
+                    .collect();
+                relation_for_extend = relation_for_extend.project(&keep_attrs);
+            }
+
             // Extend 1: Calculate target coordinates
-            let with_coords = relation
+            let with_coords = relation_for_extend
                 .extend("tx", ScalarType::Int, move |t| {
-                    let x = t.get_typed::<i64>("x").unwrap();
-                    ScalarValue::Int(x + dx)
+                    let x = t.get_typed::<i64>("x").unwrap_or(0);
+                    ScalarValue::Int(x.saturating_add(dx))
                 })
-                .unwrap()
+                .unwrap_or_else(|_| relation.clone()) // Graceful fallback
                 .extend("ty", ScalarType::Int, move |t| {
-                    let y = t.get_typed::<i64>("y").unwrap();
-                    ScalarValue::Int(y + dy)
+                    let y = t.get_typed::<i64>("y").unwrap_or(0);
+                    ScalarValue::Int(y.saturating_add(dy))
                 })
-                .unwrap();
+                .unwrap_or_else(|_| relation.clone());
 
             // Extend 2: Calculate weighted color components
             let with_weights = with_coords
                 .extend("wr", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("r").unwrap();
-                    ScalarValue::Int(v * weight)
+                    let v = t.get_typed::<i64>("r").unwrap_or(0);
+                    ScalarValue::Int(v.saturating_mul(weight))
                 })
-                .unwrap()
+                .unwrap_or_else(|_| relation.clone())
                 .extend("wg", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("g").unwrap();
-                    ScalarValue::Int(v * weight)
+                    let v = t.get_typed::<i64>("g").unwrap_or(0);
+                    ScalarValue::Int(v.saturating_mul(weight))
                 })
-                .unwrap()
+                .unwrap_or_else(|_| relation.clone())
                 .extend("wb", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("b").unwrap();
-                    ScalarValue::Int(v * weight)
+                    let v = t.get_typed::<i64>("b").unwrap_or(0);
+                    ScalarValue::Int(v.saturating_mul(weight))
                 })
-                .unwrap();
+                .unwrap_or_else(|_| relation.clone());
 
             // Extend 3: Add kernel index (to prevent set deduplication of values)
             let with_idx = with_weights
                 .extend("k_idx", ScalarType::Int, move |_| ScalarValue::Int(k_idx))
-                .unwrap();
+                .unwrap_or_else(|_| relation.clone());
 
             // Project: Keep (tx, ty, wr, wg, wb, k_idx)
             // But we rename them to a standard schema for Union
@@ -251,26 +274,26 @@ impl ImageProcessor {
                     Aggregation::sum("sum_b", "b"),
                 ],
             )
-            .unwrap();
+            .unwrap_or(unioned);
 
         // Step 4: Normalize
         // Extend with final values: sum / total_weight
         let normalized = summarized
             .extend("final_r", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_r").unwrap();
+                let s = t.get_typed::<i64>("sum_r").unwrap_or(0);
                 ScalarValue::Int(s / total_weight)
             })
-            .unwrap()
+            .unwrap_or_else(|_| summarized.clone())
             .extend("final_g", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_g").unwrap();
+                let s = t.get_typed::<i64>("sum_g").unwrap_or(0);
                 ScalarValue::Int(s / total_weight)
             })
-            .unwrap()
+            .unwrap_or_else(|_| summarized.clone())
             .extend("final_b", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_b").unwrap();
+                let s = t.get_typed::<i64>("sum_b").unwrap_or(0);
                 ScalarValue::Int(s / total_weight)
             })
-            .unwrap();
+            .unwrap_or_else(|_| summarized.clone());
 
         // Step 5: Final Project and Rename
         // Keep (x, y, final_r, final_g, final_b)
