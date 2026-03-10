@@ -1,5 +1,3 @@
-use crate::types::RelationType;
-use crate::values::{Relation, Tuple};
 
 use super::*;
 use crate::constraints::ConstraintManagerError;
