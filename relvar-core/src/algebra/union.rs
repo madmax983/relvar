@@ -33,19 +33,8 @@
 //! assert_eq!(result.cardinality(), 2);  // Alice and Bob
 //! ```
 
+use crate::error::DatabaseError;
 use crate::values::Relation;
-use thiserror::Error;
-
-/// Errors that can occur during union operations.
-#[derive(Debug, Error)]
-pub enum UnionError {
-    /// The two relations have incompatible types (different headings).
-    ///
-    /// Union requires both relations to have exactly the same heading
-    /// (attribute names and types).
-    #[error("Relations must have the same type (heading) for union")]
-    TypeMismatch,
-}
 
 impl Relation {
     /// Computes the union of this relation with another.
@@ -66,7 +55,7 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// Returns [`UnionError::TypeMismatch`] if the relations have different
+    /// Returns [`DatabaseError::AlgebraError`] if the relations have different
     /// headings (different attribute names or types).
     ///
     /// # Behavior
@@ -100,10 +89,12 @@ impl Relation {
     /// let result = rel1.union(&rel2).unwrap();
     /// assert_eq!(result.cardinality(), 3);  // Alice, Bob (once), Charlie
     /// ```
-    pub fn union(&self, other: &Relation) -> Result<Self, UnionError> {
+    pub fn union(&self, other: &Relation) -> Result<Self, DatabaseError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
-            return Err(UnionError::TypeMismatch);
+            return Err(DatabaseError::AlgebraError(
+                "Relations must have the same type (heading) for union".to_string(),
+            ));
         }
 
         // Chain iterators and create relation without redundant checks
@@ -143,7 +134,7 @@ mod tests {
 
         let result = rel1.union(&rel2);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), UnionError::TypeMismatch));
+        assert!(matches!(result.unwrap_err(), DatabaseError::AlgebraError(_)));
     }
 
     #[test]

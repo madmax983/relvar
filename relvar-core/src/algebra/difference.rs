@@ -33,19 +33,8 @@
 //! assert_eq!(active.cardinality(), 1);  // Only Alice remains
 //! ```
 
+use crate::error::DatabaseError;
 use crate::values::Relation;
-use thiserror::Error;
-
-/// Errors that can occur during difference operations.
-#[derive(Debug, Error)]
-pub enum DifferenceError {
-    /// The two relations have incompatible types (different headings).
-    ///
-    /// Difference requires both relations to have exactly the same heading
-    /// (attribute names and types).
-    #[error("Relations must have the same type (heading) for difference")]
-    TypeMismatch,
-}
 
 impl Relation {
     /// Computes the set difference of this relation with another.
@@ -65,7 +54,7 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// Returns [`DifferenceError::TypeMismatch`] if the relations have different
+    /// Returns [`DatabaseError::AlgebraError`] if the relations have different
     /// headings (different attribute names or types).
     ///
     /// # Behavior
@@ -105,10 +94,12 @@ impl Relation {
     /// let result = all.difference(&subset).unwrap();
     /// assert_eq!(result.cardinality(), 2);  // Alice and Charlie
     /// ```
-    pub fn difference(&self, other: &Relation) -> Result<Self, DifferenceError> {
+    pub fn difference(&self, other: &Relation) -> Result<Self, DatabaseError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
-            return Err(DifferenceError::TypeMismatch);
+            return Err(DatabaseError::AlgebraError(
+                "Relations must have the same type (heading) for difference".to_string(),
+            ));
         }
 
         // Filter tuples and create relation without redundant checks
@@ -146,7 +137,7 @@ impl Relation {
     /// let result = rel1.minus(&rel2).unwrap();
     /// assert_eq!(result.cardinality(), 1);
     /// ```
-    pub fn minus(&self, other: &Relation) -> Result<Self, DifferenceError> {
+    pub fn minus(&self, other: &Relation) -> Result<Self, DatabaseError> {
         self.difference(other)
     }
 }
@@ -206,7 +197,7 @@ mod tests {
 
         let result = rel1.difference(&rel2);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), DifferenceError::TypeMismatch));
+        assert!(matches!(result.unwrap_err(), DatabaseError::AlgebraError(_)));
     }
 
     #[test]
