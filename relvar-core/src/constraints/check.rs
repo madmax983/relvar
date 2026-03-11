@@ -141,7 +141,7 @@ impl CheckConstraint {
             .map_err(|e| CheckConstraintError::EvaluationError(e.to_string()))
     }
 
-    /// Returns the set of all attribute names referenced in this constraint.
+    /// Retrieves a set containing all attribute names targeted by this constraint.
     pub fn referenced_attributes(&self) -> HashSet<String> {
         self.expression.referenced_attributes()
     }

@@ -276,7 +276,19 @@ impl Catalog {
         self.relations.keys().cloned().collect()
     }
 
-    /// Returns the number of relations in the catalog.
+    /// Counts the total number of relations currently registered in the database catalog.
+    ///
+    /// Useful for database statistics and ensuring schemas have been initialized
+    /// correctly during startup or migration scripts.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::storage::Catalog;
+    ///
+    /// let catalog = Catalog::new();
+    /// assert_eq!(catalog.relation_count(), 0);
+    /// ```
     pub fn relation_count(&self) -> usize {
         self.relations.len()
     }

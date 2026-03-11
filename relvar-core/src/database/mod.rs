@@ -74,6 +74,7 @@ use crate::constraints::{
 };
 pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
+use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 
@@ -138,7 +139,13 @@ pub struct Database<E: StorageEngine> {
     /// Transaction savepoint.
     transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
-    virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
+    virtual_relvars: HashMap<String, VirtualRelvarDefinition>,
+}
+
+impl<E: StorageEngine> QueryExecutor for Database<E> {
+    fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
+        self.query(relation_name)
+    }
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -255,6 +262,7 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
@@ -593,7 +601,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Delete tuples matching a predicate.
     ///
-    /// Returns the number of tuples deleted.
+    /// Retrieves the total count of tuples removed from the relation.
     ///
     /// # Errors
     ///
@@ -658,7 +666,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Update tuples matching a predicate.
     ///
-    /// Returns the number of tuples updated.
+    /// Retrieves the total count of tuples modified during the operation.
     ///
     /// # Errors
     ///
@@ -828,6 +836,7 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
     /// use relvar_core::tuple;
+    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let emp_type = RelationType::new(
@@ -861,7 +870,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
+        evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -890,6 +899,7 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));

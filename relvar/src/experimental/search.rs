@@ -50,7 +50,7 @@
 //!    - Results are grouped by `doc_id` and ranked by `sum(count)`.
 
 use relvar_core::{
-    Database,
+    Database, QueryExecutor,
     algebra::Aggregation,
     error::DatabaseError,
     storage_engine::StorageEngine,
@@ -184,11 +184,7 @@ impl FullTextIndex {
     /// Searches the index for the given query string.
     ///
     /// Returns a relation `(doc_id, score)` where score is the sum of term frequencies.
-    pub fn search<E: StorageEngine>(
-        &self,
-        db: &Database<E>,
-        query: &str,
-    ) -> Result<Relation, DatabaseError> {
+    pub fn search(&self, db: &impl QueryExecutor, query: &str) -> Result<Relation, DatabaseError> {
         // 1. Tokenize query
         let tokens = Tokenizer::tokenize(query);
         let query_terms: Vec<String> = tokens.keys().cloned().collect();

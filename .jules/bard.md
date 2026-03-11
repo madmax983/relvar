@@ -51,3 +51,7 @@ This ensures the map matches the territory.
 ## 2024-05-29 - Missing Module Docs and Redundant Boilerplate Comments
 **Confusion:** Several modules in `relvar-core` lacked module-level (`//!`) documentation explaining their purpose, causing the "Black Box" problem. Additionally, getter functions had repetitive, unhelpful documentation like "Returns the x".
 **Clarification:** I added module-level documentation to `dml.rs`, `virtual_relvar.rs`, `traits.rs`, `recursion.rs`, `mod.rs`, `divide.rs`, and `prepared.rs`. I also replaced "Gets the x" and "Returns the x" comments with descriptive verbs and context across `types`, `values`, and `constraints` modules.
+
+## 2024-05-30 - Ghost "Returns the x" and "Gets the x" Docs Fixed
+**Confusion:** Some public functions (e.g. `lsn.rs`, `record.rs`, `manager.rs` and other areas) had auto-generated boilerplate `/// Returns the...` and `/// Gets the...` comments, acting as "noise".
+**Clarification:** I identified the remaining unhelpful documentation across the workspace and updated them with precise verbs and context, explaining what information is retrieved or processed, fully eradicating this boilerplate pattern.
