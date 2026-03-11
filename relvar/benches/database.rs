@@ -3,7 +3,7 @@ use criterion::{
 };
 use relvar::constraints::{KeyConstraints, PrimaryKey};
 use relvar::tuple;
-use relvar::{RelationType, ScalarType, TupleType, PersistentEngine};
+use relvar::{PersistentEngine, RelationType, ScalarType, TupleType};
 use tempfile::TempDir;
 
 fn create_employee_type() -> RelationType {
