@@ -15,6 +15,21 @@ pub const MAX_RECURSION_DEPTH: usize = 64;
 pub struct RecursionGuard;
 
 impl RecursionGuard {
+    /// Creates a new `RecursionGuard` to safely track call depth and prevent stack overflows.
+    ///
+    /// This method exists to defend the engine against deeply nested or recursive
+    /// inputs (e.g. self-referencing expressions, deeply nested constraint types)
+    /// that could trigger a stack overflow and crash the database process.
+    ///
+    /// # Errors
+    /// Returns an error if the current thread's recursion depth exceeds `MAX_RECURSION_DEPTH`.
+    ///
+    /// # Examples
+    /// ```
+    /// // RecursionGuard is for internal use, but here is how it works conceptually:
+    /// // let guard = RecursionGuard::new().expect("Should succeed at top level");
+    /// // The guard automatically decrements the depth when it is dropped.
+    /// ```
     pub fn new() -> Result<Self, &'static str> {
         RECURSION_DEPTH.with(|cell| {
             let depth = cell.get();

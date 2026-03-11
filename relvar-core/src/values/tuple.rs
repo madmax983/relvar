@@ -38,6 +38,14 @@ mod arc_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::sync::Arc;
 
+    /// Helper for Serde to serialize an `Arc<T>` transparently.
+    ///
+    /// This exists because `Tuple` stores its `TupleType` in an `Arc` for performance,
+    /// but the default Serde serialization would fail or create nested structures. This ensures
+    /// the underlying type is serialized cleanly.
+    ///
+    /// # Errors
+    /// Returns a Serde error if the inner value cannot be serialized.
     pub fn serialize<S, T>(val: &Arc<T>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -46,6 +54,13 @@ mod arc_serde {
         T::serialize(val, serializer)
     }
 
+    /// Helper for Serde to deserialize directly into an `Arc<T>`.
+    ///
+    /// This exists to rehydrate a `Tuple` from disk seamlessly wrapped in an `Arc` for fast
+    /// memory sharing, rather than allocating a new unshared heap pointer.
+    ///
+    /// # Errors
+    /// Returns a Serde error if the inner value cannot be deserialized.
     pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Arc<T>, D::Error>
     where
         D: Deserializer<'de>,
