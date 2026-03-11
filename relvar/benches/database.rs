@@ -3,7 +3,7 @@ use criterion::{
 };
 use relvar::constraints::{KeyConstraints, PrimaryKey};
 use relvar::tuple;
-use relvar::{RelationType, ScalarType, TupleType};
+use relvar::{RelationType, ScalarType, TupleType, PersistentEngine};
 use tempfile::TempDir;
 
 fn create_employee_type() -> RelationType {
@@ -428,7 +428,7 @@ fn bench_virtual_relvar_creation(c: &mut Criterion) {
                 let emp_type = create_employee_type();
 
                 fn evaluator(
-                    db: &dyn relvar::QueryExecutor,
+                    db: &relvar::Database<PersistentEngine>,
                 ) -> Result<relvar::Relation, relvar::DatabaseError> {
                     Ok(db
                         .query("EMP")?
@@ -465,7 +465,7 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
                         let emp_type = create_employee_type();
 
                         fn high_earners_evaluator(
-                            db: &dyn relvar::QueryExecutor,
+                            db: &relvar::Database<PersistentEngine>,
                         ) -> Result<relvar::Relation, relvar::DatabaseError>
                         {
                             Ok(db
