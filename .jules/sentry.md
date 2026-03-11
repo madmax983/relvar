@@ -52,3 +52,6 @@
 ## 2025-03-04 - ScalarType Coverage Gaps
 **Learning:** Certain `ScalarType` recursive boundaries and unreachable trait implementations (`Ord` match) were entirely missing coverage, masking potential issues if the type structure were to change. Additionally, type mismatch errors in the `selector` logic lacked tests verifying correct error string output.
 **Action:** Always ensure full trait coverage, including unreachable branches when logic relies on matched enum variants, and systematically test recursion depth guards with deep structures.
+## 2025-03-05 - PreparedConstraint Coverage Gaps
+**Learning:** Found multiple untested branches in `PreparedConstraintExpression` evaluation, specifically around uncommonly tested `CmpOp` variants (`Ne`, `Lt`, `Le`, `Ge`), nested logical expressions (`Or`, `Not`), and type-mismatch error handling in `Like`.
+**Action:** When testing constraint or expression engines, ensure a full suite of table-driven comparison operator tests and explicitly write test cases for both logical nesting structures and intentionally bad types (e.g., passing an integer to a string `LIKE` operation).

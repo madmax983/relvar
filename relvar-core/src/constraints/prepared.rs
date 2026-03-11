@@ -137,6 +137,111 @@ mod tests {
     use crate::tuple;
 
     #[test]
+    fn test_cmp_operations() {
+        // Test all comparison operators that were previously uncovered
+        let ops = vec![
+            (CmpOp::Ne, 10i64, 20i64, true),
+            (CmpOp::Ne, 10i64, 10i64, false),
+            (CmpOp::Lt, 10i64, 20i64, true),
+            (CmpOp::Lt, 20i64, 10i64, false),
+            (CmpOp::Le, 10i64, 20i64, true),
+            (CmpOp::Le, 10i64, 10i64, true),
+            (CmpOp::Le, 20i64, 10i64, false),
+            (CmpOp::Gt, 20i64, 10i64, true),
+            (CmpOp::Gt, 10i64, 20i64, false),
+            (CmpOp::Ge, 20i64, 10i64, true),
+            (CmpOp::Ge, 10i64, 10i64, true),
+            (CmpOp::Ge, 10i64, 20i64, false),
+        ];
+
+        for (op, left_val, right_val, expected) in ops {
+            let expr = ConstraintExpression::Cmp {
+                left: "val".to_string(),
+                op,
+                right: ValueOrRef::Value(ScalarValue::Int(right_val)),
+            };
+
+            let prepared = expr.prepare();
+            let t = tuple! { val: left_val };
+
+            assert_eq!(
+                prepared.evaluate(&t).unwrap(),
+                expected,
+                "Failed for {:?}",
+                op
+            );
+        }
+    }
+
+    #[test]
+    fn test_logical_operations() {
+        // Test OR
+        let expr_or = ConstraintExpression::Or(
+            Box::new(ConstraintExpression::Cmp {
+                left: "a".to_string(),
+                op: CmpOp::Eq,
+                right: ValueOrRef::Value(ScalarValue::Int(1)),
+            }),
+            Box::new(ConstraintExpression::Cmp {
+                left: "b".to_string(),
+                op: CmpOp::Eq,
+                right: ValueOrRef::Value(ScalarValue::Int(2)),
+            }),
+        );
+
+        let prep_or = expr_or.prepare();
+        if let PreparedConstraintExpression::Or(l, r) = &prep_or {
+            assert!(matches!(**l, PreparedConstraintExpression::Cmp { .. }));
+            assert!(matches!(**r, PreparedConstraintExpression::Cmp { .. }));
+        } else {
+            panic!("Expected PreparedConstraintExpression::Or");
+        }
+
+        // true || false = true
+        assert!(prep_or.evaluate(&tuple! { a: 1i64, b: 0i64 }).unwrap());
+        // false || true = true
+        assert!(prep_or.evaluate(&tuple! { a: 0i64, b: 2i64 }).unwrap());
+        // false || false = false
+        assert!(!prep_or.evaluate(&tuple! { a: 0i64, b: 0i64 }).unwrap());
+
+        // Test NOT
+        let expr_not = ConstraintExpression::Not(Box::new(ConstraintExpression::Cmp {
+            left: "a".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(1)),
+        }));
+
+        let prep_not = expr_not.prepare();
+        if let PreparedConstraintExpression::Not(inner) = &prep_not {
+            assert!(matches!(**inner, PreparedConstraintExpression::Cmp { .. }));
+        } else {
+            panic!("Expected PreparedConstraintExpression::Not");
+        }
+
+        assert!(!prep_not.evaluate(&tuple! { a: 1i64 }).unwrap());
+        assert!(prep_not.evaluate(&tuple! { a: 2i64 }).unwrap());
+    }
+
+    #[test]
+    fn test_like_type_mismatch() {
+        let expr = ConstraintExpression::Like("val".to_string(), "A%".to_string());
+        let prepared = expr.prepare();
+
+        // Pass an integer instead of string
+        let t = tuple! { val: 42i64 };
+        let res = prepared.evaluate(&t);
+
+        assert!(res.is_err());
+        match res.unwrap_err() {
+            ExpressionError::TypeMismatch(expected, got) => {
+                assert_eq!(expected, "String");
+                assert_eq!(got, "Int");
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
     fn test_in_optimization() {
         // Create an IN expression with a large list
         let mut values = Vec::new();
