@@ -52,6 +52,3 @@
 ## 2025-03-04 - ScalarType Coverage Gaps
 **Learning:** Certain `ScalarType` recursive boundaries and unreachable trait implementations (`Ord` match) were entirely missing coverage, masking potential issues if the type structure were to change. Additionally, type mismatch errors in the `selector` logic lacked tests verifying correct error string output.
 **Action:** Always ensure full trait coverage, including unreachable branches when logic relies on matched enum variants, and systematically test recursion depth guards with deep structures.
-## 2025-03-07 - DML Functions Coverage
-**Learning:** `relvar-core/src/database/dml.rs` contained pure computation logic for updates and deletes (`compute_relation_after_delete` and `compute_relation_after_update`), but completely lacked unit test coverage for filtering logic and error paths like `DatabaseError::TupleMismatch`.
-**Action:** When extracting pure logic into standalone modules (like `dml.rs`), always ensure they have dedicated unit test blocks (`mod tests`) validating both their success permutations and error boundaries, completely separated from integration tests.

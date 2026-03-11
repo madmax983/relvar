@@ -148,7 +148,8 @@ impl Relation {
         // Return result relation
         use crate::types::RelationType;
         let result_type = RelationType::new(candidates.relation_type().heading().clone());
-        Ok(Relation::from_tuples_unchecked(result_type, result_tuples))
+        Ok(Relation::from_tuples(result_type, result_tuples)
+            .expect("Result tuples should conform to result type"))
     }
 }
 
@@ -203,12 +204,12 @@ fn project_onto_attrs(relation: &Relation, attrs: &[String]) -> Relation {
 
 /// Filter candidate tuples, keeping only those where ALL divisor tuples
 /// can be found when extended with the candidate.
-fn filter_matching_candidates<'a>(
-    candidates: &'a Relation,
-    divisor: &'a Relation,
-    dividend: &'a Relation,
-    dividend_heading: &'a crate::types::TupleType,
-) -> impl Iterator<Item = crate::values::Tuple> + 'a {
+fn filter_matching_candidates(
+    candidates: &Relation,
+    divisor: &Relation,
+    dividend: &Relation,
+    dividend_heading: &crate::types::TupleType,
+) -> Vec<crate::values::Tuple> {
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
@@ -217,7 +218,7 @@ fn filter_matching_candidates<'a>(
 
     candidates
         .tuples()
-        .filter(move |candidate| {
+        .filter(|candidate| {
             // Check if ALL divisor tuples match when extended with this candidate
             divisor.tuples().all(|divisor_tuple| {
                 // Extend candidate with divisor tuple using iterator-based approach
@@ -239,6 +240,7 @@ fn filter_matching_candidates<'a>(
             })
         })
         .cloned()
+        .collect()
 }
 
 #[cfg(test)]

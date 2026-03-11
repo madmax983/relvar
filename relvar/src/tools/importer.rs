@@ -147,10 +147,8 @@ impl<'de> Visitor<'de> for RelationVisitor {
     {
         let mut relation = Relation::new(self.relation_type.clone());
         let heading = self.relation_type.heading().clone();
-        let heading_arc = std::sync::Arc::new(heading.clone());
         let tuple_seed = TupleSeed {
             heading,
-            heading_arc,
             counter: self.counter.clone(),
         };
 
@@ -177,7 +175,6 @@ impl<'de> Visitor<'de> for RelationVisitor {
 #[derive(Clone)]
 struct TupleSeed {
     heading: TupleType,
-    heading_arc: std::sync::Arc<TupleType>,
     counter: Rc<RefCell<usize>>,
 }
 
@@ -190,7 +187,6 @@ impl<'de> DeserializeSeed<'de> for TupleSeed {
     {
         deserializer.deserialize_map(TupleVisitor {
             heading: self.heading,
-            heading_arc: self.heading_arc,
             counter: self.counter,
         })
     }
@@ -198,7 +194,6 @@ impl<'de> DeserializeSeed<'de> for TupleSeed {
 
 struct TupleVisitor {
     heading: TupleType,
-    heading_arc: std::sync::Arc<TupleType>,
     counter: Rc<RefCell<usize>>,
 }
 
@@ -215,7 +210,6 @@ impl<'de> Visitor<'de> for TupleVisitor {
     {
         let mut values = BTreeMap::new();
         let heading = self.heading;
-        let heading_arc = self.heading_arc;
 
         while let Some(key) = map.next_key::<String>()? {
             if let Some(attr_type) = heading.get_attribute_type(&key) {
@@ -231,8 +225,7 @@ impl<'de> Visitor<'de> for TupleVisitor {
             }
         }
 
-        Tuple::new_with_arc(heading_arc, values)
-            .map_err(|e| serde::de::Error::custom(e.to_string()))
+        Tuple::new(heading, values).map_err(|e| serde::de::Error::custom(e.to_string()))
     }
 }
 
@@ -377,11 +370,8 @@ impl<'de> Visitor<'de> for ScalarValueVisitor {
             ScalarType::Relation(inner_type) => {
                 // Relation is array of objects (tuples).
                 let mut relation = Relation::new(*inner_type.clone()); // Need to deref Box
-                let heading = inner_type.heading().clone();
-                let heading_arc = std::sync::Arc::new(heading.clone());
                 let tuple_seed = TupleSeed {
-                    heading,
-                    heading_arc,
+                    heading: inner_type.heading().clone(),
                     counter: self.counter.clone(),
                 };
 
@@ -426,7 +416,6 @@ pub fn from_csv<R: std::io::Read>(
 ) -> Result<Relation, ImporterError> {
     let mut relation = Relation::new(relation_type.clone());
     let heading = relation_type.heading();
-    let heading_arc = std::sync::Arc::new(heading.clone());
     let mut reader = std::io::BufReader::new(reader);
 
     // Helper for safe line reading
@@ -525,7 +514,7 @@ pub fn from_csv<R: std::io::Read>(
             }
         }
 
-        let tuple = Tuple::new_with_arc(heading_arc.clone(), values)
+        let tuple = Tuple::new(heading.clone(), values)
             .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
 
         let _ = relation
