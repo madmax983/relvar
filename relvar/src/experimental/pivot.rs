@@ -269,4 +269,52 @@ mod tests {
         let t = p.tuples().next().unwrap();
         assert_eq!(t.get("P1"), Some(&ScalarValue::Int(20)));
     }
+
+    #[test]
+    fn test_pivot_errors() {
+        use relvar_core::error::DatabaseError;
+        let heading = TupleType::new()
+            .with_attribute("A", ScalarType::String)
+            .with_attribute("M", ScalarType::String)
+            .with_attribute("V", ScalarType::Int)
+            .with_attribute("Jan", ScalarType::String);
+        let mut r = Relation::new(RelationType::new(heading));
+        r.insert(tuple! { A: "X", M: "Jan", V: 10, Jan: "Y" })
+            .unwrap();
+
+        // Missing on_attr
+        let err = r.pivot("Missing", "V", ScalarValue::Int(0)).unwrap_err();
+        assert!(matches!(err, DatabaseError::AttributeNotFound(..)));
+
+        // Missing value_attr
+        let err = r.pivot("M", "Missing", ScalarValue::Int(0)).unwrap_err();
+        assert!(matches!(err, DatabaseError::AttributeNotFound(..)));
+
+        // Conflicting column name
+        let err = r.pivot("M", "V", ScalarValue::Int(0)).unwrap_err();
+        assert!(matches!(err, DatabaseError::DuplicateAttributeName(..)));
+
+        // Type mismatch for default value
+        let heading2 = TupleType::new()
+            .with_attribute("A", ScalarType::String)
+            .with_attribute("M", ScalarType::String)
+            .with_attribute("V", ScalarType::Int);
+        let mut r2 = Relation::new(RelationType::new(heading2));
+        r2.insert(tuple! { A: "X", M: "Jan", V: 10 }).unwrap();
+
+        let err = r2
+            .pivot("M", "V", ScalarValue::String("0".to_string()))
+            .unwrap_err();
+        assert!(matches!(err, DatabaseError::AlgebraError(..)));
+
+        // Unsupported type for pivot key
+        let heading3 = TupleType::new()
+            .with_attribute("A", ScalarType::String)
+            .with_attribute("M", ScalarType::Float)
+            .with_attribute("V", ScalarType::Int);
+        let mut r3 = Relation::new(RelationType::new(heading3));
+        r3.insert(tuple! { A: "X", M: 1.0, V: 10 }).unwrap();
+        let err = r3.pivot("M", "V", ScalarValue::Int(0)).unwrap_err();
+        assert!(matches!(err, DatabaseError::AlgebraError(..)));
+    }
 }
