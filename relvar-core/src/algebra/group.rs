@@ -246,6 +246,11 @@ fn build_group_result_heading(
     Ok((result_heading, rva_heading))
 }
 
+/// # Performance
+///
+/// Pre-allocates the `result_tuples` vector using `Vec::with_capacity(groups.len())`.
+/// Because the exact number of output tuples is known after grouping the input,
+/// this prevents dynamic heap reallocations when constructing the resulting relation.
 fn compute_grouped_tuples(
     relation: &Relation,
     grouping_attrs: &[String],
@@ -278,7 +283,7 @@ fn compute_grouped_tuples(
     }
 
     // Build result tuples
-    let mut result_tuples = Vec::new();
+    let mut result_tuples = Vec::with_capacity(groups.len());
     let rva_relation_type = RelationType::new(rva_heading.clone());
     for (key, rva_tuples) in groups {
         let mut values = std::collections::BTreeMap::new();
