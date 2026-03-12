@@ -35,12 +35,3 @@ pub(crate) struct VirtualRelvarDefinition<E: crate::storage_engine::StorageEngin
     /// viewing a relation cannot cause side effects (mutations) in the database.
     pub evaluator: fn(&crate::database::Database<E>) -> Result<Relation, DatabaseError>,
 }
-
-impl<E: crate::storage_engine::StorageEngine> std::fmt::Debug for VirtualRelvarDefinition<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VirtualRelvarDefinition")
-            .field("relation_type", &self.relation_type)
-            .field("evaluator", &"<fn>")
-            .finish()
-    }
-}
