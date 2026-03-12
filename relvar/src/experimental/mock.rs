@@ -174,6 +174,33 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_all_types() {
+        let nested_rel_type =
+            RelationType::new(TupleType::new().with_attribute("inner", ScalarType::Int));
+
+        let user_defined_type = ScalarType::UserDefined {
+            name: "MyType".to_string(),
+            representation: Box::new(ScalarType::Int),
+        };
+
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("int_val", ScalarType::Int)
+                .with_attribute("float_val", ScalarType::Float)
+                .with_attribute("str_val", ScalarType::String)
+                .with_attribute("bool_val", ScalarType::Bool)
+                .with_attribute("bytes_val", ScalarType::Bytes)
+                .with_attribute("rel_val", ScalarType::Relation(Box::new(nested_rel_type)))
+                .with_attribute("user_val", user_defined_type),
+        );
+
+        let relation = MockRelation::new(rel_type).count(10).seed(42).generate();
+
+        assert_eq!(relation.degree(), 7);
+        assert_eq!(relation.cardinality(), 10);
+    }
+
+    #[test]
     fn test_determinism() {
         let rel_type = RelationType::new(TupleType::new().with_attribute("val", ScalarType::Float));
 
