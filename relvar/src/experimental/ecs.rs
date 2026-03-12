@@ -82,16 +82,26 @@ impl<E: StorageEngine> World<E> {
     }
 
     /// Spawns a new entity with a unique ID.
+    ///
+    /// # Errors
+    ///
+    /// Currently, this method doesn't fail, but returns `Result` for
+    /// forward-compatibility with storage engines that might track IDs persistently.
     pub fn spawn(&mut self) -> Result<Entity, DatabaseError> {
         let id = self.next_entity_id;
         self.next_entity_id += 1;
         Ok(id)
     }
 
-    /// Registers a new component type.
+    /// Registers a new component type in the underlying database.
     ///
     /// A component is stored as a relation named `C_{name}`.
     /// It automatically gets an `entity_id` column as the Primary Key.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `DatabaseError` if the database fails to create the relation or set constraints,
+    /// or if the component schema uses the reserved attribute `entity_id`.
     pub fn register_component(
         &mut self,
         name: &str,
@@ -124,9 +134,16 @@ impl<E: StorageEngine> World<E> {
         Ok(())
     }
 
-    /// Adds a component to an entity.
+    /// Adds a component to a specific entity.
     ///
     /// The `data` tuple must match the component schema (excluding `entity_id`).
+    /// The ECS will automatically inject the `entity_id` into the tuple before
+    /// inserting it into the underlying relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `DatabaseError` if the tuple does not match the component schema,
+    /// or if the underlying database insert fails.
     pub fn add_component(
         &mut self,
         entity: Entity,
@@ -153,7 +170,13 @@ impl<E: StorageEngine> World<E> {
         self.db.insert(&rel_name, new_tuple)
     }
 
-    /// Removes a component from an entity.
+    /// Removes a component from a specific entity.
+    ///
+    /// This deletes the entity's data for this component from the underlying relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `DatabaseError` if the underlying database delete operation fails.
     pub fn remove_component(
         &mut self,
         entity: Entity,
@@ -166,7 +189,12 @@ impl<E: StorageEngine> World<E> {
         Ok(())
     }
 
-    /// Gets a component for an entity.
+    /// Retrieves the component data for a specific entity.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError::TupleMismatch` if the component is not found for the given entity,
+    /// or other `DatabaseError` if the database query fails.
     pub fn get_component(
         &self,
         entity: Entity,
@@ -184,12 +212,21 @@ impl<E: StorageEngine> World<E> {
 
     /// Runs a system that updates a target component based on joined data.
     ///
+    /// The ECS will automatically join the target component relation with all
+    /// `join_components` relations on the `entity_id` attribute. The `updater`
+    /// closure will be called for each resulting joined tuple.
+    ///
     /// # Arguments
     ///
     /// * `target_component` - The name of the component to update.
     /// * `join_components` - Names of other components to join with.
     /// * `updater` - A function that takes the joined tuple and returns new values for the target component.
     ///   The returned tuple should NOT contain `entity_id` (it is preserved automatically).
+    ///
+    /// # Errors
+    ///
+    /// Returns a `DatabaseError` if a relation does not exist, join constraints fail,
+    /// or if the updated tuple violates schema constraints.
     pub fn run_update_system<F>(
         &mut self,
         target_component: &str,
