@@ -10,8 +10,27 @@ thread_local! {
     static RECURSION_DEPTH: Cell<usize> = const { Cell::new(0) };
 }
 
+/// The maximum allowed recursion depth for nested structures.
 pub const MAX_RECURSION_DEPTH: usize = 64;
 
+/// A guard that automatically tracks and limits call depth to prevent stack overflows.
+///
+/// This struct uses a thread-local counter to track recursion depth. When created via [`RecursionGuard::new`],
+/// it increments the counter. When dropped, it decrements the counter. If the depth exceeds
+/// [`MAX_RECURSION_DEPTH`], creation fails.
+///
+/// This is particularly useful for protecting the database engine against deeply nested or recursive
+/// inputs (e.g. self-referencing expressions, deeply nested constraint types, or malicious payloads).
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::utils::RecursionGuard;
+///
+/// // RecursionGuard is for internal use, but here is how it works conceptually:
+/// let guard = RecursionGuard::new().expect("Should succeed at top level");
+/// // The guard automatically decrements the depth when it is dropped.
+/// ```
 pub struct RecursionGuard;
 
 impl RecursionGuard {
@@ -54,6 +73,7 @@ impl Drop for RecursionGuard {
     }
 }
 
+/// A wrapper that enforces recursion limits during Serde deserialization.
 #[derive(Debug)]
 pub struct DepthGuarded<T>(pub T);
 

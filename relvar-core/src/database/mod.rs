@@ -142,7 +142,22 @@ pub struct Database<E: StorageEngine> {
 }
 
 impl<E: StorageEngine> Database<E> {
-    /// Create a new database with the given storage engine.
+    /// Creates a new `Database` instance with the specified storage engine.
+    ///
+    /// The database initializes with an empty catalog (no relations, no constraints).
+    /// By abstracting over the `StorageEngine`, this constructor allows users to create
+    /// either purely in-memory databases (for fast testing or temporary data) or
+    /// persistent databases (using the `relvar-storage` crate).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// // Create a temporary, in-memory database
+    /// let db = Database::new(InMemoryEngine::new());
+    /// ```
     pub fn new(engine: E) -> Self {
         Self {
             engine,

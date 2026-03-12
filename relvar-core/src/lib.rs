@@ -104,7 +104,7 @@ pub mod error;
 pub mod query;
 pub mod storage_engine;
 pub mod types;
-pub(crate) mod utils;
+pub mod utils;
 pub mod values;
 
 pub use database::{Database, DatabaseError};
