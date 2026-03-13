@@ -55,3 +55,7 @@ This ensures the map matches the territory.
 ## 2024-05-30 - Ghost "Returns the x" and "Gets the x" Docs Fixed
 **Confusion:** Some public functions (e.g. `lsn.rs`, `record.rs`, `manager.rs` and other areas) had auto-generated boilerplate `/// Returns the...` and `/// Gets the...` comments, acting as "noise".
 **Clarification:** I identified the remaining unhelpful documentation across the workspace and updated them with precise verbs and context, explaining what information is retrieved or processed, fully eradicating this boilerplate pattern.
+
+## 2024-06-03 - Cargo Doc Warnings Fixed
+**Confusion:** Rustdoc was emitting warnings because of redundant explicit link targets and an empty rust code block.
+**Clarification:** I updated `relvar-core/src/query/mod.rs` to remove redundant explicit links, letting rustdoc infer the link from the label name (`[`Database`]`). In `relvar-core/src/utils/recursion.rs`, I added the `text` modifier to a non-rust code block (conceptual example) so that it isn't parsed as valid Rust.
