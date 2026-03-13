@@ -141,20 +141,14 @@ impl Relation {
         let edges = self.rename(&self_mappings);
 
         loop {
-            // 2. Rename delta: r_delta(from, to) -> r_delta(from, temp)
-            let delta_renamed = r_delta.rename(&delta_mappings);
-
-            // 3. Join: r_delta(from, temp) JOIN edges(temp, to) -> (from, temp, to)
-            let joined = delta_renamed.join(&edges)?;
-
-            // 4. Project: keep (from, to), discard temp
-            let new_paths = joined.project(&[from_attr, to_attr]);
-
-            // 5. Difference: new_paths = new_paths MINUS r_total
-            // This filters out paths we already know about.
-            let new_unique_paths = new_paths
-                .difference(&r_total)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            let new_unique_paths = compute_next_paths(
+                &r_delta,
+                &edges,
+                &delta_mappings,
+                from_attr,
+                to_attr,
+                &r_total,
+            )?;
 
             // 6. Termination check
             if new_unique_paths.is_empty() {
@@ -173,6 +167,30 @@ impl Relation {
 
         Ok(r_total)
     }
+}
+
+fn compute_next_paths(
+    r_delta: &Relation,
+    edges: &Relation,
+    delta_mappings: &[(&str, &str)],
+    from_attr: &str,
+    to_attr: &str,
+    r_total: &Relation,
+) -> Result<Relation, DatabaseError> {
+    // 2. Rename delta: r_delta(from, to) -> r_delta(from, temp)
+    let delta_renamed = r_delta.rename(delta_mappings);
+
+    // 3. Join: r_delta(from, temp) JOIN edges(temp, to) -> (from, temp, to)
+    let joined = delta_renamed.join(edges)?;
+
+    // 4. Project: keep (from, to), discard temp
+    let new_paths = joined.project(&[from_attr, to_attr]);
+
+    // 5. Difference: new_paths = new_paths MINUS r_total
+    // This filters out paths we already know about.
+    new_paths
+        .difference(r_total)
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
 }
 
 #[cfg(test)]

@@ -526,3 +526,7 @@ Build it right, make it fast, keep it simple.
 ## 2025-06-03 - Algebraic Operator Refactoring
 **Learning:** Complex algebraic operators like `group` and `ungroup` often mix validation, schema derivation, and tuple processing. Extracting these into distinct phases (`validate`, `build_heading`, `compute_tuples`) improves readability and testability.
 **Action:** Apply this "Three-Phase Operator" pattern when refactoring other complex operators like `join` or `summarize`.
+
+## 2025-06-04 - Transitive Closure Loop Extraction
+**Learning:** The `tclose` operator's loop contained complex logic spanning multiple relational operations (rename, join, project, difference), making it difficult to follow the core recursive algorithm.
+**Action:** Extract the inner loop "compute path iteration" into a private, named helper function (`compute_next_paths`) to flatten the pyramid and improve readability.
