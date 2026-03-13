@@ -16,6 +16,9 @@ use std::path::Path;
 /// This allows batching many small records before flushing to disk.
 pub const DEFAULT_BUFFER_SIZE: usize = 1024 * 1024;
 
+/// Maximum allowed WAL file size (2GB) before rotation is required to prevent OOM.
+pub const MAX_WAL_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Header written at the start of each WAL file.
 ///
 /// Used for basic validation and version checking during recovery.
@@ -215,6 +218,18 @@ impl WalManager {
         // Flush any buffered records first
         self.flush()?;
 
+        // Enforce maximum file size to prevent unbounded memory allocation
+        let file_len = self.log_file.metadata()?.len();
+        if file_len > MAX_WAL_SIZE {
+            return Err(WalError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "WAL file too large: {} bytes (max {})",
+                    file_len, MAX_WAL_SIZE
+                ),
+            )));
+        }
+
         // Seek to start of records (after magic header)
         self.log_file
             .seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
@@ -222,8 +237,10 @@ impl WalManager {
         let mut records = Vec::new();
         let mut buffer = Vec::new();
 
-        // Read entire file into buffer
-        self.log_file.read_to_end(&mut buffer)?;
+        // Read entire file into buffer, capped at 2GB to prevent unbounded allocation DoS
+        (&mut self.log_file)
+            .take(MAX_WAL_SIZE)
+            .read_to_end(&mut buffer)?;
 
         let mut offset = 0;
         while offset < buffer.len() {
@@ -288,8 +305,22 @@ impl WalManager {
         // Seek to start of records (after magic header)
         log_file.seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
 
+        // Enforce maximum file size to prevent unbounded memory allocation
+        let file_len = log_file.metadata()?.len();
+        if file_len > MAX_WAL_SIZE {
+            return Err(WalError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "WAL file too large: {} bytes (max {})",
+                    file_len, MAX_WAL_SIZE
+                ),
+            )));
+        }
+
         let mut buffer = Vec::new();
-        log_file.read_to_end(&mut buffer)?;
+        (&mut *log_file)
+            .take(MAX_WAL_SIZE)
+            .read_to_end(&mut buffer)?;
 
         let mut last_lsn = Lsn::new(0);
         let mut offset = 0;

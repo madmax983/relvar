@@ -187,3 +187,10 @@ The `postcard` dependency (version 1.1.3) enabled the `heapless-cas` and `heaple
 
 **Defense:**
 Modified `Cargo.toml` to disable the default features of `postcard` by specifying `default-features = false`, explicitly only retaining the required `alloc` and `use-std` features. This eliminates the `heapless` and `atomic-polyfill` dependencies entirely, mitigating the risk of relying on an unmaintained crate.
+
+## 2026-03-06 - WAL Manager Unbounded Allocation DoS
+**Threat:**
+The `WalManager` component in `relvar-storage` used `File::read_to_end(&mut buffer)` to read the entire Write-Ahead Log into memory during startup and recovery scans (`scan` and `scan_for_last_lsn` methods). An attacker or external process could artificially inflate or corrupt the WAL file size (e.g., to multiple gigabytes), causing the application to exhaust server memory (OOM DoS) and crash during initialization.
+
+**Defense:**
+Added strict file size limits before reading the WAL file. `WalManager` now checks the file metadata length against `MAX_WAL_SIZE` (set to a safe threshold of 2 GB) and returns a standard `std::io::Error::new(std::io::ErrorKind::InvalidData)` wrapped in a `WalError::Io` if the limit is exceeded. This prevents unbounded `Vec` pre-allocations from malicious or overgrown files.
