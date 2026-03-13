@@ -526,3 +526,7 @@ Build it right, make it fast, keep it simple.
 ## 2025-06-03 - Algebraic Operator Refactoring
 **Learning:** Complex algebraic operators like `group` and `ungroup` often mix validation, schema derivation, and tuple processing. Extracting these into distinct phases (`validate`, `build_heading`, `compute_tuples`) improves readability and testability.
 **Action:** Apply this "Three-Phase Operator" pattern when refactoring other complex operators like `join` or `summarize`.
+
+## 2025-06-03 - Summarize operator Three-Phase refactoring
+**Learning:** Extracting `compute_summarized_tuples` from `Relation::summarize` improves readability by separating tuple calculation from validation and heading construction logic. The extraction uses `&HashMap<Vec<&ScalarValue>, Vec<&Tuple>>` which matches `group_tuples`'s return type.
+**Action:** When extracting functions handling grouped data, match the signature of the grouping function (`group_tuples` here) exactly.
