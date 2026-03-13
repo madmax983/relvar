@@ -17,6 +17,8 @@
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 
 pub mod automl;
+/// Relational Conway's Game of Life.
+pub mod cellular_automaton;
 pub mod ecs;
 pub mod graph;
 pub mod image;
