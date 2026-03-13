@@ -170,50 +170,81 @@ impl Query {
     pub fn execute<E: StorageEngine>(&self, db: &Database<E>) -> Result<Relation, QueryError> {
         match self {
             Query::Scan(table_name) => Ok(db.query(table_name)?),
-            Query::Restrict { input, predicate } => {
-                let relation = input.execute(db)?;
-                // Note: Relation::restrict takes a closure that returns bool.
-                // We use evaluate() inside, but we must handle errors.
-                // Currently, we treat evaluation errors as false (exclude tuple).
-
-                // Pre-compute optimized structures (HashSet for IN, Vec<char> for LIKE)
-                // This prevents O(N*M) behavior for large IN lists or LIKE patterns
-                let prepared = predicate.prepare();
-                let result = relation
-                    .restrict_into(move |tuple| prepared.evaluate(tuple).unwrap_or_default());
-                Ok(result)
-            }
-            Query::Project { input, attributes } => {
-                let relation = input.execute(db)?;
-                let attrs_ref: Vec<&str> = attributes.iter().map(|s| s.as_str()).collect();
-                Ok(relation.project(&attrs_ref))
-            }
-            Query::Rename { input, mappings } => {
-                let relation = input.execute(db)?;
-                let mappings_ref: Vec<(&str, &str)> = mappings
-                    .iter()
-                    .map(|(a, b)| (a.as_str(), b.as_str()))
-                    .collect();
-                Ok(relation.rename(&mappings_ref))
-            }
-            Query::Join { left, right } => {
-                let left_rel = left.execute(db)?;
-                let right_rel = right.execute(db)?;
-                Ok(left_rel.join(&right_rel)?)
-            }
+            Query::Restrict { input, predicate } => Self::execute_restrict(input, predicate, db),
+            Query::Project { input, attributes } => Self::execute_project(input, attributes, db),
+            Query::Rename { input, mappings } => Self::execute_rename(input, mappings, db),
+            Query::Join { left, right } => Self::execute_join(left, right, db),
             Query::Summarize {
                 input,
                 group_by,
                 aggregations,
-            } => {
-                let relation = input.execute(db)?;
-                // aggregations is already Vec<Aggregation>, so no conversion needed
-                let group_by_ref: Vec<&str> = group_by.iter().map(|s| s.as_str()).collect();
-                Ok(relation
-                    .summarize(&group_by_ref, aggregations)
-                    .map_err(|e| QueryError::Algebra(e.to_string()))?)
-            }
+            } => Self::execute_summarize(input, group_by, aggregations, db),
         }
+    }
+
+    fn execute_restrict<E: StorageEngine>(
+        input: &Query,
+        predicate: &ConstraintExpression,
+        db: &Database<E>,
+    ) -> Result<Relation, QueryError> {
+        let relation = input.execute(db)?;
+        // Note: Relation::restrict takes a closure that returns bool.
+        // We use evaluate() inside, but we must handle errors.
+        // Currently, we treat evaluation errors as false (exclude tuple).
+
+        // Pre-compute optimized structures (HashSet for IN, Vec<char> for LIKE)
+        // This prevents O(N*M) behavior for large IN lists or LIKE patterns
+        let prepared = predicate.prepare();
+        let result =
+            relation.restrict_into(move |tuple| prepared.evaluate(tuple).unwrap_or_default());
+        Ok(result)
+    }
+
+    fn execute_project<E: StorageEngine>(
+        input: &Query,
+        attributes: &[String],
+        db: &Database<E>,
+    ) -> Result<Relation, QueryError> {
+        let relation = input.execute(db)?;
+        let attrs_ref: Vec<&str> = attributes.iter().map(|s| s.as_str()).collect();
+        Ok(relation.project(&attrs_ref))
+    }
+
+    fn execute_rename<E: StorageEngine>(
+        input: &Query,
+        mappings: &[(String, String)],
+        db: &Database<E>,
+    ) -> Result<Relation, QueryError> {
+        let relation = input.execute(db)?;
+        let mappings_ref: Vec<(&str, &str)> = mappings
+            .iter()
+            .map(|(a, b)| (a.as_str(), b.as_str()))
+            .collect();
+        Ok(relation.rename(&mappings_ref))
+    }
+
+    fn execute_join<E: StorageEngine>(
+        left: &Query,
+        right: &Query,
+        db: &Database<E>,
+    ) -> Result<Relation, QueryError> {
+        let left_rel = left.execute(db)?;
+        let right_rel = right.execute(db)?;
+        Ok(left_rel.join(&right_rel)?)
+    }
+
+    fn execute_summarize<E: StorageEngine>(
+        input: &Query,
+        group_by: &[String],
+        aggregations: &[Aggregation],
+        db: &Database<E>,
+    ) -> Result<Relation, QueryError> {
+        let relation = input.execute(db)?;
+        // aggregations is already Vec<Aggregation>, so no conversion needed
+        let group_by_ref: Vec<&str> = group_by.iter().map(|s| s.as_str()).collect();
+        relation
+            .summarize(&group_by_ref, aggregations)
+            .map_err(|e| QueryError::Algebra(e.to_string()))
     }
 
     /// Returns a human-readable explanation of the query plan.
