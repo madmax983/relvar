@@ -528,7 +528,10 @@ impl HeapFile {
                     if end > data.len() {
                         return Err(HeapError::Serialization(format!(
                             "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
-                            idx, offset, length, data.len()
+                            idx,
+                            offset,
+                            length,
+                            data.len()
                         )));
                     }
                     data[offset..end].copy_from_slice(&tuples[idx]);
@@ -560,7 +563,9 @@ impl HeapFile {
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
-        let end = start.checked_add(slot_entry.length as usize).ok_or(HeapError::TupleNotFound)?;
+        let end = start
+            .checked_add(slot_entry.length as usize)
+            .ok_or(HeapError::TupleNotFound)?;
 
         if end > page.data().len() {
             return Err(HeapError::TupleNotFound);
@@ -595,7 +600,9 @@ impl HeapFile {
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
-        let end = start.checked_add(slot_entry.length as usize).ok_or(HeapError::TupleNotFound)?;
+        let end = start
+            .checked_add(slot_entry.length as usize)
+            .ok_or(HeapError::TupleNotFound)?;
 
         if end > page.data().len() {
             return Err(HeapError::TupleNotFound);
@@ -919,7 +926,10 @@ impl HeapFile {
                     if end > data.len() {
                         return Err(HeapError::Serialization(format!(
                             "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
-                            idx, offset, length, data.len()
+                            idx,
+                            offset,
+                            length,
+                            data.len()
                         )));
                     }
                     data[offset..end].copy_from_slice(&tuples[idx]);
