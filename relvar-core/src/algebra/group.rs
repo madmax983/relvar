@@ -246,6 +246,10 @@ fn build_group_result_heading(
     Ok((result_heading, rva_heading))
 }
 
+/// # Performance
+/// This function avoids intermediate heap allocations by using references
+/// `&ScalarValue` as grouping keys in the internal `HashMap`. This prevents
+/// `N` allocations and clones of `ScalarValue` variants per tuple processed.
 fn compute_grouped_tuples(
     relation: &Relation,
     grouping_attrs: &[String],
@@ -257,13 +261,13 @@ fn compute_grouped_tuples(
     let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
-    let mut groups: HashMap<Vec<ScalarValue>, Vec<Tuple>> = HashMap::new();
+    let mut groups: HashMap<Vec<&ScalarValue>, Vec<Tuple>> = HashMap::new();
 
     for tuple in relation.tuples() {
         // Extract grouping key
-        let key: Vec<ScalarValue> = grouping_attrs
+        let key: Vec<&ScalarValue> = grouping_attrs
             .iter()
-            .map(|attr| tuple.get(attr).unwrap().clone())
+            .map(|attr| tuple.get(attr).unwrap())
             .collect();
 
         // Extract grouped attributes for RVA

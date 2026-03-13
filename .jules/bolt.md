@@ -30,3 +30,7 @@
 ## 2026-03-07 - Avoiding Intermediate Allocations in Division Iterator
 **Learning:** The `filter_matching_candidates` helper in `relvar-core/src/algebra/divide.rs` originally used `.collect::<Vec<_>>()` to allocate a buffer of tuples before passing them to `Relation::from_tuples`.
 **Action:** Use `impl Iterator<Item = Tuple> + 'a` and add `move` to the `.filter` closure to return the iterator instead of allocating a `Vec`. Pass it directly into `Relation::from_tuples_unchecked` to eliminate validation overhead and allocation.
+
+## 2024-05-17 - Unnecessary Allocation during Group By
+**Learning:** Found that grouping attributes were being cloned `Vec<ScalarValue>` for use as `HashMap` keys during `group_tuples`. This resulted in `N` allocations per tuple when `N` attributes are grouped, simply to do a hash lookup.
+**Action:** Replaced `Vec<ScalarValue>` with `Vec<&ScalarValue>` to avoid cloning, which prevents `N` intermediate heap allocations and clones of variants during group by aggregations.
