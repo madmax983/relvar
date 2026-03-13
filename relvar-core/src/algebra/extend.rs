@@ -99,15 +99,22 @@ impl Relation {
         let new_heading_arc = std::sync::Arc::new(new_heading);
 
         // Create extended tuples
-        let extended_tuples: Vec<Tuple> = self
-            .tuples()
-            .map(|tuple| {
-                create_extended_tuple(tuple, attr_name, &attr_type, &new_heading_arc, &compute)
-            })
-            .collect::<Result<_, _>>()?;
+        //
+        // Performance: We avoid collecting into an intermediate Vec<Tuple> by folding directly
+        // into a Relation via `from_tuples_unchecked`. We explicitly constructed each tuple to
+        // conform to `new_heading_arc` and verified the computed attribute's type. This bypasses
+        // the O(N) validation overhead per tuple inside `from_tuples` and eliminates the intermediate heap allocation.
+        let mut body = std::collections::HashSet::with_capacity(self.cardinality());
+        for tuple in self.tuples() {
+            let extended_tuple =
+                create_extended_tuple(tuple, attr_name, &attr_type, &new_heading_arc, &compute)?;
+            body.insert(extended_tuple);
+        }
 
-        Ok(Relation::from_tuples(new_rel_type, extended_tuples)
-            .expect("Extended tuples should conform to new relation type"))
+        // Safety: We guarantee that extended tuples conform to new_rel_type because:
+        // - new_rel_type uses new_heading
+        // - Tuples are created with new_heading and the new attribute's type is verified
+        Ok(Relation::from_tuples_unchecked(new_rel_type, body))
     }
 }
 
