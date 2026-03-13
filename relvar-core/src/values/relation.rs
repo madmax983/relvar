@@ -503,6 +503,29 @@ impl Relation {
         self.body.retain(|tuple| predicate(tuple));
         self
     }
+
+    /// Restricts a relation based on a fallible predicate, consuming the relation in the process.
+    ///
+    /// This is an optimized version of `restrict` when the original relation
+    /// is no longer needed.
+    ///
+    /// # Arguments
+    ///
+    /// * `predicate` - A fallible function that returns `true` for tuples to keep
+    pub fn restrict_into_result<E, F>(mut self, mut predicate: F) -> Result<Self, E>
+    where
+        F: FnMut(&Tuple) -> Result<bool, E>,
+    {
+        // For short-circuiting on errors without iterating the rest of the body:
+        let mut new_body = std::collections::HashSet::with_capacity(self.body.len());
+        for tuple in self.body.into_iter() {
+            if predicate(&tuple)? {
+                new_body.insert(tuple);
+            }
+        }
+        self.body = new_body;
+        Ok(self)
+    }
 }
 
 #[cfg(test)]
