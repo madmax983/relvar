@@ -99,12 +99,21 @@ impl Relation {
         let new_heading_arc = std::sync::Arc::new(new_heading);
 
         // Create extended tuples
-        let extended_tuples: Vec<Tuple> = self
-            .tuples()
-            .map(|tuple| {
-                create_extended_tuple(tuple, attr_name, &attr_type, &new_heading_arc, &compute)
-            })
-            .collect::<Result<_, _>>()?;
+        //
+        // # Performance
+        // We know exactly how many tuples will be produced because `extend` computes
+        // exactly one new tuple for each input tuple. Pre-allocating the vector
+        // avoids dynamic heap reallocations when collecting the results.
+        let mut extended_tuples = Vec::with_capacity(self.cardinality());
+        for tuple in self.tuples() {
+            extended_tuples.push(create_extended_tuple(
+                tuple,
+                attr_name,
+                &attr_type,
+                &new_heading_arc,
+                &compute,
+            )?);
+        }
 
         Ok(Relation::from_tuples(new_rel_type, extended_tuples)
             .expect("Extended tuples should conform to new relation type"))
