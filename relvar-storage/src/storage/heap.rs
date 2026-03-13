@@ -517,7 +517,21 @@ impl HeapFile {
                 let offset = entry.offset as usize;
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                    // Validate that offset + length doesn't exceed buffer
+                    let end = offset.checked_add(length).ok_or_else(|| {
+                        HeapError::Serialization(format!(
+                            "Slot {} length overflow: offset={}, length={}",
+                            idx, offset, length
+                        ))
+                    })?;
+
+                    if end > data.len() {
+                        return Err(HeapError::Serialization(format!(
+                            "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
+                            idx, offset, length, data.len()
+                        )));
+                    }
+                    data[offset..end].copy_from_slice(&tuples[idx]);
                 }
             }
         }
@@ -546,7 +560,7 @@ impl HeapFile {
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
+        let end = start.checked_add(slot_entry.length as usize).ok_or(HeapError::TupleNotFound)?;
 
         if end > page.data().len() {
             return Err(HeapError::TupleNotFound);
@@ -581,7 +595,7 @@ impl HeapFile {
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
+        let end = start.checked_add(slot_entry.length as usize).ok_or(HeapError::TupleNotFound)?;
 
         if end > page.data().len() {
             return Err(HeapError::TupleNotFound);
@@ -895,16 +909,20 @@ impl HeapFile {
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
                     // Validate that offset + length doesn't exceed buffer
-                    if offset + length > data.len() {
+                    let end = offset.checked_add(length).ok_or_else(|| {
+                        HeapError::Serialization(format!(
+                            "Slot {} length overflow: offset={}, length={}",
+                            idx, offset, length
+                        ))
+                    })?;
+
+                    if end > data.len() {
                         return Err(HeapError::Serialization(format!(
                             "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
-                            idx,
-                            offset,
-                            length,
-                            data.len()
+                            idx, offset, length, data.len()
                         )));
                     }
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                    data[offset..end].copy_from_slice(&tuples[idx]);
                 }
             }
         }
@@ -1011,19 +1029,8 @@ impl HeapFile {
         offset: u32,
         length: u32,
     ) -> Result<Vec<u8>, HeapError> {
-        let start = offset as usize;
-        let end = start
-            .checked_add(length as usize)
-            .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
-
-        if end <= page.data().len() {
-            Ok(page.data()[start..end].to_vec())
-        } else {
-            Err(HeapError::Serialization(format!(
-                "Corrupted slot on page {} points outside page data",
-                page.id()
-            )))
-        }
+        let (start, end) = self.validate_slot_bounds(page, offset, length)?;
+        Ok(page.data()[start..end].to_vec())
     }
 
     /// Updates a tuple by creating a new version and marking the old version as deleted.
@@ -1305,12 +1312,12 @@ impl HeapFile {
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
                     let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
-
-                    if end <= page.data().len() {
-                        let tuple_data = &page.data()[start..end];
-                        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-                        results.push(tuple);
+                    if let Some(end) = start.checked_add(slot_entry.length as usize) {
+                        if end <= page.data().len() {
+                            let tuple_data = &page.data()[start..end];
+                            let tuple: Tuple = deserialize_bounded(tuple_data)?;
+                            results.push(tuple);
+                        }
                     }
                 }
             }
