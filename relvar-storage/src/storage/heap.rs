@@ -1322,12 +1322,12 @@ impl HeapFile {
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
                     let start = slot_entry.offset as usize;
-                    if let Some(end) = start.checked_add(slot_entry.length as usize) {
-                        if end <= page.data().len() {
-                            let tuple_data = &page.data()[start..end];
-                            let tuple: Tuple = deserialize_bounded(tuple_data)?;
-                            results.push(tuple);
-                        }
+                    if let Some(end) = start.checked_add(slot_entry.length as usize)
+                        && end <= page.data().len()
+                    {
+                        let tuple_data = &page.data()[start..end];
+                        let tuple: Tuple = deserialize_bounded(tuple_data)?;
+                        results.push(tuple);
                     }
                 }
             }
