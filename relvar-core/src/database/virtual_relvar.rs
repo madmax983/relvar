@@ -1,8 +1,16 @@
 //! Virtual Relvar (View) Definitions.
 //!
-//! This module defines the metadata and evaluation structures for Virtual Relvars,
-//! which are the relational equivalent of SQL Views. Unlike base relvars, virtual relvars
-//! do not store data; they store an expression (a query) that is evaluated on demand.
+//! A virtual relvar (or "view" in SQL terminology) is a relation variable whose
+//! value is not explicitly stored in the database. Instead, its value is defined
+//! by a relational expression evaluated dynamically whenever the virtual relvar
+//! is queried.
+//!
+//! # TTM Compliance
+//!
+//! In *The Third Manifesto*, virtual relvars are semantically indistinguishable
+//! from base (stored) relvars when queried. This satisfies the Principle of
+//! Interchangeability. Users querying a virtual relvar should not need to know
+//! (nor care) that it is computed rather than stored.
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;

@@ -55,3 +55,17 @@ This ensures the map matches the territory.
 ## 2024-05-30 - Ghost "Returns the x" and "Gets the x" Docs Fixed
 **Confusion:** Some public functions (e.g. `lsn.rs`, `record.rs`, `manager.rs` and other areas) had auto-generated boilerplate `/// Returns the...` and `/// Gets the...` comments, acting as "noise".
 **Clarification:** I identified the remaining unhelpful documentation across the workspace and updated them with precise verbs and context, explaining what information is retrieved or processed, fully eradicating this boilerplate pattern.
+
+## 2024-05-31 - Fix Warning Spam
+
+**Confusion:** Generating docs using `cargo doc` produced warnings regarding an explicit link target for Database in the `query/mod.rs` file. There was also an empty doc test code block in `utils/recursion.rs` that caused a warning.
+**Clarification:** Fixed the links to correctly resolve, and changed the empty codeblock to a `text` block to remove warnings so `cargo doc` output is clean.
+
+## 2024-05-31 - README Operator Semantics Documentation
+
+**Confusion:** Users were confused by operator semantics, specifically that `project` silently ignores missing attributes, and `rename` resolves collisions with a "Last Write Wins" behavior. This information was scattered and not prominently displayed.
+**Clarification:** Added a dedicated `Operator Semantics` section to `README.md` to clearly explain `project`, `rename`, and set semantics to users up front, bridging the gap between SQL expectations and relational algebra behavior.
+
+## 2024-05-31 - Missing Module Documentation
+**Confusion:** The `virtual_relvar.rs` file was lacking module-level `//!` documentation to describe its purpose.
+**Clarification:** I added module-level documentation to explain that virtual relvars are essentially views evaluated on demand and are semantically indistinguishable from base relvars when queried, fulfilling TTM's Principle of Interchangeability.

@@ -257,6 +257,15 @@ relation.insert(tuple1)?;  // Second insert has no effect (already in set)
 assert_eq!(relation.cardinality(), 1);  // Only one tuple
 ```
 
+
+### Operator Semantics
+
+Relational operators in Relvar follow strict mathematical definitions, which can sometimes differ from SQL expectations:
+
+*   **Project Ignores Missing Attributes:** The `project` operator follows set intersection logic. If you request an attribute that doesn't exist in the relation's heading, it is simply ignored rather than causing an error. Asking for entirely non-existent attributes returns a relation with an empty heading (`TABLE_DEE` or `TABLE_DUM`).
+*   **Rename Collision Resolution:** When renaming multiple attributes to the same target name (e.g., `A -> C`, `B -> C`), the `rename` operator processes mappings in lexicographical order of the source attributes. The last processed mapping wins ("Last Write Wins" behavior).
+*   **True Set Semantics:** Relations are mathematical sets. `Project` inherently eliminates duplicate tuples in the result. Always apply aggregations (`Summarize`) *before* projecting away identifying attributes if you need counts or frequencies.
+
 ### Strong Type System
 
 Every value has a type, and operations are type-checked:
