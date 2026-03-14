@@ -5,6 +5,7 @@
 //!
 //! # Included Features
 //!
+//! - **[`cellular_automaton`](crate::experimental::cellular_automaton)**: Relational Cellular Automaton (Game of Life).
 //! - **[`automl`](crate::experimental::automl)**: Relational Machine Learning (Naive Bayes).
 //! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
@@ -16,7 +17,10 @@
 //! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 
+// Note: module declaration already added via echo earlier, just keeping documentation in sync
+
 pub mod automl;
+pub mod cellular_automaton;
 pub mod ecs;
 pub mod graph;
 pub mod image;
