@@ -16,6 +16,9 @@ use std::path::Path;
 /// This allows batching many small records before flushing to disk.
 pub const DEFAULT_BUFFER_SIZE: usize = 1024 * 1024;
 
+/// Maximum WAL file size to read into memory (2GB) to prevent Allocation Bomb DoS attacks.
+pub const MAX_WAL_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Header written at the start of each WAL file.
 ///
 /// Used for basic validation and version checking during recovery.
@@ -224,15 +227,27 @@ impl WalManager {
         // Flush any buffered records first
         self.flush()?;
 
+        let file_len = self.log_file.metadata()?.len();
+        if file_len > MAX_WAL_SIZE {
+            return Err(WalError::Io(std::io::Error::new(
+                std::io::ErrorKind::FileTooLarge,
+                format!(
+                    "WAL file size ({} bytes) exceeds safety limit ({} bytes) to prevent OOM DoS",
+                    file_len, MAX_WAL_SIZE
+                ),
+            )));
+        }
+
         // Seek to start of records (after magic header)
         self.log_file
             .seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
 
         let mut records = Vec::new();
-        let mut buffer = Vec::new();
+        let mut buffer =
+            Vec::with_capacity(file_len.saturating_sub(WAL_MAGIC.len() as u64) as usize);
 
-        // Read entire file into buffer
-        self.log_file.read_to_end(&mut buffer)?;
+        // Read up to MAX_WAL_SIZE into buffer to prevent Allocation Bomb DoS
+        std::io::Read::take(&mut self.log_file, MAX_WAL_SIZE).read_to_end(&mut buffer)?;
 
         let mut offset = 0;
         while offset < buffer.len() {
@@ -294,11 +309,24 @@ impl WalManager {
     fn scan_for_last_lsn(log_file: &mut File) -> Result<(Lsn, Lsn), WalError> {
         use std::io::Read;
 
+        let file_len = log_file.metadata()?.len();
+        if file_len > MAX_WAL_SIZE {
+            return Err(WalError::Io(std::io::Error::new(
+                std::io::ErrorKind::FileTooLarge,
+                format!(
+                    "WAL file size ({} bytes) exceeds safety limit ({} bytes) to prevent OOM DoS",
+                    file_len, MAX_WAL_SIZE
+                ),
+            )));
+        }
+
         // Seek to start of records (after magic header)
         log_file.seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
 
-        let mut buffer = Vec::new();
-        log_file.read_to_end(&mut buffer)?;
+        let mut buffer =
+            Vec::with_capacity(file_len.saturating_sub(WAL_MAGIC.len() as u64) as usize);
+        // Read up to MAX_WAL_SIZE into buffer to prevent Allocation Bomb DoS
+        std::io::Read::take(&mut *log_file, MAX_WAL_SIZE).read_to_end(&mut buffer)?;
 
         let mut last_lsn = Lsn::new(0);
         let mut offset = 0;
