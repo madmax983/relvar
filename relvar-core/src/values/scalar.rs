@@ -383,99 +383,117 @@ impl Ord for ScalarValue {
             }
         }
 
-        // Compare types first
-        match type_order(self).cmp(&type_order(other)) {
-            Ordering::Equal => {
-                // Same type: order by value
-                match (self, other) {
-                    (ScalarValue::Int(a), ScalarValue::Int(b)) => a.cmp(b),
-                    (ScalarValue::Float(a), ScalarValue::Float(b)) => {
-                        // For floats, treat all NaNs as equal and greater than any other float
-                        match (a.is_nan(), b.is_nan()) {
-                            (true, true) => Ordering::Equal,
-                            (true, false) => Ordering::Greater,
-                            (false, true) => Ordering::Less,
-                            (false, false) => {
-                                // Correctly order floating point numbers using their bit representation
-                                // This handles signed zeros (-0.0 < 0.0) and negative numbers correctly
-                                let a_bits = a.to_bits();
-                                let b_bits = b.to_bits();
-                                let a_sign = a_bits >> 63;
-                                let b_sign = b_bits >> 63;
+        let cmp_type = type_order(self).cmp(&type_order(other));
+        if cmp_type != Ordering::Equal {
+            return cmp_type;
+        }
 
-                                if a_sign != b_sign {
-                                    // Different signs: negative < positive
-                                    if a_sign == 1 {
-                                        Ordering::Less
-                                    } else {
-                                        Ordering::Greater
-                                    }
-                                } else {
-                                    // Same signs
-                                    if a_sign == 0 {
-                                        // Both positive: larger magnitude is larger
-                                        a_bits.cmp(&b_bits)
-                                    } else {
-                                        // Both negative: larger magnitude is smaller (more negative)
-                                        // e.g., -10.0 has larger bit representation than -1.0
-                                        b_bits.cmp(&a_bits)
-                                    }
-                                }
-                            }
-                        }
+        // Same type: order by value
+        match (self, other) {
+            (ScalarValue::Int(a), ScalarValue::Int(b)) => a.cmp(b),
+            (ScalarValue::Float(a), ScalarValue::Float(b)) => Self::cmp_floats(*a, *b),
+            (ScalarValue::String(a), ScalarValue::String(b)) => a.cmp(b),
+            (ScalarValue::Bool(a), ScalarValue::Bool(b)) => a.cmp(b),
+            (ScalarValue::Bytes(a), ScalarValue::Bytes(b)) => a.cmp(b),
+            (ScalarValue::Relation(a), ScalarValue::Relation(b)) => Self::cmp_relations(a, b),
+            (
+                ScalarValue::UserDefined {
+                    type_def: type_a,
+                    value: val_a,
+                },
+                ScalarValue::UserDefined {
+                    type_def: type_b,
+                    value: val_b,
+                },
+            ) => Self::cmp_user_defined_values(type_a, val_a, type_b, val_b),
+            _ => unreachable!("Type orders are equal but types don't match"),
+        }
+    }
+}
+
+impl ScalarValue {
+    fn cmp_floats(a: f64, b: f64) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        // For floats, treat all NaNs as equal and greater than any other float
+        match (a.is_nan(), b.is_nan()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => {
+                // Correctly order floating point numbers using their bit representation
+                // This handles signed zeros (-0.0 < 0.0) and negative numbers correctly
+                let a_bits = a.to_bits();
+                let b_bits = b.to_bits();
+                let a_sign = a_bits >> 63;
+                let b_sign = b_bits >> 63;
+
+                if a_sign != b_sign {
+                    // Different signs: negative < positive
+                    if a_sign == 1 {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
                     }
-                    (ScalarValue::String(a), ScalarValue::String(b)) => a.cmp(b),
-                    (ScalarValue::Bool(a), ScalarValue::Bool(b)) => a.cmp(b),
-                    (ScalarValue::Bytes(a), ScalarValue::Bytes(b)) => a.cmp(b),
-                    (ScalarValue::Relation(a), ScalarValue::Relation(b)) => {
-                        // For relations, order by cardinality first, then degree
-                        match a.cardinality().cmp(&b.cardinality()) {
-                            Ordering::Equal => a.degree().cmp(&b.degree()),
-                            other => other,
-                        }
+                } else {
+                    // Same signs
+                    if a_sign == 0 {
+                        // Both positive: larger magnitude is larger
+                        a_bits.cmp(&b_bits)
+                    } else {
+                        // Both negative: larger magnitude is smaller (more negative)
+                        // e.g., -10.0 has larger bit representation than -1.0
+                        b_bits.cmp(&a_bits)
                     }
-                    (
-                        ScalarValue::UserDefined {
-                            type_def: type_a,
-                            value: val_a,
-                        },
-                        ScalarValue::UserDefined {
-                            type_def: type_b,
-                            value: val_b,
-                        },
-                    ) => {
-                        // Order by type identity first (structural comparison), then by value
-                        match type_a.cmp(type_b) {
+                }
+            }
+        }
+    }
+
+    fn cmp_relations(
+        a: &crate::values::Relation,
+        b: &crate::values::Relation,
+    ) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        // For relations, order by cardinality first, then degree
+        match a.cardinality().cmp(&b.cardinality()) {
+            Ordering::Equal => a.degree().cmp(&b.degree()),
+            other => other,
+        }
+    }
+
+    fn cmp_user_defined_values(
+        type_a: &ScalarType,
+        val_a: &ScalarValue,
+        type_b: &ScalarType,
+        val_b: &ScalarValue,
+    ) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        // Order by type identity first (structural comparison), then by value
+        match type_a.cmp(type_b) {
+            Ordering::Equal => {
+                // Iterative comparison to prevent stack overflow
+                let mut cur_a = val_a;
+                let mut cur_b = val_b;
+                loop {
+                    match (cur_a, cur_b) {
+                        (
+                            ScalarValue::UserDefined {
+                                type_def: ta,
+                                value: va,
+                            },
+                            ScalarValue::UserDefined {
+                                type_def: tb,
+                                value: vb,
+                            },
+                        ) => match ta.cmp(tb) {
                             Ordering::Equal => {
-                                // Iterative comparison to prevent stack overflow
-                                let mut cur_a = val_a;
-                                let mut cur_b = val_b;
-                                loop {
-                                    match (&**cur_a, &**cur_b) {
-                                        (
-                                            ScalarValue::UserDefined {
-                                                type_def: ta,
-                                                value: va,
-                                            },
-                                            ScalarValue::UserDefined {
-                                                type_def: tb,
-                                                value: vb,
-                                            },
-                                        ) => match ta.cmp(tb) {
-                                            Ordering::Equal => {
-                                                cur_a = va;
-                                                cur_b = vb;
-                                            }
-                                            other => return other,
-                                        },
-                                        (a, b) => return a.cmp(b),
-                                    }
-                                }
+                                cur_a = va;
+                                cur_b = vb;
                             }
-                            other => other,
-                        }
+                            other => return other,
+                        },
+                        (a, b) => return a.cmp(b),
                     }
-                    _ => unreachable!("Type orders are equal but types don't match"),
                 }
             }
             other => other,

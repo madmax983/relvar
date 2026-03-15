@@ -530,3 +530,7 @@ Build it right, make it fast, keep it simple.
 ## 2025-06-03 - Summarize operator Three-Phase refactoring
 **Learning:** Extracting `compute_summarized_tuples` from `Relation::summarize` improves readability by separating tuple calculation from validation and heading construction logic. The extraction uses `&HashMap<Vec<&ScalarValue>, Vec<&Tuple>>` which matches `group_tuples`'s return type.
 **Action:** When extracting functions handling grouped data, match the signature of the grouping function (`group_tuples` here) exactly.
+
+## 2026-03-14 - Extract Complex Type Comparison Logic
+**Learning:** `Ord::cmp` implementations in `relvar-core/src/types/scalar.rs` (`ScalarType`) and `relvar-core/src/values/scalar.rs` (`ScalarValue`) had deeply nested `match` branches (up to 12 levels) for complex variant comparisons like `Relation` and `UserDefined`.
+**Action:** Replace nested `match` inside `Ord::cmp` with a guard clause on discriminant/type mismatch first, and then extract complex variant match arms into private helper functions like `cmp_relation_types` and `cmp_user_defined_types`.
