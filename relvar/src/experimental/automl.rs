@@ -301,4 +301,47 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_train_error_handling() -> Result<(), DatabaseError> {
+        let mut db = Database::new(InMemoryEngine::new());
+        let heading = TupleType::new()
+            .with_attribute("outlook", ScalarType::String)
+            .with_attribute("play", ScalarType::String);
+        db.create_relvar("GOLF", RelationType::new(heading))?;
+        db.insert("GOLF", tuple! { outlook: "sunny", play: "no" })?;
+
+        let golf = db.query("GOLF")?;
+
+        let err = NaiveBayesClassifier::train(&golf, "missing_target");
+        assert!(matches!(err, Err(DatabaseError::AttributeNotFound(..))));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_predict_unseen_values() -> Result<(), DatabaseError> {
+        let mut db = Database::new(InMemoryEngine::new());
+        let heading = TupleType::new()
+            .with_attribute("f1", ScalarType::Int)
+            .with_attribute("f2", ScalarType::Float)
+            .with_attribute("f3", ScalarType::Bool)
+            .with_attribute("target", ScalarType::String);
+        db.create_relvar("DATA", RelationType::new(heading))?;
+        db.insert("DATA", tuple! { f1: 1, f2: 1.0, f3: true, target: "A" })?;
+        db.insert("DATA", tuple! { f1: 2, f2: 2.0, f3: false, target: "B" })?;
+
+        let data = db.query("DATA")?;
+        let model = NaiveBayesClassifier::train(&data, "target")?;
+
+        // Prediction with completely unseen values
+        let t = tuple! { f1: 99, f2: 99.0, f3: true };
+        let p = model.predict(&t);
+        // Should still predict something without panicking
+        assert!(
+            p == ScalarValue::String("A".to_string()) || p == ScalarValue::String("B".to_string())
+        );
+
+        Ok(())
+    }
 }
