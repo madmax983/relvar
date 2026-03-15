@@ -102,11 +102,13 @@ impl Relation {
         //
         // # Performance
         // We know exactly how many tuples will be produced because `extend` computes
-        // exactly one new tuple for each input tuple. Pre-allocating the vector
+        // exactly one new tuple for each input tuple. Pre-allocating the HashSet
         // avoids dynamic heap reallocations when collecting the results.
-        let mut extended_tuples = Vec::with_capacity(self.cardinality());
+        // We iterate directly into a pre-sized HashSet and construct the relation
+        // using `from_tuples_unchecked` to safely bypass redundant O(N) validation overhead.
+        let mut extended_tuples = std::collections::HashSet::with_capacity(self.cardinality());
         for tuple in self.tuples() {
-            extended_tuples.push(create_extended_tuple(
+            extended_tuples.insert(create_extended_tuple(
                 tuple,
                 attr_name,
                 &attr_type,
@@ -115,8 +117,15 @@ impl Relation {
             )?);
         }
 
-        Ok(Relation::from_tuples(new_rel_type, extended_tuples)
-            .expect("Extended tuples should conform to new relation type"))
+        // Safety:
+        // We guarantee that extended_tuples conform to new_rel_type because:
+        // - new_rel_type uses new_heading
+        // - Tuples are created with new_heading in create_extended_tuple
+        // - create_extended_tuple ensures the computed value type matches
+        Ok(Relation::from_tuples_unchecked(
+            new_rel_type,
+            extended_tuples,
+        ))
     }
 }
 
