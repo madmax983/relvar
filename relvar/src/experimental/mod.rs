@@ -23,6 +23,7 @@ pub mod image;
 pub mod matrix;
 pub mod mock;
 pub mod pivot;
+pub mod recommender;
 pub mod search;
 pub mod spatial;
 pub mod timeseries;
