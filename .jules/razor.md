@@ -12,3 +12,7 @@
 **Bloat:** `QueryExecutor` trait. It is a "One-Time Trait" implemented only by `Database`, adding unnecessary abstraction and indirection for speculative "Future Proofing".
 **Cut:** Removing `QueryExecutor` trait and updating `Query::execute` and virtual relvars to depend directly on `Database`.
 **Saved:** Removed `traits.rs`, removed ~20 lines of code, reduced cognitive load by removing an unnecessary abstraction layer.
+## [Reduction]
+**Bloat:** The `Pivot` trait in `relvar/src/experimental/pivot.rs` was a single-implementation trait applied only to `Relation`.
+**Cut:** Removed the `Pivot` trait and its `impl` block, converting it into a concrete, standalone function `pub fn pivot(relation: &Relation, ...)`.
+**Saved:** Reduced boilerplate, flattened abstraction, simplified method resolution, and removed a "One-Time Trait."

@@ -467,7 +467,20 @@ impl Relation {
 
         let groups = self.group_tuples(group_by);
 
-        // Compute aggregations for each group
+        let result_tuples =
+            self.compute_summarized_tuples(group_by, aggregations, &groups, &result_heading_arc)?;
+
+        Ok(Relation::from_tuples(result_rel_type, result_tuples)
+            .expect("Summarized tuples should conform to result relation type"))
+    }
+
+    fn compute_summarized_tuples(
+        &self,
+        group_by: &[&str],
+        aggregations: &[Aggregation],
+        groups: &HashMap<Vec<&ScalarValue>, Vec<&Tuple>>,
+        result_heading_arc: &std::sync::Arc<TupleType>,
+    ) -> Result<Vec<Tuple>, SummarizeError> {
         let mut result_tuples = Vec::with_capacity(groups.len());
         for (key, group_tuples) in groups {
             let mut values = std::collections::BTreeMap::new();
@@ -479,7 +492,7 @@ impl Relation {
 
             // Compute aggregations
             for agg in aggregations {
-                let agg_value = agg.compute(&group_tuples)?;
+                let agg_value = agg.compute(group_tuples)?;
                 values.insert(agg.result_name.clone(), agg_value);
             }
 
@@ -488,9 +501,7 @@ impl Relation {
             let tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
             result_tuples.push(tuple);
         }
-
-        Ok(Relation::from_tuples(result_rel_type, result_tuples)
-            .expect("Summarized tuples should conform to result relation type"))
+        Ok(result_tuples)
     }
 
     fn validate_grouping_attributes(&self, group_by: &[&str]) -> Result<(), SummarizeError> {

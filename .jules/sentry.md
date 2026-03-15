@@ -55,3 +55,7 @@
 ## 2025-03-05 - PreparedConstraint Coverage Gaps
 **Learning:** Found multiple untested branches in `PreparedConstraintExpression` evaluation, specifically around uncommonly tested `CmpOp` variants (`Ne`, `Lt`, `Le`, `Ge`), nested logical expressions (`Or`, `Not`), and type-mismatch error handling in `Like`.
 **Action:** When testing constraint or expression engines, ensure a full suite of table-driven comparison operator tests and explicitly write test cases for both logical nesting structures and intentionally bad types (e.g., passing an integer to a string `LIKE` operation).
+
+## 2025-03-14 - ConstraintManager Coverage Gaps
+**Learning:** Multiple functions in `ConstraintManager` relating to evaluating constraints natively against individual tuples, checking constraint preconditions prior to setup, and handling dependent foreign key updates via `validate_referencing_foreign_keys` were completely unexercised. This leaves open logic flaws where an update sequence may evaluate validations improperly.
+**Action:** When implementing database or storage engine layers, constraint logic generally needs comprehensive functional integration tests since unit tests on the constraint primitives rarely stress the engine orchestration itself, leading to gaps in `manager.rs`.

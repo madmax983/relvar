@@ -31,3 +31,12 @@
 ## 2026-03-06 - [Zero-Copy String Extraction]
 **Learning:** `Tuple::get_typed<T>` was invoking `.clone()` on the `ScalarValue::String` enum purely to satisfy the `TryFrom<&'a ScalarValue> for String` trait bound. This caused unnecessary heap allocations when borrowing as `&str` was sufficient.
 **Action:** Implemented `TryFrom<&'a ScalarValue> for &'a str` to enable zero-copy string extraction via `Tuple::get_typed::<&str>`, saving a heap allocation on every hot-path string extraction.
+## 2026-03-08 - Tuple Pre-allocation in Extend
+**Learning:** The `extend` operator iterates over `self.tuples()` and builds a completely new `Vec<Tuple>` by calling `collect()`. However, we know that the cardinality of an extended relation will always exactly match the cardinality of the input relation, because `extend` adds exactly one attribute to every existing tuple without adding or removing any tuples.
+Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, the underlying vector will repeatedly reallocate as tuples are computed and pushed onto it, which is especially noticeable for large relations.
+
+**Action:** When implementing operations like `extend` or `project` that have a 1:1 input-to-output tuple mapping or have a known upper bound, use an iterator with a `size_hint` or explicitly allocate `Vec::with_capacity(self.cardinality())` before iterating, or verify that the returned iterator properly implements `size_hint` so that `collect()` can optimize the allocation.
+
+## 2026-03-08 - Tuple Pre-allocation and Validation bypass in Extend
+**Learning:** The `extend` operator previously allocated a `Vec` for intermediate tuple storage and then used `Relation::from_tuples` which reallocated into a `HashSet` and performed O(N*M) validation against the heading for every tuple, despite the tuples already being valid by construction.
+**Action:** Iterate directly into a pre-allocated `HashSet::with_capacity(self.cardinality())` to avoid the intermediate `Vec` allocation, and use `Relation::from_tuples_unchecked` to safely bypass redundant validation overhead when tuples are known to conform to the new heading.
