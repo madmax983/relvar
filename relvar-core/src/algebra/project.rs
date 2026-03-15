@@ -104,6 +104,29 @@ impl Relation {
         // Safety: projected_tuples use shared_heading which matches new_rel_type.heading()
         Relation::from_tuples_unchecked(new_rel_type, projected_tuples)
     }
+
+    /// Projects this relation onto a subset of attributes, consuming the relation.
+    ///
+    /// This is an optimized version of `project` that avoids allocating a new
+    /// collection by mutating the tuples in-place when possible.
+    pub fn project_into(self, attributes: &[&str]) -> Self {
+        // Build new heading with selected attributes
+        let mut new_heading = TupleType::new();
+        for attr_name in attributes {
+            if let Some(attr_type) = self.relation_type().heading().get_attribute_type(attr_name) {
+                new_heading = new_heading.with_attribute(*attr_name, attr_type.clone());
+            }
+        }
+
+        let new_rel_type = RelationType::new(new_heading.clone());
+        let shared_heading = Arc::new(new_heading);
+
+        let projected_tuples = self
+            .into_iter()
+            .map(|tuple| project_tuple_values_owned(tuple, &shared_heading));
+
+        Relation::from_tuples_unchecked(new_rel_type, projected_tuples)
+    }
 }
 
 /// Helper function to project values from a source tuple based on a target heading.
@@ -135,6 +158,15 @@ fn project_tuple_values(source_tuple: &Tuple, target_heading: &Arc<TupleType>) -
 
     // Safety: We constructed values exactly from attributes present in new_heading
     // derived from the source relation schema, so types match by definition.
+    Tuple::new_unchecked(target_heading.clone(), values)
+}
+
+fn project_tuple_values_owned(source_tuple: Tuple, target_heading: &Arc<TupleType>) -> Tuple {
+    // Retain only the attributes present in the target heading
+    let mut values = source_tuple.into_values();
+    values.retain(|k, _| target_heading.has_attribute(k));
+
+    // Safety: We retained only attributes present in target_heading
     Tuple::new_unchecked(target_heading.clone(), values)
 }
 
