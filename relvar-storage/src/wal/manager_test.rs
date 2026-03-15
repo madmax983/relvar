@@ -91,3 +91,36 @@ fn test_scan_partial_record() {
     assert!(result.is_ok());
     assert!(result.unwrap().is_empty());
 }
+
+#[test]
+fn test_open_allocation_bomb_prevention() {
+    let temp = NamedTempFile::new().unwrap();
+    let path = temp.path().to_path_buf();
+
+    {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
+        use std::io::Write;
+
+        // Write magic header
+        file.write_all(WAL_MAGIC).unwrap();
+
+        // Simulate a massive file size (e.g., 3GB) to trigger DoS protection
+        // without actually writing 3GB to disk.
+        file.set_len(3 * 1024 * 1024 * 1024).unwrap();
+    }
+
+    let result = WalManager::open(&path);
+
+    assert!(result.is_err());
+    match result {
+        Err(WalError::Corrupted(_, msg)) => {
+            assert!(msg.contains("WAL file too large"));
+        }
+        _ => panic!("Expected Corrupted error due to large file"),
+    }
+}

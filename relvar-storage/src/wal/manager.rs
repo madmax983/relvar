@@ -16,6 +16,11 @@ use std::path::Path;
 /// This allows batching many small records before flushing to disk.
 pub const DEFAULT_BUFFER_SIZE: usize = 1024 * 1024;
 
+/// Maximum allowed WAL file size (2GB).
+///
+/// This prevents memory exhaustion (DoS) when reading the WAL file into memory during recovery.
+pub const MAX_WAL_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Header written at the start of each WAL file.
 ///
 /// Used for basic validation and version checking during recovery.
@@ -224,6 +229,18 @@ impl WalManager {
         // Flush any buffered records first
         self.flush()?;
 
+        // Prevent OOM DoS: check file size before reading into memory
+        let file_len = self.log_file.metadata()?.len();
+        if file_len > MAX_WAL_SIZE {
+            return Err(WalError::Corrupted(
+                Lsn::new(0),
+                format!(
+                    "WAL file too large: {} bytes (max: {})",
+                    file_len, MAX_WAL_SIZE
+                ),
+            ));
+        }
+
         // Seek to start of records (after magic header)
         self.log_file
             .seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
@@ -293,6 +310,18 @@ impl WalManager {
     /// This is necessary because WAL records are variable-length.
     fn scan_for_last_lsn(log_file: &mut File) -> Result<(Lsn, Lsn), WalError> {
         use std::io::Read;
+
+        // Prevent OOM DoS: check file size before reading into memory
+        let file_len = log_file.metadata()?.len();
+        if file_len > MAX_WAL_SIZE {
+            return Err(WalError::Corrupted(
+                Lsn::new(0),
+                format!(
+                    "WAL file too large: {} bytes (max: {})",
+                    file_len, MAX_WAL_SIZE
+                ),
+            ));
+        }
 
         // Seek to start of records (after magic header)
         log_file.seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
