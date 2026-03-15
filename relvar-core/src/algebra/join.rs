@@ -466,31 +466,31 @@ fn combine_tuples(
 
     loop {
         match (iter_p.peek(), iter_s.peek()) {
-            (Some((k_p, v_p)), Some((k_s, v_s))) => {
+            (Some(&(k_p, v_p)), Some(&(k_s, v_s))) => {
                 if k_p == k_s {
                     // Collision: Primary wins (as per doc)
                     // Consume both since they match
-                    values.push(((*k_p).clone(), (*v_p).clone()));
+                    values.push((k_p, v_p));
                     iter_p.next();
                     iter_s.next();
                 } else if k_p < k_s {
                     // Primary is smaller, take it
-                    values.push(((*k_p).clone(), (*v_p).clone()));
+                    values.push((k_p, v_p));
                     iter_p.next();
                 } else {
                     // Secondary is smaller, take it
-                    values.push(((*k_s).clone(), (*v_s).clone()));
+                    values.push((k_s, v_s));
                     iter_s.next();
                 }
             }
-            (Some((k_p, v_p)), None) => {
+            (Some(&(k_p, v_p)), None) => {
                 // Only primary remaining
-                values.push(((*k_p).clone(), (*v_p).clone()));
+                values.push((k_p, v_p));
                 iter_p.next();
             }
-            (None, Some((k_s, v_s))) => {
+            (None, Some(&(k_s, v_s))) => {
                 // Only secondary remaining
-                values.push(((*k_s).clone(), (*v_s).clone()));
+                values.push((k_s, v_s));
                 iter_s.next();
             }
             (None, None) => break,
@@ -504,7 +504,10 @@ fn combine_tuples(
     // 4. Therefore, the resulting map conforms to result_heading.
     //
     // BTreeMap::from_iter is efficient (O(N)) when input is already sorted.
-    let combined_values = BTreeMap::from_iter(values);
+    // We defer cloning to the iterator mapping step to avoid repeatedly cloning
+    // discarded values or allocating strings inside the hot loop.
+    let combined_values =
+        BTreeMap::from_iter(values.into_iter().map(|(k, v)| (k.clone(), v.clone())));
 
     Ok(Tuple::new_unchecked(
         result_heading.clone(),

@@ -456,3 +456,188 @@ impl ConstraintManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constraints::{
+        AttributeConstraints, CandidateKey, CheckConstraint, ConstraintExpression, PrimaryKey,
+        TypeConstraint,
+    };
+    use crate::storage_engine::InMemoryEngine;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::{CmpOp, Relation, ScalarValue, ValueOrRef};
+
+    fn setup_engine() -> InMemoryEngine {
+        let mut engine = InMemoryEngine::new();
+
+        let t1 = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        engine.create_relation("users", t1).unwrap();
+
+        let mut users = Relation::new(RelationType::new(
+            TupleType::new().with_attribute("id", ScalarType::Int),
+        ));
+        users.insert(tuple! { id: 1i64 }).unwrap();
+        engine.store_relation("users", &users).unwrap();
+
+        engine
+    }
+
+    #[test]
+    fn should_return_error_when_check_constraint_violates_existing_data() {
+        let mut engine = setup_engine();
+        let mut manager = ConstraintManager::new();
+
+        let check_expr = ConstraintExpression::Cmp {
+            left: "id".to_string(),
+            op: CmpOp::Eq,
+            right: ValueOrRef::Value(ScalarValue::Int(2)), // current data has id:1
+        };
+        let checks = CheckConstraints::new().with_constraint(CheckConstraint::new(
+            "id_is_2".to_string(),
+            "must be 2".to_string(),
+            check_expr,
+        ));
+
+        let res = manager.set_check_constraints(&mut engine, "users", checks);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn should_allow_tuple_type_validation_without_constraints() {
+        let engine = setup_engine();
+        let manager = ConstraintManager::new();
+
+        let good_tuple = tuple! { id: 1i64 };
+        let bad_tuple = tuple! { id: "wrong_type".to_string() };
+
+        assert!(
+            manager
+                .validate_type_constraints("users", &bad_tuple)
+                .is_ok()
+        );
+        assert!(
+            manager
+                .validate_tuple_type(&engine, "users", &good_tuple)
+                .is_ok()
+        );
+        assert!(
+            manager
+                .validate_tuple_type(&engine, "users", &bad_tuple)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn should_return_error_when_type_constraint_violated() {
+        let mut engine = setup_engine();
+        let mut manager = ConstraintManager::new();
+
+        let mut attr_cons = AttributeConstraints::new("id".to_string(), ScalarType::Int);
+        let type_constraint = TypeConstraint::Range {
+            min: ScalarValue::Int(1),
+            max: ScalarValue::Int(1),
+        };
+        attr_cons = attr_cons.with_constraint(type_constraint);
+        manager
+            .set_type_constraints(&mut engine, "users", "id", attr_cons)
+            .unwrap();
+
+        let res = manager.validate_type_constraints("users", &tuple! { id: 2i64 });
+        assert!(res.is_err());
+
+        let res = manager.validate_check_constraints("users", &tuple! { id: 1i64 });
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn should_return_error_when_key_constraints_violated_in_single_tuple() {
+        let mut engine = setup_engine();
+        let mut manager = ConstraintManager::new();
+
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let ck = CandidateKey::new(vec!["id".to_string()]).unwrap();
+        let keys = KeyConstraints::new()
+            .with_primary_key(pk)
+            .with_candidate_key(ck);
+
+        manager
+            .set_key_constraints(&mut engine, "users", keys.clone())
+            .unwrap();
+
+        let rel = engine.load_relation("users").unwrap();
+        // single tuple pk violation (1i64 already exists)
+        assert!(
+            manager
+                .validate_key_constraints_single_tuple("users", &tuple! { id: 1i64 }, &rel)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn should_return_error_when_candidate_key_violated_in_single_tuple() {
+        let mut engine = setup_engine();
+        let mut manager = ConstraintManager::new();
+
+        let bad_keys = KeyConstraints::new()
+            .with_candidate_key(CandidateKey::new(vec!["id".to_string()]).unwrap());
+        manager
+            .set_key_constraints(&mut engine, "users", bad_keys)
+            .unwrap();
+
+        let rel = engine.load_relation("users").unwrap();
+        assert!(
+            manager
+                .validate_key_constraints_single_tuple("users", &tuple! { id: 1i64 }, &rel)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn should_return_error_when_bulk_key_constraints_violated() {
+        let manager = ConstraintManager::new();
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let ck = CandidateKey::new(vec!["id".to_string()]).unwrap();
+        let keys = KeyConstraints::new()
+            .with_primary_key(pk)
+            .with_candidate_key(ck);
+
+        let t3 = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("val", ScalarType::Int),
+        );
+        let mut dup_rel = Relation::new(t3);
+        dup_rel.insert(tuple! { id: 1i64, val: 1i64 }).unwrap();
+        dup_rel.insert(tuple! { id: 1i64, val: 2i64 }).unwrap();
+
+        assert!(
+            manager
+                .validate_key_constraints_bulk(&dup_rel, &keys)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn should_return_correct_constraints_when_queried_and_removed() {
+        let mut engine = setup_engine();
+        let mut manager = ConstraintManager::new();
+
+        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let ck = CandidateKey::new(vec!["id".to_string()]).unwrap();
+        let keys = KeyConstraints::new()
+            .with_primary_key(pk)
+            .with_candidate_key(ck);
+
+        manager
+            .set_key_constraints(&mut engine, "users", keys.clone())
+            .unwrap();
+
+        assert!(manager.get_key_constraints("users").is_some());
+        assert!(manager.get_foreign_key_constraints("users").is_none());
+
+        manager.remove_constraints_for_relation("users");
+        assert!(manager.get_key_constraints("users").is_none());
+    }
+}

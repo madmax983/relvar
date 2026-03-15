@@ -74,7 +74,6 @@ use crate::constraints::{
 };
 pub use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
-use crate::traits::QueryExecutor;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 
@@ -139,17 +138,26 @@ pub struct Database<E: StorageEngine> {
     /// Transaction savepoint.
     transaction_snapshot: Option<E::Snapshot>,
     /// Virtual relvars defined by expressions.
-    virtual_relvars: HashMap<String, VirtualRelvarDefinition>,
-}
-
-impl<E: StorageEngine> QueryExecutor for Database<E> {
-    fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
-        self.query(relation_name)
-    }
+    virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
 }
 
 impl<E: StorageEngine> Database<E> {
-    /// Create a new database with the given storage engine.
+    /// Creates a new `Database` instance with the specified storage engine.
+    ///
+    /// The database initializes with an empty catalog (no relations, no constraints).
+    /// By abstracting over the `StorageEngine`, this constructor allows users to create
+    /// either purely in-memory databases (for fast testing or temporary data) or
+    /// persistent databases (using the `relvar-storage` crate).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// // Create a temporary, in-memory database
+    /// let db = Database::new(InMemoryEngine::new());
+    /// ```
     pub fn new(engine: E) -> Self {
         Self {
             engine,
@@ -262,7 +270,6 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
@@ -836,7 +843,6 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
     /// use relvar_core::tuple;
-    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let emp_type = RelationType::new(
@@ -870,7 +876,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         name: &str,
         relation_type: RelationType,
-        evaluator: fn(&dyn QueryExecutor) -> Result<Relation, DatabaseError>,
+        evaluator: fn(&Database<E>) -> Result<Relation, DatabaseError>,
     ) -> Result<(), DatabaseError> {
         if self.relvar_exists(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
@@ -899,7 +905,6 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::traits::QueryExecutor;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
