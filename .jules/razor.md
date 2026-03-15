@@ -20,3 +20,8 @@
 **Bloat:** `Pivot` extension trait in `relvar/src/experimental/pivot.rs`. It was a "One-Time Trait" strictly implemented by `Relation`, requiring users to import the trait just to use the function.
 **Cut:** Deleted the trait and refactored the method into a standalone `pub fn pivot(...)` taking `&Relation` directly.
 **Saved:** 15 lines of boilerplate, vastly simpler API surface, eliminated "magic" extension method behavior.
+
+## [Reduction]
+**Bloat:** Module-specific error enums in `relvar-core/src/algebra/` (e.g., `DifferenceError`, `UnionError`, `DivideError`, `GroupError`, `SummarizeError`). These added unnecessary indirection and violated the "centralized `DatabaseError` enum" architecture directive.
+**Cut:** Deleted the module-specific error enums and updated all their corresponding algebraic methods to return `Result<Relation, DatabaseError>`, mapping the variants logically to existing ones like `DatabaseError::TupleMismatch` and `DatabaseError::AlgebraError`.
+**Saved:** Eliminated 8 error enums and simplified `Query::execute` by avoiding intermediate `.map_err()` closures for these operations.

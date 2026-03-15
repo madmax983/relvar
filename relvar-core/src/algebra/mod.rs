@@ -92,22 +92,18 @@ pub mod delta;
 
 /// Set difference operator (A MINUS B).
 pub(crate) mod difference;
-pub use difference::DifferenceError;
 
 /// Relational division operator.
 pub(crate) mod divide;
 
 /// Extend operator for adding computed attributes.
 pub(crate) mod extend;
-pub use extend::ExtendError;
 
 /// Group and ungroup operators for relation-valued attributes.
 pub(crate) mod group;
-pub use group::{GroupError, UngroupError};
 
 /// Set intersection operator.
 pub(crate) mod intersect;
-pub use intersect::IntersectError;
 
 /// Natural join and theta join operators.
 pub(crate) mod join;
@@ -126,11 +122,10 @@ pub(crate) mod semijoin;
 
 /// Summarize operator for aggregation with grouping.
 pub(crate) mod summarize;
-pub use summarize::{Aggregation, AggregationFn, SummarizeError};
+pub use summarize::{Aggregation, AggregationFn};
 
 /// Set union operator.
 pub(crate) mod union;
-pub use union::UnionError;
 
 /// Transitive closure operator (TCLOSE).
 pub(crate) mod tclose;

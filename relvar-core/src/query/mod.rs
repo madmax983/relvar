@@ -209,9 +209,7 @@ impl Query {
                 let relation = input.execute(db)?;
                 // aggregations is already Vec<Aggregation>, so no conversion needed
                 let group_by_ref: Vec<&str> = group_by.iter().map(|s| s.as_str()).collect();
-                Ok(relation
-                    .summarize(&group_by_ref, aggregations)
-                    .map_err(|e| QueryError::Algebra(e.to_string()))?)
+                Ok(relation.summarize(&group_by_ref, aggregations)?)
             }
         }
     }

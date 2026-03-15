@@ -38,34 +38,11 @@
 //! assert_eq!(result.cardinality(), 2);  // Two departments
 //! ```
 
+use crate::error::DatabaseError;
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use thiserror::Error;
-
-/// Errors that can occur during summarize operations.
-#[derive(Debug, Error)]
-pub enum SummarizeError {
-    /// A specified grouping attribute does not exist in the relation.
-    #[error("Grouping attribute '{0}' does not exist in relation")]
-    GroupingAttributeNotFound(String),
-
-    /// The result attribute name conflicts with an existing attribute.
-    #[error("Result attribute '{0}' already exists")]
-    ResultAttributeExists(String),
-
-    /// Failed to construct a tuple during the summarization process.
-    #[error("Failed to create summarized tuple: {0}")]
-    TupleCreation(String),
-
-    /// An error occurred during aggregate computation.
-    ///
-    /// This can happen if the attribute being aggregated doesn't exist
-    /// or has an incompatible type.
-    #[error("Aggregation error: {0}")]
-    AggregationError(String),
-}
 
 /// Specifies the type of aggregation function to apply.
 ///
@@ -284,7 +261,7 @@ impl Aggregation {
         }
     }
 
-    fn compute(&self, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
+    fn compute(&self, tuples: &[&Tuple]) -> Result<ScalarValue, DatabaseError> {
         match &self.function {
             AggregationFn::Count => self.compute_count(tuples),
             AggregationFn::Sum(attr_name) => self.compute_sum(attr_name, tuples),
@@ -298,7 +275,7 @@ impl Aggregation {
         }
     }
 
-    fn compute_count(&self, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
+    fn compute_count(&self, tuples: &[&Tuple]) -> Result<ScalarValue, DatabaseError> {
         Ok(ScalarValue::Int(tuples.len() as i64))
     }
 
@@ -306,12 +283,12 @@ impl Aggregation {
         &self,
         attr_name: &str,
         tuples: &[&Tuple],
-    ) -> Result<ScalarValue, SummarizeError> {
+    ) -> Result<ScalarValue, DatabaseError> {
         if self.result_type == ScalarType::Float {
             let mut sum = 0.0;
             for tuple in tuples {
                 let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
-                    SummarizeError::AggregationError(format!(
+                    DatabaseError::AlgebraError(format!(
                         "Failed to get attribute {} as f64",
                         attr_name
                     ))
@@ -323,13 +300,13 @@ impl Aggregation {
             let mut sum = 0i64;
             for tuple in tuples {
                 let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                    SummarizeError::AggregationError(format!(
+                    DatabaseError::AlgebraError(format!(
                         "Failed to get attribute {} as i64",
                         attr_name
                     ))
                 })?;
                 sum = sum.checked_add(value).ok_or_else(|| {
-                    SummarizeError::AggregationError("Integer overflow in SUM".to_string())
+                    DatabaseError::AlgebraError("Integer overflow in SUM".to_string())
                 })?;
             }
             Ok(ScalarValue::Int(sum))
@@ -340,7 +317,7 @@ impl Aggregation {
         &self,
         attr_name: &str,
         tuples: &[&Tuple],
-    ) -> Result<ScalarValue, SummarizeError> {
+    ) -> Result<ScalarValue, DatabaseError> {
         if tuples.is_empty() {
             return Ok(ScalarValue::Float(0.0));
         }
@@ -348,7 +325,7 @@ impl Aggregation {
         // Check the type of the first tuple to decide implementation
         // We assume all tuples have the same type (enforced by Relation)
         let first_val = tuples[0].get(attr_name).ok_or_else(|| {
-            SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+            DatabaseError::AlgebraError(format!("Attribute {} not found", attr_name))
         })?;
 
         match first_val.scalar_type() {
@@ -356,13 +333,13 @@ impl Aggregation {
                 let mut sum = 0i128;
                 for tuple in tuples {
                     let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
+                        DatabaseError::AlgebraError(format!(
                             "Failed to get attribute {} as i64",
                             attr_name
                         ))
                     })?;
                     sum = sum.checked_add(value as i128).ok_or_else(|| {
-                        SummarizeError::AggregationError("Integer overflow in AVG".to_string())
+                        DatabaseError::AlgebraError("Integer overflow in AVG".to_string())
                     })?;
                 }
                 let avg = sum as f64 / tuples.len() as f64;
@@ -372,7 +349,7 @@ impl Aggregation {
                 let mut sum = 0.0;
                 for tuple in tuples {
                     let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
+                        DatabaseError::AlgebraError(format!(
                             "Failed to get attribute {} as f64",
                             attr_name
                         ))
@@ -382,7 +359,7 @@ impl Aggregation {
                 let avg = sum / tuples.len() as f64;
                 Ok(ScalarValue::Float(avg))
             }
-            _ => Err(SummarizeError::AggregationError(format!(
+            _ => Err(DatabaseError::AlgebraError(format!(
                 "Avg requires Int or Float attribute, got {:?}",
                 first_val.scalar_type()
             ))),
@@ -395,24 +372,24 @@ impl Aggregation {
         tuples: &[&Tuple],
         compare: F,
         op_name: &str,
-    ) -> Result<ScalarValue, SummarizeError>
+    ) -> Result<ScalarValue, DatabaseError>
     where
         F: Fn(&ScalarValue, &ScalarValue) -> bool,
     {
         if tuples.is_empty() {
-            return Err(SummarizeError::AggregationError(format!(
+            return Err(DatabaseError::AlgebraError(format!(
                 "Cannot compute {} on empty set",
                 op_name
             )));
         }
         let first = tuples[0].get(attr_name).ok_or_else(|| {
-            SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+            DatabaseError::AlgebraError(format!("Attribute {} not found", attr_name))
         })?;
         let mut extremum = first;
 
         for tuple in tuples.iter().skip(1) {
             let value = tuple.get(attr_name).ok_or_else(|| {
-                SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+                DatabaseError::AlgebraError(format!("Attribute {} not found", attr_name))
             })?;
             if compare(value, extremum) {
                 extremum = value;
@@ -443,17 +420,17 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// - [`SummarizeError::GroupingAttributeNotFound`] - A grouping attribute
+    /// - [`DatabaseError::GroupingAttributeNotFound`] - A grouping attribute
     ///   doesn't exist
-    /// - [`SummarizeError::ResultAttributeExists`] - An aggregation result name
+    /// - [`DatabaseError::ResultAttributeExists`] - An aggregation result name
     ///   conflicts with a grouping attribute
-    /// - [`SummarizeError::AggregationError`] - An aggregation failed (e.g.,
+    /// - [`DatabaseError::AggregationError`] - An aggregation failed (e.g.,
     ///   MIN/MAX on empty set)
     pub fn summarize(
         &self,
         group_by: &[&str],
         aggregations: &[Aggregation],
-    ) -> Result<Relation, SummarizeError> {
+    ) -> Result<Relation, DatabaseError> {
         self.validate_grouping_attributes(group_by)?;
         let result_heading = self.build_result_heading(group_by, aggregations)?;
         let result_rel_type = RelationType::new(result_heading.clone());
@@ -489,10 +466,13 @@ impl Relation {
         ))
     }
 
-    fn validate_grouping_attributes(&self, group_by: &[&str]) -> Result<(), SummarizeError> {
+    fn validate_grouping_attributes(&self, group_by: &[&str]) -> Result<(), DatabaseError> {
         for attr in group_by {
             if !self.relation_type().has_attribute(attr) {
-                return Err(SummarizeError::GroupingAttributeNotFound(attr.to_string()));
+                return Err(DatabaseError::AttributeNotFound(
+                    attr.to_string(),
+                    "relation".to_string(),
+                ));
             }
         }
         Ok(())
@@ -502,7 +482,7 @@ impl Relation {
         &self,
         group_by: &[&str],
         aggregations: &[Aggregation],
-    ) -> Result<TupleType, SummarizeError> {
+    ) -> Result<TupleType, DatabaseError> {
         let mut result_heading = TupleType::new();
 
         // Add grouping attributes
@@ -518,7 +498,7 @@ impl Relation {
         // Add aggregation result attributes
         for agg in aggregations {
             if result_heading.has_attribute(&agg.result_name) {
-                return Err(SummarizeError::ResultAttributeExists(
+                return Err(DatabaseError::DuplicateAttributeName(
                     agg.result_name.clone(),
                 ));
             }
@@ -812,7 +792,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::GroupingAttributeNotFound(_)
+            DatabaseError::AttributeNotFound(_, _)
         ));
     }
 
@@ -834,7 +814,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::ResultAttributeExists(_)
+            DatabaseError::DuplicateAttributeName(_)
         ));
     }
 
@@ -856,7 +836,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationError(_)
+            DatabaseError::AlgebraError(_)
         ));
     }
 
@@ -878,7 +858,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationError(_)
+            DatabaseError::AlgebraError(_)
         ));
     }
 
@@ -918,7 +898,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationError(_)
+            DatabaseError::AlgebraError(_)
         ));
     }
 
@@ -938,7 +918,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationError(_)
+            DatabaseError::AlgebraError(_)
         ));
     }
 
@@ -963,7 +943,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationError(_)
+            DatabaseError::AlgebraError(_)
         ));
     }
 
@@ -988,7 +968,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            SummarizeError::AggregationError(_)
+            DatabaseError::AlgebraError(_)
         ));
     }
 
@@ -1107,7 +1087,7 @@ mod overflow_tests {
 
         assert!(result.is_err(), "Expected overflow error, got Ok");
         match result {
-            Err(SummarizeError::AggregationError(msg)) => {
+            Err(DatabaseError::AlgebraError(msg)) => {
                 assert!(
                     msg.contains("overflow"),
                     "Expected overflow message, got: {}",

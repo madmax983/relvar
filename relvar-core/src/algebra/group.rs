@@ -33,58 +33,12 @@
 //! assert_eq!(grouped.degree(), 2);  // dept_id and employees RVA
 //! ```
 
+use crate::error::DatabaseError;
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
-use thiserror::Error;
-
-/// Errors that can occur during group operations.
-#[derive(Debug, Error)]
-pub enum GroupError {
-    /// An attribute specified for grouping does not exist in the relation.
-    #[error("Grouping attribute '{0}' does not exist in relation")]
-    AttributeNotFound(String),
-
-    /// No attributes were specified for grouping.
-    #[error("No attributes specified for grouping")]
-    NoAttributesSpecified,
-
-    /// Cannot group all attributes - at least one must remain as a grouping key.
-    #[error("All attributes cannot be grouped (need at least one non-grouped attribute)")]
-    AllAttributesGrouped,
-
-    /// The name for the result RVA conflicts with an existing attribute.
-    #[error("Result attribute '{0}' already exists")]
-    ResultAttributeExists(String),
-
-    /// Failed to construct a tuple during the grouping process.
-    #[error("Failed to create grouped tuple: {0}")]
-    TupleCreation(String),
-}
-
-/// Errors that can occur during ungroup operations.
-#[derive(Debug, Error)]
-pub enum UngroupError {
-    /// The specified RVA attribute does not exist in the relation.
-    #[error("Attribute '{0}' does not exist in relation")]
-    AttributeNotFound(String),
-
-    /// The specified attribute is not a relation-valued attribute.
-    #[error("Attribute '{0}' is not a relation-valued attribute")]
-    NotRelationValued(String),
-
-    /// Failed to construct a tuple during the ungrouping process.
-    #[error("Failed to create ungrouped tuple: {0}")]
-    TupleCreation(String),
-}
 
 impl Relation {
-    /// Groups specified attributes into a relation-valued attribute.
-    ///
-    /// This operator collects tuples with matching values on the non-grouped
-    /// attributes and creates a nested relation (RVA) containing the grouped
-    /// attribute values.
-    ///
     /// # Arguments
     ///
     /// * `attrs_to_group` - The attribute names to collect into the RVA
@@ -97,11 +51,15 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// - [`GroupError::AttributeNotFound`] - A specified attribute doesn't exist
-    /// - [`GroupError::NoAttributesSpecified`] - Empty attributes list
-    /// - [`GroupError::AllAttributesGrouped`] - No grouping key attributes remain
-    /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts
-    pub fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError> {
+    /// - [`DatabaseError::AttributeNotFound`] - A specified attribute doesn't exist
+    /// - [`DatabaseError::AlgebraError("No attributes specified for grouping".to_string())`] - Empty attributes list
+    /// - [`DatabaseError::AlgebraError(msg) if msg == "All attributes cannot be grouped"`] - No grouping key attributes remain
+    /// - [`DatabaseError::ResultAttributeExists`] - RVA name conflicts
+    pub fn group(
+        &self,
+        attrs_to_group: &[&str],
+        rva_name: &str,
+    ) -> Result<Relation, DatabaseError> {
         // 1. Validate request and determine grouping attributes
         let grouping_attrs = validate_group_request(self, attrs_to_group, rva_name)?;
 
@@ -141,9 +99,9 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// - [`UngroupError::AttributeNotFound`] - The attribute doesn't exist
-    /// - [`UngroupError::NotRelationValued`] - The attribute is not an RVA
-    pub fn ungroup(&self, rva_name: &str) -> Result<Relation, UngroupError> {
+    /// - [`DatabaseError::AttributeNotFound`] - The attribute doesn't exist
+    /// - [`DatabaseError::NotRelationValued`] - The attribute is not an RVA
+    pub fn ungroup(&self, rva_name: &str) -> Result<Relation, DatabaseError> {
         // 1. Validate request and get RVA type
         let rva_relation_type = validate_ungroup_request(self, rva_name)?;
 
@@ -167,21 +125,28 @@ fn validate_group_request(
     relation: &Relation,
     attrs_to_group: &[&str],
     rva_name: &str,
-) -> Result<Vec<String>, GroupError> {
+) -> Result<Vec<String>, DatabaseError> {
     if attrs_to_group.is_empty() {
-        return Err(GroupError::NoAttributesSpecified);
+        return Err(DatabaseError::AlgebraError(
+            "No attributes specified for grouping".to_string(),
+        ));
     }
 
     // Validate all attributes exist
     for attr in attrs_to_group {
         if !relation.relation_type().has_attribute(attr) {
-            return Err(GroupError::AttributeNotFound(attr.to_string()));
+            return Err(DatabaseError::AttributeNotFound(
+                attr.to_string(),
+                "relation".to_string(),
+            ));
         }
     }
 
     // Check that we're not grouping all attributes
     if attrs_to_group.len() == relation.relation_type().degree() {
-        return Err(GroupError::AllAttributesGrouped);
+        return Err(DatabaseError::AlgebraError(
+            "All attributes cannot be grouped".to_string(),
+        ));
     }
 
     // Determine grouping attributes (the ones NOT being grouped into RVA)
@@ -201,7 +166,7 @@ fn validate_group_request(
     // Note: We check against the resulting heading, which contains grouping attributes + RVA name
     // If rva_name is one of the grouping attributes, that's a conflict.
     if grouping_attrs.contains(&rva_name.to_string()) {
-        return Err(GroupError::ResultAttributeExists(rva_name.to_string()));
+        return Err(DatabaseError::DuplicateAttributeName(rva_name.to_string()));
     }
 
     Ok(grouping_attrs)
@@ -212,7 +177,7 @@ fn build_group_result_heading(
     grouping_attrs: &[String],
     attrs_to_group: &[&str],
     rva_name: &str,
-) -> Result<(TupleType, TupleType), GroupError> {
+) -> Result<(TupleType, TupleType), DatabaseError> {
     // Build result heading
     let mut result_heading = TupleType::new();
 
@@ -253,7 +218,7 @@ fn compute_grouped_tuples(
     result_heading: &TupleType,
     rva_heading: &TupleType,
     rva_name: &str,
-) -> Result<Vec<Tuple>, GroupError> {
+) -> Result<Vec<Tuple>, DatabaseError> {
     let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
@@ -305,10 +270,13 @@ fn compute_grouped_tuples(
 fn validate_ungroup_request(
     relation: &Relation,
     rva_name: &str,
-) -> Result<RelationType, UngroupError> {
+) -> Result<RelationType, DatabaseError> {
     // Check attribute exists
     if !relation.relation_type().has_attribute(rva_name) {
-        return Err(UngroupError::AttributeNotFound(rva_name.to_string()));
+        return Err(DatabaseError::AttributeNotFound(
+            rva_name.to_string(),
+            "relation".to_string(),
+        ));
     }
 
     // Get the RVA type
@@ -320,7 +288,10 @@ fn validate_ungroup_request(
 
     match rva_type {
         ScalarType::Relation(rel_type) => Ok(*rel_type.clone()),
-        _ => Err(UngroupError::NotRelationValued(rva_name.to_string())),
+        _ => Err(DatabaseError::AlgebraError(format!(
+            "Attribute '{}' is not a relation-valued attribute",
+            rva_name
+        ))),
     }
 }
 
@@ -328,7 +299,7 @@ fn build_ungroup_result_heading(
     relation: &Relation,
     rva_name: &str,
     rva_relation_type: &RelationType,
-) -> Result<TupleType, UngroupError> {
+) -> Result<TupleType, DatabaseError> {
     let mut result_heading = TupleType::new();
 
     // Add non-RVA attributes
@@ -361,7 +332,7 @@ fn compute_ungrouped_tuples(
     rva_name: &str,
     result_heading: &TupleType,
     rva_relation_type: &RelationType,
-) -> Result<Vec<Tuple>, UngroupError> {
+) -> Result<Vec<Tuple>, DatabaseError> {
     // Optimization: Pre-allocate capacity based on relation.cardinality() to reduce vector re-allocations.
     let mut result_tuples = Vec::with_capacity(relation.cardinality());
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
@@ -370,7 +341,12 @@ fn compute_ungrouped_tuples(
         // Get the RVA relation
         let rva_relation = match tuple.get(rva_name).unwrap() {
             ScalarValue::Relation(rel) => rel,
-            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
+            _ => {
+                return Err(DatabaseError::AlgebraError(format!(
+                    "Attribute '{}' is not a relation-valued attribute",
+                    rva_name
+                )));
+            }
         };
 
         // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
@@ -574,7 +550,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            GroupError::AttributeNotFound(_)
+            DatabaseError::AttributeNotFound(_, _)
         ));
     }
 
@@ -592,7 +568,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            GroupError::AllAttributesGrouped
+            DatabaseError::AlgebraError(msg) if msg == "All attributes cannot be grouped"
         ));
     }
 
@@ -610,7 +586,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            UngroupError::AttributeNotFound(_)
+            DatabaseError::AttributeNotFound(_, _)
         ));
     }
 
@@ -632,7 +608,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            UngroupError::NotRelationValued(_)
+            DatabaseError::AlgebraError(msg) if msg.starts_with("Attribute")
         ));
     }
 
