@@ -116,7 +116,12 @@ impl Relation {
         let joined_tuples =
             perform_hash_join(build_rel, probe_rel, &common_attrs, &result_heading_arc)?;
 
-        Ok(Relation::from_tuples(result_rel_type, joined_tuples)?)
+        // Optimization: Pass the iterator directly to `from_tuples_unchecked`.
+        // The joined tuples are guaranteed to conform to the result relation type.
+        Ok(Relation::from_tuples_unchecked(
+            result_rel_type,
+            joined_tuples,
+        ))
     }
 
     /// Performs a theta join with another relation using an arbitrary predicate.
@@ -230,8 +235,9 @@ impl Relation {
         // Perform theta join
         let joined_tuples = compute_theta_join_tuples(self, other, predicate, &result_heading_arc);
 
-        Relation::from_tuples(result_rel_type, joined_tuples)
-            .expect("Joined tuples should conform to result relation type")
+        // Optimization: Pass the iterator directly to `from_tuples_unchecked`.
+        // The joined tuples are guaranteed to conform to the result relation type.
+        Relation::from_tuples_unchecked(result_rel_type, joined_tuples)
     }
 }
 
