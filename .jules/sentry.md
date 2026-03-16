@@ -59,3 +59,6 @@
 ## 2025-03-14 - ConstraintManager Coverage Gaps
 **Learning:** Multiple functions in `ConstraintManager` relating to evaluating constraints natively against individual tuples, checking constraint preconditions prior to setup, and handling dependent foreign key updates via `validate_referencing_foreign_keys` were completely unexercised. This leaves open logic flaws where an update sequence may evaluate validations improperly.
 **Action:** When implementing database or storage engine layers, constraint logic generally needs comprehensive functional integration tests since unit tests on the constraint primitives rarely stress the engine orchestration itself, leading to gaps in `manager.rs`.
+## 2025-03-16 - Virtual Relvars Evaluation and Database Error Coverage
+**Learning:** Found several untested code paths regarding the mutability limitations of `VirtualRelvarDefinition` (preventing mutation because `evaluator` takes an immutable reference but error mapping missing tests), and transaction nesting issues inside `relvar-core/src/database/mod.rs` mapping to `DatabaseError::TransactionError`.
+**Action:** When working on APIs containing view-like concepts (`virtual_relvars`), ensure the evaluation error paths are fully tested. When implementing Database transactions, ensure explicit testing for double-begin and missing-begin cases for commits and rollbacks.
