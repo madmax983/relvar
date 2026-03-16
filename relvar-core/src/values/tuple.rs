@@ -253,6 +253,11 @@ impl Tuple {
         &self.values
     }
 
+    /// Consumes the tuple and returns its values
+    pub fn into_values(self) -> BTreeMap<String, ScalarValue> {
+        self.values
+    }
+
     /// Get the degree (number of attributes)
     pub fn degree(&self) -> usize {
         self.values.len()

@@ -186,7 +186,7 @@ impl Query {
             Query::Project { input, attributes } => {
                 let relation = input.execute(db)?;
                 let attrs_ref: Vec<&str> = attributes.iter().map(|s| s.as_str()).collect();
-                Ok(relation.project(&attrs_ref))
+                Ok(relation.project_into(&attrs_ref))
             }
             Query::Rename { input, mappings } => {
                 let relation = input.execute(db)?;
