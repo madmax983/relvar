@@ -16,3 +16,7 @@
 **Bloat:** The `Pivot` trait in `relvar/src/experimental/pivot.rs` was a single-implementation trait applied only to `Relation`.
 **Cut:** Removed the `Pivot` trait and its `impl` block, converting it into a concrete, standalone function `pub fn pivot(relation: &Relation, ...)`.
 **Saved:** Reduced boilerplate, flattened abstraction, simplified method resolution, and removed a "One-Time Trait."
+## [Reduction]
+**Bloat:** `SlotDescriptor` and `MutableSlot` traits in `relvar-storage/src/storage/heap.rs`. They were "One-Time Traits" implemented only by `SlotEntry` and `VersionedSlotEntry`, adding unnecessary abstraction and indirection.
+**Cut:** Removed the traits and their implementations. Duplicated `repack_slots`, `extract_tuples_from_slots`, and `extract_all_tuples` to have specific versions for `SlotEntry` and `VersionedSlotEntry`.
+**Saved:** ~25 lines of code, simplified the internal heap API, reduced cognitive load.
