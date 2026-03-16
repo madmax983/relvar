@@ -12,6 +12,7 @@
 //! - **[`matrix`](crate::experimental::matrix)**: Relational Linear Algebra (Sparse Matrices).
 //! - **[`mock`](crate::experimental::mock)**: Tools for generating random relations for testing.
 //! - **[`pivot`](crate::experimental::pivot)**: Operator to rotate unique values from one column into multiple columns.
+//! - **[`recommend`](crate::experimental::recommend)**: Relational Recommender System (Collaborative Filtering).
 //! - **[`search`](crate::experimental::search)**: Relational Full-Text Search.
 //! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
@@ -23,6 +24,7 @@ pub mod image;
 pub mod matrix;
 pub mod mock;
 pub mod pivot;
+pub mod recommend;
 pub mod search;
 pub mod spatial;
 pub mod timeseries;
