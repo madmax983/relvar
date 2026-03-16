@@ -1,3 +1,4 @@
+use crate::types::RelationType;
 use super::*;
 use crate::constraints::ConstraintManagerError;
 use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
