@@ -122,7 +122,9 @@ impl Pivot for Relation {
         // Scan for new columns
         let mut new_columns = BTreeSet::new();
         for tuple in self.tuples() {
-            let val = tuple.get(on_attr).unwrap();
+            let val = tuple.get(on_attr).ok_or_else(|| {
+                DatabaseError::AlgebraError(format!("Missing on_attr attribute {}", on_attr))
+            })?;
             let col_name = scalar_to_string_key(val)?;
             new_columns.insert(col_name);
         }
@@ -140,11 +142,15 @@ impl Pivot for Relation {
         // Construct new heading
         let mut new_heading = TupleType::new();
         for attr in &group_attrs {
-            let ty = heading.get_attribute_type(attr).unwrap();
+            let ty = heading.get_attribute_type(attr).ok_or_else(|| {
+                DatabaseError::AlgebraError(format!("Missing group attribute {}", attr))
+            })?;
             new_heading = new_heading.with_attribute(attr, ty.clone());
         }
 
-        let value_type = heading.get_attribute_type(value_attr).unwrap();
+        let value_type = heading.get_attribute_type(value_attr).ok_or_else(|| {
+            DatabaseError::AlgebraError(format!("Missing value_attr attribute {}", value_attr))
+        })?;
         if !default_value.is_type(value_type) {
             return Err(DatabaseError::AlgebraError(format!(
                 "Default value type ({:?}) mismatch with value attribute ({:?})",
@@ -170,12 +176,26 @@ impl Pivot for Relation {
         for tuple in sorted_tuples {
             let mut group_key = Vec::with_capacity(group_attrs.len());
             for attr in &group_attrs {
-                group_key.push(tuple.get(attr).unwrap().clone());
+                group_key.push(
+                    tuple
+                        .get(attr)
+                        .ok_or_else(|| {
+                            DatabaseError::AlgebraError(format!("Missing attr {}", attr))
+                        })?
+                        .clone(),
+                );
             }
 
-            let pivot_val = tuple.get(on_attr).unwrap();
+            let pivot_val = tuple.get(on_attr).ok_or_else(|| {
+                DatabaseError::AlgebraError(format!("Missing on_attr {}", on_attr))
+            })?;
             let col_name = scalar_to_string_key(pivot_val)?;
-            let cell_val = tuple.get(value_attr).unwrap().clone();
+            let cell_val = tuple
+                .get(value_attr)
+                .ok_or_else(|| {
+                    DatabaseError::AlgebraError(format!("Missing value_attr {}", value_attr))
+                })?
+                .clone();
 
             groups
                 .entry(group_key)

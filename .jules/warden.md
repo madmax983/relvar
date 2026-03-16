@@ -187,3 +187,11 @@ The `postcard` dependency (version 1.1.3) enabled the `heapless-cas` and `heaple
 
 **Defense:**
 Modified `Cargo.toml` to disable the default features of `postcard` by specifying `default-features = false`, explicitly only retaining the required `alloc` and `use-std` features. This eliminates the `heapless` and `atomic-polyfill` dependencies entirely, mitigating the risk of relying on an unmaintained crate.
+## 2026-03-04 - Experimental Operator DoS Panics
+**Threat:**
+Several experimental data processing operators (`image.rs`, `matrix.rs`, `automl.rs`, `graph.rs`, `search.rs`, `pivot.rs`, etc.) accepted generic `Relation` inputs but failed to safely validate or handle missing/incorrectly-typed attributes. Calling `tuple.get_typed::<T>(...).unwrap()` caused thread panics when fed malformed or unexpected schemas, leading to Denial of Service (DoS) vulnerabilities if an attacker provided crafted inputs to these functions.
+
+**Defense:**
+1. Replaced unsafe `.unwrap()` calls inside fallible contexts (like `automl.rs` `train` and `pivot.rs` `pivot` iterators) with explicit error propagation: `.ok_or_else(|| DatabaseError::AlgebraError(...))?`.
+2. For infallible mapping contexts where `Result` cannot be returned (e.g., inside `.extend` closures in `image.rs`, `matrix.rs`, `graph.rs`), replaced `.unwrap()` with safe fallbacks like `.unwrap_or(0)`.
+3. Created `relvar/tests/warden_exploit_experimental_dos.rs` to ensure malformed relations trigger clean errors or fallbacks instead of panicking.

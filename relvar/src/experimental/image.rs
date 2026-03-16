@@ -181,12 +181,12 @@ impl ImageProcessor {
             // Extend 1: Calculate target coordinates
             let with_coords = relation
                 .extend("tx", ScalarType::Int, move |t| {
-                    let x = t.get_typed::<i64>("x").unwrap();
+                    let x = t.get_typed::<i64>("x").unwrap_or(0);
                     ScalarValue::Int(x + dx)
                 })
                 .unwrap()
                 .extend("ty", ScalarType::Int, move |t| {
-                    let y = t.get_typed::<i64>("y").unwrap();
+                    let y = t.get_typed::<i64>("y").unwrap_or(0);
                     ScalarValue::Int(y + dy)
                 })
                 .unwrap();
@@ -194,17 +194,17 @@ impl ImageProcessor {
             // Extend 2: Calculate weighted color components
             let with_weights = with_coords
                 .extend("wr", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("r").unwrap();
+                    let v = t.get_typed::<i64>("r").unwrap_or(0);
                     ScalarValue::Int(v * weight)
                 })
                 .unwrap()
                 .extend("wg", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("g").unwrap();
+                    let v = t.get_typed::<i64>("g").unwrap_or(0);
                     ScalarValue::Int(v * weight)
                 })
                 .unwrap()
                 .extend("wb", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("b").unwrap();
+                    let v = t.get_typed::<i64>("b").unwrap_or(0);
                     ScalarValue::Int(v * weight)
                 })
                 .unwrap();
@@ -257,17 +257,17 @@ impl ImageProcessor {
         // Extend with final values: sum / total_weight
         let normalized = summarized
             .extend("final_r", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_r").unwrap();
+                let s = t.get_typed::<i64>("sum_r").unwrap_or(0);
                 ScalarValue::Int(s / total_weight)
             })
             .unwrap()
             .extend("final_g", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_g").unwrap();
+                let s = t.get_typed::<i64>("sum_g").unwrap_or(0);
                 ScalarValue::Int(s / total_weight)
             })
             .unwrap()
             .extend("final_b", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_b").unwrap();
+                let s = t.get_typed::<i64>("sum_b").unwrap_or(0);
                 ScalarValue::Int(s / total_weight)
             })
             .unwrap();
@@ -339,21 +339,21 @@ mod tests {
         // Only check pixels that are within the original 3x3 bounds.
         // The convolution expands the domain, so we filter.
         let relevant_tuples = blurred.tuples().filter(|t| {
-            let x = t.get_typed::<i64>("x").unwrap();
-            let y = t.get_typed::<i64>("y").unwrap();
+            let x = t.get_typed::<i64>("x").unwrap_or(0);
+            let y = t.get_typed::<i64>("y").unwrap_or(0);
             x >= 0 && x < width as i64 && y >= 0 && y < height as i64
         });
 
         let mut count = 0;
         for tuple in relevant_tuples {
             count += 1;
-            let r = tuple.get_typed::<i64>("r").unwrap();
+            let r = tuple.get_typed::<i64>("r").unwrap_or(0);
             assert_eq!(
                 r,
                 28,
                 "Pixel at ({}, {}) should be 255/9 = 28",
-                tuple.get_typed::<i64>("x").unwrap(),
-                tuple.get_typed::<i64>("y").unwrap()
+                tuple.get_typed::<i64>("x").unwrap_or(0),
+                tuple.get_typed::<i64>("y").unwrap_or(0)
             );
         }
         assert_eq!(count, 9, "Should have 9 pixels in the 3x3 grid");
