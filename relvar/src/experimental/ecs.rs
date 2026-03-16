@@ -54,7 +54,8 @@
 //! is dropped, this counter is lost. When using a persistent engine, you must manually manage
 //! entity ID generation or serialize the `World` state to persist this counter.
 
-use relvar_core::database::{Database, DatabaseError};
+use relvar_core::DatabaseError;
+use relvar_core::database::Database;
 use relvar_core::storage_engine::StorageEngine;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{ScalarValue, Tuple};
