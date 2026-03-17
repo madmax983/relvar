@@ -1130,3 +1130,79 @@ fn test_virtual_relvar_immutability_enforcement() {
     // Query the view
     assert!(db.query("SAFE_VIEW").is_ok());
 }
+
+#[test]
+fn test_get_relvar_type() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+    // Test base relvar
+    db.create_relvar("BASE", test_rel_type()).unwrap();
+    let base_type = db.get_relvar_type("BASE").unwrap();
+    assert_eq!(base_type, test_rel_type());
+
+    // Test virtual relvar
+    db.define_virtual_relvar("VIRTUAL", test_rel_type(), |db| db.query("BASE"))
+        .unwrap();
+    let virtual_type = db.get_relvar_type("VIRTUAL").unwrap();
+    assert_eq!(virtual_type, test_rel_type());
+
+    // Test missing relvar
+    let result = db.get_relvar_type("NONEXISTENT");
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Storage(_))));
+}
+
+#[test]
+fn test_transaction_errors() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+    // Test commit when not in transaction
+    let result = db.commit();
+    assert!(result.is_err());
+    assert!(
+        matches!(result, Err(DatabaseError::TransactionError(msg)) if msg == "No transaction in progress")
+    );
+
+    // Test rollback when not in transaction
+    let result = db.rollback();
+    assert!(result.is_err());
+    assert!(
+        matches!(result, Err(DatabaseError::TransactionError(msg)) if msg == "No transaction in progress")
+    );
+
+    // Test nested begin
+    db.begin().unwrap();
+    let result = db.begin();
+    assert!(result.is_err());
+    assert!(
+        matches!(result, Err(DatabaseError::TransactionError(msg)) if msg == "Transaction already in progress")
+    );
+}
+
+#[test]
+fn test_define_virtual_relvar_already_exists() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+    // Create base relvar
+    db.create_relvar("BASE", test_rel_type()).unwrap();
+
+    // Define virtual relvar
+    db.define_virtual_relvar("VIRTUAL", test_rel_type(), |db| db.query("BASE"))
+        .unwrap();
+
+    // Try to redefine virtual relvar
+    let result = db.define_virtual_relvar("VIRTUAL", test_rel_type(), |db| db.query("BASE"));
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::RelationAlreadyExists(_))
+    ));
+
+    // Try to define virtual relvar with same name as base relvar
+    let result = db.define_virtual_relvar("BASE", test_rel_type(), |db| db.query("BASE"));
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::RelationAlreadyExists(_))
+    ));
+}
