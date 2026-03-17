@@ -105,7 +105,8 @@ impl Relation {
         // exactly one new tuple for each input tuple. Pre-allocating the HashSet
         // avoids dynamic heap reallocations when collecting the results.
         // We iterate directly into a pre-sized HashSet and construct the relation
-        // using `from_tuples_unchecked` to safely bypass redundant O(N) validation overhead.
+        // using `from_body_unchecked` to avoid any redundant internal reallocation or
+        // O(N) validation overhead.
         let mut extended_tuples = std::collections::HashSet::with_capacity(self.cardinality());
         for tuple in self.tuples() {
             extended_tuples.insert(create_extended_tuple(
@@ -122,10 +123,7 @@ impl Relation {
         // - new_rel_type uses new_heading
         // - Tuples are created with new_heading in create_extended_tuple
         // - create_extended_tuple ensures the computed value type matches
-        Ok(Relation::from_tuples_unchecked(
-            new_rel_type,
-            extended_tuples,
-        ))
+        Ok(Relation::from_body_unchecked(new_rel_type, extended_tuples))
     }
 }
 
