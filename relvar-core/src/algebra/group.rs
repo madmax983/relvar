@@ -366,20 +366,37 @@ fn build_ungroup_result_heading(
     Ok(result_heading)
 }
 
+/// # Performance
+///
+/// Pre-allocates the `result_tuples` vector using `Vec::with_capacity(expected_capacity)`.
+/// Because the exact number of output tuples is determined by the sum of the cardinalities
+/// of the nested relation-valued attributes (RVAs), this prevents dynamic heap reallocations
+/// when constructing the resulting relation. The first pass over the input tuples accurately
+/// calculates this bound in O(N log A) time, saving the O(M) reallocation overhead where
+/// M is the total number of ungrouped tuples.
 fn compute_ungrouped_tuples(
     relation: &Relation,
     rva_name: &str,
     result_heading: &TupleType,
     rva_relation_type: &RelationType,
 ) -> Result<Vec<Tuple>, UngroupError> {
-    let mut result_tuples = Vec::new();
+    let mut expected_capacity = 0;
+    // O(N) pass to calculate the exact capacity required.
+    for tuple in relation.tuples() {
+        match tuple.get(rva_name).unwrap() {
+            ScalarValue::Relation(rel) => expected_capacity += rel.cardinality(),
+            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
+        }
+    }
+
+    let mut result_tuples = Vec::with_capacity(expected_capacity);
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
     for tuple in relation.tuples() {
         // Get the RVA relation
         let rva_relation = match tuple.get(rva_name).unwrap() {
             ScalarValue::Relation(rel) => rel,
-            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
+            _ => unreachable!("Already validated as relation"),
         };
 
         // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
