@@ -16,6 +16,9 @@ use std::path::Path;
 /// This allows batching many small records before flushing to disk.
 pub const DEFAULT_BUFFER_SIZE: usize = 1024 * 1024;
 
+/// Maximum allowed WAL file size (2GB) to prevent Allocation Bomb DoS.
+pub const MAX_WAL_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Header written at the start of each WAL file.
 ///
 /// Used for basic validation and version checking during recovery.
@@ -231,6 +234,14 @@ impl WalManager {
         let mut records = Vec::new();
         let mut buffer = Vec::new();
 
+        // Prevent Allocation Bomb DoS
+        if self.log_file.metadata()?.len() > MAX_WAL_SIZE {
+            return Err(WalError::Io(std::io::Error::new(
+                std::io::ErrorKind::FileTooLarge,
+                "WAL file exceeds maximum allowed size (2GB)",
+            )));
+        }
+
         // Read entire file into buffer
         self.log_file.read_to_end(&mut buffer)?;
 
@@ -298,6 +309,15 @@ impl WalManager {
         log_file.seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
 
         let mut buffer = Vec::new();
+
+        // Prevent Allocation Bomb DoS
+        if log_file.metadata()?.len() > MAX_WAL_SIZE {
+            return Err(WalError::Io(std::io::Error::new(
+                std::io::ErrorKind::FileTooLarge,
+                "WAL file exceeds maximum allowed size (2GB)",
+            )));
+        }
+
         log_file.read_to_end(&mut buffer)?;
 
         let mut last_lsn = Lsn::new(0);
@@ -450,6 +470,47 @@ mod tests {
         let result = wal.scan();
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_open_wal_size_limit_dos() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+
+        // Create a WAL file that is exactly MAX_WAL_SIZE + 1 bytes.
+        // We use set_len to make it a sparse file, which instantly "creates"
+        // a massive file without actually consuming disk space, perfectly
+        // simulating the DoS attack vector.
+        {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&path)
+                .unwrap();
+            use std::io::Write;
+
+            // Write valid magic header so it passes the first check
+            file.write_all(WAL_MAGIC).unwrap();
+
+            // Make the file massive to trigger the Allocation Bomb protection
+            file.set_len(MAX_WAL_SIZE + 1).unwrap();
+        }
+
+        // Attempting to open it should fail immediately with our custom Io error
+        let result = WalManager::open(&path);
+
+        assert!(result.is_err());
+        match result {
+            Err(WalError::Io(err)) => {
+                assert_eq!(err.kind(), std::io::ErrorKind::FileTooLarge);
+                assert_eq!(
+                    format!("{}", err),
+                    "WAL file exceeds maximum allowed size (2GB)"
+                );
+            }
+            _ => panic!("Expected Io error with FileTooLarge kind, got Ok"),
+        }
     }
 
     #[test]
