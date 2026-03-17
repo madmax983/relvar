@@ -345,6 +345,19 @@ impl ConstraintManager {
         Ok(())
     }
 
+    /// Validate constraints that depend only on the tuple's content and foreign keys
+    /// against a full relation.
+    pub fn validate_tuple_content_constraints_bulk<E: StorageEngine>(
+        &self,
+        engine: &mut E,
+        relation_name: &str,
+        relation: &Relation,
+    ) -> Result<(), ConstraintManagerError> {
+        relation.tuples().try_for_each(|tuple| {
+            self.validate_tuple_content_constraints(engine, relation_name, tuple)
+        })
+    }
+
     /// Validate constraints that depend only on the tuple's content and foreign keys.
     ///
     /// This includes Type constraints, CHECK constraints, and Foreign Key constraints.
