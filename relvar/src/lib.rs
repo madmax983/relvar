@@ -126,7 +126,8 @@
 pub mod prelude;
 
 // Core Components
-pub use relvar_core::database::{Database, DatabaseError};
+pub use relvar_core::DatabaseError;
+pub use relvar_core::database::Database;
 pub use relvar_core::query::{Query, QueryError};
 pub use relvar_core::types::{RelationType, ScalarType, TupleType};
 pub use relvar_core::values::{Relation, ScalarValue, Tuple};

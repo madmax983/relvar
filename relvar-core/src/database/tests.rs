@@ -1,10 +1,13 @@
-use super::*;
 use crate::constraints::ConstraintManagerError;
 use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
 use crate::constraints::{CheckConstraint, CheckConstraints};
+use crate::database::Database;
+use crate::error::DatabaseError;
 use crate::storage_engine::{InMemoryEngine, StorageError};
 use crate::tuple;
+use crate::types::RelationType;
 use crate::types::{ScalarType, TupleType};
+use crate::values::Relation;
 use crate::values::ScalarValue;
 
 fn test_rel_type() -> RelationType {
