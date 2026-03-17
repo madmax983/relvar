@@ -148,8 +148,10 @@ impl Relation {
         // Return result relation
         use crate::types::RelationType;
         let result_type = RelationType::new(candidates.relation_type().heading().clone());
-        Ok(Relation::from_tuples(result_type, result_tuples)
-            .expect("Result tuples should conform to result type"))
+
+        // Optimization: The result tuples are a subset of candidate tuples,
+        // which were already constructed to conform to result_type (the projection heading).
+        Ok(Relation::from_tuples_unchecked(result_type, result_tuples))
     }
 }
 

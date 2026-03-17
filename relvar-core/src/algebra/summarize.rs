@@ -470,8 +470,13 @@ impl Relation {
         let result_tuples =
             self.compute_summarized_tuples(group_by, aggregations, &groups, &result_heading_arc)?;
 
-        Ok(Relation::from_tuples(result_rel_type, result_tuples)
-            .expect("Summarized tuples should conform to result relation type"))
+        // Optimization: Pass the iterator directly to `from_tuples_unchecked`
+        // instead of collecting into an intermediate `Vec`. The tuples are
+        // guaranteed to be valid since they were constructed with `result_heading_arc`.
+        Ok(Relation::from_tuples_unchecked(
+            result_rel_type,
+            result_tuples,
+        ))
     }
 
     fn compute_summarized_tuples(

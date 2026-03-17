@@ -119,10 +119,12 @@ impl Relation {
             rva_name,
         )?;
 
-        Ok(
-            Relation::from_tuples(RelationType::new(result_heading), result_tuples)
-                .expect("Grouped tuples should conform to result relation type"),
-        )
+        // Optimization: the tuples returned by `compute_grouped_tuples` are
+        // guaranteed to be valid since they were constructed with `result_heading`.
+        Ok(Relation::from_tuples_unchecked(
+            RelationType::new(result_heading),
+            result_tuples,
+        ))
     }
 
     /// Ungroups a relation-valued attribute back into regular attributes.
@@ -154,10 +156,12 @@ impl Relation {
         let result_tuples =
             compute_ungrouped_tuples(self, rva_name, &result_heading, &rva_relation_type)?;
 
-        Ok(
-            Relation::from_tuples(RelationType::new(result_heading), result_tuples)
-                .expect("Ungrouped tuples should conform to result relation type"),
-        )
+        // Optimization: the tuples returned by `compute_ungrouped_tuples` are
+        // guaranteed to be valid since they were constructed with `result_heading`.
+        Ok(Relation::from_tuples_unchecked(
+            RelationType::new(result_heading),
+            result_tuples,
+        ))
     }
 }
 
@@ -294,8 +298,9 @@ fn compute_grouped_tuples(
         }
 
         // Create RVA relation
-        let rva_relation = Relation::from_tuples(rva_relation_type.clone(), rva_tuples)
-            .map_err(|e| GroupError::TupleCreation(e.to_string()))?;
+        // Optimization: the tuples returned by the grouping step are guaranteed to be valid
+        // since they were constructed with `rva_heading_arc`.
+        let rva_relation = Relation::from_tuples_unchecked(rva_relation_type.clone(), rva_tuples);
         values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
 
         let tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
