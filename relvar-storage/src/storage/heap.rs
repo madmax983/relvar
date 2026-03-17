@@ -165,19 +165,7 @@ struct VersionedSlotEntry {
     prev_version: Option<TupleId>,
 }
 
-/// Helper trait to abstract over SlotEntry and VersionedSlotEntry
-trait SlotDescriptor {
-    fn offset(&self) -> u32;
-    fn length(&self) -> u32;
-}
-
-/// Helper trait to abstract over SlotEntry and VersionedSlotEntry modifications
-trait MutableSlot: SlotDescriptor {
-    fn set_offset(&mut self, offset: u32);
-    fn set_length(&mut self, length: u32);
-}
-
-impl SlotDescriptor for SlotEntry {
+impl SlotEntry {
     fn offset(&self) -> u32 {
         self.offset
     }
@@ -185,9 +173,7 @@ impl SlotDescriptor for SlotEntry {
     fn length(&self) -> u32 {
         self.length
     }
-}
 
-impl MutableSlot for SlotEntry {
     fn set_offset(&mut self, offset: u32) {
         self.offset = offset;
     }
@@ -197,7 +183,7 @@ impl MutableSlot for SlotEntry {
     }
 }
 
-impl SlotDescriptor for VersionedSlotEntry {
+impl VersionedSlotEntry {
     fn offset(&self) -> u32 {
         self.offset
     }
@@ -205,9 +191,7 @@ impl SlotDescriptor for VersionedSlotEntry {
     fn length(&self) -> u32 {
         self.length
     }
-}
 
-impl MutableSlot for VersionedSlotEntry {
     fn set_offset(&mut self, offset: u32) {
         self.offset = offset;
     }
@@ -335,8 +319,33 @@ impl HeapFile {
     /// Helper to repack slots and calculate offsets.
     /// Iterates backward from the end of the available space.
     /// Assumes slots are already populated (Some) for valid tuples.
-    fn repack_slots<T: MutableSlot>(
-        slots: &mut [Option<T>],
+    fn repack_slots(
+        slots: &mut [Option<SlotEntry>],
+        tuples: &[Vec<u8>],
+        usable_size: usize,
+    ) -> Result<(), HeapError> {
+        let mut current_offset = usable_size;
+        for (idx, tuple) in tuples.iter().enumerate().rev() {
+            if tuple.is_empty() {
+                continue;
+            }
+
+            if let Some(slot) = slots.get_mut(idx).and_then(|s| s.as_mut()) {
+                current_offset = current_offset
+                    .checked_sub(tuple.len())
+                    .ok_or(HeapError::PageFull)?;
+                slot.set_offset(current_offset as u32);
+                slot.set_length(tuple.len() as u32);
+            }
+        }
+        Ok(())
+    }
+
+    /// Helper to repack versioned slots and calculate offsets.
+    /// Iterates backward from the end of the available space.
+    /// Assumes slots are already populated (Some) for valid tuples.
+    fn repack_versioned_slots(
+        slots: &mut [Option<VersionedSlotEntry>],
         tuples: &[Vec<u8>],
         usable_size: usize,
     ) -> Result<(), HeapError> {
@@ -370,14 +379,30 @@ impl HeapFile {
     }
 
     /// Helper to extract tuples from a sequence of slots.
-    fn extract_tuples_from_slots<'a, I, S>(
+    fn extract_tuples_from_slots<'a, I>(
         &self,
         page: &Page,
         slots: I,
     ) -> Result<Vec<Tuple>, HeapError>
     where
-        I: Iterator<Item = &'a S>,
-        S: SlotDescriptor + 'a,
+        I: Iterator<Item = &'a SlotEntry>,
+    {
+        let mut results = Vec::new();
+        for slot in slots {
+            let tuple = self.extract_tuple_from_page(page, slot.offset(), slot.length())?;
+            results.push(tuple);
+        }
+        Ok(results)
+    }
+
+    /// Helper to extract tuples from a sequence of versioned slots.
+    fn extract_tuples_from_versioned_slots<'a, I>(
+        &self,
+        page: &Page,
+        slots: I,
+    ) -> Result<Vec<Tuple>, HeapError>
+    where
+        I: Iterator<Item = &'a VersionedSlotEntry>,
     {
         let mut results = Vec::new();
         for slot in slots {
@@ -389,10 +414,31 @@ impl HeapFile {
 
     /// Helper to extract all tuples from a page based on slot entries.
     /// This abstracts the common logic used in insert, update, delete, and GC operations.
-    fn extract_all_tuples<T: SlotDescriptor>(
+    fn extract_all_tuples(
         &self,
         page: &Page,
-        slots: &[Option<T>],
+        slots: &[Option<SlotEntry>],
+    ) -> Result<Vec<Vec<u8>>, HeapError> {
+        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
+        // Maintain alignment with slots: push empty Vec for None slots
+        for slot_option in slots.iter() {
+            if let Some(slot_entry) = slot_option {
+                let raw_data =
+                    self.extract_raw_tuple_data(page, slot_entry.offset(), slot_entry.length())?;
+                existing_tuples.push(raw_data);
+            } else {
+                existing_tuples.push(Vec::new());
+            }
+        }
+        Ok(existing_tuples)
+    }
+
+    /// Helper to extract all tuples from a page based on versioned slot entries.
+    /// This abstracts the common logic used in insert, update, delete, and GC operations.
+    fn extract_all_versioned_tuples(
+        &self,
+        page: &Page,
+        slots: &[Option<VersionedSlotEntry>],
     ) -> Result<Vec<Vec<u8>>, HeapError> {
         let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
         // Maintain alignment with slots: push empty Vec for None slots
@@ -628,9 +674,10 @@ impl HeapFile {
             if self.is_versioned_page(&page) {
                 // Versioned page format (MVCC)
                 let versioned_page = self.deserialize_versioned_page(&page)?;
-                results.extend(
-                    self.extract_tuples_from_slots(&page, versioned_page.slots.iter().flatten())?,
-                );
+                results.extend(self.extract_tuples_from_versioned_slots(
+                    &page,
+                    versioned_page.slots.iter().flatten(),
+                )?);
             } else {
                 // Old slotted page format (non-MVCC)
                 let slotted_page = self.deserialize_slotted_page(&page)?;
@@ -787,7 +834,7 @@ impl HeapFile {
             )
         } else {
             let vp = self.deserialize_versioned_page(&page)?;
-            let tuples = self.extract_all_tuples(&page, &vp.slots)?;
+            let tuples = self.extract_all_versioned_tuples(&page, &vp.slots)?;
             (vp, tuples)
         };
 
@@ -826,7 +873,7 @@ impl HeapFile {
         }
 
         // Repack slots
-        Self::repack_slots(
+        Self::repack_versioned_slots(
             &mut versioned_page.slots,
             &existing_tuples,
             USABLE_PAGE_SIZE_V2,
@@ -1074,7 +1121,7 @@ impl HeapFile {
         old_slot.xmax = Some(txn_id);
 
         // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
+        let existing_tuples = self.extract_all_versioned_tuples(&page, &versioned_page.slots)?;
 
         // Serialize and write updated page with old version marked
         let page_data =
@@ -1144,7 +1191,7 @@ impl HeapFile {
         slot.xmax = Some(txn_id);
 
         // Extract all existing tuple data
-        let existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
+        let existing_tuples = self.extract_all_versioned_tuples(&page, &versioned_page.slots)?;
 
         // Serialize and write updated page
         let page_data =
@@ -1202,7 +1249,8 @@ impl HeapFile {
             };
 
             // Extract existing tuple data
-            let mut existing_tuples = self.extract_all_tuples(&page, &versioned_page.slots)?;
+            let mut existing_tuples =
+                self.extract_all_versioned_tuples(&page, &versioned_page.slots)?;
 
             let mut page_modified = false;
 
@@ -1232,7 +1280,7 @@ impl HeapFile {
             // Write page back if modified
             if page_modified {
                 // Repack slots
-                Self::repack_slots(
+                Self::repack_versioned_slots(
                     &mut versioned_page.slots,
                     &existing_tuples,
                     USABLE_PAGE_SIZE_V2,
