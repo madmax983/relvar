@@ -56,6 +56,9 @@ This ensures the map matches the territory.
 **Confusion:** Some public functions (e.g. `lsn.rs`, `record.rs`, `manager.rs` and other areas) had auto-generated boilerplate `/// Returns the...` and `/// Gets the...` comments, acting as "noise".
 **Clarification:** I identified the remaining unhelpful documentation across the workspace and updated them with precise verbs and context, explaining what information is retrieved or processed, fully eradicating this boilerplate pattern.
 
+## 2024-05-31 - The Final "Gets" Noise Fixed in ECS
+**Confusion:** The `relvar/src/experimental/ecs.rs` module contained a final trace of the auto-generated noise ("Gets a component for an entity.") and lacked comprehensive `# Errors` sections for its database mutation methods.
+**Clarification:** Replaced the noisy comment in `get_component` and added `# Errors` sections for `spawn`, `register_component`, `add_component`, `remove_component`, and `run_update_system` to clarify exact failure conditions. Fixed a redundant explicit link target warning in `relvar-core/src/query/mod.rs` and empty code block in `relvar-core/src/utils/recursion.rs`.
 ## 2024-06-03 - Cargo Doc Warnings Fixed
 **Confusion:** Rustdoc was emitting warnings because of redundant explicit link targets and an empty rust code block.
 **Clarification:** I updated `relvar-core/src/query/mod.rs` to remove redundant explicit links, letting rustdoc infer the link from the label name (`[`Database`]`). In `relvar-core/src/utils/recursion.rs`, I added the `text` modifier to a non-rust code block (conceptual example) so that it isn't parsed as valid Rust.
