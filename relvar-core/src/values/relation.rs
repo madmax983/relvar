@@ -311,6 +311,19 @@ impl Relation {
         }
     }
 
+    /// Creates a new relation directly from a `HashSet` of tuples without validation.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that all provided tuples perfectly match the
+    /// `relation_type`'s heading (same attribute names and types).
+    pub(crate) fn from_body_unchecked(relation_type: RelationType, body: HashSet<Tuple>) -> Self {
+        Self {
+            relation_type,
+            body,
+        }
+    }
+
     /// Retrieves the relation type (heading) defining this relation's structure.
     ///
     /// # Example

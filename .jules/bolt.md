@@ -41,6 +41,6 @@ Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, 
 **Learning:** The `extend` operator previously allocated a `Vec` for intermediate tuple storage and then used `Relation::from_tuples` which reallocated into a `HashSet` and performed O(N*M) validation against the heading for every tuple, despite the tuples already being valid by construction.
 **Action:** Iterate directly into a pre-allocated `HashSet::with_capacity(self.cardinality())` to avoid the intermediate `Vec` allocation, and use `Relation::from_tuples_unchecked` to safely bypass redundant validation overhead when tuples are known to conform to the new heading.
 
-## 2026-03-09 - Tuple Pre-allocation in Ungroup
-**Learning:** The `ungroup` operator was building a `Vec<Tuple>` starting from an empty vector (`Vec::new()`), causing intermediate heap allocations for every dynamically added tuple from the flattened relation-valued attributes (RVAs). Since the output size is simply the sum of the cardinalities of all the RVAs in the input tuples, this size is trivially bounded.
-**Action:** When expanding or flattening nested relations (RVAs) (e.g., in `compute_ungrouped_tuples`), avoid intermediate heap reallocations by performing an initial pass to sum the `cardinality()` of the target RVAs and pre-allocating the result vector using `Vec::with_capacity`.
+## 2026-03-09 - Double Reallocation in Relation Constructors
+**Learning:** `Relation::from_tuples_unchecked` consumed an iterator into a newly allocated `HashSet`. When operators like `extend` had already pre-allocated and built a `HashSet` of tuples, passing it to `from_tuples_unchecked` triggered an implicit `O(N)` loop to re-hash and re-allocate into a *second* `HashSet`, wasting CPU and memory bandwidth.
+**Action:** Created `Relation::from_body_unchecked` to directly take ownership of an existing `HashSet` when one is already available, achieving a true zero-cost transformation.
