@@ -6,6 +6,7 @@
 //! # Included Features
 //!
 //! - **[`automl`](crate::experimental::automl)**: Relational Machine Learning (Naive Bayes).
+//! - **[`cellular_automaton`](crate::experimental::cellular_automaton)**: Relational Cellular Automata (Game of Life).
 //! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
@@ -18,6 +19,7 @@
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 
 pub mod automl;
+pub mod cellular_automaton;
 pub mod ecs;
 pub mod graph;
 pub mod image;
