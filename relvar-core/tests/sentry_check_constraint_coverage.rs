@@ -1,5 +1,5 @@
 use relvar_core::constraints::{CheckConstraint, CheckConstraints};
-use relvar_core::constraints::{ConstraintExpression, CmpOp, ValueOrRef};
+use relvar_core::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
 use relvar_core::values::ScalarValue;
 
 #[test]

@@ -1,4 +1,4 @@
-use relvar_core::types::{TupleType, ScalarType, RelationType};
+use relvar_core::types::{RelationType, ScalarType, TupleType};
 
 #[test]
 #[should_panic(expected = "Type nesting too deep")]
