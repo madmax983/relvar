@@ -255,8 +255,8 @@ fn build_group_result_heading(
 /// Pre-allocates the `result_tuples` vector using `Vec::with_capacity(groups.len())`.
 /// Because the exact number of output tuples is known after grouping the input,
 /// this prevents dynamic heap reallocations when constructing the resulting relation.
-fn compute_grouped_tuples(
-    relation: &Relation,
+fn compute_grouped_tuples<'a>(
+    relation: &'a Relation,
     grouping_attrs: &[String],
     attrs_to_group: &[&str],
     result_heading: &TupleType,
@@ -266,13 +266,13 @@ fn compute_grouped_tuples(
     let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
-    let mut groups: HashMap<Vec<ScalarValue>, Vec<Tuple>> = HashMap::new();
+    let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<Tuple>> = HashMap::new();
 
     for tuple in relation.tuples() {
         // Extract grouping key
-        let key: Vec<ScalarValue> = grouping_attrs
+        let key: Vec<&ScalarValue> = grouping_attrs
             .iter()
-            .map(|attr| tuple.get(attr).unwrap().clone())
+            .map(|attr| tuple.get(attr).unwrap())
             .collect();
 
         // Extract grouped attributes for RVA
@@ -294,7 +294,7 @@ fn compute_grouped_tuples(
 
         // Add grouping attribute values
         for (i, attr) in grouping_attrs.iter().enumerate() {
-            values.insert(attr.clone(), key[i].clone());
+            values.insert(attr.clone(), (*key[i]).clone());
         }
 
         // Create RVA relation
@@ -372,7 +372,16 @@ fn compute_ungrouped_tuples(
     result_heading: &TupleType,
     rva_relation_type: &RelationType,
 ) -> Result<Vec<Tuple>, UngroupError> {
-    let mut result_tuples = Vec::new();
+    // Perform an initial pass to sum the cardinality of the target RVAs
+    // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
+    let mut total_capacity = 0;
+    for tuple in relation.tuples() {
+        match tuple.get(rva_name).unwrap() {
+            ScalarValue::Relation(rel) => total_capacity += rel.cardinality(),
+            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
+        }
+    }
+    let mut result_tuples = Vec::with_capacity(total_capacity);
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
     for tuple in relation.tuples() {

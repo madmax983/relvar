@@ -44,3 +44,7 @@ Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, 
 ## 2026-03-09 - Double Reallocation in Relation Constructors
 **Learning:** `Relation::from_tuples_unchecked` consumed an iterator into a newly allocated `HashSet`. When operators like `extend` had already pre-allocated and built a `HashSet` of tuples, passing it to `from_tuples_unchecked` triggered an implicit `O(N)` loop to re-hash and re-allocate into a *second* `HashSet`, wasting CPU and memory bandwidth.
 **Action:** Created `Relation::from_body_unchecked` to directly take ownership of an existing `HashSet` when one is already available, achieving a true zero-cost transformation.
+
+## 2026-03-09 - Group Key and RVA Pre-allocation Optimization
+**Learning:** `compute_grouped_tuples` allocated and cloned heavy `ScalarValue` types repeatedly to build a `HashMap` key for each tuple, causing O(N_tuples) unnecessary allocations. `compute_ungrouped_tuples` lacked result vector pre-allocation based on the RVA cardinality.
+**Action:** Use `Vec<&'a ScalarValue>` as `HashMap` keys during aggregation passes. For collection transformations where sizes are variable but determinable (like ungrouping RVAs), always do an initial size accumulation pass to enable `Vec::with_capacity`.
