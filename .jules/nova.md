@@ -7,3 +7,7 @@
 **Concept:** Modeled sparse matrices as relations with `row`, `col`, and `val` attributes. Implemented matrix addition and multiplication using standard relational algebra operators like Join, Extend, Summarize, and Union.
 **Fate:** Merged
 **Lesson:** Mathematical operations from linear algebra can map quite elegantly to relational operations, though handling multiplicities in operations like addition (where set semantics naturally deduplicate) requires careful tagging to distinguish sources before aggregation.
+## Relational Cellular Automaton
+**Concept:** Implemented Conway's Game of Life entirely using relational algebra operations (Join, Extend, Summarize, Restrict), avoiding any imperative loop-based grid updates.
+**Fate:** Merged
+**Lesson:** Relational models can surprisingly elegant represent grid-based automata by treating sparse boards as relations, though you must carefully order Summarize and Project to avoid accidental duplicate elimination.
