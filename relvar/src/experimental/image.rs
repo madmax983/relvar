@@ -28,259 +28,257 @@ pub struct KernelTap {
 /// Tools for processing images as relations.
 pub struct ImageProcessor;
 
-impl ImageProcessor {
-    /// Converts a raw RGB buffer into a relation.
-    ///
-    /// The resulting relation has heading `(x: Int, y: Int, r: Int, g: Int, b: Int)`.
-    ///
-    /// # Arguments
-    ///
-    /// * `width` - Image width
-    /// * `height` - Image height
-    /// * `data` - RGB pixel data (flat buffer: r, g, b, r, g, b, ...)
-    pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
-        let heading = TupleType::new()
-            .with_attribute("x", ScalarType::Int)
-            .with_attribute("y", ScalarType::Int)
-            .with_attribute("r", ScalarType::Int)
-            .with_attribute("g", ScalarType::Int)
-            .with_attribute("b", ScalarType::Int);
+/// Converts a raw RGB buffer into a relation.
+///
+/// The resulting relation has heading `(x: Int, y: Int, r: Int, g: Int, b: Int)`.
+///
+/// # Arguments
+///
+/// * `width` - Image width
+/// * `height` - Image height
+/// * `data` - RGB pixel data (flat buffer: r, g, b, r, g, b, ...)
+pub fn load_image(width: usize, height: usize, data: &[u8]) -> Relation {
+    let heading = TupleType::new()
+        .with_attribute("x", ScalarType::Int)
+        .with_attribute("y", ScalarType::Int)
+        .with_attribute("r", ScalarType::Int)
+        .with_attribute("g", ScalarType::Int)
+        .with_attribute("b", ScalarType::Int);
 
-        let rel_type = RelationType::new(heading);
-        let mut relation = Relation::new(rel_type);
+    let rel_type = RelationType::new(heading);
+    let mut relation = Relation::new(rel_type);
 
-        for y in 0..height {
-            for x in 0..width {
-                let idx = (y * width + x) * 3;
-                if idx + 2 < data.len() {
-                    let r = data[idx] as i64;
-                    let g = data[idx + 1] as i64;
-                    let b = data[idx + 2] as i64;
+    for y in 0..height {
+        for x in 0..width {
+            let idx = (y * width + x) * 3;
+            if idx + 2 < data.len() {
+                let r = data[idx] as i64;
+                let g = data[idx + 1] as i64;
+                let b = data[idx + 2] as i64;
 
-                    // We can use insert here. For large images, batch loading would be better.
-                    relation
-                        .insert(tuple! {
-                            x: x as i64,
-                            y: y as i64,
-                            r: r,
-                            g: g,
-                            b: b
-                        })
-                        .unwrap();
-                }
+                // We can use insert here. For large images, batch loading would be better.
+                relation
+                    .insert(tuple! {
+                        x: x as i64,
+                        y: y as i64,
+                        r: r,
+                        g: g,
+                        b: b
+                    })
+                    .unwrap();
             }
         }
-
-        relation
     }
 
-    /// Converts a relation back into a raw RGB buffer.
-    ///
-    /// # Returns
-    ///
-    /// A tuple `(width, height, data)`.
-    pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
-        if relation.is_empty() {
-            return (0, 0, Vec::new());
-        }
+    relation
+}
 
-        // 1. Find dimensions
-        let mut min_x = i64::MAX;
-        let mut max_x = i64::MIN;
-        let mut min_y = i64::MAX;
-        let mut max_y = i64::MIN;
-
-        for tuple in relation.tuples() {
-            let x = tuple.get_typed::<i64>("x").unwrap_or(0);
-            let y = tuple.get_typed::<i64>("y").unwrap_or(0);
-
-            if x < min_x {
-                min_x = x;
-            }
-            if x > max_x {
-                max_x = x;
-            }
-            if y < min_y {
-                min_y = y;
-            }
-            if y > max_y {
-                max_y = y;
-            }
-        }
-
-        let width = (max_x - min_x + 1) as usize;
-        let height = (max_y - min_y + 1) as usize;
-        let mut data = vec![0u8; width * height * 3];
-
-        for tuple in relation.tuples() {
-            let x = tuple.get_typed::<i64>("x").unwrap_or(0);
-            let y = tuple.get_typed::<i64>("y").unwrap_or(0);
-            let r = tuple.get_typed::<i64>("r").unwrap_or(0).clamp(0, 255) as u8;
-            let g = tuple.get_typed::<i64>("g").unwrap_or(0).clamp(0, 255) as u8;
-            let b = tuple.get_typed::<i64>("b").unwrap_or(0).clamp(0, 255) as u8;
-
-            let img_x = (x - min_x) as usize;
-            let img_y = (y - min_y) as usize;
-
-            if img_x < width && img_y < height {
-                let idx = (img_y * width + img_x) * 3;
-                data[idx] = r;
-                data[idx + 1] = g;
-                data[idx + 2] = b;
-            }
-        }
-
-        (width, height, data)
+/// Converts a relation back into a raw RGB buffer.
+///
+/// # Returns
+///
+/// A tuple `(width, height, data)`.
+pub fn save_image(relation: &Relation) -> (usize, usize, Vec<u8>) {
+    if relation.is_empty() {
+        return (0, 0, Vec::new());
     }
 
-    /// Applies a convolution kernel to the image relation.
-    ///
-    /// This demonstrates the power of Relational Algebra:
-    /// Convolution is implemented as a set of Shifts (Extend), Unions, and Aggregations (Summarize).
-    ///
-    /// # Algorithm
-    ///
-    /// 1. For each kernel tap `(dx, dy, w)`:
-    ///    - Create a "shifted" view of the image where `target_x = x - dx`, `target_y = y - dy`.
-    ///    - Scale pixel values by weight `w`.
-    ///    - Tag with a unique kernel index to preserve provenance (set semantics would merge identical values).
-    /// 2. Union all shifted views.
-    /// 3. Summarize (Group By) `target_x, target_y`.
-    /// 4. Sum the weighted values.
-    /// 5. Normalize by total weight.
-    pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
-        if kernel.is_empty() {
-            return relation.clone();
+    // 1. Find dimensions
+    let mut min_x = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut min_y = i64::MAX;
+    let mut max_y = i64::MIN;
+
+    for tuple in relation.tuples() {
+        let x = tuple.get_typed::<i64>("x").unwrap_or(0);
+        let y = tuple.get_typed::<i64>("y").unwrap_or(0);
+
+        if x < min_x {
+            min_x = x;
         }
-
-        let total_weight: i64 = kernel.iter().map(|k| k.weight).sum();
-        if total_weight == 0 {
-            return relation.clone(); // Avoid division by zero
+        if x > max_x {
+            max_x = x;
         }
-
-        // We accumulate the shifted relations.
-        // Since we can't easily modify Relation in place effectively without potentially
-        // re-allocating, we collect them.
-        let mut contributions = Vec::new();
-
-        for (i, tap) in kernel.iter().enumerate() {
-            let dx = tap.dx;
-            let dy = tap.dy;
-            let weight = tap.weight;
-            let k_idx = i as i64;
-
-            // Step 1: Shift and Scale
-            // We use extend to compute new coordinates and weighted values
-            // We project to keep only relevant columns + k_idx
-            // Logic: A pixel at (x,y) contributes to (x+dx, y+dy) with weight w.
-            // So for a target pixel (tx, ty), the source is (tx-dx, ty-dy).
-            // But here we are iterating source pixels.
-            // Source (x,y) contributes to Target (x+dx, y+dy).
-            // So let's name the new coordinates `tx` and `ty`.
-
-            // Extend 1: Calculate target coordinates
-            let with_coords = relation
-                .extend("tx", ScalarType::Int, move |t| {
-                    let x = t.get_typed::<i64>("x").unwrap();
-                    ScalarValue::Int(x + dx)
-                })
-                .unwrap()
-                .extend("ty", ScalarType::Int, move |t| {
-                    let y = t.get_typed::<i64>("y").unwrap();
-                    ScalarValue::Int(y + dy)
-                })
-                .unwrap();
-
-            // Extend 2: Calculate weighted color components
-            let with_weights = with_coords
-                .extend("wr", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("r").unwrap();
-                    ScalarValue::Int(v * weight)
-                })
-                .unwrap()
-                .extend("wg", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("g").unwrap();
-                    ScalarValue::Int(v * weight)
-                })
-                .unwrap()
-                .extend("wb", ScalarType::Int, move |t| {
-                    let v = t.get_typed::<i64>("b").unwrap();
-                    ScalarValue::Int(v * weight)
-                })
-                .unwrap();
-
-            // Extend 3: Add kernel index (to prevent set deduplication of values)
-            let with_idx = with_weights
-                .extend("k_idx", ScalarType::Int, move |_| ScalarValue::Int(k_idx))
-                .unwrap();
-
-            // Project: Keep (tx, ty, wr, wg, wb, k_idx)
-            // But we rename them to a standard schema for Union
-            // Standard: (x, y, r, g, b, k_idx)
-            // Rename mapping: tx->x, ty->y, wr->r, wg->g, wb->b
-            let rename_map = vec![
-                ("tx", "x"),
-                ("ty", "y"),
-                ("wr", "r"),
-                ("wg", "g"),
-                ("wb", "b"),
-            ];
-
-            let projected = with_idx.project(&["tx", "ty", "wr", "wg", "wb", "k_idx"]);
-            let renamed = projected.rename(&rename_map);
-
-            contributions.push(renamed);
+        if y < min_y {
+            min_y = y;
         }
-
-        // Step 2: Union
-        // Start with the first contribution
-        let mut unioned = contributions[0].clone();
-        for other in contributions.iter().skip(1) {
-            unioned = unioned.union(other).unwrap();
+        if y > max_y {
+            max_y = y;
         }
+    }
 
-        // Step 3: Summarize
-        // Group by (x, y)
-        // Sum (r, g, b) -> (sum_r, sum_g, sum_b)
-        let summarized = unioned
-            .summarize(
-                &["x", "y"],
-                &[
-                    Aggregation::sum("sum_r", "r"),
-                    Aggregation::sum("sum_g", "g"),
-                    Aggregation::sum("sum_b", "b"),
-                ],
-            )
-            .unwrap();
+    let width = (max_x - min_x + 1) as usize;
+    let height = (max_y - min_y + 1) as usize;
+    let mut data = vec![0u8; width * height * 3];
 
-        // Step 4: Normalize
-        // Extend with final values: sum / total_weight
-        let normalized = summarized
-            .extend("final_r", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_r").unwrap();
-                ScalarValue::Int(s / total_weight)
+    for tuple in relation.tuples() {
+        let x = tuple.get_typed::<i64>("x").unwrap_or(0);
+        let y = tuple.get_typed::<i64>("y").unwrap_or(0);
+        let r = tuple.get_typed::<i64>("r").unwrap_or(0).clamp(0, 255) as u8;
+        let g = tuple.get_typed::<i64>("g").unwrap_or(0).clamp(0, 255) as u8;
+        let b = tuple.get_typed::<i64>("b").unwrap_or(0).clamp(0, 255) as u8;
+
+        let img_x = (x - min_x) as usize;
+        let img_y = (y - min_y) as usize;
+
+        if img_x < width && img_y < height {
+            let idx = (img_y * width + img_x) * 3;
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
+        }
+    }
+
+    (width, height, data)
+}
+
+/// Applies a convolution kernel to the image relation.
+///
+/// This demonstrates the power of Relational Algebra:
+/// Convolution is implemented as a set of Shifts (Extend), Unions, and Aggregations (Summarize).
+///
+/// # Algorithm
+///
+/// 1. For each kernel tap `(dx, dy, w)`:
+///    - Create a "shifted" view of the image where `target_x = x - dx`, `target_y = y - dy`.
+///    - Scale pixel values by weight `w`.
+///    - Tag with a unique kernel index to preserve provenance (set semantics would merge identical values).
+/// 2. Union all shifted views.
+/// 3. Summarize (Group By) `target_x, target_y`.
+/// 4. Sum the weighted values.
+/// 5. Normalize by total weight.
+pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
+    if kernel.is_empty() {
+        return relation.clone();
+    }
+
+    let total_weight: i64 = kernel.iter().map(|k| k.weight).sum();
+    if total_weight == 0 {
+        return relation.clone(); // Avoid division by zero
+    }
+
+    // We accumulate the shifted relations.
+    // Since we can't easily modify Relation in place effectively without potentially
+    // re-allocating, we collect them.
+    let mut contributions = Vec::new();
+
+    for (i, tap) in kernel.iter().enumerate() {
+        let dx = tap.dx;
+        let dy = tap.dy;
+        let weight = tap.weight;
+        let k_idx = i as i64;
+
+        // Step 1: Shift and Scale
+        // We use extend to compute new coordinates and weighted values
+        // We project to keep only relevant columns + k_idx
+        // Logic: A pixel at (x,y) contributes to (x+dx, y+dy) with weight w.
+        // So for a target pixel (tx, ty), the source is (tx-dx, ty-dy).
+        // But here we are iterating source pixels.
+        // Source (x,y) contributes to Target (x+dx, y+dy).
+        // So let's name the new coordinates `tx` and `ty`.
+
+        // Extend 1: Calculate target coordinates
+        let with_coords = relation
+            .extend("tx", ScalarType::Int, move |t| {
+                let x = t.get_typed::<i64>("x").unwrap();
+                ScalarValue::Int(x + dx)
             })
             .unwrap()
-            .extend("final_g", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_g").unwrap();
-                ScalarValue::Int(s / total_weight)
-            })
-            .unwrap()
-            .extend("final_b", ScalarType::Int, move |t| {
-                let s = t.get_typed::<i64>("sum_b").unwrap();
-                ScalarValue::Int(s / total_weight)
+            .extend("ty", ScalarType::Int, move |t| {
+                let y = t.get_typed::<i64>("y").unwrap();
+                ScalarValue::Int(y + dy)
             })
             .unwrap();
 
-        // Step 5: Final Project and Rename
-        // Keep (x, y, final_r, final_g, final_b)
-        // Rename final_r->r, etc.
-        let rename_map = vec![("final_r", "r"), ("final_g", "g"), ("final_b", "b")];
+        // Extend 2: Calculate weighted color components
+        let with_weights = with_coords
+            .extend("wr", ScalarType::Int, move |t| {
+                let v = t.get_typed::<i64>("r").unwrap();
+                ScalarValue::Int(v * weight)
+            })
+            .unwrap()
+            .extend("wg", ScalarType::Int, move |t| {
+                let v = t.get_typed::<i64>("g").unwrap();
+                ScalarValue::Int(v * weight)
+            })
+            .unwrap()
+            .extend("wb", ScalarType::Int, move |t| {
+                let v = t.get_typed::<i64>("b").unwrap();
+                ScalarValue::Int(v * weight)
+            })
+            .unwrap();
 
-        normalized
-            .project(&["x", "y", "final_r", "final_g", "final_b"])
-            .rename(&rename_map)
+        // Extend 3: Add kernel index (to prevent set deduplication of values)
+        let with_idx = with_weights
+            .extend("k_idx", ScalarType::Int, move |_| ScalarValue::Int(k_idx))
+            .unwrap();
+
+        // Project: Keep (tx, ty, wr, wg, wb, k_idx)
+        // But we rename them to a standard schema for Union
+        // Standard: (x, y, r, g, b, k_idx)
+        // Rename mapping: tx->x, ty->y, wr->r, wg->g, wb->b
+        let rename_map = vec![
+            ("tx", "x"),
+            ("ty", "y"),
+            ("wr", "r"),
+            ("wg", "g"),
+            ("wb", "b"),
+        ];
+
+        let projected = with_idx.project(&["tx", "ty", "wr", "wg", "wb", "k_idx"]);
+        let renamed = projected.rename(&rename_map);
+
+        contributions.push(renamed);
     }
+
+    // Step 2: Union
+    // Start with the first contribution
+    let mut unioned = contributions[0].clone();
+    for other in contributions.iter().skip(1) {
+        unioned = unioned.union(other).unwrap();
+    }
+
+    // Step 3: Summarize
+    // Group by (x, y)
+    // Sum (r, g, b) -> (sum_r, sum_g, sum_b)
+    let summarized = unioned
+        .summarize(
+            &["x", "y"],
+            &[
+                Aggregation::sum("sum_r", "r"),
+                Aggregation::sum("sum_g", "g"),
+                Aggregation::sum("sum_b", "b"),
+            ],
+        )
+        .unwrap();
+
+    // Step 4: Normalize
+    // Extend with final values: sum / total_weight
+    let normalized = summarized
+        .extend("final_r", ScalarType::Int, move |t| {
+            let s = t.get_typed::<i64>("sum_r").unwrap();
+            ScalarValue::Int(s / total_weight)
+        })
+        .unwrap()
+        .extend("final_g", ScalarType::Int, move |t| {
+            let s = t.get_typed::<i64>("sum_g").unwrap();
+            ScalarValue::Int(s / total_weight)
+        })
+        .unwrap()
+        .extend("final_b", ScalarType::Int, move |t| {
+            let s = t.get_typed::<i64>("sum_b").unwrap();
+            ScalarValue::Int(s / total_weight)
+        })
+        .unwrap();
+
+    // Step 5: Final Project and Rename
+    // Keep (x, y, final_r, final_g, final_b)
+    // Rename final_r->r, etc.
+    let rename_map = vec![("final_r", "r"), ("final_g", "g"), ("final_b", "b")];
+
+    normalized
+        .project(&["x", "y", "final_r", "final_g", "final_b"])
+        .rename(&rename_map)
 }
 
 #[cfg(test)]
@@ -299,10 +297,10 @@ mod tests {
             255, 255, 255, // White
         ];
 
-        let relation = ImageProcessor::load(width, height, &data);
+        let relation = super::load_image(width, height, &data);
         assert_eq!(relation.cardinality(), 4);
 
-        let (w, h, saved_data) = ImageProcessor::save(&relation);
+        let (w, h, saved_data) = super::save_image(&relation);
         assert_eq!(w, width);
         assert_eq!(h, height);
         assert_eq!(saved_data, data);
@@ -320,7 +318,7 @@ mod tests {
         data[center_idx + 1] = 255;
         data[center_idx + 2] = 255;
 
-        let relation = ImageProcessor::load(width, height, &data);
+        let relation = super::load_image(width, height, &data);
 
         // 3x3 Box Blur Kernel (all 1s)
         // Sum of weights = 9.
@@ -333,7 +331,7 @@ mod tests {
             }
         }
 
-        let blurred = ImageProcessor::apply_kernel(&relation, &kernel);
+        let blurred = super::apply_kernel(&relation, &kernel);
 
         // Verify result
         // Only check pixels that are within the original 3x3 bounds.
@@ -369,7 +367,7 @@ mod tests {
         data[1] = 255;
         data[2] = 255;
 
-        let relation = ImageProcessor::load(width, height, &data);
+        let relation = super::load_image(width, height, &data);
 
         // Kernel: Shift Right by 1 (dx=1, dy=0, w=1)
         let kernel = vec![KernelTap {
@@ -378,7 +376,7 @@ mod tests {
             weight: 1,
         }];
 
-        let shifted = ImageProcessor::apply_kernel(&relation, &kernel);
+        let shifted = super::apply_kernel(&relation, &kernel);
 
         // Expected: (1, 0) should be White. (0, 0) should be Black (or gone if no contribution).
         // Our logic preserves all contributions.

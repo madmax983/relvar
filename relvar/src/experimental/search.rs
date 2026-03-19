@@ -62,24 +62,22 @@ use std::collections::HashMap;
 /// A simple tokenizer that splits text into words.
 pub struct Tokenizer;
 
-impl Tokenizer {
-    /// Tokenizes text into a frequency map of terms.
-    ///
-    /// Normalizes to lowercase and removes punctuation.
-    pub fn tokenize(text: &str) -> HashMap<String, i64> {
-        let mut counts = HashMap::new();
+/// Tokenizes text into a frequency map of terms.
+///
+/// Normalizes to lowercase and removes punctuation.
+pub fn tokenize(text: &str) -> HashMap<String, i64> {
+    let mut counts = HashMap::new();
 
-        // Simple tokenization: lowercase, split by non-alphanumeric
-        for word in text
-            .to_lowercase()
-            .split(|c: char| !c.is_alphanumeric())
-            .filter(|s| !s.is_empty())
-        {
-            *counts.entry(word.to_string()).or_insert(0) += 1;
-        }
-
-        counts
+    // Simple tokenization: lowercase, split by non-alphanumeric
+    for word in text
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+    {
+        *counts.entry(word.to_string()).or_insert(0) += 1;
     }
+
+    counts
 }
 
 /// A full-text search index backed by a relation.
@@ -153,7 +151,7 @@ impl FullTextIndex {
         doc_id: ScalarValue,
         text: &str,
     ) -> Result<(), DatabaseError> {
-        let tokens = Tokenizer::tokenize(text);
+        let tokens = tokenize(text);
 
         // In a real implementation, we would batch insert.
         // For now, we insert one by one.
@@ -190,7 +188,7 @@ impl FullTextIndex {
         query: &str,
     ) -> Result<Relation, DatabaseError> {
         // 1. Tokenize query
-        let tokens = Tokenizer::tokenize(query);
+        let tokens = tokenize(query);
         let query_terms: Vec<String> = tokens.keys().cloned().collect();
 
         if query_terms.is_empty() {
@@ -278,7 +276,7 @@ mod tests {
     #[test]
     fn test_tokenizer() {
         let text = "Hello, World! This is a test.";
-        let tokens = Tokenizer::tokenize(text);
+        let tokens = tokenize(text);
 
         assert_eq!(tokens.get("hello"), Some(&1));
         assert_eq!(tokens.get("world"), Some(&1));
