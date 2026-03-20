@@ -7,3 +7,8 @@
 **Concept:** Modeled sparse matrices as relations with `row`, `col`, and `val` attributes. Implemented matrix addition and multiplication using standard relational algebra operators like Join, Extend, Summarize, and Union.
 **Fate:** Merged
 **Lesson:** Mathematical operations from linear algebra can map quite elegantly to relational operations, though handling multiplicities in operations like addition (where set semantics naturally deduplicate) requires careful tagging to distinguish sources before aggregation.
+
+## Relational Cellular Automaton
+**Concept:** Implement Conway's Game of Life purely using relational algebra primitives (Join, Extend, Summarize, Difference, Union). Represents active cells as a relation `(x: Int, y: Int)`.
+**Fate:** Merged
+**Lesson:** Relational algebra handles geometric spaces via Cartesian products (generating offsets) and neighbor aggregation effortlessly, proving SQL-like structures can easily evaluate rules over a continuous spatial grid without loops.
