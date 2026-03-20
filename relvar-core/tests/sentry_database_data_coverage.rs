@@ -136,3 +136,150 @@ fn test_database_insert_duplicate_primary_key() {
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
 }
+
+#[test]
+fn test_database_update_referencing_foreign_keys_violation() {
+    let mut db = setup();
+
+    // Create parent table (TEST is already created)
+
+    // Create child table
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("test_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type).unwrap();
+
+    let fk = relvar_core::constraints::ForeignKey::new(
+        vec!["test_id".to_string()],
+        "TEST".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let fk_constraints =
+        relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("CHILD", fk_constraints)
+        .unwrap();
+
+    db.insert("CHILD", tuple! { child_id: 100i64, test_id: 1i64 })
+        .unwrap();
+
+    // This update should fail due to foreign key constraint (updating the PK of the parent which is referenced)
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_t| tuple! { id: 2i64, val: 10i64 },
+    );
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_update_key_constraint_violation() {
+    let mut db = setup();
+
+    let pk = relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let key_constraints = relvar_core::constraints::KeyConstraints::new().with_primary_key(pk);
+    db.set_key_constraints("TEST", key_constraints).unwrap();
+
+    db.insert("TEST", tuple! { id: 2i64, val: 20i64 }).unwrap();
+
+    // Update should fail due to duplicate primary key
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 2,
+        |_t| tuple! { id: 1i64, val: 20i64 }, // duplicate id 1
+    );
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_update_check_constraint_violation() {
+    let mut db = setup();
+
+    let check_expr = ConstraintExpression::Cmp {
+        left: "val".to_string(),
+        op: CmpOp::Gt,
+        right: ValueOrRef::Value(ScalarValue::Int(0)),
+    };
+    let checks = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        "val_positive".to_string(),
+        "must be positive".to_string(),
+        check_expr,
+    ));
+    db.set_check_constraints("TEST", checks).unwrap();
+
+    // Update should fail due to check constraint
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_t| tuple! { id: 1i64, val: -10i64 },
+    );
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_insert_foreign_key_violation() {
+    let mut db = setup();
+
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("test_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type).unwrap();
+
+    let fk = relvar_core::constraints::ForeignKey::new(
+        vec!["test_id".to_string()],
+        "TEST".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let fk_constraints =
+        relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("CHILD", fk_constraints)
+        .unwrap();
+
+    // Insert should fail due to missing parent key (id = 999)
+    let result = db.insert("CHILD", tuple! { child_id: 100i64, test_id: 999i64 });
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_update_foreign_key_violation() {
+    let mut db = setup();
+
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("test_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type).unwrap();
+
+    let fk = relvar_core::constraints::ForeignKey::new(
+        vec!["test_id".to_string()],
+        "TEST".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let fk_constraints =
+        relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("CHILD", fk_constraints)
+        .unwrap();
+
+    db.insert("CHILD", tuple! { child_id: 100i64, test_id: 1i64 })
+        .unwrap();
+
+    // Update should fail due to missing parent key (id = 999)
+    let result = db.update(
+        "CHILD",
+        |t| t.get_typed::<i64>("child_id").unwrap() == 100,
+        |_t| tuple! { child_id: 100i64, test_id: 999i64 },
+    );
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}

@@ -193,6 +193,12 @@ impl<E: StorageEngine> Database<E> {
 
         self.validate_relation_constraints(relation_name, &new_relation)?;
 
+        self.constraints.validate_referencing_foreign_keys(
+            &mut self.engine,
+            relation_name,
+            &new_relation,
+        )?;
+
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
         Ok(update_count)
