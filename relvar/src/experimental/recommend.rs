@@ -84,14 +84,28 @@ impl CollaborativeFilter {
             .project(&[self.item_id_attr.as_str(), self.score_attr.as_str()])
             .rename(&[(self.score_attr.as_str(), "target_score")]);
 
-        // Step 2: Find all other users who rated those same items.
+        // Step 2: Find all other users who rated those same items and compute similarity.
+        let user_similarity = self.compute_user_similarities(&target_user_id, &target_items)?;
+
+        // Step 3: Find items rated by these similar users, but NOT by the target user.
+        let unseen_ratings = self.find_unseen_ratings(&target_user_id, &target_items)?;
+
+        // Step 4: Predict score for unseen items based on similar users' ratings.
+        self.predict_unseen_items(user_similarity, unseen_ratings)
+    }
+
+    fn compute_user_similarities(
+        &self,
+        target_user_id: &ScalarValue,
+        target_items: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // Join target_items (item_id, target_score) with all ratings (user_id, item_id, score).
         // Result: (user_id, item_id, target_score, score)
         let similar_users_items = target_items.join(&self.ratings)?;
 
         // Exclude the target user themselves from the similar users.
         let similar_users_items =
-            similar_users_items.restrict(|t| t.get(&self.user_id_attr) != Some(&target_user_id));
+            similar_users_items.restrict(|t| t.get(&self.user_id_attr) != Some(target_user_id));
 
         // Compute similarity between target user and other users based on co-rated items.
         // Sim(U_target, U_other) = SUM(target_score * score) / sqrt(SUM(target_score^2) * SUM(score^2))
@@ -128,7 +142,7 @@ impl CollaborativeFilter {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Compute final similarity score for each user
-        let user_similarity = user_similarity_sums
+        user_similarity_sums
             .extend("similarity", ScalarType::Float, |t| {
                 let sum_prod = t.get_typed::<f64>("sum_products").unwrap_or(0.0);
                 let sum_sq_t = t.get_typed::<f64>("sum_sq_target").unwrap_or(0.0);
@@ -138,10 +152,15 @@ impl CollaborativeFilter {
                 let sim = if denom == 0.0 { 0.0 } else { sum_prod / denom };
                 ScalarValue::Float(sim)
             })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&[self.user_id_attr.as_str(), "similarity"]);
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+            .map(|r| r.project(&[self.user_id_attr.as_str(), "similarity"]))
+    }
 
-        // Step 3: Find items rated by these similar users, but NOT by the target user.
+    fn find_unseen_ratings(
+        &self,
+        target_user_id: &ScalarValue,
+        target_items: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // target_items_ids: (item_id)
         let target_item_ids = target_items.project(&[self.item_id_attr.as_str()]);
 
@@ -149,7 +168,7 @@ impl CollaborativeFilter {
         // Restrict out target user's own ratings.
         let other_users_ratings = self
             .ratings
-            .restrict(|t| t.get(&self.user_id_attr) != Some(&target_user_id));
+            .restrict(|t| t.get(&self.user_id_attr) != Some(target_user_id));
 
         // Filter out items the target user already rated.
         // To do this, we join with all items NOT in target_item_ids.
@@ -162,9 +181,14 @@ impl CollaborativeFilter {
 
         // Join to keep only ratings for unseen items
         // unseen_ratings: (user_id, item_id, score)
-        let unseen_ratings = other_users_ratings.join(&unseen_item_ids)?;
+        other_users_ratings.join(&unseen_item_ids)
+    }
 
-        // Step 4: Predict score for unseen items based on similar users' ratings.
+    fn predict_unseen_items(
+        &self,
+        user_similarity: Relation,
+        unseen_ratings: Relation,
+    ) -> Result<Relation, DatabaseError> {
         // prediction = SUM(similarity * score) / SUM(ABS(similarity))
         //
         // Join user_similarity (user_id, similarity) with unseen_ratings (user_id, item_id, score)
@@ -197,7 +221,7 @@ impl CollaborativeFilter {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Final prediction calculation
-        let final_predictions = item_predictions
+        item_predictions
             .extend("predicted_score", ScalarType::Float, |t| {
                 let num = t.get_typed::<f64>("sum_sim_score").unwrap_or(0.0);
                 let den = t.get_typed::<f64>("sum_abs_sim").unwrap_or(0.0);
@@ -205,10 +229,8 @@ impl CollaborativeFilter {
                 let pred = if den == 0.0 { 0.0 } else { num / den };
                 ScalarValue::Float(pred)
             })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&[self.item_id_attr.as_str(), "predicted_score"]);
-
-        Ok(final_predictions)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+            .map(|r| r.project(&[self.item_id_attr.as_str(), "predicted_score"]))
     }
 }
 
