@@ -173,7 +173,7 @@ impl Page {
         self.id
     }
 
-    /// Returns a reference to the page's data.
+    /// Exposes the underlying byte array of the page for reading.
     pub fn data(&self) -> &[u8] {
         &self.data
     }

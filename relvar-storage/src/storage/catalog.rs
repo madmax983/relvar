@@ -269,7 +269,7 @@ impl Catalog {
             .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))
     }
 
-    /// Returns a list of all relation names in the catalog.
+    /// Retrieves a list of all relation names currently tracked by the catalog.
     ///
     /// The order of names is not guaranteed (hash map iteration order).
     pub fn list_relations(&self) -> Vec<String> {
