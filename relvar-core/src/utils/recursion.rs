@@ -17,7 +17,7 @@ pub const MAX_RECURSION_DEPTH: usize = 64;
 ///
 /// This struct uses a thread-local counter to track recursion depth. When created via [`RecursionGuard::new`],
 /// it increments the counter. When dropped, it decrements the counter. If the depth exceeds
-/// [`MAX_RECURSION_DEPTH`], creation fails.
+/// `MAX_RECURSION_DEPTH`, creation fails.
 ///
 /// This is particularly useful for protecting the database engine against deeply nested or recursive
 /// inputs (e.g. self-referencing expressions, deeply nested constraint types, or malicious payloads).
