@@ -62,3 +62,7 @@
 ## 2025-03-16 - Virtual Relvars Evaluation and Database Error Coverage
 **Learning:** Found several untested code paths regarding the mutability limitations of `VirtualRelvarDefinition` (preventing mutation because `evaluator` takes an immutable reference but error mapping missing tests), and transaction nesting issues inside `relvar-core/src/database/mod.rs` mapping to `DatabaseError::TransactionError`.
 **Action:** When working on APIs containing view-like concepts (`virtual_relvars`), ensure the evaluation error paths are fully tested. When implementing Database transactions, ensure explicit testing for double-begin and missing-begin cases for commits and rollbacks.
+
+## 2025-03-20 - Unvalidated Referencing Foreign Keys on Update
+**Learning:** `Database::update` in `relvar-core/src/database/data.rs` applies updates and validates the updated relation against its own constraints, but crucially forgets to validate referencing foreign keys (i.e. if this relation is a parent to another relation, and a primary key was updated, the child relation's foreign keys might be violated). The `delete` method correctly calls `self.constraints.validate_referencing_foreign_keys`, but `update` does not.
+**Action:** Always validate `validate_referencing_foreign_keys` in both `delete` and `update` logic paths for relational systems.
