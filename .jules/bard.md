@@ -62,3 +62,6 @@ This ensures the map matches the territory.
 ## 2024-06-03 - Cargo Doc Warnings Fixed
 **Confusion:** Rustdoc was emitting warnings because of redundant explicit link targets and an empty rust code block.
 **Clarification:** I updated `relvar-core/src/query/mod.rs` to remove redundant explicit links, letting rustdoc infer the link from the label name (`[`Database`]`). In `relvar-core/src/utils/recursion.rs`, I added the `text` modifier to a non-rust code block (conceptual example) so that it isn't parsed as valid Rust.
+## 2024-06-03 - Replaced "Returns the" noise with descriptive verbs
+**Confusion:** Some simple getter functions in `relvar-storage` (`storage/page.rs`, `storage/catalog.rs`) had auto-generated boilerplate `/// Returns the...` or `/// Returns a...` comments, providing zero semantic value.
+**Clarification:** I updated these getters (`data` and `list_relations`) with precise verbs and context, explaining what information is retrieved or exposed, fully eradicating this boilerplate pattern.
