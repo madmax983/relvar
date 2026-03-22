@@ -161,21 +161,30 @@ impl Catalog {
 
     fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, CatalogError> {
         let file = File::open(path)?;
-        let len = file.metadata()?.len();
 
+        // Fast path for defense in depth
+        let len = file.metadata()?.len();
         if len > limit {
             return Err(CatalogError::Serialization(
                 "Catalog file too large".to_string(),
             ));
         }
 
-        if len == 0 {
+        let mut reader = BufReader::new(file).take(limit + 1);
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer)?;
+
+        if buffer.len() as u64 > limit {
+            return Err(CatalogError::Serialization(
+                "Catalog file too large".to_string(),
+            ));
+        }
+
+        if buffer.is_empty() {
             return Ok(Self::new());
         }
 
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader.take(limit))
-            .map_err(|e| CatalogError::Serialization(e.to_string()))
+        serde_json::from_slice(&buffer).map_err(|e| CatalogError::Serialization(e.to_string()))
     }
 
     /// Saves the catalog to a JSON file.

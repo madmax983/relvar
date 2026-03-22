@@ -194,3 +194,13 @@ The `WalManager` component in `relvar-storage` used `File::read_to_end(&mut buff
 
 **Defense:**
 Added strict file size limits before reading the WAL file. `WalManager` now checks the file metadata length against `MAX_WAL_SIZE` (set to a safe threshold of 2 GB) and returns a standard `std::io::Error::new(std::io::ErrorKind::InvalidData)` wrapped in a `WalError::Io` if the limit is exceeded. This prevents unbounded `Vec` pre-allocations from malicious or overgrown files.
+
+## 2026-03-08 - TOCTOU and Sparse File Allocation Bomb DoS
+**Threat:**
+`relvar-storage` relied exclusively on `file.metadata()?.len()` to enforce `MAX_WAL_SIZE` and `MAX_CATALOG_SIZE` limits before using `read_to_end(&mut buffer)` or `serde_json::from_reader`. An attacker could bypass this check using a special file (e.g., from `procfs` or a character device like `/dev/zero`) that reports a size of 0 but yields an infinite stream of bytes, leading to an unbounded allocation and an Out-Of-Memory (OOM) Denial of Service (DoS) attack. A Time-Of-Check to Time-Of-Use (TOCTOU) vulnerability also existed if the file was replaced or appended to after the metadata check but before the read.
+
+**Defense:**
+1. Retained the `file.metadata()?.len()` check as an initial fast-path to quickly reject massive standard files without doing any disk I/O.
+2. Added Defense in Depth by capping all internal `Read` operations using `.take(limit + 1)`.
+3. Verified the actual read length after buffering; if `buffer.len() as u64 > limit`, the operation aborts with a clear `InvalidData` error.
+4. This ensures that even if the metadata lies or changes, the application will never allocate more than `limit + 1` bytes in memory.

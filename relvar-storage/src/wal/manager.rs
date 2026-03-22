@@ -227,7 +227,7 @@ impl WalManager {
         // Flush any buffered records first
         self.flush()?;
 
-        // Enforce maximum file size to prevent unbounded memory allocation
+        // Enforce maximum file size to prevent unbounded memory allocation (Defense in Depth fast-path)
         let file_len = self.log_file.metadata()?.len();
         if file_len > MAX_WAL_SIZE {
             return Err(WalError::Io(std::io::Error::new(
@@ -246,10 +246,18 @@ impl WalManager {
         let mut records = Vec::new();
         let mut buffer = Vec::new();
 
-        // Read entire file into buffer, capped at 2GB to prevent unbounded allocation DoS
-        (&mut self.log_file)
-            .take(MAX_WAL_SIZE)
-            .read_to_end(&mut buffer)?;
+        // Read entire file into buffer, capped at 2GB + 1 to prevent unbounded allocation DoS
+        (&mut self.log_file).take(MAX_WAL_SIZE + 1).read_to_end(&mut buffer)?;
+
+        if buffer.len() as u64 > MAX_WAL_SIZE {
+            return Err(WalError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "WAL file too large: exceeds max limit of {} bytes",
+                    MAX_WAL_SIZE
+                ),
+            )));
+        }
 
         let mut offset = 0;
         while offset < buffer.len() {
@@ -311,10 +319,7 @@ impl WalManager {
     fn scan_for_last_lsn(log_file: &mut File) -> Result<(Lsn, Lsn), WalError> {
         use std::io::Read;
 
-        // Seek to start of records (after magic header)
-        log_file.seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
-
-        // Enforce maximum file size to prevent unbounded memory allocation
+        // Enforce maximum file size to prevent unbounded memory allocation (Defense in Depth fast-path)
         let file_len = log_file.metadata()?.len();
         if file_len > MAX_WAL_SIZE {
             return Err(WalError::Io(std::io::Error::new(
@@ -326,10 +331,21 @@ impl WalManager {
             )));
         }
 
+        // Seek to start of records (after magic header)
+        log_file.seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
+
         let mut buffer = Vec::new();
-        (&mut *log_file)
-            .take(MAX_WAL_SIZE)
-            .read_to_end(&mut buffer)?;
+        (&mut *log_file).take(MAX_WAL_SIZE + 1).read_to_end(&mut buffer)?;
+
+        if buffer.len() as u64 > MAX_WAL_SIZE {
+            return Err(WalError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "WAL file too large: exceeds max limit of {} bytes",
+                    MAX_WAL_SIZE
+                ),
+            )));
+        }
 
         let mut last_lsn = Lsn::new(0);
         let mut offset = 0;
@@ -389,6 +405,37 @@ mod tests {
     use super::*;
     use crate::wal::TransactionId;
     use tempfile::NamedTempFile;
+    #[test]
+    fn test_scan_oom_allocation_bomb_mitigation() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+
+        {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&path)
+                .unwrap();
+            use std::io::Write;
+
+            // Write magic header
+            file.write_all(WAL_MAGIC).unwrap();
+
+            // Use set_len to simulate a massive file without consuming real disk space
+            file.set_len(MAX_WAL_SIZE + 10).unwrap();
+        }
+
+        let result = WalManager::open(&path);
+        assert!(result.is_err());
+        match result {
+            Err(WalError::Io(err)) => {
+                assert!(err.to_string().contains("WAL file too large"));
+            }
+            _ => panic!("Expected Io error with file too large message"),
+        }
+    }
+
     #[test]
     fn test_open_invalid_magic_header() {
         let temp = NamedTempFile::new().unwrap();
