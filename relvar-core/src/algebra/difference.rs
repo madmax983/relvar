@@ -149,6 +149,28 @@ impl Relation {
     pub fn minus(&self, other: &Relation) -> Result<Self, DifferenceError> {
         self.difference(other)
     }
+
+    /// Computes the set difference of this relation with another, consuming this relation.
+    ///
+    /// This is an optimized version of `difference` that avoids O(N) tuple clones for the
+    /// first relation by consuming it.
+    pub fn difference_into(self, other: &Relation) -> Result<Self, DifferenceError> {
+        // Check type compatibility
+        if self.relation_type() != other.relation_type() {
+            return Err(DifferenceError::TypeMismatch);
+        }
+
+        let rel_type = self.relation_type().clone();
+        Ok(Relation::from_tuples_unchecked(
+            rel_type,
+            self.into_iter().filter(|tuple| !other.contains(tuple)),
+        ))
+    }
+
+    /// Alias for [`difference_into`](Self::difference_into) with SQL-style naming.
+    pub fn minus_into(self, other: &Relation) -> Result<Self, DifferenceError> {
+        self.difference_into(other)
+    }
 }
 
 #[cfg(test)]
@@ -262,6 +284,48 @@ mod tests {
         rel2.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
 
         let result = rel1.minus(&rel2).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_difference_into_returns_tuples_in_first_but_not_second() {
+        let heading = emp_type();
+        let rel_type = RelationType::new(heading);
+
+        let mut rel1 = Relation::new(rel_type.clone());
+        rel1.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+        rel1.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+        rel1.insert(tuple! { emp_id: 3i64, name: "Charlie" })
+            .unwrap();
+
+        let mut rel2 = Relation::new(rel_type);
+        rel2.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+        rel2.insert(tuple! { emp_id: 4i64, name: "David" }).unwrap();
+
+        let result = rel1.difference_into(&rel2).unwrap();
+
+        assert_eq!(result.cardinality(), 2); // Alice and Charlie
+
+        let alice = tuple! { emp_id: 1i64, name: "Alice" };
+        let charlie = tuple! { emp_id: 3i64, name: "Charlie" };
+
+        assert!(result.contains(&alice));
+        assert!(result.contains(&charlie));
+        assert!(!result.contains(&tuple! { emp_id: 2i64, name: "Bob" }));
+    }
+
+    #[test]
+    fn test_minus_into_alias() {
+        let heading = emp_type();
+        let rel_type = RelationType::new(heading);
+
+        let mut rel1 = Relation::new(rel_type.clone());
+        rel1.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+
+        let mut rel2 = Relation::new(rel_type);
+        rel2.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+
+        let result = rel1.minus_into(&rel2).unwrap();
         assert!(result.is_empty());
     }
 }

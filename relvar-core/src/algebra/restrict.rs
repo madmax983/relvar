@@ -90,6 +90,7 @@ impl Relation {
             self.tuples().filter(|tuple| predicate(tuple)).cloned(),
         )
     }
+
 }
 
 #[cfg(test)]
@@ -196,4 +197,6 @@ mod tests {
         assert_eq!(result.cardinality(), 2);
         assert_eq!(result, relation);
     }
+
+
 }
