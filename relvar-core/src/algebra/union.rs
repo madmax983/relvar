@@ -113,6 +113,23 @@ impl Relation {
             self.tuples().chain(other.tuples()).cloned(),
         ))
     }
+
+    /// Computes the union of this relation with another, consuming this relation.
+    ///
+    /// This is an optimized version of `union` that avoids O(N) tuple clones for the
+    /// first relation by consuming it.
+    pub fn union_into(mut self, other: &Relation) -> Result<Self, UnionError> {
+        // Check type compatibility
+        if self.relation_type() != other.relation_type() {
+            return Err(UnionError::TypeMismatch);
+        }
+
+        for tuple in other.tuples() {
+            self.insert(tuple.clone()).unwrap();
+        }
+
+        Ok(self)
+    }
 }
 
 #[cfg(test)]
@@ -215,5 +232,32 @@ mod tests {
         let result = rel1.union(&rel1).unwrap();
         assert_eq!(result.cardinality(), 2); // No duplicates
         assert_eq!(result, rel1);
+    }
+
+    #[test]
+    fn test_union_into_removes_duplicates() {
+        let heading = emp_type();
+        let rel_type = RelationType::new(heading);
+
+        let mut rel1 = Relation::new(rel_type.clone());
+        rel1.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
+        rel1.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
+
+        let mut rel2 = Relation::new(rel_type);
+        rel2.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap(); // Duplicate
+        rel2.insert(tuple! { emp_id: 3i64, name: "Charlie" })
+            .unwrap();
+
+        let result = rel1.union_into(&rel2).unwrap();
+
+        assert_eq!(result.cardinality(), 3); // Alice, Bob, Charlie (Bob not duplicated)
+
+        let alice = tuple! { emp_id: 1i64, name: "Alice" };
+        let bob = tuple! { emp_id: 2i64, name: "Bob" };
+        let charlie = tuple! { emp_id: 3i64, name: "Charlie" };
+
+        assert!(result.contains(&alice));
+        assert!(result.contains(&bob));
+        assert!(result.contains(&charlie));
     }
 }
