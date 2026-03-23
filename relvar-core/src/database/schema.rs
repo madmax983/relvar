@@ -135,6 +135,21 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns `DatabaseError::RelationNotFound` if the relvar doesn't exist.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// db.create_relvar("USERS", rel_type.clone()).unwrap();
+    ///
+    /// let fetched_type = db.get_relvar_type("USERS").unwrap();
+    /// assert_eq!(fetched_type.degree(), 1);
+    /// ```
     pub fn get_relvar_type(&self, name: &str) -> Result<RelationType, DatabaseError> {
         // Check virtual relvars first
         if let Some(def) = self.virtual_relvars.get(name) {

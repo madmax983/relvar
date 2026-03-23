@@ -65,3 +65,6 @@ This ensures the map matches the territory.
 ## 2024-06-03 - Replaced "Returns the" noise with descriptive verbs
 **Confusion:** Some simple getter functions in `relvar-storage` (`storage/page.rs`, `storage/catalog.rs`) had auto-generated boilerplate `/// Returns the...` or `/// Returns a...` comments, providing zero semantic value.
 **Clarification:** I updated these getters (`data` and `list_relations`) with precise verbs and context, explaining what information is retrieved or exposed, fully eradicating this boilerplate pattern.
+## 2024-06-03 - The "Missing" Link Fixed in Core API
+**Confusion:** The public functions in `types`, `values`, and `database` lacked executable `## Examples`, leaving users guessing about their usage and the difference between them.
+**Clarification:** I added executable `## Examples` doctests to every public method in `TupleType`, `RelationType`, `ScalarType`, `Tuple`, `Relation`, and `Database`, explicitly demonstrating exact usage with code.

@@ -20,6 +20,15 @@ impl<E: StorageEngine> Database<E> {
     /// Returns `DatabaseError::TransactionError` if a transaction is already active.
     /// Nested transactions are not currently supported.
     /// Nested transactions are not currently supported.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// db.begin().unwrap();
+    /// ```
     pub fn begin(&mut self) -> Result<(), DatabaseError> {
         if self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -45,6 +54,16 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// If using a persistent storage engine, this ensures all data and WAL entries
     /// are flushed to disk.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// db.begin().unwrap();
+    /// db.commit().unwrap();
+    /// ```
     pub fn commit(&mut self) -> Result<(), DatabaseError> {
         if !self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -68,6 +87,16 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns `DatabaseError::TransactionError` if no transaction is in progress.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// db.begin().unwrap();
+    /// db.rollback().unwrap();
+    /// ```
     pub fn rollback(&mut self) -> Result<(), DatabaseError> {
         if !self.in_transaction {
             return Err(DatabaseError::TransactionError(

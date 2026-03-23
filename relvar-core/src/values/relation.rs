@@ -192,6 +192,16 @@ impl Relation {
     /// assert!(relation.is_empty());
     /// assert_eq!(relation.degree(), 1);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let relation = Relation::new(RelationType::new(heading));
+    /// assert!(relation.is_empty());
+    /// ```
     pub fn new(relation_type: RelationType) -> Self {
         Self {
             relation_type,
@@ -205,6 +215,16 @@ impl Relation {
     ///
     /// * `relation_type` - The type defining the relation's structure
     /// * `capacity` - The initial capacity of the underlying storage
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let relation = Relation::with_capacity(RelationType::new(heading), 10);
+    /// assert!(relation.is_empty());
+    /// ```
     pub fn with_capacity(relation_type: RelationType, capacity: usize) -> Self {
         Self {
             relation_type,
@@ -245,6 +265,20 @@ impl Relation {
     ///
     /// let relation = Relation::from_tuples(RelationType::new(heading), tuples).unwrap();
     /// assert_eq!(relation.cardinality(), 2);  // Only 2 unique tuples
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::{Relation, Tuple};
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// let tuples = vec![tuple!{ id: 1i64 }];
+    /// let relation = Relation::from_tuples(rel_type, tuples).unwrap();
+    /// assert_eq!(relation.cardinality(), 1);
     /// ```
     pub fn from_tuples(
         relation_type: RelationType,
@@ -340,6 +374,18 @@ impl Relation {
     ///
     /// assert_eq!(relation.relation_type().heading(), &heading);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let relation = Relation::new(rel_type.clone());
+    ///
+    /// assert_eq!(relation.relation_type(), &rel_type);
+    /// ```
     pub fn relation_type(&self) -> &RelationType {
         &self.relation_type
     }
@@ -362,6 +408,19 @@ impl Relation {
     /// relation.insert(tuple! { id: 1i64 }).unwrap();
     /// assert_eq!(relation.cardinality(), 1);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    ///
+    /// relation.insert(tuple!{ id: 1i64 }).unwrap();
+    /// assert_eq!(relation.cardinality(), 1);
+    /// ```
     pub fn cardinality(&self) -> usize {
         self.body.len()
     }
@@ -381,6 +440,19 @@ impl Relation {
     ///     .with_attribute("name", ScalarType::String);
     ///
     /// let relation = Relation::new(RelationType::new(heading));
+    /// assert_eq!(relation.degree(), 2);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    /// let relation = Relation::new(RelationType::new(heading));
+    ///
     /// assert_eq!(relation.degree(), 2);
     /// ```
     pub fn degree(&self) -> usize {
@@ -417,6 +489,23 @@ impl Relation {
     /// assert!(relation.insert(tuple! { id: 1i64 }).unwrap());  // true: inserted
     /// assert!(!relation.insert(tuple! { id: 1i64 }).unwrap()); // false: duplicate
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    ///
+    /// let was_inserted = relation.insert(tuple!{ id: 1i64 }).unwrap();
+    /// assert!(was_inserted);
+    ///
+    /// // Sets do not allow duplicates
+    /// let was_inserted_again = relation.insert(tuple!{ id: 1i64 }).unwrap();
+    /// assert!(!was_inserted_again);
+    /// ```
     pub fn insert(&mut self, tuple: Tuple) -> Result<bool, RelationError> {
         // Verify tuple conforms to the relation type
         if tuple.tuple_type() != self.relation_type.heading() {
@@ -448,6 +537,20 @@ impl Relation {
     /// assert!(relation.contains(&tuple! { id: 1i64 }));
     /// assert!(!relation.contains(&tuple! { id: 2i64 }));
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    ///
+    /// let t = tuple!{ id: 1i64 };
+    /// relation.insert(t.clone()).unwrap();
+    /// assert!(relation.contains(&t));
+    /// ```
     pub fn contains(&self, tuple: &Tuple) -> bool {
         self.body.contains(tuple)
     }
@@ -475,6 +578,20 @@ impl Relation {
     ///     println!("{:?}", tuple);
     /// }
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    /// relation.insert(tuple!{ id: 1i64 }).unwrap();
+    ///
+    /// let all_tuples: Vec<_> = relation.tuples().collect();
+    /// assert_eq!(all_tuples.len(), 1);
+    /// ```
     pub fn tuples(&self) -> impl Iterator<Item = &Tuple> {
         self.body.iter()
     }
@@ -497,6 +614,16 @@ impl Relation {
     /// relation.insert(tuple! { id: 1i64 }).unwrap();
     /// assert!(!relation.is_empty());
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let relation = Relation::new(RelationType::new(heading));
+    /// assert!(relation.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.body.is_empty()
     }
@@ -509,6 +636,21 @@ impl Relation {
     /// # Arguments
     ///
     /// * `predicate` - A function that returns `true` for tuples to keep
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    /// relation.insert(tuple!{ id: 1i64 }).unwrap();
+    /// relation.insert(tuple!{ id: 2i64 }).unwrap();
+    ///
+    /// let evens = relation.restrict_into(|t| t.get_typed::<i64>("id").unwrap() % 2 == 0);
+    /// assert_eq!(evens.cardinality(), 1);
+    /// ```
     pub fn restrict_into<F>(mut self, mut predicate: F) -> Self
     where
         F: FnMut(&Tuple) -> bool,

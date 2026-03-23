@@ -8,6 +8,20 @@ use crate::values::{Relation, Tuple};
 
 impl<E: StorageEngine> Database<E> {
     /// - Any constraint is violated (Key, Foreign Key, Type, Check)
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    ///
+    /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
+    /// ```
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
         self.ensure_not_virtual(relation_name)?;
         self.validate_insert(relation_name, &tuple)?;
@@ -41,6 +55,22 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
+    ///
+    /// let rel = db.query("USERS").unwrap();
+    /// assert_eq!(rel.cardinality(), 1);
+    /// ```
     pub fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Check if this is a virtual relvar
         if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
@@ -91,6 +121,23 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// assert_eq!(deleted_count, 1);
     /// assert_eq!(db.query("TEST").unwrap().cardinality(), 1);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
+    /// db.insert("USERS", tuple!{ id: 2i64 }).unwrap();
+    ///
+    /// let deleted_count = db.delete("USERS", |t| t.get_typed::<i64>("id").unwrap() == 1).unwrap();
+    /// assert_eq!(deleted_count, 1);
     /// ```
     pub fn delete<F>(&mut self, relation_name: &str, predicate: F) -> Result<usize, DatabaseError>
     where
@@ -171,6 +218,27 @@ impl<E: StorageEngine> Database<E> {
     /// let employees = db.query("EMPLOYEES").unwrap();
     /// let emp1 = employees.tuples().next().unwrap();
     /// assert_eq!(emp1.get_typed::<i64>("salary").unwrap(), 55000);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::values::ScalarValue;
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
+    ///
+    /// let updated_count = db.update(
+    ///     "USERS",
+    ///     |t| t.get_typed::<i64>("id").unwrap() == 1,
+    ///     |t| { let mut t2 = t.clone(); t2.set("id".to_string(), ScalarValue::Int(2)).unwrap(); t2 }
+    /// ).unwrap();
+    /// assert_eq!(updated_count, 1);
     /// ```
     pub fn update<F, U>(
         &mut self,

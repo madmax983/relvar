@@ -155,6 +155,14 @@ impl<E: StorageEngine> Database<E> {
     /// // Create a temporary, in-memory database
     /// let db = Database::new(InMemoryEngine::new());
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let db = Database::new(InMemoryEngine::new());
+    /// ```
     pub fn new(engine: E) -> Self {
         Self {
             engine,

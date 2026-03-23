@@ -85,6 +85,16 @@ impl TupleType {
     /// let empty_type = TupleType::new();
     /// assert_eq!(empty_type.degree(), 0);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    /// assert_eq!(heading.degree(), 2);
+    /// ```
     pub fn new() -> Self {
         Self {
             attributes: BTreeMap::new(),
@@ -112,6 +122,14 @@ impl TupleType {
     ///     .with_attribute("age", ScalarType::Int);
     ///
     /// assert_eq!(person_type.degree(), 2);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("age", ScalarType::Int);
+    /// assert!(heading.has_attribute("age"));
     /// ```
     pub fn with_attribute(mut self, name: impl Into<String>, ty: ScalarType) -> Self {
         if ty.depth() + 1 > crate::types::MAX_TYPE_DEPTH {
@@ -144,6 +162,15 @@ impl TupleType {
     /// assert_eq!(tuple_type.get_attribute_type("id"), Some(&ScalarType::Int));
     /// assert_eq!(tuple_type.get_attribute_type("nonexistent"), None);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// assert_eq!(heading.get_attribute_type("id"), Some(&ScalarType::Int));
+    /// assert_eq!(heading.get_attribute_type("name"), None);
+    /// ```
     pub fn get_attribute_type(&self, name: &str) -> Option<&ScalarType> {
         self.attributes.get(name)
     }
@@ -164,6 +191,15 @@ impl TupleType {
     ///
     /// assert!(tuple_type.has_attribute("id"));
     /// assert!(!tuple_type.has_attribute("other"));
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// assert!(heading.has_attribute("id"));
+    /// assert!(!heading.has_attribute("name"));
     /// ```
     pub fn has_attribute(&self, name: &str) -> bool {
         self.attributes.contains_key(name)
@@ -186,6 +222,17 @@ impl TupleType {
     /// let names: Vec<_> = tuple_type.attribute_names().collect();
     /// assert_eq!(names.len(), 2);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("a", ScalarType::Int)
+    ///     .with_attribute("b", ScalarType::Int);
+    /// let names: Vec<_> = heading.attribute_names().collect();
+    /// assert_eq!(names, vec!["a", "b"]); // Attributes are sorted lexicographically
+    /// ```
     pub fn attribute_names(&self) -> impl Iterator<Item = &String> {
         self.attributes.keys()
     }
@@ -193,6 +240,17 @@ impl TupleType {
     /// Calculates the maximum nesting depth of any attribute type plus one.
     ///
     /// If there are no attributes, returns 1.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType, RelationType};
+    ///
+    /// let rva_heading = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// let rva_type = ScalarType::Relation(Box::new(RelationType::new(rva_heading)));
+    /// let heading = TupleType::new().with_attribute("rva", rva_type);
+    ///
+    /// assert_eq!(heading.depth(), 5); // Tuple(1) + Relation(1) + Tuple(1) + Scalar(1) + Int(1)
+    /// ```
     pub fn depth(&self) -> usize {
         self.attributes
             .values()
@@ -218,6 +276,16 @@ impl TupleType {
     ///
     /// assert_eq!(tuple_type.degree(), 3);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("x", ScalarType::Int)
+    ///     .with_attribute("y", ScalarType::Int);
+    /// assert_eq!(heading.degree(), 2);
+    /// ```
     pub fn degree(&self) -> usize {
         self.attributes.len()
     }
@@ -238,6 +306,16 @@ impl TupleType {
     /// for (name, scalar_type) in tuple_type.attributes() {
     ///     println!("{}: {:?}", name, scalar_type);
     /// }
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let map = heading.attributes();
+    /// assert_eq!(map.len(), 1);
+    /// assert_eq!(map.get("id"), Some(&ScalarType::Int));
     /// ```
     pub fn attributes(&self) -> &BTreeMap<String, ScalarType> {
         &self.attributes

@@ -220,6 +220,14 @@ pub enum ScalarType {
 
 impl ScalarType {
     /// Retrieves the textual name of the type.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::ScalarType;
+    ///
+    /// assert_eq!(ScalarType::Int.name(), "Int");
+    /// assert_eq!(ScalarType::String.name(), "String");
+    /// ```
     pub fn name(&self) -> &str {
         match self {
             ScalarType::Int => "Int",
@@ -238,6 +246,17 @@ impl ScalarType {
     /// - Recursive types (UserDefined, Relation) have 1 + depth of inner type.
     ///
     /// This is used to enforce `MAX_TYPE_DEPTH` to prevent stack overflow.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{ScalarType, RelationType, TupleType};
+    ///
+    /// assert_eq!(ScalarType::Int.depth(), 1);
+    ///
+    /// let rva_heading = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// let rva_type = ScalarType::Relation(Box::new(RelationType::new(rva_heading)));
+    /// assert_eq!(rva_type.depth(), 4); // Relation(1) + Tuple(1) + Scalar(1) + Int(1) // Scalar + Relation + Tuple
+    /// ```
     pub fn depth(&self) -> usize {
         match self {
             ScalarType::Relation(rel_type) => 1 + rel_type.depth(),
@@ -262,6 +281,14 @@ impl ScalarType {
     ///
     /// // Same representation, but different types
     /// assert_ne!(widget_id, supplier_id);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::ScalarType;
+    ///
+    /// let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
+    /// assert_eq!(widget_id_type.name(), "WidgetId");
     /// ```
     pub fn user_defined(name: impl Into<String>, representation: ScalarType) -> Self {
         if representation.depth() + 1 > crate::types::MAX_TYPE_DEPTH {
@@ -304,6 +331,17 @@ impl ScalarType {
     ///
     /// Returns `Err` if the provided value's type doesn't match the expected
     /// representation type.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::ScalarType;
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
+    /// let val = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
+    ///
+    /// assert!(val.is_type(&widget_id_type));
+    /// ```
     pub fn selector(
         &self,
         value: crate::values::ScalarValue,
