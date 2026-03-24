@@ -12,3 +12,8 @@
 **Concept:** A basic 3D raytracer that models a scene and renders pixels using purely relational algebra (Cross Join, Extend, Restrict, Summarize).
 **Fate:** Merged
 **Lesson:** Relational algebra is expressive enough to compute geometric intersections and resolve Z-buffers declaratively, pushing the boundaries of what is considered "data" vs "compute."
+
+## Relational Turing Machine
+**Concept:** Modeled a Turing Machine with `tape`, `head`, and `transitions` relations, using Join, Extend, and Difference to compute steps.
+**Fate:** Merged
+**Lesson:** Relational algebra is expressive enough to implement a Turing Machine step function, proving that the Relvar engine's query capabilities are Turing complete.
