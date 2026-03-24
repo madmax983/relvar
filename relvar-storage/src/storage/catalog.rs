@@ -42,7 +42,7 @@ use relvar_core::types::RelationType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -160,7 +160,7 @@ impl Catalog {
     }
 
     fn load_with_limit<P: AsRef<Path>>(path: P, limit: u64) -> Result<Self, CatalogError> {
-        let file = File::open(path)?;
+        let mut file = File::open(path)?;
         let len = file.metadata()?.len();
 
         if len > limit {
@@ -173,9 +173,16 @@ impl Catalog {
             return Ok(Self::new());
         }
 
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader.take(limit))
-            .map_err(|e| CatalogError::Serialization(e.to_string()))
+        let mut buffer = Vec::new();
+        (&mut file).take(limit + 1).read_to_end(&mut buffer)?;
+
+        if buffer.len() as u64 > limit {
+            return Err(CatalogError::Serialization(
+                "Catalog file too large".to_string(),
+            ));
+        }
+
+        serde_json::from_slice(&buffer).map_err(|e| CatalogError::Serialization(e.to_string()))
     }
 
     /// Saves the catalog to a JSON file.

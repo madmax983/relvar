@@ -171,6 +171,7 @@ The JSON importer (`relvar::tools::importer`) enforced `MAX_IMPORT_ROWS` (100,00
 2. This guard enforces a strict recursion limit (`MAX_RECURSION_DEPTH = 64`) using a thread-local counter during deserialization.
 3. Updated `ScalarValue` and `ScalarType` internal deserialization logic (`ScalarValueUnchecked`, `ScalarTypeUnchecked`) to wrap recursive fields in `DepthGuarded`.
 4. This ensures that any deserialization attempt exceeding the limit fails gracefully with a "Recursion limit exceeded" error, regardless of the underlying format (JSON, Bincode, etc.).
+
 ## 2026-03-01 - Bincode Unmaintained & Allocation Bomb Migration
 **Threat:**
 `relvar-storage` and `relvar-core` used `bincode = 1.3.3`, which has been permanently abandoned (RUSTSEC-2025-0141). Although previous mitigations (`bincode::options().with_limit(...)`) protected against bounded allocation attacks, relying on an unmaintained serialization library is an inherent long-term security risk and leaves the project vulnerable to future exploits with no patch path.
@@ -194,3 +195,10 @@ The `WalManager` component in `relvar-storage` used `File::read_to_end(&mut buff
 
 **Defense:**
 Added strict file size limits before reading the WAL file. `WalManager` now checks the file metadata length against `MAX_WAL_SIZE` (set to a safe threshold of 2 GB) and returns a standard `std::io::Error::new(std::io::ErrorKind::InvalidData)` wrapped in a `WalError::Io` if the limit is exceeded. This prevents unbounded `Vec` pre-allocations from malicious or overgrown files.
+
+## 2026-03-08 - Catalog Loading TOCTOU & DoS
+**Threat:**
+The `Catalog::load_with_limit` method verified the file size using `metadata()?.len()` but subsequently passed a wrapped `BufReader` to `serde_json::from_reader(reader.take(limit))`. Because of this, it was vulnerable to a TOCTOU (Time-of-Check to Time-of-Use) attack where an attacker swapped the file or streamed a pseudo-file, which circumvented the metadata check and could trigger parsing crashes or OOM conditions. Furthermore, reading directly from unbounded inputs into `serde_json::from_reader` runs counter to defense-in-depth advice.
+
+**Defense:**
+Refactored `load_with_limit` to explicitly cap the reader (`(&mut file).take(limit + 1).read_to_end(&mut buffer)`) into a constrained memory slice before doing any JSON parsing. This hardens the interface, checks the read bytes directly against the limit (`if buffer.len() as u64 > limit`), and safely routes untrusted bytes through `serde_json::from_slice`.
