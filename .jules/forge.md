@@ -537,3 +537,7 @@ Build it right, make it fast, keep it simple.
 ## 2026-03-14 - Extract Complex Type Comparison Logic
 **Learning:** `Ord::cmp` implementations in `relvar-core/src/types/scalar.rs` (`ScalarType`) and `relvar-core/src/values/scalar.rs` (`ScalarValue`) had deeply nested `match` branches (up to 12 levels) for complex variant comparisons like `Relation` and `UserDefined`.
 **Action:** Replace nested `match` inside `Ord::cmp` with a guard clause on discriminant/type mismatch first, and then extract complex variant match arms into private helper functions like `cmp_relation_types` and `cmp_user_defined_types`.
+
+## 2025-06-05 - Collaborative Filtering God Functions
+**Learning:** `relvar/src/experimental/recommend.rs` contained "God Functions" (`compute_user_similarities` and `predict_unseen_items`) that handled multiple complex relational algebra operations in a single block, making them hard to read and test.
+**Action:** Applied the "Three-Phase Operator" pattern to extract logic into private helper methods (`compute_similarity_products`, `summarize_and_calculate_similarity`, `compute_prediction_components`, `summarize_and_calculate_predictions`) to improve clarity and maintainability.
