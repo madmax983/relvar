@@ -1420,10 +1420,10 @@ mod tests {
         // T3 begins after T2 commits
         let snapshot3 = engine.begin_transaction().unwrap();
 
-        // NOTE: Current implementation uses active_txns list, not commit LSNs
+        // NOTE: Current implementation uses active_txns list, not commit LSNs.
         // T1 WILL see T2's insert because T2 was not in T1's active_txns
-        // (T2 started after T1 took its snapshot)
-        // TODO: For full snapshot isolation, track commit LSNs and check:
+        // (T2 started after T1 took its snapshot).
+        // For full snapshot isolation, track commit LSNs and check:
         //       committed_lsn[T2] < snapshot1.snapshot_lsn
         let rel1 = engine
             .load_relation_for_txn("TEST", snapshot1.txn_id)
