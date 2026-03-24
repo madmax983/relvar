@@ -28,6 +28,24 @@ impl<E: StorageEngine> Database<E> {
     /// let current_constraints = db.get_key_constraints("TEST").unwrap();
     /// assert!(current_constraints.primary_key().is_some());
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::constraints::{KeyConstraints, PrimaryKey};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    ///
+    /// let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    /// db.set_key_constraints("USERS", KeyConstraints::new().with_primary_key(pk)).unwrap();
+    ///
+    /// let constraints = db.get_key_constraints("USERS").unwrap();
+    /// assert!(constraints.primary_key().is_some());
+    /// ```
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.constraints.get_key_constraints(relation_name)
     }

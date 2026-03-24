@@ -86,6 +86,18 @@ impl RelationType {
     ///
     /// let rel_type = RelationType::new(heading);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    ///
+    /// let rel_type = RelationType::new(heading);
+    /// assert_eq!(rel_type.degree(), 2);
+    /// ```
     pub fn new(heading: TupleType) -> Self {
         if heading.depth() + 1 > crate::types::MAX_TYPE_DEPTH {
             panic!(
@@ -100,6 +112,14 @@ impl RelationType {
     /// Calculates the nesting depth of this relation type.
     ///
     /// This is 1 + the depth of its heading.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let rel_type = RelationType::new(TupleType::new());
+    /// assert_eq!(rel_type.depth(), 2); // Tuple (1) + Relation (1)
+    /// ```
     pub fn depth(&self) -> usize {
         1 + self.heading.depth()
     }
@@ -118,6 +138,16 @@ impl RelationType {
     ///
     /// let rel_type = RelationType::new(heading.clone());
     /// assert_eq!(rel_type.heading(), &heading);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// assert_eq!(rel_type.heading().degree(), 1);
     /// ```
     pub fn heading(&self) -> &TupleType {
         &self.heading
@@ -139,6 +169,18 @@ impl RelationType {
     /// let rel_type = RelationType::new(heading);
     /// assert_eq!(rel_type.degree(), 2);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("x", ScalarType::Int)
+    ///     .with_attribute("y", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// assert_eq!(rel_type.degree(), 2);
+    /// ```
     pub fn degree(&self) -> usize {
         self.heading.degree()
     }
@@ -157,6 +199,16 @@ impl RelationType {
     ///
     /// let rel_type = RelationType::new(heading.clone());
     /// assert_eq!(rel_type.tuple_type(), &heading);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// assert_eq!(rel_type.tuple_type().degree(), 1);
     /// ```
     pub fn tuple_type(&self) -> &TupleType {
         &self.heading
@@ -177,6 +229,17 @@ impl RelationType {
     ///     .with_attribute("id", ScalarType::Int);
     ///
     /// let rel_type = RelationType::new(heading);
+    /// assert!(rel_type.has_attribute("id"));
+    /// assert!(!rel_type.has_attribute("name"));
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    ///
     /// assert!(rel_type.has_attribute("id"));
     /// assert!(!rel_type.has_attribute("name"));
     /// ```

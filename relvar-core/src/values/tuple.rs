@@ -170,6 +170,24 @@ impl Tuple {
     /// let tuple = Tuple::new(tuple_type, values).unwrap();
     /// assert_eq!(tuple.degree(), 2);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::{Tuple, ScalarValue};
+    /// use relvar_core::types::{TupleType, ScalarType};
+    /// use std::collections::BTreeMap;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    ///
+    /// let mut values = BTreeMap::new();
+    /// values.insert("id".to_string(), ScalarValue::Int(1));
+    /// values.insert("name".to_string(), ScalarValue::String("Alice".to_string()));
+    ///
+    /// let tuple = Tuple::new(heading, values).unwrap();
+    /// assert_eq!(tuple.degree(), 2);
+    /// ```
     pub fn new<T, M>(tuple_type: T, values: M) -> Result<Self, TupleError>
     where
         T: Into<Arc<TupleType>>,
@@ -225,17 +243,44 @@ impl Tuple {
     }
 
     /// Get the tuple type
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    ///
+    /// let t = tuple!{ id: 1i64 };
+    /// assert_eq!(t.tuple_type().degree(), 1);
+    /// ```
     pub fn tuple_type(&self) -> &TupleType {
         &self.tuple_type
     }
 
     /// Get a value by attribute name
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let t = tuple!{ id: 1i64 };
+    /// assert_eq!(t.get("id"), Some(&ScalarValue::Int(1)));
+    /// assert_eq!(t.get("name"), None);
+    /// ```
     pub fn get(&self, attr_name: &str) -> Option<&ScalarValue> {
         self.values.get(attr_name)
     }
 
     /// Get a typed value by attribute name.
     /// Extracts the value by reference to avoid allocating or cloning the `ScalarValue` enum wrapper.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    ///
+    /// let t = tuple!{ id: 1i64, active: true };
+    /// assert_eq!(t.get_typed::<i64>("id"), Some(1));
+    /// assert_eq!(t.get_typed::<bool>("active"), Some(true));
+    /// ```
     pub fn get_typed<T>(&self, attr_name: &str) -> Option<T>
     where
         T: for<'a> TryFrom<&'a ScalarValue>,
@@ -244,26 +289,79 @@ impl Tuple {
     }
 
     /// Get all attribute names
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    ///
+    /// let t = tuple!{ a: 1i64, b: 2i64 };
+    /// let names: Vec<_> = t.attribute_names().collect();
+    /// assert_eq!(names, vec!["a", "b"]);
+    /// ```
     pub fn attribute_names(&self) -> impl Iterator<Item = &String> {
         self.values.keys()
     }
 
     /// Get all values
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let t = tuple!{ id: 1i64 };
+    /// let map = t.values();
+    /// assert_eq!(map.len(), 1);
+    /// assert_eq!(map.get("id"), Some(&ScalarValue::Int(1)));
+    /// ```
     pub fn values(&self) -> &BTreeMap<String, ScalarValue> {
         &self.values
     }
 
     /// Consumes the tuple and returns its values
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let t = tuple!{ id: 1i64 };
+    /// let map = t.into_values();
+    /// assert_eq!(map.len(), 1);
+    /// assert_eq!(map.get("id"), Some(&ScalarValue::Int(1)));
+    /// ```
     pub fn into_values(self) -> BTreeMap<String, ScalarValue> {
         self.values
     }
 
     /// Get the degree (number of attributes)
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    ///
+    /// let t = tuple!{ a: 1i64, b: 2i64 };
+    /// assert_eq!(t.degree(), 2);
+    /// ```
     pub fn degree(&self) -> usize {
         self.values.len()
     }
 
     /// Check if this tuple conforms to a given tuple type
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    /// use relvar_core::types::{TupleType, ScalarType};
+    ///
+    /// let t = tuple!{ id: 1i64 };
+    ///
+    /// let correct_heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// assert!(t.conforms_to(&correct_heading));
+    ///
+    /// let wrong_heading = TupleType::new().with_attribute("id", ScalarType::String);
+    /// assert!(!t.conforms_to(&wrong_heading));
+    /// ```
     pub fn conforms_to(&self, tuple_type: &TupleType) -> bool {
         // Check that all required attributes are present
         for attr_name in tuple_type.attribute_names() {
@@ -287,6 +385,17 @@ impl Tuple {
     }
 
     /// Set a value for an attribute (mutable)
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let mut t = tuple!{ id: 1i64 };
+    /// t.set("id".to_string(), ScalarValue::Int(2)).unwrap();
+    ///
+    /// assert_eq!(t.get_typed::<i64>("id"), Some(2));
+    /// ```
     pub fn set(&mut self, attr_name: String, value: ScalarValue) -> Result<(), TupleError> {
         // Check if attribute exists in tuple type
         let expected_type = self
