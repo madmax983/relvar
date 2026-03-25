@@ -17,6 +17,7 @@
 //! - **[`search`](crate::experimental::search)**: Relational Full-Text Search.
 //! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
+//! - **[`turing`](crate::experimental::turing)**: Relational Turing Machine.
 
 pub mod automl;
 pub mod cellular_automaton;
@@ -31,3 +32,4 @@ pub mod recommend;
 pub mod search;
 pub mod spatial;
 pub mod timeseries;
+pub mod turing;
