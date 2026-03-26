@@ -41,7 +41,7 @@ impl RecursionGuard {
     /// that could trigger a stack overflow and crash the database process.
     ///
     /// # Errors
-    /// Returns an error if the current thread's recursion depth exceeds `MAX_RECURSION_DEPTH`.
+    /// Yields an error if the current thread's recursion depth exceeds `MAX_RECURSION_DEPTH`.
     ///
     /// # Examples
     /// ```text

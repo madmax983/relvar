@@ -53,7 +53,7 @@ impl CollaborativeFilter {
 
     /// Recommends items for a target user using a User-Based Collaborative Filtering approach.
     ///
-    /// Returns a relation with heading `(item_id_attr, predicted_score)` containing
+    /// Yields a relation with heading `(item_id_attr, predicted_score)` containing
     /// items the user has not yet rated. (The caller must sort if ordering is desired).
     pub fn recommend_user_based(
         &self,

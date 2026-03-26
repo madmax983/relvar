@@ -60,7 +60,7 @@ impl Relation {
     ///
     /// TTM: RM Prescription 7 - Relational algebra completeness (8/8 operators).
     ///
-    /// Returns all tuples from the dividend's remainder attributes such that
+    /// Derives all tuples from the dividend's remainder attributes such that
     /// for every tuple in the divisor, the extended tuple exists in the dividend.
     ///
     /// Mathematical definition: R1 DIVIDEBY R2 returns all tuples t from

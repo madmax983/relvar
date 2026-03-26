@@ -130,7 +130,7 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns an error if transaction creation fails.
+    /// Yields an error if transaction creation fails.
     fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError>;
 
     /// Commit a transaction (discard snapshot).
@@ -139,7 +139,7 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns an error if commit fails.
+    /// Yields an error if commit fails.
     fn commit_transaction(&mut self, _snapshot: Self::Snapshot) -> Result<(), StorageError> {
         Ok(())
     }
@@ -148,6 +148,6 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns an error if rollback fails.
+    /// Yields an error if rollback fails.
     fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError>;
 }

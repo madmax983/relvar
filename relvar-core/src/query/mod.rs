@@ -163,7 +163,7 @@ impl Query {
     ///
     /// # Errors
     ///
-    /// Returns an error if:
+    /// Yields an error if:
     /// - A referenced relation does not exist.
     /// - A constraint expression is invalid (e.g., type mismatch).
     /// - An algebraic operation fails (e.g., joining incompatible types).
@@ -216,7 +216,7 @@ impl Query {
         }
     }
 
-    /// Returns a human-readable explanation of the query plan.
+    /// Yields a human-readable explanation of the query plan.
     pub fn explain(&self) -> String {
         self.explain_recursive(0)
     }

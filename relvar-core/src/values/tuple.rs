@@ -45,7 +45,7 @@ mod arc_serde {
     /// the underlying type is serialized cleanly.
     ///
     /// # Errors
-    /// Returns a Serde error if the inner value cannot be serialized.
+    /// Yields a Serde error if the inner value cannot be serialized.
     pub fn serialize<S, T>(val: &Arc<T>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -60,7 +60,7 @@ mod arc_serde {
     /// memory sharing, rather than allocating a new unshared heap pointer.
     ///
     /// # Errors
-    /// Returns a Serde error if the inner value cannot be deserialized.
+    /// Yields a Serde error if the inner value cannot be deserialized.
     pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Arc<T>, D::Error>
     where
         D: Deserializer<'de>,

@@ -127,7 +127,7 @@ impl Delta {
 
     /// Inverts the delta.
     ///
-    /// Returns a new `Delta` that undoes the effect of this one.
+    /// Yields a new `Delta` that undoes the effect of this one.
     /// - `inserted` becomes `deleted`
     /// - `deleted` becomes `inserted`
     pub fn invert(&self) -> Self {
