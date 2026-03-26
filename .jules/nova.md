@@ -12,3 +12,8 @@
 **Concept:** A basic 3D raytracer that models a scene and renders pixels using purely relational algebra (Cross Join, Extend, Restrict, Summarize).
 **Fate:** Merged
 **Lesson:** Relational algebra is expressive enough to compute geometric intersections and resolve Z-buffers declaratively, pushing the boundaries of what is considered "data" vs "compute."
+
+## Relational Turing Machine
+**Concept:** Modeled `tape`, `head`, and `transitions` as relations and computed steps purely through relational algebra (Join, Extend, Difference, Union) to demonstrate that the engine is Turing Complete.
+**Fate:** Merged
+**Lesson:** Relational algebra is expressive enough to compute arbitrary algorithms, acting as a functional paradigm for data. Simulating a Turing Machine step by step involves applying transitions via joins and updating the tape with sets.
