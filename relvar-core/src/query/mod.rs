@@ -329,12 +329,12 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage_engine::InMemoryEngine;
-    use crate::types::{RelationType, TupleType, ScalarType};
-    use crate::values::ScalarValue;
-    use crate::tuple;
     use crate::constraints::CmpOp;
     use crate::constraints::ValueOrRef;
+    use crate::storage_engine::InMemoryEngine;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::values::ScalarValue;
 
     fn setup_db() -> Database<InMemoryEngine> {
         let mut db = Database::new(InMemoryEngine::new());
@@ -344,20 +344,25 @@ mod tests {
             .with_attribute("name", ScalarType::String)
             .with_attribute("age", ScalarType::Int);
 
-        db.create_relvar("USERS", RelationType::new(users_heading.clone())).unwrap();
+        db.create_relvar("USERS", RelationType::new(users_heading.clone()))
+            .unwrap();
 
         let users_rel_type = RelationType::new(users_heading.clone());
         let mut users_rel = Relation::new(users_rel_type);
-        users_rel.insert(tuple![
-            id: ScalarValue::Int(1),
-            name: ScalarValue::String("Alice".into()),
-            age: ScalarValue::Int(30)
-        ]).unwrap();
-        users_rel.insert(tuple![
-            id: ScalarValue::Int(2),
-            name: ScalarValue::String("Bob".into()),
-            age: ScalarValue::Int(25)
-        ]).unwrap();
+        users_rel
+            .insert(tuple![
+                id: ScalarValue::Int(1),
+                name: ScalarValue::String("Alice".into()),
+                age: ScalarValue::Int(30)
+            ])
+            .unwrap();
+        users_rel
+            .insert(tuple![
+                id: ScalarValue::Int(2),
+                name: ScalarValue::String("Bob".into()),
+                age: ScalarValue::Int(25)
+            ])
+            .unwrap();
         for t in users_rel.tuples() {
             db.insert("USERS", t.clone()).unwrap();
         }
@@ -370,11 +375,13 @@ mod tests {
         let orders_rel_type = RelationType::new(orders_heading.clone());
         db.create_relvar("ORDERS", orders_rel_type.clone()).unwrap();
         let mut orders_rel = Relation::new(orders_rel_type);
-        orders_rel.insert(tuple![
-            order_id: ScalarValue::Int(101),
-            id: ScalarValue::Int(1),
-            amount: ScalarValue::Int(500)
-        ]).unwrap();
+        orders_rel
+            .insert(tuple![
+                order_id: ScalarValue::Int(101),
+                id: ScalarValue::Int(1),
+                amount: ScalarValue::Int(500)
+            ])
+            .unwrap();
         for t in orders_rel.tuples() {
             db.insert("ORDERS", t.clone()).unwrap();
         }
@@ -392,7 +399,10 @@ mod tests {
 
         // Error case
         let err_query = Query::scan("MISSING");
-        assert!(matches!(err_query.execute(&db), Err(QueryError::Database(_))));
+        assert!(matches!(
+            err_query.execute(&db),
+            Err(QueryError::Database(_))
+        ));
     }
 
     #[test]
@@ -444,10 +454,7 @@ mod tests {
     #[test]
     fn test_summarize() {
         let db = setup_db();
-        let query = Query::scan("USERS").summarize(
-            vec!["age"],
-            vec![Aggregation::count("count")]
-        );
+        let query = Query::scan("USERS").summarize(vec!["age"], vec![Aggregation::count("count")]);
         let result = query.execute(&db).unwrap();
 
         // One person with age 25, one with age 30
@@ -475,10 +482,7 @@ mod tests {
         let q_rename = Query::scan("A").rename(vec![("old", "new")]);
         assert!(q_rename.explain().contains("Rename([(\"old\", \"new\")])"));
 
-        let q_summarize = Query::scan("A").summarize(
-            vec!["a"],
-            vec![Aggregation::count("cnt")]
-        );
+        let q_summarize = Query::scan("A").summarize(vec!["a"], vec![Aggregation::count("cnt")]);
         assert!(q_summarize.explain().contains("Summarize"));
     }
 
