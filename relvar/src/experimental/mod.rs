@@ -31,3 +31,4 @@ pub mod recommend;
 pub mod search;
 pub mod spatial;
 pub mod timeseries;
+pub mod turing;
