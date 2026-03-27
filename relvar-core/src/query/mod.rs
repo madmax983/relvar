@@ -172,15 +172,29 @@ impl Query {
             Query::Scan(table_name) => Ok(db.query(table_name)?),
             Query::Restrict { input, predicate } => {
                 let relation = input.execute(db)?;
-                // Note: Relation::restrict takes a closure that returns bool.
-                // We use evaluate() inside, but we must handle errors.
-                // Currently, we treat evaluation errors as false (exclude tuple).
 
                 // Pre-compute optimized structures (HashSet for IN, Vec<char> for LIKE)
                 // This prevents O(N*M) behavior for large IN lists or LIKE patterns
                 let prepared = predicate.prepare();
-                let result = relation
-                    .restrict_into(move |tuple| prepared.evaluate(tuple).unwrap_or_default());
+
+                // Manually restrict the relation to handle and propagate evaluation errors
+                let mut eval_error = None;
+                let result = relation.restrict_into(|tuple| {
+                    match prepared.evaluate(tuple) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            if eval_error.is_none() {
+                                eval_error = Some(e);
+                            }
+                            false // Treat as false to continue, but we'll error out anyway
+                        }
+                    }
+                });
+
+                if let Some(err) = eval_error {
+                    return Err(QueryError::Constraint(err));
+                }
+
                 Ok(result)
             }
             Query::Project { input, attributes } => {
