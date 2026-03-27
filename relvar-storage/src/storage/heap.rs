@@ -229,6 +229,16 @@ impl HeapFile {
     /// # Errors
     ///
     /// Returns [`HeapError::Page`] if the file cannot be created.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_core::types::{RelationType, TupleType};
+    /// use tempfile::tempdir;
+    /// let dir = tempdir().unwrap();
+    /// let rel_type = RelationType::new(TupleType::new());
+    /// let heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
+    /// ```
     pub fn create<P: AsRef<Path>>(path: P, relation_type: RelationType) -> Result<Self, HeapError> {
         let page_file = PageFile::create(path)?;
         Ok(Self {
@@ -249,6 +259,18 @@ impl HeapFile {
     /// # Errors
     ///
     /// Returns [`HeapError::Page`] if the file cannot be opened.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_core::types::{RelationType, TupleType};
+    /// use tempfile::tempdir;
+    /// let dir = tempdir().unwrap();
+    /// let path = dir.path().join("test.heap");
+    /// let rel_type = RelationType::new(TupleType::new());
+    /// HeapFile::create(&path, rel_type.clone()).unwrap();
+    /// let heap = HeapFile::open(&path, rel_type).unwrap();
+    /// ```
     pub fn open<P: AsRef<Path>>(path: P, relation_type: RelationType) -> Result<Self, HeapError> {
         let page_file = PageFile::open(path)?;
         Ok(Self {
@@ -275,6 +297,21 @@ impl HeapFile {
     ///
     /// Returns [`HeapError::Serialization`] if the tuple cannot be serialized.
     /// Returns [`HeapError::Page`] if a page I/O error occurs.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_core::types::{RelationType, TupleType};
+    /// use relvar_core::values::Tuple;
+    /// use std::collections::HashMap;
+    /// use tempfile::tempdir;
+    /// let dir = tempdir().unwrap();
+    /// let tuple_type = TupleType::new();
+    /// let rel_type = RelationType::new(tuple_type.clone());
+    /// let mut heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
+    /// let tuple = Tuple::new(tuple_type, HashMap::new()).unwrap();
+    /// heap.insert_tuple(&tuple).unwrap();
+    /// ```
     pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<(), HeapError> {
         // Serialize the tuple
         let tuple_data = serialize_compat(tuple)?;
@@ -651,6 +688,23 @@ impl HeapFile {
     ///
     /// Returns [`HeapError::Page`] if a page read fails.
     /// Returns [`HeapError::Serialization`] if tuple deserialization fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_core::types::{RelationType, TupleType};
+    /// use relvar_core::values::Tuple;
+    /// use std::collections::HashMap;
+    /// use tempfile::tempdir;
+    /// let dir = tempdir().unwrap();
+    /// let tuple_type = TupleType::new();
+    /// let rel_type = RelationType::new(tuple_type.clone());
+    /// let mut heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
+    /// let tuple = Tuple::new(tuple_type, HashMap::new()).unwrap();
+    /// heap.insert_tuple(&tuple).unwrap();
+    /// let tuples = heap.scan().unwrap();
+    /// assert_eq!(tuples.len(), 1);
+    /// ```
     pub fn scan(&mut self) -> Result<Vec<Tuple>, HeapError> {
         let mut results = Vec::new();
         let mut page_id = 0;
@@ -694,6 +748,18 @@ impl HeapFile {
     ///
     /// Returns [`HeapError::Serialization`] if tuples cannot be deserialized
     /// or if the relation cannot be constructed.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_core::types::{RelationType, TupleType};
+    /// use tempfile::tempdir;
+    /// let dir = tempdir().unwrap();
+    /// let rel_type = RelationType::new(TupleType::new());
+    /// let mut heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
+    /// let rel = heap.load_relation().unwrap();
+    /// assert_eq!(rel.cardinality(), 0);
+    /// ```
     pub fn load_relation(&mut self) -> Result<Relation, HeapError> {
         let tuples = self.scan()?; // Already returns Vec<Tuple>
 

@@ -55,6 +55,13 @@ pub struct TransactionIdGenerator {
 
 impl Lsn {
     /// Creates a new LSN with the given value.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::wal::Lsn;
+    /// let lsn = Lsn::new(42);
+    /// assert_eq!(lsn.value(), 42);
+    /// ```
     pub fn new(value: u64) -> Self {
         Self(value)
     }
@@ -92,6 +99,13 @@ impl Lsn {
 
 impl TransactionId {
     /// Creates a new TransactionId with the given value.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::wal::TransactionId;
+    /// let txn = TransactionId::new(100);
+    /// assert_eq!(txn.value(), 100);
+    /// ```
     pub fn new(value: u64) -> Self {
         Self(value)
     }
@@ -115,6 +129,13 @@ impl TransactionId {
 
 impl TransactionIdGenerator {
     /// Creates a new transaction ID generator starting from 1.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::wal::TransactionIdGenerator;
+    /// let generator = TransactionIdGenerator::new();
+    /// assert_eq!(generator.generate().value(), 1);
+    /// ```
     pub fn new() -> Self {
         Self {
             next_id: AtomicU64::new(1),
@@ -125,6 +146,13 @@ impl TransactionIdGenerator {
     ///
     /// Used during recovery to continue from the maximum transaction ID
     /// seen in the WAL, preventing ID reuse.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::wal::{TransactionId, TransactionIdGenerator};
+    /// let generator = TransactionIdGenerator::from_start(TransactionId::new(50));
+    /// assert_eq!(generator.generate().value(), 50);
+    /// ```
     pub fn from_start(start_id: TransactionId) -> Self {
         Self {
             next_id: AtomicU64::new(start_id.value()),
@@ -134,6 +162,14 @@ impl TransactionIdGenerator {
     /// Generates the next unique transaction ID.
     ///
     /// This method is thread-safe and guarantees uniqueness.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::wal::TransactionIdGenerator;
+    /// let generator = TransactionIdGenerator::new();
+    /// let txn_id = generator.generate();
+    /// assert_eq!(txn_id.value(), 1);
+    /// ```
     pub fn generate(&self) -> TransactionId {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         TransactionId(id)

@@ -155,6 +155,18 @@ impl Catalog {
     ///
     /// Returns [`CatalogError::Io`] if the file cannot be read.
     /// Returns [`CatalogError::Serialization`] if the JSON is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::Catalog;
+    /// use tempfile::tempdir;
+    /// let dir = tempdir().unwrap();
+    /// let path = dir.path().join("catalog.json");
+    /// let catalog = Catalog::new();
+    /// catalog.save(&path).unwrap();
+    /// let loaded = Catalog::load(&path).unwrap();
+    /// assert_eq!(loaded.relation_count(), 0);
+    /// ```
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, CatalogError> {
         Self::load_with_limit(path, MAX_CATALOG_SIZE)
     }
@@ -186,6 +198,17 @@ impl Catalog {
     ///
     /// Returns [`CatalogError::Io`] if the file cannot be written.
     /// Returns [`CatalogError::Serialization`] if serialization fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::Catalog;
+    /// use tempfile::tempdir;
+    /// let dir = tempdir().unwrap();
+    /// let path = dir.path().join("catalog.json");
+    /// let catalog = Catalog::new();
+    /// catalog.save(&path).unwrap();
+    /// assert!(path.exists());
+    /// ```
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), CatalogError> {
         let contents = serde_json::to_string_pretty(self)
             .map_err(|e| CatalogError::Serialization(e.to_string()))?;
@@ -239,6 +262,18 @@ impl Catalog {
     ///
     /// Returns [`CatalogError::RelationNotFound`] if no relation with
     /// this name exists.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::Catalog;
+    /// use relvar_core::types::{RelationType, TupleType};
+    /// use std::path::PathBuf;
+    /// let mut catalog = Catalog::new();
+    /// let rel_type = RelationType::new(TupleType::new());
+    /// catalog.create_relation("my_table".to_string(), rel_type, PathBuf::from("my_table.heap")).unwrap();
+    /// let meta = catalog.get_relation("my_table").unwrap();
+    /// assert_eq!(meta.heap_file_path, PathBuf::from("my_table.heap"));
+    /// ```
     pub fn get_relation(&self, name: &str) -> Result<&RelationMetadata, CatalogError> {
         self.relations
             .get(name)
@@ -246,6 +281,13 @@ impl Catalog {
     }
 
     /// Checks if a relation with the given name exists.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::Catalog;
+    /// let catalog = Catalog::new();
+    /// assert!(!catalog.relation_exists("my_table"));
+    /// ```
     pub fn relation_exists(&self, name: &str) -> bool {
         self.relations.contains_key(name)
     }

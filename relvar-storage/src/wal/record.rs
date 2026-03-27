@@ -132,6 +132,14 @@ impl WalRecord {
     ///
     /// Returns `WalRecordError::Serialization` if serialization fails.
     /// Returns `WalRecordError::RecordTooLarge` if the record exceeds MAX_RECORD_SIZE.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::wal::{WalRecord, TransactionId};
+    /// let record = WalRecord::Begin { txn_id: TransactionId::new(1) };
+    /// let bytes = record.serialize().unwrap();
+    /// assert!(!bytes.is_empty());
+    /// ```
     pub fn serialize(&self) -> Result<Vec<u8>, WalRecordError> {
         let bytes = postcard::to_allocvec(self)?;
 
@@ -147,6 +155,15 @@ impl WalRecord {
     /// # Errors
     ///
     /// Returns `WalRecordError::Serialization` if deserialization fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::wal::{WalRecord, TransactionId};
+    /// let record = WalRecord::Begin { txn_id: TransactionId::new(1) };
+    /// let bytes = record.serialize().unwrap();
+    /// let deserialized = WalRecord::deserialize(&bytes).unwrap();
+    /// assert_eq!(record.txn_id(), deserialized.txn_id());
+    /// ```
     pub fn deserialize(bytes: &[u8]) -> Result<Self, WalRecordError> {
         // Enforce maximum record size on the input buffer.
         if bytes.len() > MAX_RECORD_SIZE {
@@ -191,6 +208,17 @@ impl WalRecord {
     }
 
     /// Returns true if this is a transaction end marker (commit or abort).
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::wal::{WalRecord, TransactionId};
+    /// let commit = WalRecord::Commit { txn_id: TransactionId::new(1) };
+    /// let abort = WalRecord::Abort { txn_id: TransactionId::new(1) };
+    /// let begin = WalRecord::Begin { txn_id: TransactionId::new(1) };
+    /// assert!(commit.is_txn_end());
+    /// assert!(abort.is_txn_end());
+    /// assert!(!begin.is_txn_end());
+    /// ```
     pub fn is_txn_end(&self) -> bool {
         matches!(self, WalRecord::Commit { .. } | WalRecord::Abort { .. })
     }
