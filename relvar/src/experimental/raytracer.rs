@@ -111,7 +111,7 @@ impl Scene {
 
     /// Renders the scene to a relation of pixels.
     ///
-    /// Returns a relation with heading `(x, y, r, g, b)`.
+    /// Yields a relation with heading `(x, y, r, g, b)`.
     pub fn render(&self, width: i64, height: i64) -> Result<Relation, DatabaseError> {
         // 1. Generate Rays Relation: (x, y, ox, oy, oz, dx, dy, dz, dummy_join)
         let ray_heading = TupleType::new()

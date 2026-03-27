@@ -101,7 +101,7 @@ impl<E: StorageEngine> World<E> {
     ///
     /// # Errors
     ///
-    /// Returns a `DatabaseError` if the database fails to create the relation or set constraints,
+    /// Yields a `DatabaseError` if the database fails to create the relation or set constraints,
     /// or if the component schema uses the reserved attribute `entity_id`.
     pub fn register_component(
         &mut self,
@@ -143,7 +143,7 @@ impl<E: StorageEngine> World<E> {
     ///
     /// # Errors
     ///
-    /// Returns a `DatabaseError` if the tuple does not match the component schema,
+    /// Yields a `DatabaseError` if the tuple does not match the component schema,
     /// or if the underlying database insert fails.
     pub fn add_component(
         &mut self,
@@ -177,7 +177,7 @@ impl<E: StorageEngine> World<E> {
     ///
     /// # Errors
     ///
-    /// Returns a `DatabaseError` if the underlying database delete operation fails.
+    /// Yields a `DatabaseError` if the underlying database delete operation fails.
     pub fn remove_component(
         &mut self,
         entity: Entity,
@@ -190,7 +190,7 @@ impl<E: StorageEngine> World<E> {
         Ok(())
     }
 
-    /// Retrieves the component data for a specific entity.
+    /// Obtains the component data for a specific entity.
     ///
     /// # Errors
     ///
@@ -226,7 +226,7 @@ impl<E: StorageEngine> World<E> {
     ///
     /// # Errors
     ///
-    /// Returns a `DatabaseError` if a relation does not exist, join constraints fail,
+    /// Yields a `DatabaseError` if a relation does not exist, join constraints fail,
     /// or if the updated tuple violates schema constraints.
     pub fn run_update_system<F>(
         &mut self,

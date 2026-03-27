@@ -178,7 +178,7 @@ impl FullTextIndex {
 
     /// Searches the index for the given query string.
     ///
-    /// Returns a relation `(doc_id, score)` where score is the sum of term frequencies.
+    /// Yields a relation `(doc_id, score)` where score is the sum of term frequencies.
     pub fn search<E: StorageEngine>(
         &self,
         db: &Database<E>,

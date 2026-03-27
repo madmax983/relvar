@@ -200,7 +200,7 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// # Errors
     ///
-    /// Returns an error if a relvar with this name already exists.
+    /// Yields an error if a relvar with this name already exists.
     pub fn define_virtual_relvar(
         &mut self,
         name: &str,
@@ -249,7 +249,7 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// # Errors
     ///
-    /// Returns an error if the virtual relvar doesn't exist.
+    /// Yields an error if the virtual relvar doesn't exist.
     pub fn drop_virtual_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
         self.virtual_relvars
             .remove(name)

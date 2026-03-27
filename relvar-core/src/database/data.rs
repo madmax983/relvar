@@ -83,11 +83,11 @@ impl<E: StorageEngine> Database<E> {
 
     /// Delete tuples matching a predicate.
     ///
-    /// Retrieves the total count of tuples removed from the relation.
+    /// Obtains the total count of tuples removed from the relation.
     ///
     /// # Errors
     ///
-    /// Returns an error if:
+    /// Yields an error if:
     /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
     /// - Deleting the tuples would violate a foreign key constraint in another relation
     ///   ([`crate::constraints::ConstraintManagerError::ForeignKeyViolation`])
@@ -165,11 +165,11 @@ impl<E: StorageEngine> Database<E> {
 
     /// Update tuples matching a predicate.
     ///
-    /// Retrieves the total count of tuples modified during the operation.
+    /// Obtains the total count of tuples modified during the operation.
     ///
     /// # Errors
     ///
-    /// Returns an error if:
+    /// Yields an error if:
     /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
     /// - The updated tuple doesn't match the relation type ([`DatabaseError::TupleMismatch`])
     /// - A key constraint is violated ([`crate::constraints::ConstraintManagerError::PrimaryKeyViolation`], [`crate::constraints::ConstraintManagerError::CandidateKeyViolation`])

@@ -78,7 +78,7 @@ impl PersistentEngine {
     ///
     /// # Errors
     ///
-    /// Returns an error if I/O operations fail.
+    /// Yields an error if I/O operations fail.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
         let db_path = path.as_ref().to_path_buf();
         let wal_path = db_path.join("wal.log");
@@ -174,7 +174,7 @@ impl PersistentEngine {
     ///
     /// # Errors
     ///
-    /// Returns an error if flushing or WAL operations fail.
+    /// Yields an error if flushing or WAL operations fail.
     pub fn checkpoint(&mut self) -> Result<(), StorageError> {
         // CRITICAL: Flush WAL first to ensure all prior modifications are logged
         self.flush_wal()?;

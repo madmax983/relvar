@@ -85,7 +85,7 @@ impl Graph {
 
     /// Performs a Breadth-First Search (BFS) starting from a given node.
     ///
-    /// Returns a relation with heading `(node_id, distance)` containing all
+    /// Yields a relation with heading `(node_id, distance)` containing all
     /// reachable nodes and their shortest distance from the start node.
     ///
     /// # Errors
