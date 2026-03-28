@@ -72,8 +72,8 @@ fn test_database_set_type_constraints_fails() {
         max: relvar_core::values::ScalarValue::Int(15),
     };
 
-    let constraints = AttributeConstraints::new("val".to_string(), ScalarType::Int)
-        .with_constraint(type_cons);
+    let constraints =
+        AttributeConstraints::new("val".to_string(), ScalarType::Int).with_constraint(type_cons);
 
     // Should fail because one of the tuples has val=20
     let result = db.set_type_constraints("TEST", "val", constraints);
@@ -88,18 +88,17 @@ fn test_database_set_check_constraints_fails() {
     let check_expr = relvar_core::constraints::ConstraintExpression::Cmp {
         left: "val".to_string(),
         op: relvar_core::constraints::CmpOp::Lt,
-        right: relvar_core::constraints::ValueOrRef::Value(
-            relvar_core::values::ScalarValue::Int(15),
-        ),
+        right: relvar_core::constraints::ValueOrRef::Value(relvar_core::values::ScalarValue::Int(
+            15,
+        )),
     };
 
-    let constraints = CheckConstraints::new().with_constraint(
-        relvar_core::constraints::CheckConstraint::new(
+    let constraints =
+        CheckConstraints::new().with_constraint(relvar_core::constraints::CheckConstraint::new(
             "val_lt_15".to_string(),
             "must be less than 15".to_string(),
             check_expr,
-        ),
-    );
+        ));
 
     // Should fail because one tuple has val=20
     let result = db.set_check_constraints("TEST", constraints);
@@ -113,7 +112,12 @@ fn test_database_set_key_constraints_nonexistent_fails() {
     let constraints = KeyConstraints::new();
     let result = db.set_key_constraints("NONEXISTENT", constraints);
     assert!(result.is_err());
-    assert!(matches!(result, Err(DatabaseError::Constraint(relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)))));
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)
+        ))
+    ));
 }
 
 #[test]
@@ -122,7 +126,12 @@ fn test_database_set_foreign_key_constraints_nonexistent_fails() {
     let constraints = ForeignKeyConstraints::new();
     let result = db.set_foreign_key_constraints("NONEXISTENT", constraints);
     assert!(result.is_err());
-    assert!(matches!(result, Err(DatabaseError::Constraint(relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)))));
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)
+        ))
+    ));
 }
 
 #[test]
@@ -141,5 +150,10 @@ fn test_database_set_check_constraints_nonexistent_fails() {
     let constraints = CheckConstraints::new();
     let result = db.set_check_constraints("NONEXISTENT", constraints);
     assert!(result.is_err());
-    assert!(matches!(result, Err(DatabaseError::Constraint(relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)))));
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)
+        ))
+    ));
 }
