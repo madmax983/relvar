@@ -12,3 +12,8 @@
 **Concept:** A basic 3D raytracer that models a scene and renders pixels using purely relational algebra (Cross Join, Extend, Restrict, Summarize).
 **Fate:** Merged
 **Lesson:** Relational algebra is expressive enough to compute geometric intersections and resolve Z-buffers declaratively, pushing the boundaries of what is considered "data" vs "compute."
+
+## Relational K-Means Clustering
+**Concept:** Implemented `KMeans` struct and algorithm using purely relational algebra (Join, Extend, Summarize, Rename).
+**Fate:** Merged
+**Lesson:** Machine learning algorithms like K-Means map well to relational operations. A Cartesian product (Join) generates distances, Summarize finds the minimum, and Join pairs assignments, proving the analytical power of pure relations.
