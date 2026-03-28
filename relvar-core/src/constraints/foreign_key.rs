@@ -213,12 +213,16 @@ impl ForeignKey {
     }
 
     /// Check if inserting a tuple would violate this foreign key
+    /// Check if inserting a tuple would violate this foreign key
     pub fn would_violate_on_insert(
         &self,
         new_tuple: &Tuple,
         referenced_relation: &Relation,
     ) -> Result<bool, ForeignKeyError> {
-        let foreign_key_values: Vec<_> = self
+        // PERF: By hoisting the lookups for `new_tuple` outside the loop, we eliminate
+        // the inner allocation of intermediate `Vec` inside the loop for every tuple in
+        // `referenced_relation`. This makes `would_violate_on_insert` significantly faster.
+        let new_values: Vec<_> = self
             .foreign_key_attributes
             .iter()
             .map(|attr| new_tuple.get(attr).unwrap())
@@ -226,13 +230,14 @@ impl ForeignKey {
 
         // Check if any tuple in referenced relation matches
         for referenced_tuple in referenced_relation.tuples() {
-            let referenced_values: Vec<_> = self
-                .referenced_attributes
-                .iter()
-                .map(|attr| referenced_tuple.get(attr).unwrap())
-                .collect();
-
-            if foreign_key_values == referenced_values {
+            let mut matches = true;
+            for (i, ref_attr) in self.referenced_attributes.iter().enumerate() {
+                if new_values[i] != referenced_tuple.get(ref_attr).unwrap() {
+                    matches = false;
+                    break;
+                }
+            }
+            if matches {
                 return Ok(false); // Found a match, so no violation
             }
         }
@@ -241,12 +246,16 @@ impl ForeignKey {
     }
 
     /// Check if deleting a tuple from the referenced relation would violate this constraint
+    /// Check if deleting a tuple from the referenced relation would violate this constraint
     pub fn would_violate_on_delete(
         &self,
         tuple_to_delete: &Tuple,
         referencing_relation: &Relation,
     ) -> Result<bool, ForeignKeyError> {
-        let referenced_values: Vec<_> = self
+        // PERF: By hoisting the lookups for `tuple_to_delete` outside the loop, we eliminate
+        // the inner allocation of intermediate `Vec` inside the loop for every tuple in
+        // `referencing_relation`. This makes `would_violate_on_delete` significantly faster.
+        let ref_values: Vec<_> = self
             .referenced_attributes
             .iter()
             .map(|attr| tuple_to_delete.get(attr).unwrap())
@@ -254,13 +263,14 @@ impl ForeignKey {
 
         // Check if any tuple in referencing relation references this tuple
         for referencing_tuple in referencing_relation.tuples() {
-            let foreign_key_values: Vec<_> = self
-                .foreign_key_attributes
-                .iter()
-                .map(|attr| referencing_tuple.get(attr).unwrap())
-                .collect();
-
-            if foreign_key_values == referenced_values {
+            let mut matches = true;
+            for (i, fk_attr) in self.foreign_key_attributes.iter().enumerate() {
+                if referencing_tuple.get(fk_attr).unwrap() != ref_values[i] {
+                    matches = false;
+                    break;
+                }
+            }
+            if matches {
                 return Ok(true);
             }
         }
