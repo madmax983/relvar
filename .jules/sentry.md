@@ -66,3 +66,6 @@
 ## 2025-03-20 - Unvalidated Referencing Foreign Keys on Update
 **Learning:** `Database::update` in `relvar-core/src/database/data.rs` applies updates and validates the updated relation against its own constraints, but crucially forgets to validate referencing foreign keys (i.e. if this relation is a parent to another relation, and a primary key was updated, the child relation's foreign keys might be violated). The `delete` method correctly calls `self.constraints.validate_referencing_foreign_keys`, but `update` does not.
 **Action:** Always validate `validate_referencing_foreign_keys` in both `delete` and `update` logic paths for relational systems.
+## 2025-03-28 - Database Schema Error Paths and Virtual Relvars
+**Learning:** Found several untested code paths regarding schema operations on `virtual_relvars`, specifically defining a virtual relvar when a base or virtual relvar already exists, and requesting types/dropping nonexistent relvars, mapping to `DatabaseError::RelationAlreadyExists` and `DatabaseError::Storage(StorageEngineError::RelationNotFound)`.
+**Action:** When implementing database schemas, explicitly test the boundary conditions between base relvars and virtual relvars, as virtual relvars share the namespace. Ensure `get_relvar_type` and existence tests adequately cover both.
