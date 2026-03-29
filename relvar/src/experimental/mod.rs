@@ -31,5 +31,6 @@ pub mod raytracer;
 pub mod recommend;
 pub mod search;
 pub mod spatial;
+pub mod synth;
 pub mod timeseries;
 pub mod turing;

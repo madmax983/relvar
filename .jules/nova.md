@@ -17,3 +17,8 @@
 **Concept:** Modeled a Turing Machine purely with relations for tape, head position, and transition rules. Evaluated machine steps with pure relational algebra (Join, Extend, Difference, Union).
 **Fate:** Merged
 **Lesson:** Even Turing completeness can be modeled via relational operations, proving that the algebra is incredibly expressive for arbitrary iterative state transitions over unbounded tapes.
+
+## Relational Audio Synthesizer
+**Concept:** Synthesize audio by modeling an oscillator as a relation `(osc_id, freq, amp, waveform)` and evaluating it over a generated time relation using `join`, `extend`, and `summarize` to mix channels.
+**Fate:** Merged
+**Lesson:** Relational algebra handles time-series generation nicely, effectively replacing looping constructs with Cartesian Products over time vectors and applying math via `Extend`.
