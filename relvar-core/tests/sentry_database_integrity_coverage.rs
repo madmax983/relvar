@@ -1,13 +1,11 @@
 use relvar_core::constraints::{
-    AttributeConstraints, CheckConstraint, CheckConstraints, CmpOp, ConstraintExpression,
-    ForeignKeyConstraints, TypeConstraint, ValueOrRef,
+    AttributeConstraints, CheckConstraints, ForeignKeyConstraints, KeyConstraints,
 };
 use relvar_core::database::Database;
 use relvar_core::error::DatabaseError;
 use relvar_core::storage_engine::InMemoryEngine;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
-use relvar_core::values::ScalarValue;
 
 fn setup() -> Database<InMemoryEngine> {
     let mut db = Database::new(InMemoryEngine::new());
@@ -18,19 +16,21 @@ fn setup() -> Database<InMemoryEngine> {
     );
     db.create_relvar("TEST", rel_type).unwrap();
     db.insert("TEST", tuple! { id: 1i64, val: 10i64 }).unwrap();
+    db.insert("TEST", tuple! { id: 2i64, val: 20i64 }).unwrap();
     db
 }
 
 #[test]
 fn test_database_set_key_constraints_fails() {
     let mut db = setup();
-    let pk = relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap();
-    let key_constraints = relvar_core::constraints::KeyConstraints::new().with_primary_key(pk);
 
-    // Duplicate 1i64 to make it fail
-    db.insert("TEST", tuple! { id: 1i64, val: 20i64 }).unwrap();
+    db.insert("TEST", tuple! { id: 3i64, val: 10i64 }).unwrap();
 
-    let result = db.set_key_constraints("TEST", key_constraints);
+    // Try to set primary key on val, which has duplicates (10i64)
+    let pk = relvar_core::constraints::PrimaryKey::new(vec!["val".to_string()]).unwrap();
+    let constraints = KeyConstraints::new().with_primary_key(pk);
+
+    let result = db.set_key_constraints("TEST", constraints);
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
 }
@@ -46,6 +46,7 @@ fn test_database_set_foreign_key_constraints_fails() {
     );
     db.create_relvar("CHILD", child_type).unwrap();
 
+    // Insert an orphan record
     db.insert("CHILD", tuple! { child_id: 100i64, test_id: 999i64 })
         .unwrap();
 
@@ -55,9 +56,9 @@ fn test_database_set_foreign_key_constraints_fails() {
         vec!["id".to_string()],
     )
     .unwrap();
-    let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
 
-    let result = db.set_foreign_key_constraints("CHILD", fk_constraints);
+    let result = db.set_foreign_key_constraints("CHILD", constraints);
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
 }
@@ -66,17 +67,16 @@ fn test_database_set_foreign_key_constraints_fails() {
 fn test_database_set_type_constraints_fails() {
     let mut db = setup();
 
-    let type_cons = TypeConstraint::Range {
-        min: ScalarValue::Int(100), // value 10 is in DB, so this fails
-        max: ScalarValue::Int(200),
+    let type_cons = relvar_core::constraints::TypeConstraint::Range {
+        min: relvar_core::values::ScalarValue::Int(0),
+        max: relvar_core::values::ScalarValue::Int(15),
     };
 
-    let result = db.set_type_constraints(
-        "TEST",
-        "val",
-        AttributeConstraints::new("val".to_string(), ScalarType::Int).with_constraint(type_cons),
-    );
+    let constraints =
+        AttributeConstraints::new("val".to_string(), ScalarType::Int).with_constraint(type_cons);
 
+    // Should fail because one of the tuples has val=20
+    let result = db.set_type_constraints("TEST", "val", constraints);
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
 }
@@ -85,18 +85,75 @@ fn test_database_set_type_constraints_fails() {
 fn test_database_set_check_constraints_fails() {
     let mut db = setup();
 
-    let check_expr = ConstraintExpression::Cmp {
+    let check_expr = relvar_core::constraints::ConstraintExpression::Cmp {
         left: "val".to_string(),
-        op: CmpOp::Gt,
-        right: ValueOrRef::Value(ScalarValue::Int(100)), // 10 is in DB
+        op: relvar_core::constraints::CmpOp::Lt,
+        right: relvar_core::constraints::ValueOrRef::Value(relvar_core::values::ScalarValue::Int(
+            15,
+        )),
     };
-    let checks = CheckConstraints::new().with_constraint(CheckConstraint::new(
-        "val_large",
-        "must be > 100",
-        check_expr,
-    ));
 
-    let result = db.set_check_constraints("TEST", checks);
+    let constraints =
+        CheckConstraints::new().with_constraint(relvar_core::constraints::CheckConstraint::new(
+            "val_lt_15".to_string(),
+            "must be less than 15".to_string(),
+            check_expr,
+        ));
+
+    // Should fail because one tuple has val=20
+    let result = db.set_check_constraints("TEST", constraints);
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_set_key_constraints_nonexistent_fails() {
+    let mut db = setup();
+    let constraints = KeyConstraints::new();
+    let result = db.set_key_constraints("NONEXISTENT", constraints);
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)
+        ))
+    ));
+}
+
+#[test]
+fn test_database_set_foreign_key_constraints_nonexistent_fails() {
+    let mut db = setup();
+    let constraints = ForeignKeyConstraints::new();
+    let result = db.set_foreign_key_constraints("NONEXISTENT", constraints);
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)
+        ))
+    ));
+}
+
+#[test]
+fn test_database_set_type_constraints_nonexistent_fails() {
+    let mut db = setup();
+    let constraints = AttributeConstraints::new("val".to_string(), ScalarType::Int);
+    let result = db.set_type_constraints("NONEXISTENT", "val", constraints);
+    assert!(result.is_err());
+    // The type constraint internally triggers a fetch which eventually resolves through map_err returning just Constraint(_)
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_set_check_constraints_nonexistent_fails() {
+    let mut db = setup();
+    let constraints = CheckConstraints::new();
+    let result = db.set_check_constraints("NONEXISTENT", constraints);
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::RelationNotFound(_)
+        ))
+    ));
 }
