@@ -334,6 +334,37 @@ impl HeapFile {
         Ok(())
     }
 
+
+    /// Helper to repack versioned slots and calculate offsets.
+    /// Returns the required header size (V2_HEADER_SIZE + slot directory length).
+    /// Returns an error if the page would overflow.
+    fn repack_and_verify_space(
+        versioned_page: &mut VersionedSlottedPage,
+        tuples: &[Vec<u8>],
+        usable_size: usize,
+    ) -> Result<usize, HeapError> {
+        // 1. Repack slots. Since tuples grow downward from `usable_size` (which is constant),
+        //    the assigned offsets are final and deterministic on the first pass.
+        Self::repack_versioned_slots(&mut versioned_page.slots, tuples, usable_size)?;
+
+        // 2. Serialize the updated slot directory. Now that the offsets are the large final values,
+        //    the varint encoding will take its true maximum size.
+        let slot_dir = serialize_compat(&versioned_page)?;
+        let header_size = V2_HEADER_SIZE + slot_dir.len();
+
+        // 3. Verify no overlap between the downward-growing tuples and the upward-growing header.
+        for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
+            if let Some(entry) = slot_entry {
+                let offset = entry.offset as usize;
+                if idx < tuples.len() && !tuples[idx].is_empty() && offset < header_size {
+                    return Err(HeapError::PageFull);
+                }
+            }
+        }
+
+        Ok(header_size)
+    }
+
     /// Helper to repack versioned slots and calculate offsets.
     /// Iterates backward from the end of the available space.
     /// Assumes slots are already populated (Some) for valid tuples.
@@ -853,25 +884,7 @@ impl HeapFile {
             prev_version,
         });
 
-        // Calculate required space using ACTUAL serialized size
-        // CRITICAL: Must use bincode size, not sizeof, as they differ!
-        let slot_dir = serialize_compat(&versioned_page)?;
-        let header_size = V2_HEADER_SIZE + slot_dir.len();
-
-        // existing_tuples already includes tuple_data, so we just sum existing_tuples
-        let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
-        let required_space = header_size + total_tuple_data_size;
-
-        if required_space > USABLE_PAGE_SIZE_V2 {
-            return Err(HeapError::PageFull);
-        }
-
-        // Repack slots
-        Self::repack_versioned_slots(
-            &mut versioned_page.slots,
-            &existing_tuples,
-            USABLE_PAGE_SIZE_V2,
-        )?;
+        Self::repack_and_verify_space(&mut versioned_page, &existing_tuples, USABLE_PAGE_SIZE_V2)?;
 
         // Serialize the updated page with all tuples
         let page_data =
@@ -935,14 +948,15 @@ impl HeapFile {
                 let offset = entry.offset as usize;
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
-                    // Validate that offset + length doesn't exceed buffer
-                    if offset + length > data.len() {
+                    // Validate that offset + length doesn't exceed buffer and doesn't overlap header
+                    if offset + length > data.len() || offset < HEADER_SIZE + slot_dir.len() {
                         return Err(HeapError::Serialization(format!(
-                            "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
+                            "Slot {} points outside buffer or overlaps header: offset={}, length={}, buffer_len={}, header_end={}",
                             idx,
                             offset,
                             length,
-                            data.len()
+                            data.len(),
+                            HEADER_SIZE + slot_dir.len()
                         )));
                     }
                     data[offset..offset + length].copy_from_slice(&tuples[idx]);
