@@ -48,3 +48,7 @@ Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, 
 ## 2026-03-09 - Group Key and RVA Pre-allocation Optimization
 **Learning:** `compute_grouped_tuples` allocated and cloned heavy `ScalarValue` types repeatedly to build a `HashMap` key for each tuple, causing O(N_tuples) unnecessary allocations. `compute_ungrouped_tuples` lacked result vector pre-allocation based on the RVA cardinality.
 **Action:** Use `Vec<&'a ScalarValue>` as `HashMap` keys during aggregation passes. For collection transformations where sizes are variable but determinable (like ungrouping RVAs), always do an initial size accumulation pass to enable `Vec::with_capacity`.
+
+## 2026-03-09 - Avoid O(N) tuple extractions in ForeignKey Validation
+**Learning:** `would_violate_on_insert` and `would_violate_on_delete` were creating a `Vec` array inside loops iterating over relation `tuples()`. Reallocating this intermediate struct dynamically inside an O(N) loop caused a severe bottleneck for data ingestion.
+**Action:** Extract the known foreign key values *outside* of the loop, using an iterator `map().collect()` strategy, making validation significantly faster while avoiding fighting the borrow checker.
