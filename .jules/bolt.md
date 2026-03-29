@@ -48,3 +48,6 @@ Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, 
 ## 2026-03-09 - Group Key and RVA Pre-allocation Optimization
 **Learning:** `compute_grouped_tuples` allocated and cloned heavy `ScalarValue` types repeatedly to build a `HashMap` key for each tuple, causing O(N_tuples) unnecessary allocations. `compute_ungrouped_tuples` lacked result vector pre-allocation based on the RVA cardinality.
 **Action:** Use `Vec<&'a ScalarValue>` as `HashMap` keys during aggregation passes. For collection transformations where sizes are variable but determinable (like ungrouping RVAs), always do an initial size accumulation pass to enable `Vec::with_capacity`.
+## 2026-03-09 - Zero-Copy Tuple Transformations in Rename
+**Learning:** `Relation::rename` performed O(N*M) allocations by deep cloning every scalar value and string key. Converting an owned `Relation` instead allows extracting its map, reusing the `String` keys via `.into_values()`, and avoiding clones for unrenamed attributes.
+**Action:** When modifying or transforming owned `Relation` instances, prefer or create consuming `_into` methods (e.g., `rename_into`, `restrict_into`, `project_into`) to map `BTreeMap` pairs perfectly, reusing the `String` memory blocks.

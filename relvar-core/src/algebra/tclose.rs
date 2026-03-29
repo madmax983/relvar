@@ -142,7 +142,7 @@ impl Relation {
 
         loop {
             let new_unique_paths = compute_next_paths(
-                &r_delta,
+                r_delta,
                 &edges,
                 &delta_mappings,
                 from_attr,
@@ -170,7 +170,7 @@ impl Relation {
 }
 
 fn compute_next_paths(
-    r_delta: &Relation,
+    r_delta: Relation,
     edges: &Relation,
     delta_mappings: &[(&str, &str)],
     from_attr: &str,
@@ -178,7 +178,7 @@ fn compute_next_paths(
     r_total: &Relation,
 ) -> Result<Relation, DatabaseError> {
     // 2. Rename delta: r_delta(from, to) -> r_delta(from, temp)
-    let delta_renamed = r_delta.rename(delta_mappings);
+    let delta_renamed = r_delta.rename_into(delta_mappings);
 
     // 3. Join: r_delta(from, temp) JOIN edges(temp, to) -> (from, temp, to)
     let joined = delta_renamed.join(edges)?;

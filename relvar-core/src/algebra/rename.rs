@@ -143,6 +143,67 @@ impl Relation {
         // - Tuples are created with new_heading
         Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
     }
+
+    /// Renames attributes in a relation, consuming the relation to avoid allocations.
+    ///
+    /// This is an optimized version of `rename` that takes ownership of `self` and
+    /// moves the underlying values into the new relation without cloning them.
+    ///
+    /// # Arguments
+    ///
+    /// * `mappings` - A slice of (old_name, new_name) pairs specifying which
+    ///   attributes to rename. Attributes not in the mapping are unchanged.
+    ///
+    /// # Returns
+    ///
+    /// A new relation with the renamed attributes.
+    pub fn rename_into(self, mappings: &[(&str, &str)]) -> Self {
+        // Build new heading with renamed attributes
+        let mut new_heading = TupleType::new();
+
+        for (old_name, attr_type) in self.relation_type().heading().attributes() {
+            // Check if this attribute should be renamed
+            let new_name = mappings
+                .iter()
+                .find(|(from, _)| from == old_name)
+                .map(|(_, to)| *to)
+                .unwrap_or(old_name.as_str());
+
+            new_heading = new_heading.with_attribute(new_name, attr_type.clone());
+        }
+
+        let new_rel_type = RelationType::new(new_heading.clone());
+        let new_heading_arc = Arc::new(new_heading);
+
+        // Optimization: Convert mappings to a BTreeMap for O(log K) lookups per attribute
+        // rather than O(K) linear scan, where K is the number of renames.
+        let mappings_map: BTreeMap<&str, &str> = mappings.iter().copied().collect();
+
+        // Rename attributes in each tuple, consuming the original tuples
+        let renamed_tuples = self.into_iter().map(move |tuple| {
+            // We iterate over the consumed map and reconstruct it.
+            // When an attribute isn't renamed, we reuse the original allocated String key
+            // and the ScalarValue directly without cloning.
+            // We only allocate a new String if the attribute is actually renamed.
+            let values_map: BTreeMap<String, _> = tuple
+                .into_values()
+                .into_iter()
+                .map(|(old_name, value)| {
+                    if let Some(&new_name) = mappings_map.get(old_name.as_str()) {
+                        (new_name.to_string(), value)
+                    } else {
+                        // Reuse the existing string allocation
+                        (old_name, value)
+                    }
+                })
+                .collect();
+
+            Tuple::new_unchecked(new_heading_arc.clone(), values_map)
+        });
+
+        // Safety: Guarantees are the same as `rename`.
+        Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
+    }
 }
 
 #[cfg(test)]
@@ -299,5 +360,86 @@ mod tests {
         let tuple = result.tuples().next().unwrap();
         // Value should be 2 (from B)
         assert_eq!(tuple.get_typed::<i64>("C").unwrap(), 2);
+    }
+
+    #[test]
+    fn test_rename_into_changes_attribute_name() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+        relation
+            .insert(tuple! { emp_id: 2i64, name: "Bob" })
+            .unwrap();
+
+        let result = relation.rename_into(&[("emp_id", "id")]);
+
+        // Check that new attribute exists and old doesn't
+        assert!(result.relation_type().heading().has_attribute("id"));
+        assert!(!result.relation_type().heading().has_attribute("emp_id"));
+        assert!(result.relation_type().heading().has_attribute("name"));
+
+        // Check cardinality preserved
+        assert_eq!(result.cardinality(), 2);
+    }
+
+    #[test]
+    fn test_rename_into_multiple_attributes() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String)
+            .with_attribute("dept_id", ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+
+        let result =
+            relation.rename_into(&[("emp_id", "employee_id"), ("dept_id", "department_id")]);
+
+        assert!(
+            result
+                .relation_type()
+                .heading()
+                .has_attribute("employee_id")
+        );
+        assert!(
+            result
+                .relation_type()
+                .heading()
+                .has_attribute("department_id")
+        );
+        assert!(result.relation_type().heading().has_attribute("name"));
+        assert!(!result.relation_type().heading().has_attribute("emp_id"));
+        assert!(!result.relation_type().heading().has_attribute("dept_id"));
+    }
+
+    #[test]
+    fn test_rename_into_empty_mappings() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String);
+
+        let rel_type = RelationType::new(heading.clone());
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+
+        let result = relation.rename_into(&[]);
+
+        // Should be unchanged
+        assert_eq!(result.relation_type().heading(), &heading);
+        assert_eq!(result.cardinality(), 1);
     }
 }

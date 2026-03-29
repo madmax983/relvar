@@ -194,7 +194,7 @@ impl Query {
                     .iter()
                     .map(|(a, b)| (a.as_str(), b.as_str()))
                     .collect();
-                Ok(relation.rename(&mappings_ref))
+                Ok(relation.rename_into(&mappings_ref))
             }
             Query::Join { left, right } => {
                 let left_rel = left.execute(db)?;
