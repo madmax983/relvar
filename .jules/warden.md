@@ -194,3 +194,12 @@ The `WalManager` component in `relvar-storage` used `File::read_to_end(&mut buff
 
 **Defense:**
 Added strict file size limits before reading the WAL file. `WalManager` now checks the file metadata length against `MAX_WAL_SIZE` (set to a safe threshold of 2 GB) and returns a standard `std::io::Error::new(std::io::ErrorKind::InvalidData)` wrapped in a `WalError::Io` if the limit is exceeded. This prevents unbounded `Vec` pre-allocations from malicious or overgrown files.
+
+## 2026-03-08 - Query::Restrict Silent Failure (Logic Bug)
+**Threat:**
+The `Query::execute` implementation for `Query::Restrict` used `unwrap_or_default()` to handle errors from evaluating constraint expressions (`prepared.evaluate(tuple)`).
+If an expression failed to evaluate (e.g., due to a type mismatch or a missing attribute), the error was silently swallowed, and the result was treated as `false` (excluding the tuple). This "fail-open" or silent failure logic could hide critical schema inconsistencies, bypass security checks, or corrupt expected datasets without logging any warnings or raising an error to the caller.
+
+**Defense:**
+Refactored the closure passed to `Relation::restrict_into` to explicitly check the `Result` of `prepared.evaluate(tuple)`. If an error occurs, it captures the first evaluation error into a mutable variable (`eval_error`) in the outer scope, and then propagates that error up the call stack as `QueryError::Constraint` after the iteration completes.
+Added a regression test `warden_query_restrict_error.rs` to verify that both type mismatches and missing attributes correctly halt execution and return an `Err`.
