@@ -1,4 +1,4 @@
-use relvar::tools::visualizer::SchemaVisualizer;
+use relvar::tools::visualizer::to_dot;
 use relvar::{Database, InMemoryEngine, RelationType, ScalarType, TupleType};
 
 #[test]
@@ -11,8 +11,7 @@ fn test_dot_injection_relvar_name() {
     let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
     db.create_relvar(malicious_name, rel_type).unwrap();
 
-    let visualizer = SchemaVisualizer::new(&db);
-    let dot = visualizer.to_dot();
+    let dot = to_dot(&db);
 
     println!("{}", dot);
 
@@ -30,8 +29,7 @@ fn test_html_injection_attribute_name() {
         RelationType::new(TupleType::new().with_attribute(malicious_attr, ScalarType::Int));
     db.create_relvar("VulnerableTable", rel_type).unwrap();
 
-    let visualizer = SchemaVisualizer::new(&db);
-    let dot = visualizer.to_dot();
+    let dot = to_dot(&db);
 
     println!("{}", dot);
 
