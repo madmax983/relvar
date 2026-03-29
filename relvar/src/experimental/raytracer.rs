@@ -109,11 +109,7 @@ impl Scene {
         Ok(())
     }
 
-    /// Renders the scene to a relation of pixels.
-    ///
-    /// Yields a relation with heading `(x, y, r, g, b)`.
-    pub fn render(&self, width: i64, height: i64) -> Result<Relation, DatabaseError> {
-        // 1. Generate Rays Relation: (x, y, ox, oy, oz, dx, dy, dz, dummy_join)
+    fn generate_rays(&self, width: i64, height: i64) -> Result<Relation, DatabaseError> {
         let ray_heading = TupleType::new()
             .with_attribute("x", ScalarType::Int)
             .with_attribute("y", ScalarType::Int)
@@ -169,6 +165,10 @@ impl Scene {
             }
         }
 
+        Ok(rays)
+    }
+
+    fn compute_intersections(&self, rays: &Relation) -> Result<Relation, DatabaseError> {
         // 2. Prepare Spheres for Cross Join
         // We use extend to add `dummy_join: 1` so natural join acts as a cross join.
         let spheres_prepared = self
@@ -233,6 +233,14 @@ impl Scene {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
+        Ok(intersections)
+    }
+
+    fn calculate_visible_pixels(
+        &self,
+        rays: &Relation,
+        intersections: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 5. Filter Hits
         let hits = intersections.restrict(|t| {
             let dist = t.get_typed::<f64>("t").unwrap_or(-1.0);
@@ -295,6 +303,15 @@ impl Scene {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         Ok(final_image)
+    }
+
+    /// Renders the scene to a relation of pixels.
+    ///
+    /// Yields a relation with heading `(x, y, r, g, b)`.
+    pub fn render(&self, width: i64, height: i64) -> Result<Relation, DatabaseError> {
+        let rays = self.generate_rays(width, height)?;
+        let intersections = self.compute_intersections(&rays)?;
+        self.calculate_visible_pixels(&rays, &intersections)
     }
 }
 
