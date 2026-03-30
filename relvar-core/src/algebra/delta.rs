@@ -59,6 +59,20 @@ impl Delta {
     /// # Errors
     ///
     /// Returns `DatabaseError::AlgebraError` if the two relations have different types.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::algebra::delta::Delta;
+    ///
+    /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let r1 = Relation::new(rel_type.clone());
+    /// let r2 = Relation::new(rel_type);
+    ///
+    /// let delta = Delta::new(r1, r2).unwrap();
+    /// ```
     pub fn new(inserted: Relation, deleted: Relation) -> Result<Self, DatabaseError> {
         if inserted.relation_type() != deleted.relation_type() {
             return Err(DatabaseError::AlgebraError(
@@ -77,6 +91,20 @@ impl Delta {
     /// # Errors
     ///
     /// Returns `DatabaseError::AlgebraError` if the relations have different types.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::algebra::delta::Delta;
+    ///
+    /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let r1 = Relation::new(rel_type.clone());
+    /// let r2 = Relation::new(rel_type);
+    ///
+    /// let delta = Delta::between(&r1, &r2).unwrap();
+    /// ```
     pub fn between(old: &Relation, new: &Relation) -> Result<Self, DatabaseError> {
         if old.relation_type() != new.relation_type() {
             return Err(DatabaseError::AlgebraError(
@@ -105,6 +133,21 @@ impl Delta {
     /// # Errors
     ///
     /// Returns `DatabaseError::AlgebraError` if the relation type does not match the delta type.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::algebra::delta::Delta;
+    ///
+    /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let r1 = Relation::new(rel_type.clone());
+    /// let r2 = Relation::new(rel_type);
+    ///
+    /// let delta = Delta::between(&r1, &r2).unwrap();
+    /// let applied = delta.apply(&r1).unwrap();
+    /// ```
     pub fn apply(&self, relation: &Relation) -> Result<Relation, DatabaseError> {
         if relation.relation_type() != self.inserted.relation_type() {
             return Err(DatabaseError::AlgebraError(
@@ -130,6 +173,21 @@ impl Delta {
     /// Yields a new `Delta` that undoes the effect of this one.
     /// - `inserted` becomes `deleted`
     /// - `deleted` becomes `inserted`
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::algebra::delta::Delta;
+    ///
+    /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let r1 = Relation::new(rel_type.clone());
+    /// let r2 = Relation::new(rel_type);
+    ///
+    /// let delta = Delta::between(&r1, &r2).unwrap();
+    /// let inverted = delta.invert();
+    /// ```
     pub fn invert(&self) -> Self {
         Self {
             inserted: self.deleted.clone(),
@@ -149,6 +207,22 @@ impl Delta {
     /// # Errors
     ///
     /// Returns `DatabaseError::AlgebraError` if the deltas have different types.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::algebra::delta::Delta;
+    ///
+    /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let r1 = Relation::new(rel_type.clone());
+    /// let r2 = Relation::new(rel_type);
+    ///
+    /// let d1 = Delta::between(&r1, &r2).unwrap();
+    /// let d2 = Delta::between(&r1, &r2).unwrap();
+    /// let composed = d1.compose(&d2).unwrap();
+    /// ```
     pub fn compose(&self, other: &Self) -> Result<Self, DatabaseError> {
         if self.inserted.relation_type() != other.inserted.relation_type() {
             return Err(DatabaseError::AlgebraError(

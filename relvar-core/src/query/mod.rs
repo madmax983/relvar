@@ -167,6 +167,24 @@ impl Query {
     /// - A referenced relation does not exist.
     /// - A constraint expression is invalid (e.g., type mismatch).
     /// - An algebraic operation fails (e.g., joining incompatible types).
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::query::Query;
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// db.create_relvar("TEST", RelationType::new(heading)).unwrap();
+    /// db.insert("TEST", tuple!{ x: 1i64 }).unwrap();
+    ///
+    /// let q = Query::scan("TEST");
+    /// let rel = q.execute(&db).unwrap();
+    /// assert_eq!(rel.cardinality(), 1);
+    /// ```
     pub fn execute<E: StorageEngine>(&self, db: &Database<E>) -> Result<Relation, QueryError> {
         match self {
             Query::Scan(table_name) => Ok(db.query(table_name)?),
@@ -231,6 +249,16 @@ impl Query {
     }
 
     /// Yields a human-readable explanation of the query plan.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::query::Query;
+    ///
+    /// let q = Query::scan("TEST").project(vec!["x"]);
+    /// let explanation = q.explain();
+    /// assert!(explanation.contains("Project"));
+    /// assert!(explanation.contains("Scan"));
+    /// ```
     pub fn explain(&self) -> String {
         self.explain_recursive(0)
     }
@@ -288,11 +316,32 @@ impl Query {
     }
 
     /// Creates a Scan query.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::query::Query;
+    ///
+    /// let q = Query::scan("USERS");
+    /// ```
     pub fn scan(table: impl Into<String>) -> Self {
         Query::Scan(table.into())
     }
 
     /// Wraps the query in a Restrict operation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::query::Query;
+    /// use relvar_core::constraints::{ConstraintExpression, CmpOp, ValueOrRef};
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let condition = ConstraintExpression::Cmp {
+    ///     left: "id".to_string(),
+    ///     op: CmpOp::Eq,
+    ///     right: ValueOrRef::Value(ScalarValue::Int(1))
+    /// };
+    /// let q = Query::scan("USERS").restrict(condition);
+    /// ```
     pub fn restrict(self, predicate: ConstraintExpression) -> Self {
         Query::Restrict {
             input: Box::new(self),
@@ -301,6 +350,13 @@ impl Query {
     }
 
     /// Wraps the query in a Project operation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::query::Query;
+    ///
+    /// let q = Query::scan("USERS").project(vec!["name", "email"]);
+    /// ```
     pub fn project<S: Into<String>>(self, attributes: Vec<S>) -> Self {
         Query::Project {
             input: Box::new(self),
@@ -309,6 +365,13 @@ impl Query {
     }
 
     /// Wraps the query in a Rename operation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::query::Query;
+    ///
+    /// let q = Query::scan("USERS").rename(vec![("name", "full_name")]);
+    /// ```
     pub fn rename<S1: Into<String>, S2: Into<String>>(self, mappings: Vec<(S1, S2)>) -> Self {
         Query::Rename {
             input: Box::new(self),
@@ -320,6 +383,15 @@ impl Query {
     }
 
     /// Joins this query with another query.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::query::Query;
+    ///
+    /// let users = Query::scan("USERS");
+    /// let orders = Query::scan("ORDERS");
+    /// let joined = users.join(orders);
+    /// ```
     pub fn join(self, right: Query) -> Self {
         Query::Join {
             left: Box::new(self),
@@ -328,6 +400,14 @@ impl Query {
     }
 
     /// Wraps the query in a Summarize operation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::query::Query;
+    /// use relvar_core::algebra::Aggregation;
+    ///
+    /// let q = Query::scan("USERS").summarize(vec!["department"], vec![Aggregation::count("emp_count")]);
+    /// ```
     pub fn summarize<S: Into<String>>(
         self,
         group_by: Vec<S>,
