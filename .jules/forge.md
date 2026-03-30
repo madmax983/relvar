@@ -541,3 +541,6 @@ Build it right, make it fast, keep it simple.
 ## 2025-06-05 - Collaborative Filtering God Functions
 **Learning:** `relvar/src/experimental/recommend.rs` contained "God Functions" (`compute_user_similarities` and `predict_unseen_items`) that handled multiple complex relational algebra operations in a single block, making them hard to read and test.
 **Action:** Applied the "Three-Phase Operator" pattern to extract logic into private helper methods (`compute_similarity_products`, `summarize_and_calculate_similarity`, `compute_prediction_components`, `summarize_and_calculate_predictions`) to improve clarity and maintainability.
+## 2026-03-14 - Extract Complex PartialEq and Hash Logic
+**Learning:** `PartialEq::eq` and `Hash::hash` implementations in `relvar-core/src/values/scalar.rs` (`ScalarValue`) had deeply nested `match` branches for complex variants like `UserDefined`.
+**Action:** Replaced nested `match` inside `PartialEq::eq` with an upfront `std::mem::discriminant` guard clause for type mismatch, and extracted the complex variant match arms into private helper functions like `eq_user_defined_values` and `hash_user_defined_value`. Ensure `&Box<T>` references are explicitly mapped to `&T` using `.as_ref()` in loops.
