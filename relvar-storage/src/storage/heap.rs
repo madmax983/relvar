@@ -1746,6 +1746,7 @@ mod tests {
 
     // MVCC versioned slot entry tests
 
+    #[allow(dead_code)]
     fn test_txn(value: u64) -> crate::wal::TransactionId {
         crate::wal::TransactionId::new(value)
     }
@@ -3448,309 +3449,693 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_heap_deserialize_short_page() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path();
-        let rel_type = create_test_relation_type();
-        let heap = HeapFile::create(path, rel_type).unwrap();
+    #[cfg(test)]
+    mod offset_overflow_tests {
+        use super::*;
+        use relvar_core::types::{RelationType, ScalarType, TupleType};
+        use tempfile::NamedTempFile;
+        fn create_test_relation_type() -> RelationType {
+            let heading = TupleType::new()
+                .with_attribute("id".to_string(), ScalarType::Int)
+                .with_attribute("name".to_string(), ScalarType::String);
+            RelationType::new(heading)
+        }
+        #[allow(dead_code)]
+        fn test_txn(value: u64) -> crate::wal::TransactionId {
+            crate::wal::TransactionId::new(value)
+        }
+        #[test]
+        fn test_heap_deserialize_short_page() {
+            let temp_file = NamedTempFile::new().unwrap();
+            let path = temp_file.path();
+            let rel_type = create_test_relation_type();
+            let heap = HeapFile::create(path, rel_type).unwrap();
 
-        // Create a page that mimics versioned format but is too short
-        // PAGE_FORMAT_VERSION (1 byte) + 4 bytes length = 5 bytes needed
-        // We write 3 bytes: [PAGE_FORMAT_VERSION, 0, 0]
-        let data = vec![PAGE_FORMAT_VERSION, 0, 0];
-        let page = Page::from_data(0, data).unwrap();
+            // Create a page that mimics versioned format but is too short
+            // PAGE_FORMAT_VERSION (1 byte) + 4 bytes length = 5 bytes needed
+            // We write 3 bytes: [PAGE_FORMAT_VERSION, 0, 0]
+            let data = vec![PAGE_FORMAT_VERSION, 0, 0];
+            let page = Page::from_data(0, data).unwrap();
 
-        // Call private method directly to verify protection
-        // (update_tuple_versioned calls this without is_versioned_page check)
-        let result = heap.deserialize_versioned_page(&page);
+            // Call private method directly to verify protection
+            // (update_tuple_versioned calls this without is_versioned_page check)
+            let result = heap.deserialize_versioned_page(&page);
 
-        assert!(result.is_err());
-        match result {
-            Err(HeapError::Serialization(msg)) => {
-                assert_eq!(msg, "Versioned page too short to contain header");
+            assert!(result.is_err());
+            match result {
+                Err(HeapError::Serialization(msg)) => {
+                    assert_eq!(msg, "Versioned page too short to contain header");
+                }
+                _ => panic!("Expected specific Serialization error, got {:?}", result),
             }
-            _ => panic!("Expected specific Serialization error, got {:?}", result),
+        }
+
+        #[test]
+        fn test_heap_header_corruption() {
+            let temp_file = NamedTempFile::new().unwrap();
+            let path = temp_file.path();
+
+            // Create a relation type
+            let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+            let rel_type = RelationType::new(heading);
+
+            let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+            // We want to insert many small tuples to increase N (number of slots).
+            // Discrepancy D = N bytes.
+            // We want to fill the page such that we are just on the edge.
+
+            for i in 0..1000 {
+                let t = tuple! { id: i as i64 };
+                heap.insert_tuple(&t).unwrap();
+
+                // Read page 0
+                let page = heap.page_file.read_page(0).unwrap();
+                // Try to deserialize
+                let res = heap.deserialize_slotted_page(&page);
+                if res.is_err() {
+                    println!("Corruption detected at insert {}!", i);
+                    panic!("Corruption detected: {:?}", res.err());
+                }
+
+                // Also verify that the last inserted tuple is valid
+                let sp = res.unwrap();
+                if let Some(Some(last_slot)) = sp.slots.last() {
+                    // Check for overlap
+                    let slot_dir = postcard::to_allocvec(&sp).unwrap();
+                    // Slot dir is at offset 0.
+                    // Tuple is at last_slot.offset.
+                    // If tuple start < slot_dir end, we have overlap.
+                    if last_slot.offset < slot_dir.len() as u32 {
+                        println!(
+                            "Overlap detected at insert {}! Offset: {}, Header: {}",
+                            i,
+                            last_slot.offset,
+                            slot_dir.len()
+                        );
+                        panic!("Overlap detected!");
+                    }
+                }
+
+                if page.id() > 0 {
+                    println!("Page split happened at insert {}", i);
+                    break;
+                }
+            }
+        }
+
+        #[test]
+        fn test_allocation_bomb_prevention() {
+            // Construct a malicious payload: a Vec<u8> with length prefix 1GB
+            // Postcard uses varints. 1 GB is 2^30.
+            let huge_len: usize = 1024 * 1024 * 1024; // 1 GB
+            let mut payload = Vec::new();
+            // Since postcard uses varint, we must serialize the length the way postcard does
+            payload.extend_from_slice(&postcard::to_allocvec(&huge_len).unwrap());
+            // No actual data follows
+
+            // Try to deserialize into Vec<u8> using our bounded deserializer
+            // This should fail immediately because postcard checks if enough bytes are remaining
+            let result: Result<Vec<u8>, HeapError> = deserialize_bounded(&payload);
+
+            assert!(result.is_err());
+            match result {
+                Err(HeapError::Serialization(_)) => {
+                    // Expected error
+                }
+                _ => panic!("Expected Serialization error, got {:?}", result),
+            }
+        }
+
+        #[test]
+        fn test_heap_slot_reuse_corruption() {
+            let temp_file = NamedTempFile::new().unwrap();
+            let path = temp_file.path();
+
+            let rel_type = create_test_relation_type();
+            let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+            // 1. Insert 3 tuples: A, B, C
+            let tuple_a = tuple! { id: 1i64, name: "A" };
+            let tuple_b = tuple! { id: 2i64, name: "B" };
+            let tuple_c = tuple! { id: 3i64, name: "C" };
+
+            heap.insert_tuple(&tuple_a).unwrap();
+            heap.insert_tuple(&tuple_b).unwrap();
+            heap.insert_tuple(&tuple_c).unwrap();
+
+            // Verify initial state
+            let tuples = heap.scan().unwrap();
+            assert_eq!(tuples.len(), 3);
+
+            // 2. Manually simulate deletion of B (slot 1) to force reuse
+            // We do this by modifying the page directly since we don't have a public delete yet
+            {
+                let page = heap.page_file.read_page(0).unwrap();
+                let mut sp = heap.deserialize_slotted_page(&page).unwrap();
+
+                // Delete slot 1 (B)
+                sp.slots[1] = None;
+
+                // Extract existing tuples (A, B, C)
+                // Note: extract_all_tuples returns Vec<Vec<u8>> corresponding to slots
+                // But we just modified slots[1] to None!
+                // So we need to be careful.
+                // Let's re-read the page as it was on disk to get the data
+                let original_sp = heap.deserialize_slotted_page(&page).unwrap();
+                let mut existing_tuples =
+                    heap.extract_all_tuples(&page, &original_sp.slots).unwrap();
+
+                // Mark tuple B as empty
+                existing_tuples[1] = Vec::new();
+
+                // Repack and write back
+                HeapFile::repack_slots(&mut sp.slots, &existing_tuples, USABLE_PAGE_SIZE_V1)
+                    .unwrap();
+                let new_page_data = heap
+                    .serialize_slotted_page_with_tuples(&sp, &existing_tuples)
+                    .unwrap();
+                let new_page = Page::from_data(0, new_page_data).unwrap();
+                heap.page_file.write_page(&new_page).unwrap();
+            }
+
+            // Verify B is gone
+            let tuples = heap.scan().unwrap();
+            assert_eq!(tuples.len(), 2);
+            assert!(tuples.contains(&tuple_a));
+            assert!(tuples.contains(&tuple_c));
+
+            // 3. Insert tuple D. Should reuse slot 1.
+            let tuple_d = tuple! { id: 4i64, name: "D" };
+            heap.insert_tuple(&tuple_d).unwrap();
+
+            // 4. Verify all tuples are present and correct
+            let tuples = heap.scan().unwrap();
+
+            // If corruption happened, C might be lost or corrupted
+            assert_eq!(tuples.len(), 3, "Expected 3 tuples (A, C, D)");
+
+            assert!(tuples.contains(&tuple_a), "Missing tuple A");
+            assert!(tuples.contains(&tuple_d), "Missing tuple D");
+            assert!(
+                tuples.contains(&tuple_c),
+                "Missing tuple C - CORRUPTION DETECTED!"
+            );
+        }
+
+        #[test]
+        fn test_repack_slots_correctness() {
+            // Test edge case where tuples perfectly fill the page
+            let mut slots: Vec<Option<SlotEntry>> = vec![];
+            let mut tuples: Vec<Vec<u8>> = vec![];
+
+            // Add 2 tuples, each 100 bytes
+            slots.push(Some(SlotEntry {
+                offset: 0,
+                length: 100,
+            }));
+            tuples.push(vec![0u8; 100]);
+
+            slots.push(Some(SlotEntry {
+                offset: 0,
+                length: 100,
+            }));
+            tuples.push(vec![0u8; 100]);
+
+            // Usable size = 200
+            let usable_size = 200;
+
+            HeapFile::repack_slots(&mut slots, &tuples, usable_size).unwrap();
+
+            // Check offsets
+            // Last tuple (index 1) gets offset: 200 - 100 = 100
+            assert_eq!(slots[1].as_ref().unwrap().offset, 100);
+            assert_eq!(slots[1].as_ref().unwrap().length, 100);
+
+            // First tuple (index 0) gets offset: 100 - 100 = 0
+            assert_eq!(slots[0].as_ref().unwrap().offset, 0);
+            assert_eq!(slots[0].as_ref().unwrap().length, 100);
+
+            // Test overflow (too many tuples)
+            let tuples_overflow = vec![vec![0u8; 100], vec![0u8; 100], vec![0u8; 1]]; // Total 201
+            let mut slots_overflow = vec![
+                Some(SlotEntry {
+                    offset: 0,
+                    length: 100,
+                }),
+                Some(SlotEntry {
+                    offset: 0,
+                    length: 100,
+                }),
+                Some(SlotEntry {
+                    offset: 0,
+                    length: 1,
+                }),
+            ];
+
+            let result = HeapFile::repack_slots(&mut slots_overflow, &tuples_overflow, usable_size);
+            assert!(result.is_err());
+            assert!(matches!(result.unwrap_err(), HeapError::PageFull));
         }
     }
 
-    #[test]
-    fn test_heap_header_corruption() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path();
+    #[cfg(test)]
+    mod security_tests {
+        use super::*;
+        use relvar_core::tuple;
+        use relvar_core::types::{ScalarType, TupleType};
+        use tempfile::NamedTempFile;
 
-        // Create a relation type
-        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
-        let rel_type = RelationType::new(heading);
+        #[test]
+        fn test_update_versioned_tuple_too_large_prevents_loop() {
+            let temp_file = NamedTempFile::new().unwrap();
+            let path = temp_file.path();
 
-        let mut heap = HeapFile::create(path, rel_type).unwrap();
+            let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
+            let rel_type = RelationType::new(heading);
 
-        // We want to insert many small tuples to increase N (number of slots).
-        // Discrepancy D = N bytes.
-        // We want to fill the page such that we are just on the edge.
+            let mut heap = HeapFile::create(path, rel_type).unwrap();
 
-        for i in 0..1000 {
-            let t = tuple! { id: i as i64 };
-            heap.insert_tuple(&t).unwrap();
+            // Find the critical payload size dynamically
+            let mut critical_payload = None;
 
-            // Read page 0
-            let page = heap.page_file.read_page(0).unwrap();
-            // Try to deserialize
-            let res = heap.deserialize_slotted_page(&page);
-            if res.is_err() {
-                println!("Corruption detected at insert {}!", i);
-                panic!("Corruption detected: {:?}", res.err());
-            }
+            // Loop through sizes that are close to page limit
+            // USABLE_PAGE_SIZE is 4088. Overhead roughly 40-60 bytes.
+            // We look for a size where it fits with 'None' but fails with 'Some'
+            for len in 3500..4088 {
+                let data = vec![0u8; len];
+                let tuple = tuple! { data: data.clone() };
+                // Serialize to get length
+                let tuple_data = postcard::to_allocvec(&tuple).unwrap();
+                let tuple_data_len = tuple_data.len();
 
-            // Also verify that the last inserted tuple is valid
-            let sp = res.unwrap();
-            if let Some(Some(last_slot)) = sp.slots.last() {
-                // Check for overlap
-                let slot_dir = postcard::to_allocvec(&sp).unwrap();
-                // Slot dir is at offset 0.
-                // Tuple is at last_slot.offset.
-                // If tuple start < slot_dir end, we have overlap.
-                if last_slot.offset < slot_dir.len() as u32 {
-                    println!(
-                        "Overlap detected at insert {}! Offset: {}, Header: {}",
-                        i,
-                        last_slot.offset,
-                        slot_dir.len()
-                    );
-                    panic!("Overlap detected!");
+                // Check if it fits with None (insert)
+                let fits_insert = heap
+                    .check_versioned_tuple_size_limit(tuple_data_len, false)
+                    .is_ok();
+
+                // Check if it fits with Some (update)
+                let fits_update = heap
+                    .check_versioned_tuple_size_limit(tuple_data_len, true)
+                    .is_ok();
+
+                if fits_insert && !fits_update {
+                    println!("Found critical payload length: {}", len);
+                    critical_payload = Some(len);
+                    break;
                 }
             }
 
-            if page.id() > 0 {
-                println!("Page split happened at insert {}", i);
-                break;
-            }
-        }
-    }
-
-    #[test]
-    fn test_allocation_bomb_prevention() {
-        // Construct a malicious payload: a Vec<u8> with length prefix 1GB
-        // Postcard uses varints. 1 GB is 2^30.
-        let huge_len: usize = 1024 * 1024 * 1024; // 1 GB
-        let mut payload = Vec::new();
-        // Since postcard uses varint, we must serialize the length the way postcard does
-        payload.extend_from_slice(&postcard::to_allocvec(&huge_len).unwrap());
-        // No actual data follows
-
-        // Try to deserialize into Vec<u8> using our bounded deserializer
-        // This should fail immediately because postcard checks if enough bytes are remaining
-        let result: Result<Vec<u8>, HeapError> = deserialize_bounded(&payload);
-
-        assert!(result.is_err());
-        match result {
-            Err(HeapError::Serialization(_)) => {
-                // Expected error
-            }
-            _ => panic!("Expected Serialization error, got {:?}", result),
-        }
-    }
-
-    #[test]
-    fn test_heap_slot_reuse_corruption() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path();
-
-        let rel_type = create_test_relation_type();
-        let mut heap = HeapFile::create(path, rel_type).unwrap();
-
-        // 1. Insert 3 tuples: A, B, C
-        let tuple_a = tuple! { id: 1i64, name: "A" };
-        let tuple_b = tuple! { id: 2i64, name: "B" };
-        let tuple_c = tuple! { id: 3i64, name: "C" };
-
-        heap.insert_tuple(&tuple_a).unwrap();
-        heap.insert_tuple(&tuple_b).unwrap();
-        heap.insert_tuple(&tuple_c).unwrap();
-
-        // Verify initial state
-        let tuples = heap.scan().unwrap();
-        assert_eq!(tuples.len(), 3);
-
-        // 2. Manually simulate deletion of B (slot 1) to force reuse
-        // We do this by modifying the page directly since we don't have a public delete yet
-        {
-            let page = heap.page_file.read_page(0).unwrap();
-            let mut sp = heap.deserialize_slotted_page(&page).unwrap();
-
-            // Delete slot 1 (B)
-            sp.slots[1] = None;
-
-            // Extract existing tuples (A, B, C)
-            // Note: extract_all_tuples returns Vec<Vec<u8>> corresponding to slots
-            // But we just modified slots[1] to None!
-            // So we need to be careful.
-            // Let's re-read the page as it was on disk to get the data
-            let original_sp = heap.deserialize_slotted_page(&page).unwrap();
-            let mut existing_tuples = heap.extract_all_tuples(&page, &original_sp.slots).unwrap();
-
-            // Mark tuple B as empty
-            existing_tuples[1] = Vec::new();
-
-            // Repack and write back
-            HeapFile::repack_slots(&mut sp.slots, &existing_tuples, USABLE_PAGE_SIZE_V1).unwrap();
-            let new_page_data = heap
-                .serialize_slotted_page_with_tuples(&sp, &existing_tuples)
-                .unwrap();
-            let new_page = Page::from_data(0, new_page_data).unwrap();
-            heap.page_file.write_page(&new_page).unwrap();
-        }
-
-        // Verify B is gone
-        let tuples = heap.scan().unwrap();
-        assert_eq!(tuples.len(), 2);
-        assert!(tuples.contains(&tuple_a));
-        assert!(tuples.contains(&tuple_c));
-
-        // 3. Insert tuple D. Should reuse slot 1.
-        let tuple_d = tuple! { id: 4i64, name: "D" };
-        heap.insert_tuple(&tuple_d).unwrap();
-
-        // 4. Verify all tuples are present and correct
-        let tuples = heap.scan().unwrap();
-
-        // If corruption happened, C might be lost or corrupted
-        assert_eq!(tuples.len(), 3, "Expected 3 tuples (A, C, D)");
-
-        assert!(tuples.contains(&tuple_a), "Missing tuple A");
-        assert!(tuples.contains(&tuple_d), "Missing tuple D");
-        assert!(
-            tuples.contains(&tuple_c),
-            "Missing tuple C - CORRUPTION DETECTED!"
-        );
-    }
-
-    #[test]
-    fn test_repack_slots_correctness() {
-        // Test edge case where tuples perfectly fill the page
-        let mut slots: Vec<Option<SlotEntry>> = vec![];
-        let mut tuples: Vec<Vec<u8>> = vec![];
-
-        // Add 2 tuples, each 100 bytes
-        slots.push(Some(SlotEntry {
-            offset: 0,
-            length: 100,
-        }));
-        tuples.push(vec![0u8; 100]);
-
-        slots.push(Some(SlotEntry {
-            offset: 0,
-            length: 100,
-        }));
-        tuples.push(vec![0u8; 100]);
-
-        // Usable size = 200
-        let usable_size = 200;
-
-        HeapFile::repack_slots(&mut slots, &tuples, usable_size).unwrap();
-
-        // Check offsets
-        // Last tuple (index 1) gets offset: 200 - 100 = 100
-        assert_eq!(slots[1].as_ref().unwrap().offset, 100);
-        assert_eq!(slots[1].as_ref().unwrap().length, 100);
-
-        // First tuple (index 0) gets offset: 100 - 100 = 0
-        assert_eq!(slots[0].as_ref().unwrap().offset, 0);
-        assert_eq!(slots[0].as_ref().unwrap().length, 100);
-
-        // Test overflow (too many tuples)
-        let tuples_overflow = vec![vec![0u8; 100], vec![0u8; 100], vec![0u8; 1]]; // Total 201
-        let mut slots_overflow = vec![
-            Some(SlotEntry {
-                offset: 0,
-                length: 100,
-            }),
-            Some(SlotEntry {
-                offset: 0,
-                length: 100,
-            }),
-            Some(SlotEntry {
-                offset: 0,
-                length: 1,
-            }),
-        ];
-
-        let result = HeapFile::repack_slots(&mut slots_overflow, &tuples_overflow, usable_size);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), HeapError::PageFull));
-    }
-}
-
-#[cfg(test)]
-mod security_tests {
-    use super::*;
-    use relvar_core::tuple;
-    use relvar_core::types::{ScalarType, TupleType};
-    use tempfile::NamedTempFile;
-
-    #[test]
-    fn test_update_versioned_tuple_too_large_prevents_loop() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path();
-
-        let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
-        let rel_type = RelationType::new(heading);
-
-        let mut heap = HeapFile::create(path, rel_type).unwrap();
-
-        // Find the critical payload size dynamically
-        let mut critical_payload = None;
-
-        // Loop through sizes that are close to page limit
-        // USABLE_PAGE_SIZE is 4088. Overhead roughly 40-60 bytes.
-        // We look for a size where it fits with 'None' but fails with 'Some'
-        for len in 3500..4088 {
+            let len = critical_payload.expect("Failed to find critical payload size");
             let data = vec![0u8; len];
-            let tuple = tuple! { data: data.clone() };
-            // Serialize to get length
-            let tuple_data = postcard::to_allocvec(&tuple).unwrap();
-            let tuple_data_len = tuple_data.len();
+            let tuple = tuple! { data: data };
 
-            // Check if it fits with None (insert)
-            let fits_insert = heap
-                .check_versioned_tuple_size_limit(tuple_data_len, false)
-                .is_ok();
+            // Insert should succeed
+            let tid = heap
+                .insert_tuple_versioned(&tuple, crate::wal::TransactionId::new(1))
+                .expect("Insert failed");
 
-            // Check if it fits with Some (update)
-            let fits_update = heap
-                .check_versioned_tuple_size_limit(tuple_data_len, true)
-                .is_ok();
+            // Update should fail with TupleTooLarge, NOT loop forever
+            // If the bug exists, this call would loop forever (or timeout)
+            // With the fix, it should return TupleTooLarge
+            let result =
+                heap.update_tuple_versioned(tid, &tuple, crate::wal::TransactionId::new(2));
 
-            if fits_insert && !fits_update {
-                println!("Found critical payload length: {}", len);
-                critical_payload = Some(len);
-                break;
+            assert!(result.is_err());
+            match result {
+                Err(HeapError::TupleTooLarge(_)) => {
+                    println!("Caught TupleTooLarge as expected");
+                }
+                Err(HeapError::PageFull) => {
+                    panic!("Got PageFull - vulnerability likely present");
+                }
+                _ => panic!("Expected TupleTooLarge, got {:?}", result),
             }
         }
+    }
 
-        let len = critical_payload.expect("Failed to find critical payload size");
-        let data = vec![0u8; len];
-        let tuple = tuple! { data: data };
+    #[test]
+    fn test_read_tuple_integer_overflow() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
-        // Insert should succeed
-        let tid = heap
-            .insert_tuple_versioned(&tuple, crate::wal::TransactionId::new(1))
-            .expect("Insert failed");
+        // Insert a normal tuple
+        heap.insert_tuple(&relvar_core::tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
 
-        // Update should fail with TupleTooLarge, NOT loop forever
-        // If the bug exists, this call would loop forever (or timeout)
-        // With the fix, it should return TupleTooLarge
-        let result = heap.update_tuple_versioned(tid, &tuple, crate::wal::TransactionId::new(2));
+        // Corrupt the page to test `get_tuple` overflow
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(temp_file.path())
+            .unwrap();
+        use std::io::{Read, Seek, SeekFrom, Write};
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE];
+        file.read_exact(&mut page_data).unwrap();
 
-        assert!(result.is_err());
+        // Find and corrupt the slot directory
+        let mut slotted_page: SlottedPage = postcard::from_bytes(&page_data[5..]).unwrap();
+
+        // Corrupt the first slot
+        if !slotted_page.slots.is_empty() {
+            if let Some(slot) = slotted_page.slots[0].as_mut() {
+                slot.offset = u32::MAX;
+                slot.length = u32::MAX;
+            }
+        } else {
+            slotted_page.slots.push(Some(SlotEntry {
+                offset: u32::MAX,
+                length: u32::MAX,
+            }));
+        }
+
+        // Write it back
+        let new_data = postcard::to_allocvec(&slotted_page).unwrap();
+        page_data[5..5 + new_data.len()].copy_from_slice(&new_data);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.write_all(&page_data).unwrap();
+
+        // Re-open and try to get tuple
+        let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
+        let result = heap.read_tuple(TupleId {
+            page_id: 0,
+            slot: 0,
+        });
+
         match result {
-            Err(HeapError::TupleTooLarge(_)) => {
-                println!("Caught TupleTooLarge as expected");
+            Err(HeapError::Page(crate::storage::PageError::Serialization(msg)))
+                if msg.contains("Page data length") => {}
+            Err(HeapError::Serialization(msg))
+                if msg.contains("Tuple end offset overflow")
+                    || msg.contains("Page data length") => {}
+            other => panic!("Expected Tuple end offset overflow error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_read_tuple_out_of_bounds() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+        // Insert a normal tuple
+        heap.insert_tuple(&relvar_core::tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        // Corrupt the page to test `get_tuple` out of bounds
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(temp_file.path())
+            .unwrap();
+        use std::io::{Read, Seek, SeekFrom, Write};
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE];
+        file.read_exact(&mut page_data).unwrap();
+
+        // Find and corrupt the slot directory
+        let mut slotted_page: SlottedPage = postcard::from_bytes(&page_data[5..]).unwrap();
+
+        // Corrupt the first slot
+        if !slotted_page.slots.is_empty() {
+            if let Some(slot) = slotted_page.slots[0].as_mut() {
+                slot.offset = PAGE_SIZE as u32 - 10;
+                slot.length = 100;
             }
-            Err(HeapError::PageFull) => {
-                panic!("Got PageFull - vulnerability likely present");
+        } else {
+            slotted_page.slots.push(Some(SlotEntry {
+                offset: PAGE_SIZE as u32 - 10,
+                length: 100,
+            }));
+        }
+
+        // Write it back
+        let new_data = postcard::to_allocvec(&slotted_page).unwrap();
+        page_data[5..5 + new_data.len()].copy_from_slice(&new_data);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.write_all(&page_data).unwrap();
+
+        // Re-open and try to get tuple
+        let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
+        let result = heap.read_tuple(TupleId {
+            page_id: 0,
+            slot: 0,
+        });
+
+        match result {
+            Err(HeapError::Page(crate::storage::PageError::Serialization(msg)))
+                if msg.contains("Page data length") => {}
+            Err(HeapError::Serialization(msg))
+                if msg.contains("Corrupted slot points outside page data")
+                    || msg.contains("Page data length") => {}
+            other => panic!("Expected Corrupted slot error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_read_tuple_versioned_integer_overflow() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+        let txn_id = test_txn(1);
+        heap.insert_tuple_versioned(&relvar_core::tuple! { id: 1i64, name: "Alice" }, txn_id)
+            .unwrap();
+
+        // Corrupt the page
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(temp_file.path())
+            .unwrap();
+        use std::io::{Read, Seek, SeekFrom, Write};
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE];
+        file.read_exact(&mut page_data).unwrap();
+
+        // Find slot dir and corrupt
+        let mut versioned_page: VersionedSlottedPage =
+            postcard::from_bytes(&page_data[5..]).unwrap();
+        if !versioned_page.slots.is_empty() {
+            if let Some(slot) = versioned_page.slots[0].as_mut() {
+                slot.offset = u32::MAX;
+                slot.length = u32::MAX;
             }
-            _ => panic!("Expected TupleTooLarge, got {:?}", result),
+        } else {
+            versioned_page.slots.push(Some(VersionedSlotEntry {
+                offset: u32::MAX,
+                length: u32::MAX,
+                xmin: txn_id,
+                xmax: None,
+                prev_version: None,
+            }));
+        }
+
+        let new_dir = postcard::to_allocvec(&versioned_page).unwrap();
+        page_data[5..5 + new_dir.len()].copy_from_slice(&new_dir);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.write_all(&page_data).unwrap();
+
+        // Test
+        let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
+        let result = heap.read_tuple_versioned(TupleId {
+            page_id: 0,
+            slot: 0,
+        });
+
+        match result {
+            Err(HeapError::Page(crate::storage::PageError::Serialization(msg)))
+                if msg.contains("Page data length") => {}
+            Err(HeapError::Serialization(msg))
+                if msg.contains("Tuple end offset overflow")
+                    || msg.contains("Page data length") => {}
+            other => panic!("Expected Tuple end offset overflow error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_read_tuple_versioned_out_of_bounds() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+        let txn_id = test_txn(1);
+        heap.insert_tuple_versioned(&relvar_core::tuple! { id: 1i64, name: "Alice" }, txn_id)
+            .unwrap();
+
+        // Corrupt the page
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(temp_file.path())
+            .unwrap();
+        use std::io::{Read, Seek, SeekFrom, Write};
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE];
+        file.read_exact(&mut page_data).unwrap();
+
+        // Find slot dir and corrupt
+        let mut versioned_page: VersionedSlottedPage =
+            postcard::from_bytes(&page_data[5..]).unwrap();
+        if !versioned_page.slots.is_empty() {
+            if let Some(slot) = versioned_page.slots[0].as_mut() {
+                slot.offset = PAGE_SIZE as u32 - 10;
+                slot.length = 100;
+            }
+        } else {
+            versioned_page.slots.push(Some(VersionedSlotEntry {
+                offset: PAGE_SIZE as u32 - 10,
+                length: 100,
+                xmin: txn_id,
+                xmax: None,
+                prev_version: None,
+            }));
+        }
+
+        let new_dir = postcard::to_allocvec(&versioned_page).unwrap();
+        page_data[5..5 + new_dir.len()].copy_from_slice(&new_dir);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.write_all(&page_data).unwrap();
+
+        // Test
+        let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
+        let result = heap.read_tuple_versioned(TupleId {
+            page_id: 0,
+            slot: 0,
+        });
+
+        match result {
+            Err(HeapError::Page(crate::storage::PageError::Serialization(msg)))
+                if msg.contains("Page data length") => {}
+            Err(HeapError::Serialization(msg))
+                if msg.contains("Corrupted slot points outside page data")
+                    || msg.contains("Page data length") => {}
+            other => panic!("Expected Corrupted slot error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_scan_visible_integer_overflow() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+        let txn_id = test_txn(1);
+        heap.insert_tuple_versioned(&relvar_core::tuple! { id: 1i64, name: "Alice" }, txn_id)
+            .unwrap();
+
+        // Corrupt the page
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(temp_file.path())
+            .unwrap();
+        use std::io::{Read, Seek, SeekFrom, Write};
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE];
+        file.read_exact(&mut page_data).unwrap();
+
+        // Find slot dir and corrupt
+        let mut versioned_page: VersionedSlottedPage =
+            postcard::from_bytes(&page_data[5..]).unwrap();
+        if !versioned_page.slots.is_empty() {
+            if let Some(slot) = versioned_page.slots[0].as_mut() {
+                slot.offset = u32::MAX;
+                slot.length = u32::MAX;
+            }
+        } else {
+            versioned_page.slots.push(Some(VersionedSlotEntry {
+                offset: u32::MAX,
+                length: u32::MAX,
+                xmin: txn_id,
+                xmax: None,
+                prev_version: None,
+            }));
+        }
+
+        let new_dir = postcard::to_allocvec(&versioned_page).unwrap();
+        page_data[5..5 + new_dir.len()].copy_from_slice(&new_dir);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.write_all(&page_data).unwrap();
+
+        // Test
+        let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
+        let snapshot =
+            crate::mvcc::TransactionSnapshot::new(test_txn(2), crate::wal::Lsn::new(100), vec![]);
+        let committed = std::collections::HashSet::from([test_txn(1)]);
+        let result = heap.scan_visible(&snapshot, &committed);
+
+        match result {
+            Err(HeapError::Page(crate::storage::PageError::Serialization(msg)))
+                if msg.contains("Page data length") => {}
+            Err(HeapError::Serialization(msg))
+                if msg.contains("Tuple end offset overflow")
+                    || msg.contains("Page data length") => {}
+            other => panic!("Expected Tuple end offset overflow error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_scan_visible_out_of_bounds() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+        let txn_id = test_txn(1);
+        heap.insert_tuple_versioned(&relvar_core::tuple! { id: 1i64, name: "Alice" }, txn_id)
+            .unwrap();
+
+        // Corrupt the page
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(temp_file.path())
+            .unwrap();
+        use std::io::{Read, Seek, SeekFrom, Write};
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut page_data = vec![0u8; PAGE_SIZE];
+        file.read_exact(&mut page_data).unwrap();
+
+        // Find slot dir and corrupt
+        let mut versioned_page: VersionedSlottedPage =
+            postcard::from_bytes(&page_data[5..]).unwrap();
+        if !versioned_page.slots.is_empty() {
+            if let Some(slot) = versioned_page.slots[0].as_mut() {
+                // Set offset + length to > PAGE_SIZE but < u32::MAX to hit out-of-bounds branch
+                slot.offset = PAGE_SIZE as u32 - 10;
+                slot.length = 100;
+            }
+        } else {
+            versioned_page.slots.push(Some(VersionedSlotEntry {
+                offset: PAGE_SIZE as u32 - 10,
+                length: 100,
+                xmin: txn_id,
+                xmax: None,
+                prev_version: None,
+            }));
+        }
+
+        let new_dir = postcard::to_allocvec(&versioned_page).unwrap();
+        page_data[5..5 + new_dir.len()].copy_from_slice(&new_dir);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.write_all(&page_data).unwrap();
+
+        // Test
+        let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
+        let snapshot =
+            crate::mvcc::TransactionSnapshot::new(test_txn(2), crate::wal::Lsn::new(100), vec![]);
+        let committed = std::collections::HashSet::from([test_txn(1)]);
+        let result = heap.scan_visible(&snapshot, &committed);
+
+        match result {
+            Err(HeapError::Page(crate::storage::PageError::Serialization(msg)))
+                if msg.contains("Page data length") => {}
+            Err(HeapError::Serialization(msg))
+                if msg.contains("Corrupted slot points outside page data")
+                    || msg.contains("Page data length") => {}
+            other => panic!("Expected Corrupted slot error, got: {:?}", other),
         }
     }
 }
