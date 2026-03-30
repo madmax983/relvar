@@ -256,12 +256,7 @@ fn compute_common_attributes(left: &Relation, right: &Relation) -> Vec<String> {
 /// Result is the union of attributes from both relations.
 /// Attributes present in both are included only once (from the left relation).
 fn compute_natural_join_heading(left: &Relation, right: &Relation) -> TupleType {
-    let mut result_heading = TupleType::new();
-
-    // Add all attributes from left
-    for (attr_name, attr_type) in left.relation_type().heading().attributes() {
-        result_heading = result_heading.with_attribute(attr_name, attr_type.clone());
-    }
+    let mut result_heading = left.relation_type().heading().clone();
 
     // Add attributes from right that aren't already in result
     for (attr_name, attr_type) in right.relation_type().heading().attributes() {
