@@ -656,10 +656,14 @@ impl HeapFile {
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
+        let end = start
+            .checked_add(slot_entry.length as usize)
+            .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
 
         if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
+            return Err(HeapError::Serialization(
+                "Corrupted slot points outside page data".to_string(),
+            ));
         }
 
         let tuple_data = &page.data()[start..end];
@@ -691,10 +695,14 @@ impl HeapFile {
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
+        let end = start
+            .checked_add(slot_entry.length as usize)
+            .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
 
         if end > page.data().len() {
-            return Err(HeapError::TupleNotFound);
+            return Err(HeapError::Serialization(
+                "Corrupted slot points outside page data".to_string(),
+            ));
         }
 
         let tuple_data = &page.data()[start..end];
@@ -1430,13 +1438,21 @@ impl HeapFile {
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
                     let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
+                    let end = start
+                        .checked_add(slot_entry.length as usize)
+                        .ok_or_else(|| {
+                            HeapError::Serialization("Tuple end offset overflow".to_string())
+                        })?;
 
-                    if end <= page.data().len() {
-                        let tuple_data = &page.data()[start..end];
-                        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-                        results.push(tuple);
+                    if end > page.data().len() {
+                        return Err(HeapError::Serialization(
+                            "Corrupted slot points outside page data".to_string(),
+                        ));
                     }
+
+                    let tuple_data = &page.data()[start..end];
+                    let tuple: Tuple = deserialize_bounded(tuple_data)?;
+                    results.push(tuple);
                 }
             }
 
