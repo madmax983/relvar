@@ -194,3 +194,9 @@ The `WalManager` component in `relvar-storage` used `File::read_to_end(&mut buff
 
 **Defense:**
 Added strict file size limits before reading the WAL file. `WalManager` now checks the file metadata length against `MAX_WAL_SIZE` (set to a safe threshold of 2 GB) and returns a standard `std::io::Error::new(std::io::ErrorKind::InvalidData)` wrapped in a `WalError::Io` if the limit is exceeded. This prevents unbounded `Vec` pre-allocations from malicious or overgrown files.
+## 2026-03-07 - CSV Importer Infinite Loop DoS
+**Threat:**
+The CSV importer (`relvar::tools::importer::from_csv`) enforced the `MAX_IMPORT_ROWS` limit by checking `relation.cardinality()`. Since `relation.insert` ignores duplicate tuples, an attacker could supply a massive CSV file containing identical rows. The cardinality would remain 1, bypassing the limit check and causing the server to process the entire file in an unbounded loop, leading to CPU and I/O exhaustion (Denial of Service).
+
+**Defense:**
+Modified `from_csv` to enforce the `MAX_IMPORT_ROWS` limit using `line_idx` (the number of rows read from the source) rather than `relation.cardinality()`. This guarantees the parser will halt after processing `MAX_IMPORT_ROWS` lines, regardless of tuple uniqueness. Added `warden_csv_import_dos.rs` to verify the exploit fails.
