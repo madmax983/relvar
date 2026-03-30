@@ -1,0 +1,288 @@
+--- relvar-core/src/values/tuple.rs:208 ---
+            }
+        }
+
+        // Verify all values match their types
+        for (attr_name, value) in &values_map {
+            if let Some(expected_type) = tuple_type.get_attribute_type(attr_name) {
+                if !value.is_type(expected_type) {
+                    return Err(TupleError::TypeMismatch(
+                        attr_name.clone(),
+                        expected_type.name().to_string(),
+                        value.scalar_type().name().to_string(),
+--- relvar-core/src/values/tuple.rs:375 ---
+            }
+        }
+
+        // Check that all values match their types
+        for (attr_name, value) in &self.values {
+            if let Some(expected_type) = tuple_type.get_attribute_type(attr_name) {
+                if !value.is_type(expected_type) {
+                    return false;
+                }
+            } else {
+                return false;
+--- relvar-core/src/database/transaction.rs:74 ---
+            return Err(DatabaseError::TransactionError(
+                "No transaction in progress".to_string(),
+            ));
+        }
+
+        if let Some(snapshot) = self.transaction_snapshot.take() {
+            self.engine.commit_transaction(snapshot)?;
+        }
+
+        self.in_transaction = false;
+        Ok(())
+--- relvar-core/src/database/transaction.rs:107 ---
+            return Err(DatabaseError::TransactionError(
+                "No transaction in progress".to_string(),
+            ));
+        }
+
+        if let Some(snapshot) = self.transaction_snapshot.take() {
+            self.engine.rollback_transaction(snapshot)?;
+        }
+
+        self.in_transaction = false;
+        Ok(())
+--- relvar-core/src/database/schema.rs:155 ---
+    /// let fetched_type = db.get_relvar_type("USERS").unwrap();
+    /// assert_eq!(fetched_type.degree(), 1);
+    /// ```
+    pub fn get_relvar_type(&self, name: &str) -> Result<RelationType, DatabaseError> {
+        // Check virtual relvars first
+        if let Some(def) = self.virtual_relvars.get(name) {
+            return Ok(def.relation_type.clone());
+        }
+
+        // Check base relvars
+        let metadata = self.engine.get_relation_metadata(name)?;
+--- relvar-core/src/database/data.rs:76 ---
+    /// let rel = db.query("USERS").unwrap();
+    /// assert_eq!(rel.cardinality(), 1);
+    /// ```
+    pub fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
+        // Check if this is a virtual relvar
+        if let Some(virtual_relvar) = self.virtual_relvars.get(relation_name) {
+            return (virtual_relvar.evaluator)(self);
+        }
+
+        // Otherwise, load from engine
+        Ok(self.engine.load_relation(relation_name)?)
+--- relvar-core/src/database/data.rs:319 ---
+        &mut self,
+        relation_name: &str,
+        relation: &Relation,
+    ) -> Result<(), DatabaseError> {
+        // Validate key constraints on new relation
+        if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
+            self.constraints
+                .validate_key_constraints_bulk(relation, key_constraints)?;
+        }
+
+        // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
+--- relvar-core/src/storage_engine/in_memory.rs:171 ---
+    }
+
+    fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
+        // Restore saved state
+        for (name, relation) in snapshot.saved_relations {
+            if let Some(stored) = self.relations.get_mut(&name) {
+                stored.relation = relation;
+            }
+        }
+
+        Ok(())
+--- relvar-core/src/algebra/project.rs:88 ---
+    /// ```
+    pub fn project(&self, attributes: &[&str]) -> Self {
+        // Build new heading with selected attributes
+        let mut new_heading = TupleType::new();
+        for attr_name in attributes {
+            if let Some(attr_type) = self.relation_type().heading().get_attribute_type(attr_name) {
+                new_heading = new_heading.with_attribute(*attr_name, attr_type.clone());
+            }
+        }
+
+        let new_rel_type = RelationType::new(new_heading.clone());
+--- relvar-core/src/algebra/project.rs:116 ---
+    /// collection by mutating the tuples in-place when possible.
+    pub fn project_into(self, attributes: &[&str]) -> Self {
+        // Build new heading with selected attributes
+        let mut new_heading = TupleType::new();
+        for attr_name in attributes {
+            if let Some(attr_type) = self.relation_type().heading().get_attribute_type(attr_name) {
+                new_heading = new_heading.with_attribute(*attr_name, attr_type.clone());
+            }
+        }
+
+        let new_rel_type = RelationType::new(new_heading.clone());
+--- relvar-core/src/algebra/join.rs:309 ---
+    for probe_tuple in probe_rel.tuples() {
+        let val = probe_tuple.get(attr).ok_or_else(|| {
+            DatabaseError::AttributeNotFound(attr.to_string(), "probe relation".to_string())
+        })?;
+
+        if let Some(matching_tuples) = build_map.get(val) {
+            for build_tuple in matching_tuples {
+                joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
+            }
+        }
+    }
+--- relvar-core/src/algebra/join.rs:344 ---
+}
+
+impl<'t, 'a> Hash for JoinKey<'t, 'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for attr in self.attributes {
+            if let Some(val) = self.tuple.get(attr) {
+                val.hash(state);
+            }
+        }
+    }
+}
+--- relvar-core/src/algebra/join.rs:386 ---
+        let key = JoinKey {
+            tuple: probe_tuple,
+            attributes: common_attrs,
+        };
+
+        if let Some(matching_tuples) = build_map.get(&key) {
+            for build_tuple in matching_tuples {
+                joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
+            }
+        }
+    }
+--- relvar-core/src/algebra/semijoin.rs:47 ---
+}
+
+impl<'t, 'a> Hash for SemijoinKey<'t, 'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for attr in self.attributes {
+            if let Some(val) = self.tuple.get(attr) {
+                val.hash(state);
+            }
+        }
+    }
+}
+--- relvar-core/src/algebra/restrict.rs:123 ---
+            .insert(tuple! { emp_id: 3i64, name: "Charlie", dept_id: 10i64 })
+            .unwrap();
+
+        // Filter by dept_id == 10
+        let result = relation.restrict(|t| {
+            if let Some(ScalarValue::Int(dept_id)) = t.get("dept_id") {
+                *dept_id == 10
+            } else {
+                false
+            }
+        });
+--- relvar-core/src/constraints/key.rs:185 ---
+        &self,
+        tuple: &Tuple,
+    ) -> Result<Vec<crate::values::ScalarValue>, KeyConstraintError> {
+        let mut values = Vec::with_capacity(self.attributes.len());
+        for attr in &self.attributes {
+            if let Some(val) = tuple.get(attr) {
+                values.push(val.clone());
+            } else {
+                return Err(KeyConstraintError::TupleMissingAttribute(attr.clone()));
+            }
+        }
+--- relvar-core/src/constraints/key.rs:275 ---
+    }
+
+    /// Check if all constraints are satisfied
+    pub fn are_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
+        // Check primary key
+        if let Some(pk) = &self.primary_key
+            && !pk.is_satisfied_by(relation)?
+        {
+            return Ok(false);
+        }
+
+--- relvar-core/src/constraints/key.rs:298 ---
+        &self,
+        relation: &Relation,
+        new_tuple: &Tuple,
+    ) -> Result<Option<Vec<String>>, KeyConstraintError> {
+        // Check primary key
+        if let Some(pk) = &self.primary_key
+            && pk.would_violate(relation, new_tuple)?
+        {
+            return Ok(Some(pk.attributes().to_vec()));
+        }
+
+--- relvar-core/src/constraints/manager.rs:201 ---
+        relation: &Relation,
+        attribute_name: &str,
+        constraints: &AttributeConstraints,
+    ) -> Result<(), ConstraintManagerError> {
+        for tuple in relation.tuples() {
+            if let Some(value) = tuple.get(attribute_name)
+                && !constraints
+                    .is_satisfied_by(value)
+                    .map_err(|e| ConstraintManagerError::TypeConstraintViolation(e.to_string()))?
+            {
+                return Err(ConstraintManagerError::TypeConstraintViolation(
+--- relvar-core/src/constraints/manager.rs:291 ---
+    pub fn validate_type_constraints(
+        &self,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), ConstraintManagerError> {
+        if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
+            for (attr_name, constraints) in attr_constraints {
+                if let Some(value) = tuple.get(attr_name)
+                    && !constraints.is_satisfied_by(value).map_err(|e| {
+                        ConstraintManagerError::TypeConstraintViolation(e.to_string())
+                    })?
+--- relvar-core/src/constraints/manager.rs:314 ---
+    pub fn validate_check_constraints(
+        &self,
+        relation_name: &str,
+        tuple: &Tuple,
+    ) -> Result<(), ConstraintManagerError> {
+        if let Some(check_constraints) = self.check_constraints.get(relation_name) {
+            check_constraints.are_all_satisfied_by(tuple)?;
+        }
+        Ok(())
+    }
+
+--- relvar-core/src/constraints/manager.rs:327 ---
+        &self,
+        relation_name: &str,
+        tuple: &Tuple,
+        current_relation: &Relation,
+    ) -> Result<(), ConstraintManagerError> {
+        if let Some(key_constraints) = self.key_constraints.get(relation_name) {
+            if let Some(pk) = key_constraints.primary_key()
+                && pk
+                    .would_violate(current_relation, tuple)
+                    .map_err(|e| ConstraintManagerError::TransactionError(e.to_string()))?
+            {
+--- relvar-core/src/constraints/manager.rs:328 ---
+        relation_name: &str,
+        tuple: &Tuple,
+        current_relation: &Relation,
+    ) -> Result<(), ConstraintManagerError> {
+        if let Some(key_constraints) = self.key_constraints.get(relation_name) {
+            if let Some(pk) = key_constraints.primary_key()
+                && pk
+                    .would_violate(current_relation, tuple)
+                    .map_err(|e| ConstraintManagerError::TransactionError(e.to_string()))?
+            {
+                return Err(ConstraintManagerError::PrimaryKeyViolation);
+--- relvar-core/src/constraints/manager.rs:412 ---
+    pub fn validate_key_constraints_bulk(
+        &self,
+        relation: &Relation,
+        constraints: &KeyConstraints,
+    ) -> Result<(), ConstraintManagerError> {
+        if let Some(pk) = constraints.primary_key()
+            && !pk
+                .is_satisfied_by(relation)
+                .map_err(|e| ConstraintManagerError::TransactionError(e.to_string()))?
+        {
+            return Err(ConstraintManagerError::PrimaryKeyViolation);
