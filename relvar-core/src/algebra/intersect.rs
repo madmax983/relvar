@@ -38,15 +38,9 @@ use crate::values::Relation;
 use thiserror::Error;
 
 /// Errors that can occur during intersection operations.
-#[derive(Debug, Error)]
-pub enum IntersectError {
-    /// The two relations have incompatible types (different headings).
-    ///
-    /// Intersection requires both relations to have exactly the same heading
-    /// (attribute names and types).
-    #[error("Relations must have the same type (heading) for intersection")]
-    TypeMismatch,
-}
+#[derive(Debug, Error, PartialEq, Eq, Clone, Copy)]
+#[error("Relations must have the same type (heading) for intersection")]
+pub struct IntersectError;
 
 impl Relation {
     /// Computes the intersection of this relation with another.
@@ -66,7 +60,7 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// Returns [`IntersectError::TypeMismatch`] if the relations have different
+    /// Returns [`IntersectError`] if the relations have different
     /// headings (different attribute names or types).
     ///
     /// # Behavior
@@ -109,7 +103,7 @@ impl Relation {
     pub fn intersect(&self, other: &Relation) -> Result<Self, IntersectError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
-            return Err(IntersectError::TypeMismatch);
+            return Err(IntersectError);
         }
 
         // Filter tuples and create relation without redundant checks
@@ -127,7 +121,7 @@ impl Relation {
     pub fn intersect_into(self, other: &Relation) -> Result<Self, IntersectError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
-            return Err(IntersectError::TypeMismatch);
+            return Err(IntersectError);
         }
 
         let rel_type = self.relation_type().clone();
@@ -194,7 +188,7 @@ mod tests {
 
         let result = rel1.intersect(&rel2);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), IntersectError::TypeMismatch));
+        assert_eq!(result.unwrap_err(), IntersectError);
     }
 
     #[test]

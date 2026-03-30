@@ -33,16 +33,9 @@ use std::convert::TryFrom;
 use thiserror::Error;
 
 /// Errors that can occur during scalar value operations.
-#[derive(Debug, Error)]
-pub enum ScalarValueError {
-    /// Attempted to use an observer on a built-in type.
-    ///
-    /// The observer operation is only valid for user-defined types (POSSREP pattern).
-    /// Built-in types like `Int`, `String`, etc., do not have observers because
-    /// their representation is their value.
-    #[error("Cannot extract observer from built-in type")]
-    NotUserDefined,
-}
+#[derive(Debug, Error, PartialEq, Eq, Clone, Copy)]
+#[error("Cannot extract observer from built-in type")]
+pub struct ScalarValueError;
 
 /// Represents an atomic (scalar) value at runtime.
 ///
@@ -199,7 +192,7 @@ impl ScalarValue {
     pub fn observer(&self) -> Result<ScalarValue, ScalarValueError> {
         match self {
             ScalarValue::UserDefined { value, .. } => Ok((**value).clone()),
-            _ => Err(ScalarValueError::NotUserDefined),
+            _ => Err(ScalarValueError),
         }
     }
 

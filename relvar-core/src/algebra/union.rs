@@ -37,15 +37,9 @@ use crate::values::Relation;
 use thiserror::Error;
 
 /// Errors that can occur during union operations.
-#[derive(Debug, Error)]
-pub enum UnionError {
-    /// The two relations have incompatible types (different headings).
-    ///
-    /// Union requires both relations to have exactly the same heading
-    /// (attribute names and types).
-    #[error("Relations must have the same type (heading) for union")]
-    TypeMismatch,
-}
+#[derive(Debug, Error, PartialEq, Eq, Clone, Copy)]
+#[error("Relations must have the same type (heading) for union")]
+pub struct UnionError;
 
 impl Relation {
     /// Computes the union of this relation with another.
@@ -66,7 +60,7 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// Returns [`UnionError::TypeMismatch`] if the relations have different
+    /// Returns [`UnionError`] if the relations have different
     /// headings (different attribute names or types).
     ///
     /// # Behavior
@@ -103,7 +97,7 @@ impl Relation {
     pub fn union(&self, other: &Relation) -> Result<Self, UnionError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
-            return Err(UnionError::TypeMismatch);
+            return Err(UnionError);
         }
 
         // Chain iterators and create relation without redundant checks
@@ -121,7 +115,7 @@ impl Relation {
     pub fn union_into(mut self, other: &Relation) -> Result<Self, UnionError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
-            return Err(UnionError::TypeMismatch);
+            return Err(UnionError);
         }
 
         for tuple in other.tuples() {
@@ -160,7 +154,7 @@ mod tests {
 
         let result = rel1.union(&rel2);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), UnionError::TypeMismatch));
+        assert_eq!(result.unwrap_err(), UnionError);
     }
 
     #[test]
