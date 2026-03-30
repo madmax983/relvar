@@ -143,6 +143,56 @@ impl Relation {
         // - Tuples are created with new_heading
         Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
     }
+
+    /// Renames attributes in this relation according to the provided mapping, consuming the relation.
+    ///
+    /// This is an optimized version of `rename` that avoids allocating a new
+    /// collection for the tuples' inner values, instead migrating them in-place
+    /// from the old names to the new names while consuming the source relation.
+    /// This reduces heap allocations and `.clone()` overhead.
+    pub fn rename_into(self, mappings: &[(&str, &str)]) -> Self {
+        // Build new heading with renamed attributes
+        let mut new_heading = TupleType::new();
+
+        // Also pre-calculate the new names in the sorted order of attributes
+        // This vector will align perfectly with tuple.values().values() iteration
+        // because both follow BTreeMap's sorted key order.
+        let mut new_names = Vec::with_capacity(self.relation_type().heading().degree());
+
+        for (old_name, attr_type) in self.relation_type().heading().attributes() {
+            // Check if this attribute should be renamed
+            let new_name = mappings
+                .iter()
+                .find(|(from, _)| from == old_name)
+                .map(|(_, to)| *to)
+                .unwrap_or(old_name.as_str());
+
+            new_heading = new_heading.with_attribute(new_name, attr_type.clone());
+            new_names.push(new_name.to_string());
+        }
+
+        let new_rel_type = RelationType::new(new_heading.clone());
+        let new_heading_arc = Arc::new(new_heading);
+
+        // Rename attributes in each tuple by consuming it
+        let renamed_tuples = self.into_iter().map(move |tuple| {
+            // Optimization: Zip pre-calculated new names with consumed values.
+            // Both iterators follow the sorted order of old attribute names.
+            let values_map: BTreeMap<String, _> = new_names
+                .iter()
+                .zip(tuple.into_values().into_values())
+                .map(|(new_name, value)| (new_name.clone(), value))
+                .collect();
+
+            // Safety:
+            // Same as rename: new names and types are guaranteed to match
+            // the new heading we constructed above.
+            Tuple::new_unchecked(new_heading_arc.clone(), values_map)
+        });
+
+        // Safety: We guarantee that renamed_tuples conform to new_rel_type
+        Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
+    }
 }
 
 #[cfg(test)]
@@ -150,6 +200,49 @@ mod tests {
     use crate::tuple;
     use crate::types::{RelationType, ScalarType, TupleType};
     use crate::values::Relation;
+
+    #[test]
+    fn test_rename_into() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String)
+            .with_attribute("dept_id", ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+
+        let renamed =
+            relation.rename_into(&[("emp_id", "employee_id"), ("dept_id", "department_id")]);
+
+        assert!(
+            renamed
+                .relation_type()
+                .heading()
+                .has_attribute("employee_id")
+        );
+        assert!(
+            renamed
+                .relation_type()
+                .heading()
+                .has_attribute("department_id")
+        );
+        assert!(renamed.relation_type().heading().has_attribute("name"));
+        assert!(!renamed.relation_type().heading().has_attribute("emp_id"));
+        assert!(!renamed.relation_type().heading().has_attribute("dept_id"));
+        assert_eq!(renamed.cardinality(), 1);
+
+        let tuple = renamed.tuples().next().unwrap();
+        assert_eq!(tuple.get_typed::<i64>("employee_id").unwrap(), 1);
+        assert_eq!(
+            tuple.get_typed::<String>("name").unwrap(),
+            "Alice".to_string()
+        );
+        assert_eq!(tuple.get_typed::<i64>("department_id").unwrap(), 10);
+    }
 
     #[test]
     fn test_rename_changes_attribute_name() {
