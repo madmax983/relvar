@@ -53,6 +53,15 @@ use thiserror::Error;
 /// This structure represents a query plan that can be serialized, inspected,
 /// optimized, and executed against a database. It forms a tree where leaf nodes
 /// are relation scans and internal nodes are algebraic operations.
+///
+/// # Examples
+///
+/// ```
+///
+/// use relvar_core::query::Query;
+///
+/// let q = Query::scan("users");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Query {
     /// Scan a relation variable (base table).
