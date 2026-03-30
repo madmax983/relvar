@@ -336,7 +336,11 @@ impl PageFile {
             )));
         }
 
-        let data_len_u64 = u64::from_le_bytes(buffer[0..8].try_into().unwrap());
+        let data_len_u64 = u64::from_le_bytes(
+            buffer[0..8]
+                .try_into()
+                .map_err(|_| PageError::Serialization("Invalid length format".to_string()))?,
+        );
 
         // Check if data length exceeds PAGE_SIZE - 8 (maximum possible data)
         // We check this using u64 arithmetic BEFORE casting to usize to prevent
