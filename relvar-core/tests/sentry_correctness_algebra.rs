@@ -159,3 +159,18 @@ fn test_like_unicode_normalization_behavior() {
         "Like operator currently performs strict code point matching, not normalization-insensitive matching"
     );
 }
+
+#[test]
+fn test_difference_into_type_mismatch() {
+    let type1 = TupleType::new().with_attribute("emp_id", ScalarType::Int);
+    let rel1 = Relation::new(RelationType::new(type1));
+
+    let type2 = TupleType::new()
+        .with_attribute("emp_id", ScalarType::Int)
+        .with_attribute("salary", ScalarType::Float);
+    let rel2 = Relation::new(RelationType::new(type2));
+
+    // difference_into consumes rel1
+    let result = rel1.difference_into(&rel2);
+    assert!(result.is_err());
+}
