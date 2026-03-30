@@ -519,7 +519,9 @@ impl HeapFile {
 
         // Calculate total size correctly
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
-        let required_space = header_size + total_tuple_data_size;
+        let required_space = header_size
+            .checked_add(total_tuple_data_size)
+            .ok_or(HeapError::PageFull)?;
 
         if required_space > USABLE_PAGE_SIZE_V1 {
             return Err(HeapError::PageFull);
@@ -592,7 +594,9 @@ impl HeapFile {
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
+        let end = start
+            .checked_add(slot_entry.length as usize)
+            .ok_or(HeapError::TupleNotFound)?;
 
         if end > page.data().len() {
             return Err(HeapError::TupleNotFound);
@@ -627,7 +631,9 @@ impl HeapFile {
 
         // Extract tuple data from page
         let start = slot_entry.offset as usize;
-        let end = start + slot_entry.length as usize;
+        let end = start
+            .checked_add(slot_entry.length as usize)
+            .ok_or(HeapError::TupleNotFound)?;
 
         if end > page.data().len() {
             return Err(HeapError::TupleNotFound);
@@ -862,11 +868,15 @@ impl HeapFile {
         // Calculate required space using ACTUAL serialized size
         // CRITICAL: Must use bincode size, not sizeof, as they differ!
         let slot_dir = serialize_compat(&versioned_page)?;
-        let header_size = V2_HEADER_SIZE + slot_dir.len();
+        let header_size = V2_HEADER_SIZE
+            .checked_add(slot_dir.len())
+            .ok_or(HeapError::PageFull)?;
 
         // existing_tuples already includes tuple_data, so we just sum existing_tuples
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
-        let required_space = header_size + total_tuple_data_size;
+        let required_space = header_size
+            .checked_add(total_tuple_data_size)
+            .ok_or(HeapError::PageFull)?;
 
         if required_space > USABLE_PAGE_SIZE_V2 {
             return Err(HeapError::PageFull);
@@ -1353,7 +1363,11 @@ impl HeapFile {
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
                     let start = slot_entry.offset as usize;
-                    let end = start + slot_entry.length as usize;
+                    let end = start
+                        .checked_add(slot_entry.length as usize)
+                        .ok_or_else(|| {
+                            HeapError::Serialization("Tuple offset overflow".to_string())
+                        })?;
 
                     if end <= page.data().len() {
                         let tuple_data = &page.data()[start..end];

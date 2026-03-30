@@ -194,3 +194,10 @@ The `WalManager` component in `relvar-storage` used `File::read_to_end(&mut buff
 
 **Defense:**
 Added strict file size limits before reading the WAL file. `WalManager` now checks the file metadata length against `MAX_WAL_SIZE` (set to a safe threshold of 2 GB) and returns a standard `std::io::Error::new(std::io::ErrorKind::InvalidData)` wrapped in a `WalError::Io` if the limit is exceeded. This prevents unbounded `Vec` pre-allocations from malicious or overgrown files.
+## 2026-03-30 - Storage Arithmetic & Unchecked Conversion Panics
+**Threat:**
+In `relvar-storage`, several mathematical operations involving slice lengths and offsets (e.g., `start + slot_entry.length as usize`) used standard `+` operators without checking for overflow. Additionally, byte-slice parsing in `page.rs` used `.try_into().unwrap()`. Maliciously crafted storage files could trigger integer overflows or `try_into` panics, leading to Denial of Service (DoS).
+
+**Defense:**
+1. Replaced unbounded `+` operations in `heap.rs` with `.checked_add(...).ok_or(...)`, mapping overflows explicitly to `HeapError::TupleNotFound` or `HeapError::PageFull`.
+2. Replaced the `.unwrap()` on `.try_into()` inside `page.rs` with `.map_err(...)?` returning `PageError::Serialization` to ensure memory-safe error handling.
