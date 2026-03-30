@@ -48,3 +48,7 @@ Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, 
 ## 2026-03-09 - Group Key and RVA Pre-allocation Optimization
 **Learning:** `compute_grouped_tuples` allocated and cloned heavy `ScalarValue` types repeatedly to build a `HashMap` key for each tuple, causing O(N_tuples) unnecessary allocations. `compute_ungrouped_tuples` lacked result vector pre-allocation based on the RVA cardinality.
 **Action:** Use `Vec<&'a ScalarValue>` as `HashMap` keys during aggregation passes. For collection transformations where sizes are variable but determinable (like ungrouping RVAs), always do an initial size accumulation pass to enable `Vec::with_capacity`.
+
+## 2026-03-27 - Tuple validation key buffer reuse
+**Learning:** Checking Candidate Key and Foreign Key constraints over a `Relation` inside nested loops allocates a `Vec<ScalarValue>` and clones each attribute if we use `.map(|attr| tuple.get(attr).unwrap().clone()).collect()`.
+**Action:** Use a pre-allocated vector inside the loop (e.g. `let mut buffer = Vec::with_capacity(...)`) and extract references via `buffer.push(tuple.get(attr).unwrap())` and `.clear()` it on each iteration to prevent `Vec` reallocations and `ScalarValue` cloning. For `CandidateKey::is_satisfied_by`, `.collect()` into a `HashSet` from the `Vec<&ScalarValue>` instead.

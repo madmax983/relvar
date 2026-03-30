@@ -145,10 +145,11 @@ impl CandidateKey {
 
         // Collect all key values
         let mut key_values = HashSet::new();
+        let mut buffer = Vec::with_capacity(self.attributes.len());
 
         for tuple in relation.tuples() {
-            let key_value = self.extract_key_value(tuple)?;
-            if !key_values.insert(key_value) {
+            self.extract_key_value_ref(tuple, &mut buffer)?;
+            if !key_values.insert(buffer.clone()) {
                 // Duplicate found
                 return Ok(false);
             }
@@ -163,10 +164,12 @@ impl CandidateKey {
         relation: &Relation,
         new_tuple: &Tuple,
     ) -> Result<bool, KeyConstraintError> {
-        let new_key_value = self.extract_key_value(new_tuple)?;
+        let mut new_key_value = Vec::with_capacity(self.attributes.len());
+        self.extract_key_value_ref(new_tuple, &mut new_key_value)?;
 
+        let mut existing_key_value = Vec::with_capacity(self.attributes.len());
         for existing_tuple in relation.tuples() {
-            let existing_key_value = self.extract_key_value(existing_tuple)?;
+            self.extract_key_value_ref(existing_tuple, &mut existing_key_value)?;
             if new_key_value == existing_key_value {
                 return Ok(true);
             }
@@ -175,20 +178,21 @@ impl CandidateKey {
         Ok(false)
     }
 
-    /// Extract key value from a tuple
-    fn extract_key_value(
+    /// Extract reference to key value from a tuple, avoiding clone
+    fn extract_key_value_ref<'a>(
         &self,
-        tuple: &Tuple,
-    ) -> Result<Vec<crate::values::ScalarValue>, KeyConstraintError> {
-        let mut values = Vec::with_capacity(self.attributes.len());
+        tuple: &'a Tuple,
+        buffer: &mut Vec<&'a crate::values::ScalarValue>,
+    ) -> Result<(), KeyConstraintError> {
+        buffer.clear();
         for attr in &self.attributes {
             if let Some(val) = tuple.get(attr) {
-                values.push(val.clone());
+                buffer.push(val);
             } else {
                 return Err(KeyConstraintError::TupleMissingAttribute(attr.clone()));
             }
         }
-        Ok(values)
+        Ok(())
     }
 }
 
