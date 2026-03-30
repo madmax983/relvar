@@ -34,6 +34,23 @@ use std::convert::TryFrom;
 use thiserror::Error;
 
 /// Errors that can occur during scalar type operations.
+///
+/// This enum represents all possible ways a scalar type operation might fail,
+/// most commonly during type validation or value construction.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use relvar_core::types::{ScalarType, ScalarTypeError};
+/// use relvar_core::values::ScalarValue;
+///
+/// let emp_id_type = ScalarType::user_defined("EmployeeId", ScalarType::Int);
+///
+/// // Attempting to use a String representation for an Int-backed type will fail
+/// let result = emp_id_type.selector(ScalarValue::String("Not an Int".into()));
+///
+/// assert!(matches!(result, Err(ScalarTypeError::TypeMismatch { .. })));
+/// ```
 #[derive(Debug, Error)]
 pub enum ScalarTypeError {
     /// A value's type doesn't match the expected type.

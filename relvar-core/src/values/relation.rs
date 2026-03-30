@@ -40,6 +40,17 @@ use std::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur when working with relations.
+///
+/// This enum represents all possible ways a relational operation might fail.
+///
+/// # Examples
+///
+/// ```rust
+/// use relvar_core::values::RelationError;
+///
+/// // This error occurs when a tuple does not match a relation's heading.
+/// let error = RelationError::TypeMismatch;
+/// ```
 #[derive(Debug, Error)]
 pub enum RelationError {
     /// A tuple doesn't conform to the relation's type (heading).
