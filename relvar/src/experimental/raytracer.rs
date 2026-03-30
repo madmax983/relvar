@@ -113,7 +113,29 @@ impl Scene {
     ///
     /// Yields a relation with heading `(x, y, r, g, b)`.
     pub fn render(&self, width: i64, height: i64) -> Result<Relation, DatabaseError> {
-        // 1. Generate Rays Relation: (x, y, ox, oy, oz, dx, dy, dz, dummy_join)
+        // 1. Generate Rays Relation
+        let rays = Self::generate_rays(width, height)?;
+
+        // 2. Prepare Spheres for Cross Join
+        let spheres_prepared = self
+            .spheres
+            .extend("dummy_join", ScalarType::Int, |_| ScalarValue::Int(1))
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        // 3. Cross Join: All rays against all spheres
+        let combinations = rays.join(&spheres_prepared)?;
+
+        // 4. Calculate Intersections and filter hits
+        let hits = Self::calculate_hits(&combinations)?;
+
+        // 5. Find Closest Hits (Z-Buffer) & Map Colors
+        let rendered_hits = Self::resolve_visible_pixels(&hits)?;
+
+        // 6. Combine hits and background
+        Self::compute_final_image(&rays, &rendered_hits)
+    }
+
+    fn generate_rays(width: i64, height: i64) -> Result<Relation, DatabaseError> {
         let ray_heading = TupleType::new()
             .with_attribute("x", ScalarType::Int)
             .with_attribute("y", ScalarType::Int)
@@ -127,29 +149,24 @@ impl Scene {
 
         let mut rays = Relation::new(RelationType::new(ray_heading));
 
-        // Camera setup (simple perspective)
         let origin_x = 0.0;
         let origin_y = 0.0;
         let origin_z = 0.0;
 
         let aspect_ratio = width as f64 / height as f64;
-        let fov = std::f64::consts::PI / 4.0; // 45 degrees
+        let fov = std::f64::consts::PI / 4.0;
         let viewport_height = 2.0 * (fov / 2.0).tan();
         let viewport_width = aspect_ratio * viewport_height;
 
         for y in 0..height {
             for x in 0..width {
-                // Map pixel to NDC (Normalized Device Coordinates) [-1, 1]
-                // Note: y is inverted so +y is up in world space
                 let ndc_x = (x as f64 + 0.5) / width as f64 * 2.0 - 1.0;
                 let ndc_y = 1.0 - (y as f64 + 0.5) / height as f64 * 2.0;
 
-                // Ray direction
                 let dx = ndc_x * viewport_width / 2.0;
                 let dy = ndc_y * viewport_height / 2.0;
-                let dz = 1.0; // Looking down +Z
+                let dz = 1.0;
 
-                // Normalize direction
                 let len = (dx * dx + dy * dy + dz * dz).sqrt();
                 let nx = dx / len;
                 let ny = dy / len;
@@ -168,28 +185,10 @@ impl Scene {
                 })?;
             }
         }
+        Ok(rays)
+    }
 
-        // 2. Prepare Spheres for Cross Join
-        // We use extend to add `dummy_join: 1` so natural join acts as a cross join.
-        let spheres_prepared = self
-            .spheres
-            .extend("dummy_join", ScalarType::Int, |_| ScalarValue::Int(1))
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        // 3. Cross Join: All rays against all spheres
-        let combinations = rays.join(&spheres_prepared)?;
-
-        // 4. Calculate Intersections
-        // Mathematical derivation:
-        // Ray: P(t) = O + t*D
-        // Sphere: (P - C) \cdot (P - C) = r^2
-        // Subbing P(t) into Sphere equation gives:
-        // (D \cdot D)*t^2 + 2*(D \cdot (O - C))*t + (O - C) \cdot (O - C) - r^2 = 0
-        //
-        // Let a = D \cdot D (which is 1 since D is normalized)
-        // Let half_b = D \cdot (O - C)
-        // Let c = (O - C) \cdot (O - C) - r^2
-        // discriminant = half_b^2 - a*c
+    fn calculate_hits(combinations: &Relation) -> Result<Relation, DatabaseError> {
         let intersections = combinations
             .extend("t", ScalarType::Float, |tup| {
                 let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
@@ -207,17 +206,15 @@ impl Scene {
                 let oc_y = oy - cy;
                 let oc_z = oz - cz;
 
-                let a = dx * dx + dy * dy + dz * dz; // Should be ~1.0
+                let a = dx * dx + dy * dy + dz * dz;
                 let half_b = dx * oc_x + dy * oc_y + dz * oc_z;
                 let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - radius * radius;
 
                 let discriminant = half_b * half_b - a * c;
 
                 if discriminant < 0.0 {
-                    // No intersection, return negative distance
                     ScalarValue::Float(-1.0)
                 } else {
-                    // Two solutions, we want the smallest positive one
                     let sqrtd = discriminant.sqrt();
                     let t1 = (-half_b - sqrtd) / a;
                     let t2 = (-half_b + sqrtd) / a;
@@ -233,15 +230,13 @@ impl Scene {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // 5. Filter Hits
-        let hits = intersections.restrict(|t| {
+        Ok(intersections.restrict(|t| {
             let dist = t.get_typed::<f64>("t").unwrap_or(-1.0);
             dist > 0.0
-        });
+        }))
+    }
 
-        // 6. Find Closest Hits (Z-Buffer)
-        // If there are hits, group by (x, y) and find min(t)
-        // We use min on 't' to find the closest intersection per ray.
+    fn resolve_visible_pixels(hits: &Relation) -> Result<Relation, DatabaseError> {
         let mut closest_hits_base = Relation::new(RelationType::new(
             TupleType::new()
                 .with_attribute("x", ScalarType::Int)
@@ -258,21 +253,16 @@ impl Scene {
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         }
 
-        // 7. Map Colors
-        // Rename min_t to t in closest_hits to natural join it back with hits.
-        // This acts like an INNER JOIN hits h ON h.x=c.x AND h.y=c.y AND h.t=c.min_t
         let closest_renamed = closest_hits_base.rename(&[("min_t", "t")]);
+        let visible_pixels = closest_renamed.join(hits)?;
 
-        // Note: Multiple spheres could theoretically be exactly at distance t.
-        // Set semantics handle duplicates, but we could get multiple colors if
-        // different spheres occupy the exact same spot. For a basic raytracer, this is fine.
-        let visible_pixels = closest_renamed.join(&hits)?;
+        Ok(visible_pixels.project(&["x", "y", "r", "g", "b"]))
+    }
 
-        // Project down to final image attributes
-        let rendered_hits = visible_pixels.project(&["x", "y", "r", "g", "b"]);
-
-        // 8. Background Color
-        // Find rays that didn't hit anything: all rays MINUS rays that hit something
+    fn compute_final_image(
+        rays: &Relation,
+        rendered_hits: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         let all_pixels = rays.project(&["x", "y"]);
         let hit_pixels = rendered_hits.project(&["x", "y"]);
 
@@ -280,7 +270,6 @@ impl Scene {
             .difference(&hit_pixels)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Extend background with default sky blue color (135, 206, 235)
         let background_colored = background_pixels
             .extend("r", ScalarType::Int, |_| ScalarValue::Int(135))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
@@ -289,12 +278,9 @@ impl Scene {
             .extend("b", ScalarType::Int, |_| ScalarValue::Int(235))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Combine hits and background
-        let final_image = rendered_hits
+        rendered_hits
             .union(&background_colored)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        Ok(final_image)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 }
 

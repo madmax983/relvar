@@ -541,3 +541,7 @@ Build it right, make it fast, keep it simple.
 ## 2025-06-05 - Collaborative Filtering God Functions
 **Learning:** `relvar/src/experimental/recommend.rs` contained "God Functions" (`compute_user_similarities` and `predict_unseen_items`) that handled multiple complex relational algebra operations in a single block, making them hard to read and test.
 **Action:** Applied the "Three-Phase Operator" pattern to extract logic into private helper methods (`compute_similarity_products`, `summarize_and_calculate_similarity`, `compute_prediction_components`, `summarize_and_calculate_predictions`) to improve clarity and maintainability.
+
+## 2025-06-06 - Machine Learning God Functions
+**Learning:** `relvar/src/experimental/automl.rs` and `relvar/src/experimental/raytracer.rs` contained "God Functions" (`train` and `render` respectively) spanning over 100-180 lines, mixing multiple distinct relational algebra operations into single unreadable blocks.
+**Action:** Applied the "Three-Phase Operator" pattern to extract logic into private helper methods (`calculate_class_priors`, `calculate_conditional_probabilities`, `generate_rays`, `calculate_hits`, etc.). For complex extracted return types like nested maps and vecs where a new struct is overkill, `#[allow(clippy::type_complexity)]` can be used on the private helper.
