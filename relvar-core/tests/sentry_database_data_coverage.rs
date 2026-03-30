@@ -283,3 +283,107 @@ fn test_database_update_foreign_key_violation() {
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
 }
+
+#[test]
+fn test_database_ensure_not_virtual() {
+    let mut db = setup();
+
+    // Create virtual relvar
+    db.define_virtual_relvar("VTEST", db.get_relvar_type("TEST").unwrap(), |db_exec| {
+        db_exec.query("TEST")
+    })
+    .unwrap();
+
+    // Insert
+    let res = db.insert("VTEST", tuple! { id: 2i64, val: 20i64 });
+    assert!(matches!(
+        res,
+        Err(DatabaseError::CannotModifyVirtualRelvar(_))
+    ));
+
+    // Update
+    let res = db.update("VTEST", |_t| true, |t| t.clone());
+    assert!(matches!(
+        res,
+        Err(DatabaseError::CannotModifyVirtualRelvar(_))
+    ));
+
+    // Delete
+    let res = db.delete("VTEST", |_t| true);
+    assert!(matches!(
+        res,
+        Err(DatabaseError::CannotModifyVirtualRelvar(_))
+    ));
+}
+
+#[test]
+fn test_database_delete_successful() {
+    let mut db = setup();
+
+    // Successful delete
+    let deleted = db
+        .delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1)
+        .unwrap();
+    assert_eq!(deleted, 1);
+
+    let query_res = db.query("TEST").unwrap();
+    assert_eq!(query_res.cardinality(), 0);
+}
+
+#[test]
+fn test_database_update_successful() {
+    let mut db = setup();
+
+    // Successful update
+    let updated = db
+        .update(
+            "TEST",
+            |t| t.get_typed::<i64>("id").unwrap() == 1,
+            |_t| tuple! { id: 1i64, val: 20i64 },
+        )
+        .unwrap();
+    assert_eq!(updated, 1);
+
+    let query_res = db.query("TEST").unwrap();
+    assert_eq!(query_res.cardinality(), 1);
+    let first = query_res.tuples().next().unwrap();
+    assert_eq!(first.get_typed::<i64>("val").unwrap(), 20i64);
+}
+
+#[test]
+fn test_database_delete_not_found() {
+    let mut db = setup();
+
+    let res = db.delete("NON_EXISTENT", |_t| true);
+    assert!(matches!(res, Err(DatabaseError::Storage(_))));
+}
+
+#[test]
+fn test_database_update_not_found() {
+    let mut db = setup();
+
+    let res = db.update("NON_EXISTENT", |_t| true, |t| t.clone());
+    assert!(matches!(res, Err(DatabaseError::Storage(_))));
+}
+
+#[test]
+fn test_database_validate_insert() {
+    let mut db = setup();
+
+    let tuple = tuple! { id: 2i64, val: "string".to_string() };
+
+    let res = db.insert("TEST", tuple);
+    assert!(matches!(res, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_update_tuple_mismatch() {
+    let mut db = setup();
+
+    let res = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_t| tuple! { id: 1i64, val: "string".to_string() },
+    );
+    assert!(matches!(res, Err(DatabaseError::TupleMismatch)));
+}
