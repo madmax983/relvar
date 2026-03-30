@@ -541,3 +541,6 @@ Build it right, make it fast, keep it simple.
 ## 2025-06-05 - Collaborative Filtering God Functions
 **Learning:** `relvar/src/experimental/recommend.rs` contained "God Functions" (`compute_user_similarities` and `predict_unseen_items`) that handled multiple complex relational algebra operations in a single block, making them hard to read and test.
 **Action:** Applied the "Three-Phase Operator" pattern to extract logic into private helper methods (`compute_similarity_products`, `summarize_and_calculate_similarity`, `compute_prediction_components`, `summarize_and_calculate_predictions`) to improve clarity and maintainability.
+## 2025-06-06 - Postcard Varint Sizing Subtleties
+**Learning:** A previous refactoring to use `postcard` for serialization introduced a subtle bug. `postcard` uses varint (ULEB128) encoding for integers like `u32`. When estimating serialized page sizes, dummy entries with `offset: 0` were used, resulting in an underestimated header size (since 0 takes 1 byte, but actual offsets take 2 bytes). This caused tuples to overwrite the slot directory.
+**Action:** When calculating serialized sizes for data structures that will contain variable-length encoded offsets, initialize dummy offsets with worst-case values (e.g., `PAGE_SIZE as u32`) to ensure the size estimate is safe.

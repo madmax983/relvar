@@ -298,10 +298,11 @@ impl HeapFile {
     /// Check if a tuple can theoretically fit in an empty page
     fn check_tuple_size_limit(&self, tuple_data_len: usize) -> Result<(), HeapError> {
         // Create a dummy page with one slot to calculate exact header size
+        // Use PAGE_SIZE for offset to force worst-case varint size estimation in postcard
         let dummy_page = SlottedPage {
             slot_count: 1,
             slots: vec![Some(SlotEntry {
-                offset: 0,
+                offset: PAGE_SIZE as u32,
                 length: tuple_data_len as u32,
             })],
         };
@@ -509,12 +510,13 @@ impl HeapFile {
         }
 
         // Initialize the slot (needed for size calc and repacking)
+        // Use PAGE_SIZE for offset to force worst-case varint size estimation in postcard
         slotted_page.slots[slot_number as usize] = Some(SlotEntry {
-            offset: 0,
+            offset: PAGE_SIZE as u32,
             length: tuple_data.len() as u32,
         });
 
-        // Calculate exact header size using bincode
+        // Calculate exact header size using postcard
         let header_size = serialized_size_compat(&slotted_page)? as usize;
 
         // Calculate total size correctly
@@ -559,13 +561,14 @@ impl HeapFile {
 
         // Copy each tuple at its designated offset
         for (idx, slot_entry) in slotted_page.slots.iter().enumerate() {
-            if let Some(entry) = slot_entry {
-                let offset = entry.offset as usize;
-                let length = entry.length as usize;
-                if idx < tuples.len() && !tuples[idx].is_empty() {
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
-                }
+            let Some(entry) = slot_entry else { continue };
+            if idx >= tuples.len() || tuples[idx].is_empty() {
+                continue;
             }
+
+            let offset = entry.offset as usize;
+            let length = entry.length as usize;
+            data[offset..offset + length].copy_from_slice(&tuples[idx]);
         }
 
         Ok(data)
@@ -782,11 +785,12 @@ impl HeapFile {
         op_type: OperationType,
     ) -> Result<(), HeapError> {
         // Create a dummy versioned page with one slot
+        // Use PAGE_SIZE for offset to force worst-case varint size estimation in postcard
         let dummy_page = VersionedSlottedPage {
             magic: VERSIONED_PAGE_MAGIC,
             slot_count: 1,
             slots: vec![Some(VersionedSlotEntry {
-                offset: 0,
+                offset: PAGE_SIZE as u32,
                 length: tuple_data_len as u32,
                 xmin: crate::wal::TransactionId::new(0),
                 xmax: None,
@@ -851,8 +855,9 @@ impl HeapFile {
         }
 
         // Initialize the new slot
+        // Use PAGE_SIZE for offset to force worst-case varint size estimation in postcard
         versioned_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
-            offset: 0,
+            offset: PAGE_SIZE as u32,
             length: tuple_data.len() as u32,
             xmin: txn_id,
             xmax: None,
@@ -860,7 +865,7 @@ impl HeapFile {
         });
 
         // Calculate required space using ACTUAL serialized size
-        // CRITICAL: Must use bincode size, not sizeof, as they differ!
+        // CRITICAL: Must use postcard size, not sizeof, as they differ!
         let slot_dir = serialize_compat(&versioned_page)?;
         let header_size = V2_HEADER_SIZE + slot_dir.len();
 
@@ -937,23 +942,25 @@ impl HeapFile {
 
         // Copy each tuple at its designated offset
         for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
-            if let Some(entry) = slot_entry {
-                let offset = entry.offset as usize;
-                let length = entry.length as usize;
-                if idx < tuples.len() && !tuples[idx].is_empty() {
-                    // Validate that offset + length doesn't exceed buffer
-                    if offset + length > data.len() {
-                        return Err(HeapError::Serialization(format!(
-                            "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
-                            idx,
-                            offset,
-                            length,
-                            data.len()
-                        )));
-                    }
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
-                }
+            let Some(entry) = slot_entry else { continue };
+            if idx >= tuples.len() || tuples[idx].is_empty() {
+                continue;
             }
+
+            let offset = entry.offset as usize;
+            let length = entry.length as usize;
+
+            // Validate that offset + length doesn't exceed buffer
+            if offset + length > data.len() {
+                return Err(HeapError::Serialization(format!(
+                    "Slot {} points outside buffer: offset={}, length={}, buffer_len={}",
+                    idx,
+                    offset,
+                    length,
+                    data.len()
+                )));
+            }
+            data[offset..offset + length].copy_from_slice(&tuples[idx]);
         }
 
         Ok(data)
@@ -1256,25 +1263,27 @@ impl HeapFile {
 
             // Check each slot for dead versions
             for (idx, slot_option) in versioned_page.slots.iter_mut().enumerate() {
-                if let Some(slot) = slot_option {
-                    // Check if this version is dead
-                    if let Some(xmax) = slot.xmax {
-                        // Has xmax - was deleted or updated
-                        if committed.contains(&xmax) {
-                            // xmax transaction committed
-                            // Check if it's old enough (before oldest active)
-                            // Note: We need to compare transaction IDs as proxy for LSN
-                            // since we don't track commit LSNs yet
-                            if xmax.value() < oldest_active_lsn.value() {
-                                // This version is dead - remove it
-                                *slot_option = None;
-                                existing_tuples[idx] = Vec::new();
-                                removed_count += 1;
-                                page_modified = true;
-                            }
-                        }
-                    }
+                let Some(slot) = slot_option else { continue };
+                let Some(xmax) = slot.xmax else { continue };
+
+                // Has xmax - was deleted or updated
+                // Check if xmax transaction committed
+                if !committed.contains(&xmax) {
+                    continue;
                 }
+
+                // Check if it's old enough (before oldest active)
+                // Note: We need to compare transaction IDs as proxy for LSN
+                // since we don't track commit LSNs yet
+                if xmax.value() >= oldest_active_lsn.value() {
+                    continue;
+                }
+
+                // This version is dead - remove it
+                *slot_option = None;
+                existing_tuples[idx] = Vec::new();
+                removed_count += 1;
+                page_modified = true;
             }
 
             // Write page back if modified
