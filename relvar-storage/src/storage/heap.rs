@@ -387,7 +387,9 @@ impl HeapFile {
     where
         I: Iterator<Item = &'a SlotEntry>,
     {
-        let mut results = Vec::new();
+        let (lower, _) = slots.size_hint();
+        // pre-allocate to avoid repeated allocations
+        let mut results = Vec::with_capacity(lower);
         for slot in slots {
             let tuple = self.extract_tuple_from_page(page, slot.offset(), slot.length())?;
             results.push(tuple);
@@ -404,7 +406,9 @@ impl HeapFile {
     where
         I: Iterator<Item = &'a VersionedSlotEntry>,
     {
-        let mut results = Vec::new();
+        let (lower, _) = slots.size_hint();
+        // pre-allocate to avoid repeated allocations
+        let mut results = Vec::with_capacity(lower);
         for slot in slots {
             let tuple = self.extract_tuple_from_page(page, slot.offset(), slot.length())?;
             results.push(tuple);
