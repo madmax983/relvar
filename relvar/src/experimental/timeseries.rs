@@ -102,7 +102,7 @@ pub fn moving_average(
     //   1. Partition attributes match (if any)
     //   2. time_prev >= time - window_size + 1 (inclusive window)
     //   3. time_prev <= time
-    let effective_window_start_offset = window_size - 1;
+    let effective_window_start_offset = window_size.saturating_sub(1);
     let time_attr_prev = format!("{}{}", time_attr, prev_attr_suffix);
 
     // We need to capture these strings for the closure
@@ -130,7 +130,7 @@ pub fn moving_average(
         if let (Some(ScalarValue::Int(curr_time)), Some(ScalarValue::Int(prev_time))) =
             (curr.get(&t_curr), prev.get(&t_prev))
         {
-            let window_start = curr_time - effective_window_start_offset;
+            let window_start = curr_time.saturating_sub(effective_window_start_offset);
             *prev_time >= window_start && *prev_time <= *curr_time
         } else {
             false // Should not happen if types are correct

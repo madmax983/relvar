@@ -71,7 +71,8 @@ pub fn tokenize(text: &str) -> HashMap<String, i64> {
         .split(|c: char| !c.is_alphanumeric())
         .filter(|s| !s.is_empty())
     {
-        *counts.entry(word.to_string()).or_insert(0) += 1;
+        let count = counts.entry(word.to_string()).or_insert(0i64);
+        *count = (*count).saturating_add(1);
     }
 
     counts

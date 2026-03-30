@@ -303,7 +303,7 @@ pub fn to_ascii_table(relation: &Relation) -> String {
     for (i, header) in headers.iter().enumerate() {
         output.push(' ');
         output.push_str(header);
-        output.push_str(&" ".repeat(widths[i] - header.len()));
+        output.push_str(&" ".repeat(widths[i].saturating_sub(header.len())));
         output.push(' ');
         output.push('|');
     }
@@ -318,7 +318,7 @@ pub fn to_ascii_table(relation: &Relation) -> String {
         for (i, cell) in row.iter().enumerate() {
             output.push(' ');
             output.push_str(cell);
-            output.push_str(&" ".repeat(widths[i] - cell.len()));
+            output.push_str(&" ".repeat(widths[i].saturating_sub(cell.len())));
             output.push(' ');
             output.push('|');
         }

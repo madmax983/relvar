@@ -160,7 +160,7 @@ impl<'de> Visitor<'de> for RelationVisitor {
                     MAX_IMPORT_ROWS
                 )));
             }
-            *count += 1;
+            *count = (*count).saturating_add(1);
             drop(count);
 
             let _ = relation
@@ -383,7 +383,7 @@ impl<'de> Visitor<'de> for ScalarValueVisitor {
                             MAX_IMPORT_ROWS
                         )));
                     }
-                    *count += 1;
+                    *count = (*count).saturating_add(1);
                     drop(count);
 
                     relation
@@ -472,7 +472,7 @@ pub fn from_csv<R: std::io::Read>(
 
     // 2. Read Rows
     let mut line_buf = String::new();
-    let mut line_idx = 0;
+    let mut line_idx: usize = 0;
     while read_line_safe(&mut reader, &mut line_buf)? > 0 {
         if relation.cardinality() >= MAX_IMPORT_ROWS {
             return Err(ImporterError::LimitExceeded(format!(
@@ -491,7 +491,7 @@ pub fn from_csv<R: std::io::Read>(
         if fields.len() != headers.len() {
             return Err(ImporterError::FormatError(format!(
                 "Row {} has {} fields, expected {}",
-                line_idx + 1,
+                line_idx.saturating_add(1),
                 fields.len(),
                 headers.len()
             )));
@@ -521,7 +521,7 @@ pub fn from_csv<R: std::io::Read>(
             .insert(tuple)
             .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
 
-        line_idx += 1;
+        line_idx = line_idx.saturating_add(1);
     }
 
     Ok(relation)

@@ -194,3 +194,12 @@ The `WalManager` component in `relvar-storage` used `File::read_to_end(&mut buff
 
 **Defense:**
 Added strict file size limits before reading the WAL file. `WalManager` now checks the file metadata length against `MAX_WAL_SIZE` (set to a safe threshold of 2 GB) and returns a standard `std::io::Error::new(std::io::ErrorKind::InvalidData)` wrapped in a `WalError::Io` if the limit is exceeded. This prevents unbounded `Vec` pre-allocations from malicious or overgrown files.
+
+## 2026-03-08 - Arithmetic Overflow DoS / Logic Error
+**Threat:**
+Several experimental and tooling modules (`importer.rs`, `exporter.rs`, `search.rs`, `image.rs`, `timeseries.rs`) used unchecked integer arithmetic (e.g., `+`, `-`, `*`, `+=`) for logic boundaries, coordinates, and counts. An attacker could exploit these by crafting inputs (e.g., massive limits, very long column names, large kernel sizes) that caused integer overflow/underflow, resulting in a server panic (DoS) or flawed logic calculations.
+
+**Defense:**
+1. Replaced unchecked arithmetic with `saturating_*` and `checked_*` methods across these modules.
+2. Verified safety guarantees by checking edge cases where bounds exceeded typical use, allowing the functions to either gracefully saturate to the relevant type bounds, propagate errors (`unwrap_or`), or ignore errant inputs without panicking.
+3. Added verification test `relvar/tests/warden_exploit_arithmetic_overflow.rs`.
