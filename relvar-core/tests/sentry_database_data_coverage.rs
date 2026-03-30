@@ -1,6 +1,6 @@
 use relvar_core::constraints::{
-    AttributeConstraints, CheckConstraint, CheckConstraints, CmpOp, ConstraintExpression,
-    TypeConstraint, ValueOrRef,
+    AttributeConstraints, CandidateKey, CheckConstraint, CheckConstraints, CmpOp,
+    ConstraintExpression, KeyConstraints, TypeConstraint, ValueOrRef,
 };
 use relvar_core::database::Database;
 use relvar_core::error::DatabaseError;
@@ -279,6 +279,63 @@ fn test_database_update_foreign_key_violation() {
         "CHILD",
         |t| t.get_typed::<i64>("child_id").unwrap() == 100,
         |_t| tuple! { child_id: 100i64, test_id: 999i64 },
+    );
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_delete_successful() {
+    let mut db = setup();
+    let count = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1).unwrap();
+    assert_eq!(count, 1);
+
+    // Deleting again should be 0
+    let count2 = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1).unwrap();
+    assert_eq!(count2, 0);
+}
+
+#[test]
+fn test_database_update_successful() {
+    let mut db = setup();
+    let count = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_t| tuple! { id: 1i64, val: 55i64 },
+    )
+    .unwrap();
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn test_database_insert_candidate_key_violation() {
+    let mut db = setup();
+
+    let ck = CandidateKey::new(vec!["val".to_string()]).unwrap();
+    let key_constraints = KeyConstraints::new().with_candidate_key(ck);
+    db.set_key_constraints("TEST", key_constraints).unwrap();
+
+    // Insert should fail due to duplicate candidate key
+    let result = db.insert("TEST", tuple! { id: 2i64, val: 10i64 });
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_update_candidate_key_violation() {
+    let mut db = setup();
+
+    let ck = CandidateKey::new(vec!["val".to_string()]).unwrap();
+    let key_constraints = KeyConstraints::new().with_candidate_key(ck);
+    db.set_key_constraints("TEST", key_constraints).unwrap();
+
+    db.insert("TEST", tuple! { id: 2i64, val: 20i64 }).unwrap();
+
+    // Update should fail due to duplicate candidate key
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 2,
+        |_t| tuple! { id: 2i64, val: 10i64 }, // duplicate val 10
     );
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
