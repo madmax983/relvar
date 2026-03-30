@@ -72,3 +72,37 @@ where
 
     Ok((new_relation, update_count))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+
+    fn setup_relation() -> Relation {
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("val", ScalarType::Int),
+        );
+        let tuples = vec![
+            tuple! { id: 1i64, val: 10i64 },
+            tuple! { id: 2i64, val: 20i64 },
+        ];
+        Relation::from_tuples(rel_type, tuples).unwrap()
+    }
+
+    #[test]
+    fn test_compute_relation_after_update_tuple_mismatch() {
+        let current_relation = setup_relation();
+
+        // Update should fail due to type mismatch
+        let result = compute_relation_after_update(
+            current_relation,
+            |t| t.get_typed::<i64>("id").unwrap() == 1,
+            |_t| tuple! { id: 1i64, val: "not an int".to_string() },
+        );
+
+        assert!(matches!(result, Err(DatabaseError::TupleMismatch)));
+    }
+}

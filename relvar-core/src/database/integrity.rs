@@ -28,8 +28,6 @@ impl<E: StorageEngine> Database<E> {
     /// let current_constraints = db.get_key_constraints("TEST").unwrap();
     /// assert!(current_constraints.primary_key().is_some());
     /// ```
-    /// assert!(current_constraints.primary_key().is_some());
-    /// ```
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.constraints.get_key_constraints(relation_name)
     }

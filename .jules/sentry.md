@@ -62,3 +62,10 @@
 ## 2025-03-16 - Virtual Relvars Evaluation and Database Error Coverage
 **Learning:** Found several untested code paths regarding the mutability limitations of `VirtualRelvarDefinition` (preventing mutation because `evaluator` takes an immutable reference but error mapping missing tests), and transaction nesting issues inside `relvar-core/src/database/mod.rs` mapping to `DatabaseError::TransactionError`.
 **Action:** When working on APIs containing view-like concepts (`virtual_relvars`), ensure the evaluation error paths are fully tested. When implementing Database transactions, ensure explicit testing for double-begin and missing-begin cases for commits and rollbacks.
+## 2025-05-22 - DML Tuple Mismatch Error Validation
+**Learning:** `Database::update` validates type constraints, but tests didn't explicitly cover the `TupleMismatch` error triggered natively in `compute_relation_after_update` when an updated tuple violates `conforms_to()`.
+**Action:** Enforce complete error branch coverage for foundational DML pure functions to guarantee they return correct database error mappings when fed syntactically incompatible type structures.
+
+## 2025-05-22 - Database Constraint Methods Default States
+**Learning:** `Database` constraint getters (e.g., `get_key_constraints`, `get_foreign_key_constraints`) behave gracefully when a relation has no constraints or when a relation itself is completely missing, returning `None`. This edge case was undocumented in tests.
+**Action:** Always assert the behavior of lookup getters not just on valid matches but explicitly on missing relations and empty states to prevent unintentional panics in higher-layer logic.
