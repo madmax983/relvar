@@ -26,3 +26,7 @@ harness = false
 [[bench]]
 name = "tuple_creation"
 harness = false
+
+[[bench]]
+name = "rename_into"
+harness = false
