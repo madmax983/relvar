@@ -45,6 +45,19 @@ use std::collections::HashMap;
 /// assert!(snapshot3.is_active(t2));  // T2 is still running
 /// ```
 #[derive(Debug)]
+/// The Active Transaction Table (ATT) for Multi-Version Concurrency Control.
+///
+/// Tracks transactions that have begun but not yet committed or aborted. When a new
+/// transaction starts, it copies the keys of this table into its `TransactionSnapshot`.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::mvcc::ActiveTransactionTable;
+///
+/// let mut att = ActiveTransactionTable::new();
+/// assert!(att.oldest_active_lsn().is_none());
+/// ```
 pub struct ActiveTransactionTable {
     transactions: HashMap<TransactionId, TransactionSnapshot>,
     current_lsn: Lsn,

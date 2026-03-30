@@ -39,6 +39,20 @@ use std::collections::HashSet;
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Metadata stored with every tuple version to implement MVCC visibility rules.
+///
+/// This header information determines if a tuple version is visible to a
+/// given transaction snapshot.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::mvcc::VersionMetadata;
+/// use relvar_storage::wal::TransactionId;
+///
+/// let meta = VersionMetadata { xmin: TransactionId::new(1), xmax: None };
+/// assert!(meta.xmax.is_none());
+/// ```
 pub struct VersionMetadata {
     /// Transaction that created this version
     pub xmin: TransactionId,

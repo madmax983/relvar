@@ -48,6 +48,17 @@ use thiserror::Error;
 
 /// Errors that can occur during catalog operations.
 #[derive(Debug, Error)]
+/// Errors that can occur during catalog operations.
+///
+/// Handles serialization failures, I/O errors, and logical violations like
+/// relation name collisions.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::storage::CatalogError;
+/// // Encountered when metadata updates fail.
+/// ```
 pub enum CatalogError {
     /// An I/O error occurred while reading or writing the catalog.
     #[error("IO error: {0}")]
@@ -78,6 +89,16 @@ const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 /// - `relation_type` - The type (heading) defining attribute names and types
 /// - `heap_file_path` - Path to the heap file containing the relation's tuples
 #[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Contains all the information needed to locate and interpret a relation's
+/// data on disk, including its heading and file path.
+///
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::storage::RelationMetadata;
+/// // Retrieved via `Catalog::get_relation`.
+/// ```
 pub struct RelationMetadata {
     /// The relation's type (heading).
     pub relation_type: RelationType,
@@ -125,6 +146,19 @@ pub struct RelationMetadata {
 /// assert!(loaded.relation_exists("employees"));
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The system catalog storing metadata for all relations in the database.
+///
+/// The catalog is the central registry for relation metadata. It maintains
+/// a mapping from relation names to their metadata (type and storage location).
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::storage::Catalog;
+///
+/// let catalog = Catalog::new();
+/// assert_eq!(catalog.relation_count(), 0);
+/// ```
 pub struct Catalog {
     /// Map from relation name to metadata.
     relations: HashMap<String, RelationMetadata>,

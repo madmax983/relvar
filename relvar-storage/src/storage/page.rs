@@ -61,6 +61,17 @@ pub type PageId = u64;
 
 /// Errors that can occur during page operations.
 #[derive(Debug, Error)]
+/// Errors that can occur during page I/O operations.
+///
+/// Handles disk failures, corrupted pages, and capacity limits when
+/// working with `Page` and `PageFile` abstractions.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::storage::PageError;
+/// // Returned by the page buffering subsystem.
+/// ```
 pub enum PageError {
     /// An I/O error occurred while reading or writing.
     #[error("IO error: {0}")]
@@ -96,6 +107,20 @@ pub enum PageError {
 /// assert_eq!(page.data().len(), 5);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A single fixed-size data page.
+///
+/// Pages are the fundamental unit of I/O in the storage engine. They contain
+/// a header (tracking length) and an arbitrary data payload.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::storage::Page;
+///
+/// let page = Page::new(42);
+/// assert_eq!(page.id(), 42);
+/// assert!(page.is_empty());
+/// ```
 pub struct Page {
     /// Page identifier.
     id: PageId,

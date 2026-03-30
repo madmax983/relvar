@@ -35,6 +35,17 @@ use std::io::{Read, Seek, SeekFrom};
 
 /// Result of the analysis pass.
 #[derive(Debug)]
+/// Result of the analysis pass during WAL recovery.
+///
+/// Summarizes the state of the write-ahead log, detailing committed
+/// and aborted transactions, and recording the final LSN.
+///
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::recovery::AnalysisResult;
+/// // Returned by the `analyze` function.
+/// ```
 pub struct AnalysisResult {
     /// Transactions that committed.
     pub committed: HashSet<TransactionId>,
@@ -90,6 +101,17 @@ pub fn analyze(wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
 
 /// Uncommitted insert information.
 #[derive(Debug)]
+/// Represents an insert operation from an uncommitted transaction.
+///
+/// During recovery, these inserts must be undone (removed) from the physical
+/// storage to ensure atomicity.
+///
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::recovery::UncommittedInsert;
+/// // Processed by the recovery engine.
+/// ```
 pub struct UncommittedInsert {
     /// Relation name.
     pub relation_name: String,
@@ -99,6 +121,17 @@ pub struct UncommittedInsert {
 
 /// Result of recovery process.
 #[derive(Debug)]
+/// Result of the full recovery process.
+///
+/// Details the uncommitted operations that need to be undone and the LSN
+/// at which to resume normal logging operations.
+///
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::recovery::RecoveryResult;
+/// // Returned by the `recover` function.
+/// ```
 pub struct RecoveryResult {
     /// Set of committed transaction IDs (for MVCC visibility).
     pub committed_txns: HashSet<TransactionId>,

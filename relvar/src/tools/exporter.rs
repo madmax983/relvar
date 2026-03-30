@@ -52,6 +52,16 @@ use thiserror::Error;
 
 /// Errors that can occur during export.
 #[derive(Debug, Error)]
+/// Errors that can occur during data export.
+///
+/// These errors usually wrap underlying formatting or serialization issues.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::tools::exporter::ExporterError;
+/// // Can be matched against underlying format errors.
+/// ```
 pub enum ExporterError {
     /// JSON serialization error.
     #[error("JSON serialization error: {0}")]

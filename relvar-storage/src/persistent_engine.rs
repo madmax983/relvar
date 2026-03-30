@@ -14,6 +14,20 @@ use std::sync::RwLock;
 ///
 /// Represents the state of a transaction at a specific point in time.
 #[derive(Debug, Clone)]
+/// Snapshot for persistent transactions.
+///
+/// Represents the state of a transaction at a specific point in time.
+/// It ensures that operations are performed within the correct concurrency context.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::wal::TransactionId;
+/// use relvar_storage::persistent_engine::PersistentSnapshot;
+///
+/// let snapshot = PersistentSnapshot { txn_id: TransactionId::new(42) };
+/// assert_eq!(snapshot.txn_id.value(), 42);
+/// ```
 pub struct PersistentSnapshot {
     /// The transaction ID.
     pub txn_id: TransactionId,

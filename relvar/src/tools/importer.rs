@@ -47,6 +47,16 @@ use thiserror::Error;
 
 /// Errors that can occur during import.
 #[derive(Debug, Error)]
+/// Errors that can occur during data import.
+///
+/// These typically result from malformed input data or schema mismatches.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::tools::importer::ImporterError;
+/// // Allows matching specific parsing or conversion errors.
+/// ```
 pub enum ImporterError {
     /// I/O error reading the input.
     #[error("I/O error: {0}")]

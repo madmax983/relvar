@@ -82,6 +82,16 @@ impl Scene {
     /// * `radius` - Radius of the sphere.
     /// * `r`, `g`, `b` - Color of the sphere (0-255).
     #[allow(clippy::too_many_arguments)]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::raytracer::Scene;
+    /// use relvar::Database;
+    /// use relvar::InMemoryEngine;
+    /// let mut scene = Scene::new();
+    /// scene.add_sphere(0.0, 0.0, 5.0, 1.0, 255, 0, 0);
+    /// ```
     pub fn add_sphere(
         &mut self,
         cx: f64,

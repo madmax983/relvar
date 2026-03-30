@@ -38,6 +38,20 @@ use std::collections::HashSet;
 /// assert!(!snapshot.is_active(TransactionId::new(39)));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Snapshot of transaction state at a point in time.
+///
+/// A transaction snapshot determines which tuple versions are visible to
+/// a transaction. It ensures snapshot isolation guarantees are met.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::mvcc::TransactionSnapshot;
+/// use relvar_storage::wal::{Lsn, TransactionId};
+///
+/// let snapshot = TransactionSnapshot::new(TransactionId::new(1), Lsn::new(10), vec![]);
+/// assert!(!snapshot.is_active(TransactionId::new(2)));
+/// ```
 pub struct TransactionSnapshot {
     /// The transaction ID this snapshot belongs to
     pub txn_id: TransactionId,

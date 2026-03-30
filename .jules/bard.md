@@ -68,3 +68,6 @@ This ensures the map matches the territory.
 ## 2024-06-03 - The "Missing" Link Fixed in Core API
 **Confusion:** The public functions in `types`, `values`, and `database` lacked executable `## Examples`, leaving users guessing about their usage and the difference between them.
 **Clarification:** I added executable `## Examples` doctests to every public method in `TupleType`, `RelationType`, `ScalarType`, `Tuple`, `Relation`, and `Database`, explicitly demonstrating exact usage with code.
+## 2024-06-03 - The "Missing" Link Fixed in Storage and Facade API
+**Confusion:** Several public items in `relvar-storage` (e.g., `PersistentSnapshot`, `Lsn`, `TransactionId`, `WalRecord`, `Page`, `CatalogError`) and the facade crate `relvar` (e.g., `open`, `ExporterError`) lacked `///` documentation and executable `## Examples`, leaving users guessing about their purpose and usage.
+**Clarification:** I added `///` comments explaining the abstract, details, and errors for all undocumented public structs, enums, and functions across the `relvar-storage` and `relvar` crates, along with executable `## Examples` to demonstrate precise usage.

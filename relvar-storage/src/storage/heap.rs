@@ -65,6 +65,16 @@ enum OperationType {
 
 /// Errors that can occur during heap file operations.
 #[derive(Debug, Error)]
+/// Errors that can occur during heap file operations.
+///
+/// Handles page I/O issues, serialization failures, and capacity limits.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::storage::HeapError;
+/// // Used for propagating storage engine failures.
+/// ```
 pub enum HeapError {
     /// An error occurred at the page layer.
     #[error("Page error: {0}")]

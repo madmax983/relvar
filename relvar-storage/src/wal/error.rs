@@ -4,6 +4,17 @@ use thiserror::Error;
 
 /// Errors that can occur during WAL operations.
 #[derive(Debug, Error)]
+/// Errors that can occur during Write-Ahead Logging operations.
+///
+/// This includes I/O failures, serialization issues, or unexpected EOF
+/// errors during crash recovery.
+///
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::error::WalError;
+/// // Used throughout the WAL subsystem for robust error reporting.
+/// ```
 pub enum WalError {
     /// I/O error during WAL operations.
     #[error("WAL I/O error: {0}")]

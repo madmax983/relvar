@@ -16,6 +16,14 @@ use relvar_core::values::{Relation, ScalarValue};
 ///
 /// Represents a weight at a specific offset `(dx, dy)`.
 #[derive(Debug, Clone, Copy)]
+/// Represents a weight at a specific offset for image processing convolutions.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::experimental::image::KernelTap;
+/// let tap = KernelTap { dx: 0, dy: 0, weight: 1 };
+/// ```
 pub struct KernelTap {
     /// Horizontal offset from the center pixel.
     pub dx: i64,

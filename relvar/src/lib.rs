@@ -193,6 +193,18 @@ pub fn in_memory() -> Database<InMemoryEngine> {
 /// # }
 /// ```
 #[cfg(feature = "storage")]
+/// Opens a persistent database from the given directory path.
+///
+/// This function initializes a `PersistentEngine` for robust storage
+/// and recovery features.
+///
+/// # Examples
+///
+/// ```ignore
+/// use relvar::open;
+/// let db = open("my_db").unwrap();
+/// ```
+#[cfg(feature = "storage")]
 pub fn open<P: AsRef<std::path::Path>>(
     path: P,
 ) -> Result<Database<PersistentEngine>, StorageError> {

@@ -12,6 +12,17 @@ use crate::storage::{PageId, heap::TupleId};
 
 /// Errors that can occur during WAL record operations.
 #[derive(Debug, Error)]
+/// Errors that can occur during WAL record operations.
+///
+/// These errors typically occur during serialization or when attempting
+/// to process log records that exceed configured limits.
+///
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::record::WalRecordError;
+/// // Error handling logic can match on these variants.
+/// ```
 pub enum WalRecordError {
     /// Serialization error.
     #[error("Failed to serialize WAL record: {0}")]
@@ -39,6 +50,25 @@ pub const MAX_RECORD_SIZE: usize = 1024 * 1024; // 1MB
 /// data, never physical TupleId values. This maintains physical data
 /// independence - the logical layer has no knowledge of physical storage.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// A log record in the Write-Ahead Log.
+///
+/// Each record represents a single logged operation. Records are serialized
+/// to the WAL file in order of their LSN.
+///
+/// Per Proscription 6, log records use relation names and serialized tuple
+/// data, never physical TupleId values. This maintains physical data
+/// independence - the logical layer has no knowledge of physical storage.
+///
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::record::WalRecord;
+/// use relvar_storage::wal::lsn::TransactionId;
+///
+/// let txn_id = TransactionId::new(1);
+/// let record = WalRecord::Begin { txn_id };
+/// assert_eq!(record.txn_id(), Some(txn_id));
+/// ```
 pub enum WalRecord {
     /// Transaction begin marker.
     Begin {
@@ -168,7 +198,8 @@ impl WalRecord {
     /// # Examples
     ///
     /// ```ignore
-    /// use relvar_storage::wal::{WalRecord, TransactionId};
+    /// use relvar_storage::wal::record::WalRecord;
+    /// use relvar_storage::wal::lsn::TransactionId;
     ///
     /// let txn_id = TransactionId::new(5);
     /// let record = WalRecord::Begin { txn_id };
