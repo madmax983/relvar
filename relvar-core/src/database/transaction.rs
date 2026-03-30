@@ -19,7 +19,6 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// Returns `DatabaseError::TransactionError` if a transaction is already active.
     /// Nested transactions are not currently supported.
-    /// Nested transactions are not currently supported.
     /// # Examples
     ///
     /// ```

@@ -208,7 +208,7 @@ impl PersistentEngine {
             .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))
     }
 
-    /// Get the LSN to checkpoint from (oldest active or current).
+    /// Calculates the starting point for a WAL checkpoint.
     fn get_checkpoint_lsn(&self) -> crate::wal::Lsn {
         self.active_txns
             .oldest_active_lsn()
@@ -233,7 +233,7 @@ impl PersistentEngine {
         Ok(())
     }
 
-    /// Get snapshot for the current transaction context.
+    /// Builds a snapshot of currently active transactions for MVCC.
     fn get_snapshot_for_current_context(
         &self,
     ) -> Result<crate::mvcc::TransactionSnapshot, StorageError> {

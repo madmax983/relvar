@@ -127,7 +127,7 @@ impl CandidateKey {
         Ok(Self { attributes })
     }
 
-    /// Get the key attributes
+    /// Exposes the list of attribute names that comprise this key.
     pub fn attributes(&self) -> &[String] {
         &self.attributes
     }
@@ -206,12 +206,12 @@ impl PrimaryKey {
         })
     }
 
-    /// Get the key attributes
+    /// Exposes the list of attribute names that comprise this key.
     pub fn attributes(&self) -> &[String] {
         self.key.attributes()
     }
 
-    /// Get the underlying candidate key
+    /// Accesses the underlying candidate key structure without the primary designation.
     pub fn as_candidate_key(&self) -> &CandidateKey {
         &self.key
     }
@@ -247,7 +247,7 @@ impl KeyConstraints {
         }
     }
 
-    /// Set the primary key
+    /// Designates a specific candidate key to act as the primary key for the relation.
     pub fn with_primary_key(mut self, key: PrimaryKey) -> Self {
         self.primary_key = Some(key);
         self
@@ -259,12 +259,12 @@ impl KeyConstraints {
         self
     }
 
-    /// Get the primary key
+    /// Accesses the designated primary key, if one has been set.
     pub fn primary_key(&self) -> Option<&PrimaryKey> {
         self.primary_key.as_ref()
     }
 
-    /// Get all candidate keys
+    /// Exposes the complete list of all defined candidate keys.
     pub fn candidate_keys(&self) -> &[CandidateKey] {
         &self.candidate_keys
     }

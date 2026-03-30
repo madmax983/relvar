@@ -242,7 +242,8 @@ impl Tuple {
         Self { tuple_type, values }
     }
 
-    /// Get the tuple type
+    /// Accesses the tuple type (heading) that defines this tuple's structure.
+    ///
     /// # Examples
     ///
     /// ```
@@ -255,7 +256,8 @@ impl Tuple {
         &self.tuple_type
     }
 
-    /// Get a value by attribute name
+    /// Looks up a value by its attribute name.
+    ///
     /// # Examples
     ///
     /// ```
@@ -270,8 +272,9 @@ impl Tuple {
         self.values.get(attr_name)
     }
 
-    /// Get a typed value by attribute name.
+    /// Looks up and attempts to unwrap a value into a specific Rust type.
     /// Extracts the value by reference to avoid allocating or cloning the `ScalarValue` enum wrapper.
+    ///
     /// # Examples
     ///
     /// ```
@@ -288,7 +291,8 @@ impl Tuple {
         self.get(attr_name).and_then(|v| T::try_from(v).ok())
     }
 
-    /// Get all attribute names
+    /// Provides an iterator over the names of the attributes in this tuple.
+    ///
     /// # Examples
     ///
     /// ```
@@ -302,7 +306,8 @@ impl Tuple {
         self.values.keys()
     }
 
-    /// Get all values
+    /// Exposes the underlying map of attribute names to their scalar values.
+    ///
     /// # Examples
     ///
     /// ```
@@ -318,7 +323,8 @@ impl Tuple {
         &self.values
     }
 
-    /// Consumes the tuple and returns its values
+    /// Consumes the tuple and returns its values.
+    ///
     /// # Examples
     ///
     /// ```
@@ -334,7 +340,8 @@ impl Tuple {
         self.values
     }
 
-    /// Get the degree (number of attributes)
+    /// Calculates the degree (number of attributes) of this tuple.
+    ///
     /// # Examples
     ///
     /// ```
@@ -347,7 +354,8 @@ impl Tuple {
         self.values.len()
     }
 
-    /// Check if this tuple conforms to a given tuple type
+    /// Check if this tuple conforms to a given tuple type.
+    ///
     /// # Examples
     ///
     /// ```
@@ -384,7 +392,8 @@ impl Tuple {
         true
     }
 
-    /// Set a value for an attribute (mutable)
+    /// Updates the value associated with an existing attribute.
+    ///
     /// # Examples
     ///
     /// ```

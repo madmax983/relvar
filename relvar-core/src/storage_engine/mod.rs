@@ -93,7 +93,7 @@ pub trait StorageEngine: Send + Sync {
     /// Check if a relation exists.
     fn relation_exists(&self, name: &str) -> bool;
 
-    /// Get metadata for a relation.
+    /// Looks up the metadata associated with a specific relation.
     ///
     /// # Errors
     ///

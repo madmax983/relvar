@@ -8,7 +8,7 @@ use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 
 impl<E: StorageEngine> Database<E> {
-    /// Get the key constraints for a relation.
+    /// Looks up the key definitions registered for a given relation.
     ///
     /// # Example
     ///
@@ -50,7 +50,7 @@ impl<E: StorageEngine> Database<E> {
         self.constraints.get_key_constraints(relation_name)
     }
 
-    /// Get the foreign key constraints for a relation.
+    /// Looks up the referential integrity rules (foreign keys) for a given relation.
     ///
     /// Retrieving foreign keys is primarily used by the schema visualizer
     /// to draw relationships between relvars, or by automated testing tools
@@ -88,7 +88,7 @@ impl<E: StorageEngine> Database<E> {
         self.constraints.get_foreign_key_constraints(relation_name)
     }
 
-    /// Set key constraints for a relation.
+    /// Registers and enforces a new set of candidate and primary keys for a relation.
     ///
     /// # Example
     ///
@@ -119,7 +119,7 @@ impl<E: StorageEngine> Database<E> {
             .set_key_constraints(&mut self.engine, relation_name, constraints)?)
     }
 
-    /// Set foreign key constraints for a relation.
+    /// Registers and enforces referential integrity rules linking this relation to others.
     ///
     /// # Example
     ///
@@ -164,7 +164,7 @@ impl<E: StorageEngine> Database<E> {
         )?)
     }
 
-    /// Set type constraints for an attribute.
+    /// Registers scalar type constraints for a specific attribute within a relation.
     ///
     /// # Example
     ///
@@ -201,7 +201,7 @@ impl<E: StorageEngine> Database<E> {
         )?)
     }
 
-    /// Set CHECK constraints for a relation.
+    /// Registers and enforces row-level boolean evaluation rules (CHECK constraints).
     ///
     /// # Example
     ///

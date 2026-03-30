@@ -128,7 +128,7 @@ impl<E: StorageEngine> Database<E> {
         names
     }
 
-    /// Get the relation type (heading) for a relvar.
+    /// Looks up the relation type (heading) for a given relvar name.
     ///
     /// This method retrieves the metadata without loading the full relation.
     ///

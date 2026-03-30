@@ -171,17 +171,17 @@ impl AttributeConstraints {
         self
     }
 
-    /// Get the attribute name
+    /// Identifies the specific attribute this constraint applies to.
     pub fn attribute_name(&self) -> &str {
         &self.attribute_name
     }
 
-    /// Get the scalar type
+    /// Exposes the expected scalar data type for the attribute.
     pub fn scalar_type(&self) -> &ScalarType {
         &self.scalar_type
     }
 
-    /// Get all constraints
+    /// Exposes the list of all defined type constraints for the attribute.
     pub fn constraints(&self) -> &[TypeConstraint] {
         &self.constraints
     }

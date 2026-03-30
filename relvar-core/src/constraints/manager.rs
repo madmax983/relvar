@@ -94,7 +94,7 @@ impl ConstraintManager {
         self.check_constraints.remove(relation_name);
     }
 
-    /// Set key constraints for a relation.
+    /// Registers and enforces a new set of candidate and primary keys for a relation.
     pub fn set_key_constraints<E: StorageEngine>(
         &mut self,
         engine: &mut E,
@@ -116,7 +116,7 @@ impl ConstraintManager {
         Ok(())
     }
 
-    /// Set foreign key constraints for a relation.
+    /// Registers and enforces referential integrity rules linking this relation to others.
     pub fn set_foreign_key_constraints<E: StorageEngine>(
         &mut self,
         engine: &mut E,
@@ -159,7 +159,7 @@ impl ConstraintManager {
         Ok(())
     }
 
-    /// Set type constraints for an attribute.
+    /// Registers scalar type constraints for a specific attribute.
     pub fn set_type_constraints<E: StorageEngine>(
         &mut self,
         engine: &mut E,
@@ -211,7 +211,7 @@ impl ConstraintManager {
         Ok(())
     }
 
-    /// Set CHECK constraints for a relation.
+    /// Registers and enforces row-level boolean evaluation rules (tuple constraints).
     pub fn set_check_constraints<E: StorageEngine>(
         &mut self,
         engine: &mut E,
@@ -428,12 +428,12 @@ impl ConstraintManager {
         Ok(())
     }
 
-    /// Get the key constraints for a relation.
+    /// Looks up the registered key definitions for a given relation.
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.key_constraints.get(relation_name)
     }
 
-    /// Get the foreign key constraints for a relation.
+    /// Looks up the referential integrity rules for a given relation.
     pub fn get_foreign_key_constraints(
         &self,
         relation_name: &str,

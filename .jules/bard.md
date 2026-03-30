@@ -68,3 +68,6 @@ This ensures the map matches the territory.
 ## 2024-06-03 - The "Missing" Link Fixed in Core API
 **Confusion:** The public functions in `types`, `values`, and `database` lacked executable `## Examples`, leaving users guessing about their usage and the difference between them.
 **Clarification:** I added executable `## Examples` doctests to every public method in `TupleType`, `RelationType`, `ScalarType`, `Tuple`, `Relation`, and `Database`, explicitly demonstrating exact usage with code.
+## 2024-06-03 - Removed Get/Set documentation noise
+**Confusion:** Various structs and functions across `relvar-core` (`Tuple`, `Database`, `Manager`, `Key`) and `relvar-storage` had auto-generated boilerplate `/// Get the...` or `/// Set the...` comments, providing zero semantic value.
+**Clarification:** I deleted all remaining instances of the "Get the x" and "Set the x" boilerplate completely across the codebase since these were simple getters/setters where the function signature already tells the full story.

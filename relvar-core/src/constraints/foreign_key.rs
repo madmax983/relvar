@@ -150,17 +150,17 @@ impl ForeignKey {
         })
     }
 
-    /// Get the foreign key attributes
+    /// Exposes the list of local attribute names participating in this foreign key.
     pub fn foreign_key_attributes(&self) -> &[String] {
         &self.foreign_key_attributes
     }
 
-    /// Get the referenced relation name
+    /// Identifies the name of the target relation that this foreign key references.
     pub fn referenced_relation_name(&self) -> &str {
         &self.referenced_relation_name
     }
 
-    /// Get the referenced attributes
+    /// Exposes the list of attribute names in the target relation that correspond to the local attributes.
     pub fn referenced_attributes(&self) -> &[String] {
         &self.referenced_attributes
     }
@@ -309,7 +309,7 @@ impl ForeignKeyConstraints {
         self
     }
 
-    /// Get all foreign keys
+    /// Exposes the complete list of all configured foreign keys for this relation.
     pub fn foreign_keys(&self) -> &[ForeignKey] {
         &self.foreign_keys
     }

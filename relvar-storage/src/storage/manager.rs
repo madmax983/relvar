@@ -166,7 +166,7 @@ impl StorageManager {
         self.catalog.relation_exists(name)
     }
 
-    /// Get relation metadata.
+    /// Looks up the metadata associated with a specific relation.
     pub fn get_relation_metadata(&self, name: &str) -> Result<RelationMetadata, StorageError> {
         let metadata = self
             .catalog
@@ -184,7 +184,7 @@ impl StorageManager {
         self.catalog.list_relations()
     }
 
-    /// Get or open a heap file for a relation.
+    /// Retrieves or opens a heap file for a relation.
     fn get_or_open_heap_file(&mut self, name: &str) -> Result<&mut HeapFile, StorageError> {
         if !self.heap_files.contains_key(name) {
             let metadata = self
