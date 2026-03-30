@@ -27,7 +27,6 @@
 //! ```
 
 use crate::types::ScalarType;
-use crate::utils::recursion::DepthGuarded;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use thiserror::Error;
@@ -510,10 +509,14 @@ enum ScalarValueUnchecked {
     String(String),
     Bool(bool),
     Bytes(Vec<u8>),
-    Relation(DepthGuarded<crate::values::Relation>),
+    Relation(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        crate::values::Relation,
+    ),
     UserDefined {
         type_def: ScalarType,
-        value: Box<DepthGuarded<ScalarValueUnchecked>>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        value: Box<ScalarValueUnchecked>,
     },
 }
 
@@ -521,13 +524,16 @@ impl TryFrom<ScalarValueUnchecked> for ScalarValue {
     type Error = String;
 
     fn try_from(unchecked: ScalarValueUnchecked) -> Result<Self, Self::Error> {
+        let _guard = crate::utils::recursion::RecursionGuard::new()
+            .map_err(|e| e.to_string())?;
+
         match unchecked {
             ScalarValueUnchecked::Int(v) => Ok(ScalarValue::Int(v)),
             ScalarValueUnchecked::Float(v) => Ok(ScalarValue::Float(v)),
             ScalarValueUnchecked::String(v) => Ok(ScalarValue::String(v)),
             ScalarValueUnchecked::Bool(v) => Ok(ScalarValue::Bool(v)),
             ScalarValueUnchecked::Bytes(v) => Ok(ScalarValue::Bytes(v)),
-            ScalarValueUnchecked::Relation(v) => Ok(ScalarValue::Relation(v.0)),
+            ScalarValueUnchecked::Relation(v) => Ok(ScalarValue::Relation(v)),
             ScalarValueUnchecked::UserDefined { type_def, value } => {
                 // First, ensure the type definition itself is a UserDefined type.
                 // A ScalarValue::UserDefined variant must have a ScalarType::UserDefined type definition.
@@ -543,8 +549,7 @@ impl TryFrom<ScalarValueUnchecked> for ScalarValue {
                 };
 
                 // Recursively convert and validate the inner value
-                // Unwrap the DepthGuarded wrapper
-                let inner_value = ScalarValue::try_from((*value).0)?;
+                let inner_value = ScalarValue::try_from(*value)?;
 
                 // Enforce type consistency: inner value MUST match the representation type
                 if !inner_value.is_type(representation) {

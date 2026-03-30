@@ -56,13 +56,6 @@ pub(crate) struct TupleId {
     pub(crate) slot: u32,
 }
 
-/// Operation type for size checking (Insert vs Update)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OperationType {
-    Insert,
-    Update,
-}
-
 /// Errors that can occur during heap file operations.
 #[derive(Debug, Error)]
 pub enum HeapError {
@@ -766,7 +759,7 @@ impl HeapFile {
 
         // Check if tuple is too large to ever fit
         // New inserts have no previous version (prev_version = None)
-        self.check_versioned_tuple_size_limit(tuple_data.len(), OperationType::Insert)?;
+        self.check_versioned_tuple_size_limit(tuple_data.len(), None)?;
 
         // Find a page with enough space, or create a new one
         self.find_page_for_insertion(|heap, page_id| {
@@ -779,7 +772,7 @@ impl HeapFile {
     fn check_versioned_tuple_size_limit(
         &self,
         tuple_data_len: usize,
-        op_type: OperationType,
+        prev_version: Option<TupleId>,
     ) -> Result<(), HeapError> {
         // Create a dummy versioned page with one slot
         let dummy_page = VersionedSlottedPage {
@@ -790,13 +783,7 @@ impl HeapFile {
                 length: tuple_data_len as u32,
                 xmin: crate::wal::TransactionId::new(0),
                 xmax: None,
-                prev_version: match op_type {
-                    OperationType::Update => Some(TupleId {
-                        page_id: 0,
-                        slot: 0,
-                    }),
-                    OperationType::Insert => None,
-                },
+                prev_version,
             })],
         };
 
@@ -1134,7 +1121,7 @@ impl HeapFile {
 
         // Check if new tuple is too large
         // Updates link to previous version (prev_version = Some(...))
-        self.check_versioned_tuple_size_limit(new_tuple_data.len(), OperationType::Update)?;
+        self.check_versioned_tuple_size_limit(new_tuple_data.len(), Some(TupleId { page_id: 0, slot: 0 }))?;
 
         // Find a page with space for new version
         self.find_page_for_insertion(|heap, page_id| {
@@ -3620,12 +3607,12 @@ mod security_tests {
 
             // Check if it fits with None (insert)
             let fits_insert = heap
-                .check_versioned_tuple_size_limit(tuple_data_len, OperationType::Insert)
+                .check_versioned_tuple_size_limit(tuple_data_len, None)
                 .is_ok();
 
             // Check if it fits with Some (update)
             let fits_update = heap
-                .check_versioned_tuple_size_limit(tuple_data_len, OperationType::Update)
+                .check_versioned_tuple_size_limit(tuple_data_len, Some(TupleId { page_id: 0, slot: 0 }))
                 .is_ok();
 
             if fits_insert && !fits_update {
