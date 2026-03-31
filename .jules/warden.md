@@ -203,3 +203,11 @@ If an expression failed to evaluate (e.g., due to a type mismatch or a missing a
 **Defense:**
 Refactored the closure passed to `Relation::restrict_into` to explicitly check the `Result` of `prepared.evaluate(tuple)`. If an error occurs, it captures the first evaluation error into a mutable variable (`eval_error`) in the outer scope, and then propagates that error up the call stack as `QueryError::Constraint` after the iteration completes.
 Added a regression test `warden_query_restrict_error.rs` to verify that both type mismatches and missing attributes correctly halt execution and return an `Err`.
+
+## 2024-03-24 - Storage Heap Slot Directory Offset Integer Overflow DoS
+**Threat:**
+In `relvar-storage/src/storage/heap.rs`, methods `get_tuple`, `get_tuple_versioned`, and `scan_versioned` calculate the end offset of a tuple's data within a slotted page using `start + slot_entry.length as usize`. Since `start` and `length` are read directly from the page's slot directory (which is parsed from disk), a maliciously crafted or corrupted database file could provide large values for `offset` and `length`. This addition could overflow `usize`, resulting in a small `end` value that bypasses the subsequent bounds check (`end > page.data().len()`), leading to an out-of-bounds slice read (`&page.data()[start..end]`) and a panic (Denial of Service). Furthermore, `scan_versioned` silently skipped tuples if `end > page.data().len()` without returning an error, which could mask critical page corruption.
+
+**Defense:**
+1. Replaced the unsafe addition `start + slot_entry.length as usize` with safe checked arithmetic: `start.checked_add(slot_entry.length as usize).ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?`.
+2. Updated the bounds check in all three methods to explicitly return a `HeapError::Serialization` if `end > page.data().len()`, ensuring that page corruption is properly propagated as an error rather than silently ignored or causing a panic.
