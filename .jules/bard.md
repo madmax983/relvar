@@ -71,3 +71,6 @@ This ensures the map matches the territory.
 ## 2024-06-03 - Missing Doc-tests in relvar-storage API
 **Confusion:** Several public types and methods in the `relvar-storage` crate, such as `Lsn`, `TransactionId`, `TransactionIdGenerator`, `WalRecord`, `PersistentEngine`, `HeapFile`, and `Catalog`, lacked executable doctests, forcing developers to guess how to properly instantiate and invoke them.
 **Clarification:** Added executable `## Examples` sections to these key types in `wal/lsn.rs`, `wal/record.rs`, `persistent_engine.rs`, `storage/catalog.rs`, and `storage/heap.rs` to provide clear, copy-pasteable usage demonstrations. Ensure `pub` exports at the module level are appropriately configured to make internal module doctesting compile without breaking encapsulation.
+## 2024-06-03 - Replaced "Returns the" and "Returns a" noise with descriptive verbs
+**Confusion:** A few methods and enums in `relvar-storage` (`storage/heap.rs`) and `relvar-core` (`query/mod.rs`) still had auto-generated boilerplate `/// Returns the...` or `/// Returns a...` comments, providing zero semantic value.
+**Clarification:** I updated these elements with precise verbs and context, explaining what information is retrieved or exposed, fully eradicating this boilerplate pattern.
