@@ -238,6 +238,10 @@ impl Drop for ScalarValue {
 // the same representation value. This ensures type safety.
 impl PartialEq for ScalarValue {
     fn eq(&self, other: &Self) -> bool {
+        if std::mem::discriminant(self) != std::mem::discriminant(other) {
+            return false;
+        }
+
         match (self, other) {
             (ScalarValue::Int(a), ScalarValue::Int(b)) => a == b,
             (ScalarValue::Float(a), ScalarValue::Float(b)) => {
@@ -260,36 +264,8 @@ impl PartialEq for ScalarValue {
                     type_def: type_b,
                     value: val_b,
                 },
-            ) => {
-                if type_a != type_b {
-                    return false;
-                }
-                // Iterative comparison to prevent stack overflow
-                let mut cur_a = val_a;
-                let mut cur_b = val_b;
-                loop {
-                    match (&**cur_a, &**cur_b) {
-                        (
-                            ScalarValue::UserDefined {
-                                type_def: ta,
-                                value: va,
-                            },
-                            ScalarValue::UserDefined {
-                                type_def: tb,
-                                value: vb,
-                            },
-                        ) => {
-                            if ta != tb {
-                                return false;
-                            }
-                            cur_a = va;
-                            cur_b = vb;
-                        }
-                        (a, b) => return a == b,
-                    }
-                }
-            }
-            _ => false,
+            ) => ScalarValue::eq_user_defined_values(type_a, val_a, type_b, val_b),
+            _ => unreachable!("Discriminant check should have caught mismatched types"),
         }
     }
 }
@@ -331,26 +307,7 @@ impl std::hash::Hash for ScalarValue {
                 v.hash(state);
             }
             ScalarValue::UserDefined { type_def, value } => {
-                6u8.hash(state);
-                type_def.hash(state);
-                // Iterative hash to prevent stack overflow
-                let mut cur = value;
-                loop {
-                    match &**cur {
-                        ScalarValue::UserDefined {
-                            type_def: t,
-                            value: v,
-                        } => {
-                            6u8.hash(state);
-                            t.hash(state);
-                            cur = v;
-                        }
-                        other => {
-                            other.hash(state);
-                            break;
-                        }
-                    }
-                }
+                ScalarValue::hash_user_defined_value(type_def, value, state);
             }
         }
     }
@@ -458,6 +415,69 @@ impl ScalarValue {
         match a.cardinality().cmp(&b.cardinality()) {
             Ordering::Equal => a.degree().cmp(&b.degree()),
             other => other,
+        }
+    }
+
+    fn eq_user_defined_values(
+        type_a: &ScalarType,
+        val_a: &ScalarValue,
+        type_b: &ScalarType,
+        val_b: &ScalarValue,
+    ) -> bool {
+        if type_a != type_b {
+            return false;
+        }
+        // Iterative comparison to prevent stack overflow
+        let mut cur_a = val_a;
+        let mut cur_b = val_b;
+        loop {
+            match (cur_a, cur_b) {
+                (
+                    ScalarValue::UserDefined {
+                        type_def: ta,
+                        value: va,
+                    },
+                    ScalarValue::UserDefined {
+                        type_def: tb,
+                        value: vb,
+                    },
+                ) => {
+                    if ta != tb {
+                        return false;
+                    }
+                    cur_a = va.as_ref();
+                    cur_b = vb.as_ref();
+                }
+                (a, b) => return a == b,
+            }
+        }
+    }
+
+    fn hash_user_defined_value<H: std::hash::Hasher>(
+        type_def: &ScalarType,
+        value: &ScalarValue,
+        state: &mut H,
+    ) {
+        use std::hash::Hash;
+        6u8.hash(state);
+        type_def.hash(state);
+        // Iterative hash to prevent stack overflow
+        let mut cur = value;
+        loop {
+            match cur {
+                ScalarValue::UserDefined {
+                    type_def: t,
+                    value: v,
+                } => {
+                    6u8.hash(state);
+                    t.hash(state);
+                    cur = v.as_ref();
+                }
+                other => {
+                    other.hash(state);
+                    break;
+                }
+            }
         }
     }
 
