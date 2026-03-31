@@ -575,3 +575,22 @@ mod security_tests {
         }
     }
 }
+
+#[test]
+fn test_record_txn_id_page_write_and_delete() {
+    let txn_id = TransactionId::new(123);
+    let record_page_write = WalRecord::PageWrite {
+        txn_id,
+        relation_name: "test".to_string(),
+        page_id: 1,
+        page_data: vec![1, 2, 3],
+    };
+    let record_delete = WalRecord::Delete {
+        txn_id,
+        relation_name: "test".to_string(),
+        key_values: vec![1, 2, 3],
+    };
+
+    assert_eq!(record_page_write.txn_id(), Some(txn_id));
+    assert_eq!(record_delete.txn_id(), Some(txn_id));
+}
