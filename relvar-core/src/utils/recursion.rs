@@ -73,17 +73,15 @@ impl Drop for RecursionGuard {
     }
 }
 
-/// A wrapper that enforces recursion limits during Serde deserialization.
-#[derive(Debug)]
-pub struct DepthGuarded<T>(pub T);
-
-impl<'de, T: Deserialize<'de>> Deserialize<'de> for DepthGuarded<T> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let _guard = RecursionGuard::new().map_err(serde::de::Error::custom)?;
-        let value = T::deserialize(deserializer)?;
-        Ok(DepthGuarded(value))
-    }
+/// A custom deserialization function that encapsulates the recursion guard logic.
+///
+/// It should be used with `#[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]`
+/// to enforce recursion limits during Serde deserialization without wrapping types in custom guard structs.
+pub fn deserialize_guarded<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let _guard = RecursionGuard::new().map_err(serde::de::Error::custom)?;
+    T::deserialize(deserializer)
 }
