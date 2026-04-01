@@ -194,27 +194,30 @@ impl Tuple {
         M: IntoIterator<Item = (String, ScalarValue)>,
     {
         let tuple_type: Arc<TupleType> = tuple_type.into();
-        let values_map: BTreeMap<String, ScalarValue> = values.into_iter().collect();
+        let mut values_map = BTreeMap::new();
 
-        // Verify all attributes have values
-        for attr_name in tuple_type.attribute_names() {
-            if !values_map.contains_key(attr_name) {
-                return Err(TupleError::MissingValue(attr_name.clone()));
-            }
-        }
-
-        // Verify all values match their types
-        for (attr_name, value) in &values_map {
-            if let Some(expected_type) = tuple_type.get_attribute_type(attr_name) {
+        // Validate values during collection to avoid double iteration and allocations on invalid data
+        for (attr_name, value) in values {
+            if let Some(expected_type) = tuple_type.get_attribute_type(&attr_name) {
                 if !value.is_type(expected_type) {
                     return Err(TupleError::TypeMismatch(
-                        attr_name.clone(),
+                        attr_name,
                         expected_type.name().to_string(),
                         value.scalar_type().name().to_string(),
                     ));
                 }
+                values_map.insert(attr_name, value);
             } else {
-                return Err(TupleError::AttributeNotFound(attr_name.clone()));
+                return Err(TupleError::AttributeNotFound(attr_name));
+            }
+        }
+
+        // Verify all attributes have values. Optimize by checking length first.
+        if values_map.len() != tuple_type.degree() {
+            for attr_name in tuple_type.attribute_names() {
+                if !values_map.contains_key(attr_name) {
+                    return Err(TupleError::MissingValue(attr_name.clone()));
+                }
             }
         }
 
