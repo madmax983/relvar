@@ -20,3 +20,7 @@
 **Bloat:** `SlotDescriptor` and `MutableSlot` traits in `relvar-storage/src/storage/heap.rs`. These were "One-Time Traits" implemented only by 2 concrete structs (`SlotEntry` and `VersionedSlotEntry`) to share tiny bits of logic. This is an unnecessary abstraction for "Future Proofing".
 **Cut:** Removed the traits entirely. Implemented `offset`, `length`, `set_offset`, and `set_length` explicitly on both structs. Duplicated the implementation logic for `repack_slots`, `extract_all_tuples`, and `extract_tuples_from_slots` for the two concrete types.
 **Saved:** Removed 2 traits, 2 generic trait bounds, simplified method resolution, reduced abstraction layer cognitive load.
+## [Reduction]
+**Bloat:** `ImageProcessor` struct in `relvar/src/experimental/image.rs`. It was an empty struct used only as a namespace for associated functions (`load`, `save`, `apply_kernel`).
+**Cut:** Removed the `ImageProcessor` struct and its `impl` block, converting the methods into standalone functions.
+**Saved:** Removed an unnecessary struct definition and `impl` block, flattening the module's API.
