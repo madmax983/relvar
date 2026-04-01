@@ -372,7 +372,7 @@ impl HeapFile {
     }
 
     /// Helper to repack versioned slots and calculate offsets.
-    /// Returns the required header size (V2_HEADER_SIZE + slot directory length).
+    /// Computes the required header size (V2_HEADER_SIZE + slot directory length).
     /// Returns an error if the page would overflow.
     fn repack_and_verify_space(
         versioned_page: &mut VersionedSlottedPage,
