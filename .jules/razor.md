@@ -7,3 +7,8 @@
 **Bloat:** `OperationType` enum with only `Insert` and `Update` variants in `relvar-storage/src/storage/heap.rs`.
 **Cut:** Replaced `OperationType` enum with a simple `bool` flag (`is_update: bool`) since it only had two states.
 **Saved:** Removed enum definition and simplified pattern matching.
+
+## [Reduction]
+**Bloat:** `DepthGuarded<T>` struct wrapper used to prevent recursive serialization/deserialization panics. Added nesting and `.0` boilerplate when unpacking scalars.
+**Cut:** Removed the wrapper struct, replacing it with a custom `deserialize_guarded` function applied via `#[serde(deserialize_with = "...")]` to directly flatten recursive structures.
+**Saved:** Reduced boilerplate wrapper types, streamlined Serde parsing logic, and eliminated intermediate `.0` tuple accesses.
