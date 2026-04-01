@@ -21,6 +21,7 @@
 //! - **[`turing`](crate::experimental::turing)**: Relational Turing Machine.
 
 pub mod automl;
+pub mod blockchain;
 pub mod cellular_automaton;
 pub mod ecs;
 pub mod graph;
