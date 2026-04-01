@@ -211,3 +211,11 @@ In `relvar-storage/src/storage/heap.rs`, methods `get_tuple`, `get_tuple_version
 **Defense:**
 1. Replaced the unsafe addition `start + slot_entry.length as usize` with safe checked arithmetic: `start.checked_add(slot_entry.length as usize).ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?`.
 2. Updated the bounds check in all three methods to explicitly return a `HeapError::Serialization` if `end > page.data().len()`, ensuring that page corruption is properly propagated as an error rather than silently ignored or causing a panic.
+
+## 2026-03-25 - Storage Page/Heap Slice Parsing Panic DoS
+**Threat:**
+In `relvar-storage/src/storage/page.rs` (reading page metadata length) and `relvar-storage/src/storage/heap.rs` (reading versioned page slot directories), fixed-size slice conversions using `.try_into().unwrap()` were used to parse little-endian byte arrays (e.g., `u64::from_le_bytes(buffer[0..8].try_into().unwrap())`). Although bounds checks existed prior to these conversions, a logical error in the check or a corrupted disk read bypassing the check would cause `.unwrap()` to trigger an immediate panic, taking down the entire database process (Denial of Service) instead of gracefully returning a storage error.
+
+**Defense:**
+1. Replaced `.try_into().unwrap()` with `.try_into().map_err(|_| ...)` in both `page.rs` and `heap.rs`.
+2. Mapped failures explicitly to domain-specific serialization errors (`PageError::Serialization` and `postcard::Error::DeserializeUnexpectedEnd`), ensuring any future slice bounds mismatch fails gracefully instead of crashing the server.
