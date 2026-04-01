@@ -483,7 +483,7 @@ impl HeapFile {
         page: &Page,
         slots: &[Option<SlotEntry>],
     ) -> Result<Vec<Vec<u8>>, HeapError> {
-        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
+        let mut existing_tuples: Vec<Vec<u8>> = Vec::with_capacity(slots.len());
         // Maintain alignment with slots: push empty Vec for None slots
         for slot_option in slots.iter() {
             if let Some(slot_entry) = slot_option {
@@ -504,7 +504,7 @@ impl HeapFile {
         page: &Page,
         slots: &[Option<VersionedSlotEntry>],
     ) -> Result<Vec<Vec<u8>>, HeapError> {
-        let mut existing_tuples: Vec<Vec<u8>> = Vec::new();
+        let mut existing_tuples: Vec<Vec<u8>> = Vec::with_capacity(slots.len());
         // Maintain alignment with slots: push empty Vec for None slots
         for slot_option in slots.iter() {
             if let Some(slot_entry) = slot_option {
