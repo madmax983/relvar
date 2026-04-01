@@ -268,6 +268,9 @@ fn compute_grouped_tuples<'a>(
 
     let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<Tuple>> = HashMap::new();
 
+    // Pre-allocate attribute name strings
+    let attr_names: Vec<String> = attrs_to_group.iter().map(|a| a.to_string()).collect();
+
     for tuple in relation.tuples() {
         // Extract grouping key
         let key: Vec<&ScalarValue> = grouping_attrs
@@ -277,8 +280,8 @@ fn compute_grouped_tuples<'a>(
 
         // Extract grouped attributes for RVA
         let mut rva_values = std::collections::BTreeMap::new();
-        for attr in attrs_to_group {
-            rva_values.insert(attr.to_string(), tuple.get(attr).unwrap().clone());
+        for (i, &attr) in attrs_to_group.iter().enumerate() {
+            rva_values.insert(attr_names[i].clone(), tuple.get(attr).unwrap().clone());
         }
 
         let rva_tuple = Tuple::new_unchecked(rva_heading_arc.clone(), rva_values);
