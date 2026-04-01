@@ -16,6 +16,7 @@
 //! - **[`recommend`](crate::experimental::recommend)**: Relational Recommender System (Collaborative Filtering).
 //! - **[`search`](crate::experimental::search)**: Relational Full-Text Search.
 //! - **[`spatial`](crate::experimental::spatial)**: Spatial data types and operations.
+//! - **[`synth`](crate::experimental::synth)**: Relational Audio Synthesizer.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 //! - **[`turing`](crate::experimental::turing)**: Relational Turing Machine.
 
@@ -32,5 +33,6 @@ pub mod raytracer;
 pub mod recommend;
 pub mod search;
 pub mod spatial;
+pub mod synth;
 pub mod timeseries;
 pub mod turing;

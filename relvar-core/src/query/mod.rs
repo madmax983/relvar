@@ -83,7 +83,7 @@ pub enum Query {
 
     /// Project specific attributes (Projection/SELECT).
     ///
-    /// Corresponds to the π (pi) operator. Returns a relation with only
+    /// Corresponds to the π (pi) operator. Computes a relation with only
     /// the specified attributes.
     Project {
         /// The input query.

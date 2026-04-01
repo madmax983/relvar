@@ -21,3 +21,8 @@
 **Concept:** A simplified blockchain simulation where blocks, transactions, and the ledger are represented as relations, and validation (e.g., balance checks, hash links) is done via relational algebra.
 **Fate:** TBD
 **Lesson:** TBD
+
+## Relational Audio Synthesizer
+**Concept:** Designed an audio synthesizer where sound generation is computed by applying relational algebra (Join, Extend, Summarize) to a timeline relation and an oscillators relation to compute mixed audio samples.
+**Fate:** Merged
+**Lesson:** Time-series and mathematical audio wave synthesis can be completely expressed using declarative relational structures and functional extensions, turning digital signal processing into a database querying task.

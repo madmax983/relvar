@@ -27,7 +27,6 @@
 //! ```
 
 use crate::types::ScalarType;
-use crate::utils::recursion::DepthGuarded;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use thiserror::Error;
@@ -238,6 +237,10 @@ impl Drop for ScalarValue {
 // the same representation value. This ensures type safety.
 impl PartialEq for ScalarValue {
     fn eq(&self, other: &Self) -> bool {
+        if std::mem::discriminant(self) != std::mem::discriminant(other) {
+            return false;
+        }
+
         match (self, other) {
             (ScalarValue::Int(a), ScalarValue::Int(b)) => a == b,
             (ScalarValue::Float(a), ScalarValue::Float(b)) => {
@@ -260,36 +263,8 @@ impl PartialEq for ScalarValue {
                     type_def: type_b,
                     value: val_b,
                 },
-            ) => {
-                if type_a != type_b {
-                    return false;
-                }
-                // Iterative comparison to prevent stack overflow
-                let mut cur_a = val_a;
-                let mut cur_b = val_b;
-                loop {
-                    match (&**cur_a, &**cur_b) {
-                        (
-                            ScalarValue::UserDefined {
-                                type_def: ta,
-                                value: va,
-                            },
-                            ScalarValue::UserDefined {
-                                type_def: tb,
-                                value: vb,
-                            },
-                        ) => {
-                            if ta != tb {
-                                return false;
-                            }
-                            cur_a = va;
-                            cur_b = vb;
-                        }
-                        (a, b) => return a == b,
-                    }
-                }
-            }
-            _ => false,
+            ) => ScalarValue::eq_user_defined_values(type_a, val_a, type_b, val_b),
+            _ => unreachable!("Discriminant check should have caught mismatched types"),
         }
     }
 }
@@ -331,26 +306,7 @@ impl std::hash::Hash for ScalarValue {
                 v.hash(state);
             }
             ScalarValue::UserDefined { type_def, value } => {
-                6u8.hash(state);
-                type_def.hash(state);
-                // Iterative hash to prevent stack overflow
-                let mut cur = value;
-                loop {
-                    match &**cur {
-                        ScalarValue::UserDefined {
-                            type_def: t,
-                            value: v,
-                        } => {
-                            6u8.hash(state);
-                            t.hash(state);
-                            cur = v;
-                        }
-                        other => {
-                            other.hash(state);
-                            break;
-                        }
-                    }
-                }
+                ScalarValue::hash_user_defined_value(type_def, value, state);
             }
         }
     }
@@ -461,6 +417,69 @@ impl ScalarValue {
         }
     }
 
+    fn eq_user_defined_values(
+        type_a: &ScalarType,
+        val_a: &ScalarValue,
+        type_b: &ScalarType,
+        val_b: &ScalarValue,
+    ) -> bool {
+        if type_a != type_b {
+            return false;
+        }
+        // Iterative comparison to prevent stack overflow
+        let mut cur_a = val_a;
+        let mut cur_b = val_b;
+        loop {
+            match (cur_a, cur_b) {
+                (
+                    ScalarValue::UserDefined {
+                        type_def: ta,
+                        value: va,
+                    },
+                    ScalarValue::UserDefined {
+                        type_def: tb,
+                        value: vb,
+                    },
+                ) => {
+                    if ta != tb {
+                        return false;
+                    }
+                    cur_a = va.as_ref();
+                    cur_b = vb.as_ref();
+                }
+                (a, b) => return a == b,
+            }
+        }
+    }
+
+    fn hash_user_defined_value<H: std::hash::Hasher>(
+        type_def: &ScalarType,
+        value: &ScalarValue,
+        state: &mut H,
+    ) {
+        use std::hash::Hash;
+        6u8.hash(state);
+        type_def.hash(state);
+        // Iterative hash to prevent stack overflow
+        let mut cur = value;
+        loop {
+            match cur {
+                ScalarValue::UserDefined {
+                    type_def: t,
+                    value: v,
+                } => {
+                    6u8.hash(state);
+                    t.hash(state);
+                    cur = v.as_ref();
+                }
+                other => {
+                    other.hash(state);
+                    break;
+                }
+            }
+        }
+    }
+
     fn cmp_user_defined_values(
         type_a: &ScalarType,
         val_a: &ScalarValue,
@@ -510,10 +529,14 @@ enum ScalarValueUnchecked {
     String(String),
     Bool(bool),
     Bytes(Vec<u8>),
-    Relation(DepthGuarded<crate::values::Relation>),
+    Relation(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        crate::values::Relation,
+    ),
     UserDefined {
         type_def: ScalarType,
-        value: Box<DepthGuarded<ScalarValueUnchecked>>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        value: Box<ScalarValueUnchecked>,
     },
 }
 
@@ -527,7 +550,7 @@ impl TryFrom<ScalarValueUnchecked> for ScalarValue {
             ScalarValueUnchecked::String(v) => Ok(ScalarValue::String(v)),
             ScalarValueUnchecked::Bool(v) => Ok(ScalarValue::Bool(v)),
             ScalarValueUnchecked::Bytes(v) => Ok(ScalarValue::Bytes(v)),
-            ScalarValueUnchecked::Relation(v) => Ok(ScalarValue::Relation(v.0)),
+            ScalarValueUnchecked::Relation(v) => Ok(ScalarValue::Relation(v)),
             ScalarValueUnchecked::UserDefined { type_def, value } => {
                 // First, ensure the type definition itself is a UserDefined type.
                 // A ScalarValue::UserDefined variant must have a ScalarType::UserDefined type definition.
@@ -543,8 +566,7 @@ impl TryFrom<ScalarValueUnchecked> for ScalarValue {
                 };
 
                 // Recursively convert and validate the inner value
-                // Unwrap the DepthGuarded wrapper
-                let inner_value = ScalarValue::try_from((*value).0)?;
+                let inner_value = ScalarValue::try_from(*value)?;
 
                 // Enforce type consistency: inner value MUST match the representation type
                 if !inner_value.is_type(representation) {
