@@ -544,3 +544,7 @@ Build it right, make it fast, keep it simple.
 ## 2026-03-14 - Extract Complex PartialEq and Hash Logic
 **Learning:** `PartialEq::eq` and `Hash::hash` implementations in `relvar-core/src/values/scalar.rs` (`ScalarValue`) had deeply nested `match` branches for complex variants like `UserDefined`.
 **Action:** Replaced nested `match` inside `PartialEq::eq` with an upfront `std::mem::discriminant` guard clause for type mismatch, and extracted the complex variant match arms into private helper functions like `eq_user_defined_values` and `hash_user_defined_value`. Ensure `&Box<T>` references are explicitly mapped to `&T` using `.as_ref()` in loops.
+
+## 2026-03-14 - Extract Database Test Setup Logic
+**Learning:** `relvar-core/src/database/tests.rs` contained significant duplicate test setup logic for creating `PARENT` and `CHILD` relation types and setting up their tables, making the tests noisy and harder to read.
+**Action:** Extract duplicate test setup into a helper function `setup_parent_child_db` inside the test module. This removes repetitive boilerplate across testing functions and simplifies test logic.
