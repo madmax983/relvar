@@ -151,6 +151,10 @@ impl Relation {
     /// from the old names to the new names while consuming the source relation.
     /// This reduces heap allocations and `.clone()` overhead.
     pub fn rename_into(self, mappings: &[(&str, &str)]) -> Self {
+        if mappings.is_empty() {
+            return self;
+        }
+
         // Build new heading with renamed attributes
         let mut new_heading = TupleType::new();
 
