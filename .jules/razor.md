@@ -12,3 +12,8 @@
 **Bloat:** `DepthGuarded<T>` struct wrapper used to prevent recursive serialization/deserialization panics. Added nesting and `.0` boilerplate when unpacking scalars.
 **Cut:** Removed the wrapper struct, replacing it with a custom `deserialize_guarded` function applied via `#[serde(deserialize_with = "...")]` to directly flatten recursive structures.
 **Saved:** Reduced boilerplate wrapper types, streamlined Serde parsing logic, and eliminated intermediate `.0` tuple accesses.
+
+## [Reduction]
+**Bloat:** `relvar-core/src/database` module split across 8 files (`mod.rs`, `schema.rs`, `data.rs`, etc.) creating unnecessary "Layer Lasagna" for a single cohesive `Database` struct.
+**Cut:** Flattened the directory hierarchy by consolidating all `database/*` files into a single `relvar-core/src/database.rs` file and removed internal `mod` declarations.
+**Saved:** Reduced file hopping and flattened module hierarchy.
