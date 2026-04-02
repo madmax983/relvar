@@ -11,6 +11,7 @@
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
 //! - **[`matrix`](crate::experimental::matrix)**: Relational Linear Algebra (Sparse Matrices).
 //! - **[`mock`](crate::experimental::mock)**: Tools for generating random relations for testing.
+//! - **[`physics`](crate::experimental::physics)**: Relational N-Body Physics Engine.
 //! - **[`pivot`](crate::experimental::pivot)**: Operator to rotate unique values from one column into multiple columns.
 //! - **[`raytracer`](crate::experimental::raytracer)**: Relational Raytracer.
 //! - **[`recommend`](crate::experimental::recommend)**: Relational Recommender System (Collaborative Filtering).
@@ -28,6 +29,7 @@ pub mod graph;
 pub mod image;
 pub mod matrix;
 pub mod mock;
+pub mod physics;
 pub mod pivot;
 pub mod raytracer;
 pub mod recommend;

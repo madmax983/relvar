@@ -26,3 +26,8 @@
 **Concept:** Designed an audio synthesizer where sound generation is computed by applying relational algebra (Join, Extend, Summarize) to a timeline relation and an oscillators relation to compute mixed audio samples.
 **Fate:** Merged
 **Lesson:** Time-series and mathematical audio wave synthesis can be completely expressed using declarative relational structures and functional extensions, turning digital signal processing into a database querying task.
+
+## Relational N-Body Physics Engine
+**Concept:** Modeled an N-body gravity simulation where particles are relations, and interactions (pairwise gravity) and kinematics are computed using pure relational algebra operators (Join, Extend, Summarize, Restrict).
+**Fate:** TBD
+**Lesson:** TBD
