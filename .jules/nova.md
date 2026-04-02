@@ -31,3 +31,8 @@
 **Concept:** Modeled an N-body gravity simulation where particles are relations, and interactions (pairwise gravity) and kinematics are computed using pure relational algebra operators (Join, Extend, Summarize, Restrict).
 **Fate:** TBD
 **Lesson:** TBD
+
+## Relational Version Control System (RelGit)
+**Concept:** Implemented a Git-like VCS where blobs, trees, commits, and branches are pure relations. Operations like checkout and computing diffs are fully expressed using relational algebra (Join, Difference, Union, Extend, Restrict).
+**Fate:** Merged
+**Lesson:** Version control is fundamentally a relational problem! Calculating diffs gracefully maps to set differences and intersections of joined trees and blobs, elegantly demonstrating how trees and file histories map to relational schemas without procedural traversal algorithms.
