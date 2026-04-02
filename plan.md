@@ -1,4 +1,0 @@
-1. **Remove `DepthGuarded` wrapper struct** in `relvar-core/src/utils/recursion.rs`. Add a generic helper function `deserialize_with_guard` instead.
-2. **Update `ScalarType` and `ScalarValue`** to use `#[serde(deserialize_with = "...")]` instead of the `DepthGuarded` wrapper type. Remove the intermediate `ScalarTypeUnchecked` and `ScalarValueUnchecked` enums, which adds unnecessary complexity. We can enforce `MAX_TYPE_DEPTH` invariant directly in the `TryFrom` or using standard serde validations. Wait, if we use `deserialize_with`, we might not need the unchecked enums at all, as we can check the limits natively.
-Let's see the memory constraint:
-"When enforcing recursion limits during Serde deserialization, avoid wrapping types in custom guard structs (like `DepthGuarded`). Instead, use `#[serde(deserialize_with = "...")]` to call a custom deserialization function that encapsulates the guard logic, keeping the type hierarchy flat."
