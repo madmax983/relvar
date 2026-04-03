@@ -474,7 +474,7 @@ pub fn from_csv<R: std::io::Read>(
     let mut line_buf = String::new();
     let mut line_idx = 0;
     while read_line_safe(&mut reader, &mut line_buf)? > 0 {
-        if relation.cardinality() >= MAX_IMPORT_ROWS {
+        if line_idx >= MAX_IMPORT_ROWS {
             return Err(ImporterError::LimitExceeded(format!(
                 "Size limit exceeded: Max rows: {}",
                 MAX_IMPORT_ROWS

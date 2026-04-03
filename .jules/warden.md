@@ -219,3 +219,9 @@ In `relvar-storage/src/storage/page.rs` (reading page metadata length) and `relv
 **Defense:**
 1. Replaced `.try_into().unwrap()` with `.try_into().map_err(|_| ...)` in both `page.rs` and `heap.rs`.
 2. Mapped failures explicitly to domain-specific serialization errors (`PageError::Serialization` and `postcard::Error::DeserializeUnexpectedEnd`), ensuring any future slice bounds mismatch fails gracefully instead of crashing the server.
+## 2026-04-02 - CSV Duplicate Row CPU Exhaustion DoS
+**Threat:**
+The CSV importer in `relvar/src/tools/importer.rs` enforced its `MAX_IMPORT_ROWS` limit against the resulting `relation.cardinality()`. Because relational attributes are sets and silently deduplicate matching tuples, an attacker could supply an endless stream of duplicate rows. The relation's cardinality would never grow, bypassing the limit check and causing the parsing loop to run indefinitely, leading to CPU exhaustion (Denial of Service).
+
+**Defense:**
+Modified the limit check in the CSV row iteration loop to validate against the processed row count (`line_idx >= MAX_IMPORT_ROWS`) rather than the deduplicated relation cardinality. This ensures the parsing engine stops strictly after evaluating 100,000 incoming lines, regardless of their content.
