@@ -30,6 +30,7 @@ pub mod graph;
 pub mod image;
 pub mod matrix;
 pub mod mock;
+pub mod neural_network;
 pub mod physics;
 pub mod pivot;
 pub mod raytracer;

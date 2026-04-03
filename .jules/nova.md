@@ -36,3 +36,8 @@
 **Concept:** Implemented a Git-like VCS where blobs, trees, commits, and branches are pure relations. Operations like checkout and computing diffs are fully expressed using relational algebra (Join, Difference, Union, Extend, Restrict).
 **Fate:** Merged
 **Lesson:** Version control is fundamentally a relational problem! Calculating diffs gracefully maps to set differences and intersections of joined trees and blobs, elegantly demonstrating how trees and file histories map to relational schemas without procedural traversal algorithms.
+
+## Relational Neural Networks
+**Concept:** Modeled a basic feedforward neural network using purely relational algebra. Layers, activations, weights, and biases are all relations. Forward propagation is evaluated using Join, Extend, and Summarize.
+**Fate:** Merged
+**Lesson:** Relational algebra maps exceptionally well to matrix operations and graph traversals. By chaining joins and extends, we can naturally express dense neural network connections without loops or procedural code!
