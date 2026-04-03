@@ -20,6 +20,7 @@
 //! - **[`synth`](crate::experimental::synth)**: Relational Audio Synthesizer.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 //! - **[`turing`](crate::experimental::turing)**: Relational Turing Machine.
+//! - **[`vcs`](crate::experimental::vcs)**: Relational Version Control System (RelGit).
 
 pub mod automl;
 pub mod blockchain;
@@ -38,3 +39,4 @@ pub mod spatial;
 pub mod synth;
 pub mod timeseries;
 pub mod turing;
+pub mod vcs;
