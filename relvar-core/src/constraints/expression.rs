@@ -210,15 +210,7 @@ impl ConstraintExpression {
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
         match self {
             ConstraintExpression::Cmp { left, op, right } => {
-                let (left_val, right_val) = Self::get_comparison_operands(tuple, left, right)?;
-                match op {
-                    CmpOp::Eq => Ok(left_val == right_val),
-                    CmpOp::Ne => Ok(left_val != right_val),
-                    CmpOp::Lt => Ok(left_val < right_val),
-                    CmpOp::Le => Ok(left_val <= right_val),
-                    CmpOp::Gt => Ok(left_val > right_val),
-                    CmpOp::Ge => Ok(left_val >= right_val),
-                }
+                Self::evaluate_cmp(tuple, left, op, right)
             }
             ConstraintExpression::And(left, right) => {
                 Ok(left.evaluate(tuple)? && right.evaluate(tuple)?)
@@ -227,41 +219,66 @@ impl ConstraintExpression {
                 Ok(left.evaluate(tuple)? || right.evaluate(tuple)?)
             }
             ConstraintExpression::Not(expr) => Ok(!expr.evaluate(tuple)?),
-            ConstraintExpression::In(attr, values) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-
-                // Use HashSet for O(1) lookup instead of Vec::contains O(N)
-                // For small lists (< 10 items), Vec is actually faster due to cache locality
-                if values.len() < 10 {
-                    Ok(values.contains(tuple_value))
-                } else {
-                    use std::collections::HashSet;
-                    let value_set: HashSet<_> = values.iter().collect();
-                    Ok(value_set.contains(tuple_value))
-                }
-            }
-            ConstraintExpression::Like(attr, pattern) => {
-                let tuple_value = tuple
-                    .get(attr)
-                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
-
-                // Extract string value
-                let string_value = match tuple_value {
-                    ScalarValue::String(s) => s,
-                    _ => {
-                        return Err(ExpressionError::TypeMismatch(
-                            "String".to_string(),
-                            format!("{:?}", tuple_value.scalar_type()),
-                        ));
-                    }
-                };
-
-                // Simple LIKE pattern matching: % = any chars, _ = single char
-                Ok(Self::matches_pattern(string_value, pattern))
-            }
+            ConstraintExpression::In(attr, values) => Self::evaluate_in(tuple, attr, values),
+            ConstraintExpression::Like(attr, pattern) => Self::evaluate_like(tuple, attr, pattern),
         }
+    }
+
+    fn evaluate_cmp(
+        tuple: &Tuple,
+        left: &str,
+        op: &CmpOp,
+        right: &ValueOrRef,
+    ) -> Result<bool, ExpressionError> {
+        let (left_val, right_val) = Self::get_comparison_operands(tuple, left, right)?;
+        match op {
+            CmpOp::Eq => Ok(left_val == right_val),
+            CmpOp::Ne => Ok(left_val != right_val),
+            CmpOp::Lt => Ok(left_val < right_val),
+            CmpOp::Le => Ok(left_val <= right_val),
+            CmpOp::Gt => Ok(left_val > right_val),
+            CmpOp::Ge => Ok(left_val >= right_val),
+        }
+    }
+
+    fn evaluate_in(
+        tuple: &Tuple,
+        attr: &str,
+        values: &[ScalarValue],
+    ) -> Result<bool, ExpressionError> {
+        let tuple_value = tuple
+            .get(attr)
+            .ok_or_else(|| ExpressionError::AttributeNotFound(attr.to_string()))?;
+
+        // Use HashSet for O(1) lookup instead of Vec::contains O(N)
+        // For small lists (< 10 items), Vec is actually faster due to cache locality
+        if values.len() < 10 {
+            Ok(values.contains(tuple_value))
+        } else {
+            use std::collections::HashSet;
+            let value_set: HashSet<_> = values.iter().collect();
+            Ok(value_set.contains(tuple_value))
+        }
+    }
+
+    fn evaluate_like(tuple: &Tuple, attr: &str, pattern: &str) -> Result<bool, ExpressionError> {
+        let tuple_value = tuple
+            .get(attr)
+            .ok_or_else(|| ExpressionError::AttributeNotFound(attr.to_string()))?;
+
+        // Extract string value
+        let string_value = match tuple_value {
+            ScalarValue::String(s) => s,
+            _ => {
+                return Err(ExpressionError::TypeMismatch(
+                    "String".to_string(),
+                    format!("{:?}", tuple_value.scalar_type()),
+                ));
+            }
+        };
+
+        // Simple LIKE pattern matching: % = any chars, _ = single char
+        Ok(Self::matches_pattern(string_value, pattern))
     }
 
     /// Simple SQL LIKE pattern matching using dynamic programming.
