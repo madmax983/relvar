@@ -1,7 +1,7 @@
 //! Database Schema (DDL) operations.
 
 use crate::database::Database;
-use crate::database::virtual_relvar::VirtualRelvarDefinition;
+use crate::database::VirtualRelvarDefinition;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::types::RelationType;

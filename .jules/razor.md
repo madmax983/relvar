@@ -12,3 +12,8 @@
 **Bloat:** `DepthGuarded<T>` struct wrapper used to prevent recursive serialization/deserialization panics. Added nesting and `.0` boilerplate when unpacking scalars.
 **Cut:** Removed the wrapper struct, replacing it with a custom `deserialize_guarded` function applied via `#[serde(deserialize_with = "...")]` to directly flatten recursive structures.
 **Saved:** Reduced boilerplate wrapper types, streamlined Serde parsing logic, and eliminated intermediate `.0` tuple accesses.
+
+## [Reduction]
+**Bloat:** `VirtualRelvarDefinition` isolated in `virtual_relvar.rs` creating unnecessary folder depth for a single struct definition.
+**Cut:** Flattened by moving `VirtualRelvarDefinition` into `database/mod.rs` and deleting `virtual_relvar.rs`.
+**Saved:** Removed a file and simplified module imports.
