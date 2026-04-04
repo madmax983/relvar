@@ -1,0 +1,17 @@
+   Compiling relvar-core v0.1.0 (/app/relvar-core)
+    Finished `bench` profile [optimized] target(s) in 15.71s
+     Running benches/algebra.rs (target/release/deps/algebra-0ff8318487912347)
+Gnuplot not found, using plotters backend
+Benchmarking restrict/100
+Benchmarking restrict/100: Warming up for 3.0000 s
+Benchmarking restrict/100: Collecting 100 samples in estimated 5.0098 s (2.4M iterations)
+Benchmarking restrict/100: Analyzing
+restrict/100            time:   [2.4568 µs 2.6528 µs 2.8734 µs]
+                        thrpt:  [34.802 Melem/s 37.696 Melem/s 40.704 Melem/s]
+                 change:
+                        time:   [+23.513% +32.078% +41.723%] (p = 0.00 < 0.05)
+                        thrpt:  [-29.440% -24.287% -19.037%]
+                        Performance has regressed.
+Found 7 outliers among 100 measurements (7.00%)
+  6 (6.00%) high mild
+  1 (1.00%) high severe

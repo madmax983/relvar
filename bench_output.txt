@@ -1,0 +1,14 @@
+    Finished `bench` profile [optimized] target(s) in 0.09s
+     Running benches/algebra.rs (target/release/deps/algebra-0ff8318487912347)
+Gnuplot not found, using plotters backend
+Benchmarking restrict/100
+Benchmarking restrict/100: Warming up for 3.0000 s
+Benchmarking restrict/100: Collecting 100 samples in estimated 5.0048 s (2.7M iterations)
+Benchmarking restrict/100: Analyzing
+restrict/100            time:   [1.8304 µs 1.8422 µs 1.8545 µs]
+                        thrpt:  [53.922 Melem/s 54.284 Melem/s 54.633 Melem/s]
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+Benchmarking restrict/500
+Benchmarking restrict/500: Warming up for 3.0000 s

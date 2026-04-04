@@ -124,8 +124,10 @@ impl Relation {
             return Err(UnionError::TypeMismatch);
         }
 
+        self.body.reserve(other.cardinality());
+
         for tuple in other.tuples() {
-            self.insert(tuple.clone()).unwrap();
+            self.body.insert(tuple.clone());
         }
 
         Ok(self)
