@@ -157,3 +157,77 @@ fn test_database_set_check_constraints_nonexistent_fails() {
         ))
     ));
 }
+
+#[test]
+fn test_database_set_key_constraints_success() {
+    let mut db = setup();
+    let pk = relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let constraints = KeyConstraints::new().with_primary_key(pk);
+    let result = db.set_key_constraints("TEST", constraints);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_database_set_foreign_key_constraints_success() {
+    let mut db = setup();
+
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("test_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type).unwrap();
+
+    db.insert("CHILD", tuple! { child_id: 100i64, test_id: 1i64 })
+        .unwrap();
+
+    let fk = relvar_core::constraints::ForeignKey::new(
+        vec!["test_id".to_string()],
+        "TEST".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+
+    let result = db.set_foreign_key_constraints("CHILD", constraints);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_database_set_type_constraints_success() {
+    let mut db = setup();
+
+    let type_cons = relvar_core::constraints::TypeConstraint::Range {
+        min: relvar_core::values::ScalarValue::Int(0),
+        max: relvar_core::values::ScalarValue::Int(50),
+    };
+
+    let constraints =
+        AttributeConstraints::new("val".to_string(), ScalarType::Int).with_constraint(type_cons);
+
+    let result = db.set_type_constraints("TEST", "val", constraints);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_database_set_check_constraints_success() {
+    let mut db = setup();
+
+    let check_expr = relvar_core::constraints::ConstraintExpression::Cmp {
+        left: "val".to_string(),
+        op: relvar_core::constraints::CmpOp::Gt,
+        right: relvar_core::constraints::ValueOrRef::Value(relvar_core::values::ScalarValue::Int(
+            5,
+        )),
+    };
+
+    let constraints =
+        CheckConstraints::new().with_constraint(relvar_core::constraints::CheckConstraint::new(
+            "val_gt_5".to_string(),
+            "must be greater than 5".to_string(),
+            check_expr,
+        ));
+
+    let result = db.set_check_constraints("TEST", constraints);
+    assert!(result.is_ok());
+}

@@ -116,3 +116,11 @@ fn test_create_relvar_already_exists_virtual() {
         Err(DatabaseError::RelationAlreadyExists(_))
     ));
 }
+
+#[test]
+fn test_drop_virtual_relvar_not_found() {
+    let mut db = Database::new(InMemoryEngine::new());
+    let result = db.drop_virtual_relvar("NONEXISTENT");
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::RelationNotFound(_))));
+}
