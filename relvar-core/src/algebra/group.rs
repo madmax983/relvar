@@ -271,12 +271,16 @@ fn compute_grouped_tuples<'a>(
     // Pre-allocate attribute name strings
     let attr_names: Vec<String> = attrs_to_group.iter().map(|a| a.to_string()).collect();
 
+    // PERF: Reusable buffer for the grouping key avoids allocating a new Vec
+    // for every single tuple just to query the HashMap.
+    let mut key_buffer = Vec::with_capacity(grouping_attrs.len());
+
     for tuple in relation.tuples() {
         // Extract grouping key
-        let key: Vec<&ScalarValue> = grouping_attrs
-            .iter()
-            .map(|attr| tuple.get(attr).unwrap())
-            .collect();
+        key_buffer.clear();
+        for attr in grouping_attrs.iter() {
+            key_buffer.push(tuple.get(attr).unwrap());
+        }
 
         // Extract grouped attributes for RVA
         let mut rva_values = std::collections::BTreeMap::new();
@@ -286,7 +290,11 @@ fn compute_grouped_tuples<'a>(
 
         let rva_tuple = Tuple::new_unchecked(rva_heading_arc.clone(), rva_values);
 
-        groups.entry(key).or_default().push(rva_tuple);
+        if let Some(group) = groups.get_mut(key_buffer.as_slice()) {
+            group.push(rva_tuple);
+        } else {
+            groups.insert(key_buffer.clone(), vec![rva_tuple]);
+        }
     }
 
     // Build result tuples
