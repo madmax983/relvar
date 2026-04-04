@@ -548,3 +548,9 @@ Build it right, make it fast, keep it simple.
 ## 2026-03-14 - Extract Database Test Setup Logic
 **Learning:** `relvar-core/src/database/tests.rs` contained significant duplicate test setup logic for creating `PARENT` and `CHILD` relation types and setting up their tables, making the tests noisy and harder to read.
 **Action:** Extract duplicate test setup into a helper function `setup_parent_child_db` inside the test module. This removes repetitive boilerplate across testing functions and simplifies test logic.
+## 2026-04-04 - [Refactor test_foreign_key_constraint]
+**Learning:** The test setup code for parent/child tables (like DEPT and EMP) was largely redundant with an existing  helper in . Extracting such manual setups into the helper function greatly improves the readability of constraint tests.
+**Action:** When adding new constraint tests or encountering long test setups, prefer using or adapting existing helper functions to keep the tests concise and focused on the behavior being tested.
+## 2026-04-04 - [Refactor test_foreign_key_constraint]
+**Learning:** The test setup code for parent/child tables (like DEPT and EMP) was largely redundant with an existing `setup_parent_child_db()` helper in `relvar-core/src/database/tests.rs`. Extracting such manual setups into the helper function greatly improves the readability of constraint tests.
+**Action:** When adding new constraint tests or encountering long test setups, prefer using or adapting existing helper functions to keep the tests concise and focused on the behavior being tested.

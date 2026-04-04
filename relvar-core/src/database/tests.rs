@@ -184,51 +184,31 @@ fn test_candidate_key_constraint() {
 
 #[test]
 fn test_foreign_key_constraint() {
-    use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+    use crate::constraints::{ForeignKey, ForeignKeyConstraints};
 
-    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
-
-    // Create parent and child relvars
-    let parent_type = RelationType::new(
-        TupleType::new()
-            .with_attribute("dept_id", ScalarType::Int)
-            .with_attribute("dept_name", ScalarType::String),
-    );
-    let child_type = RelationType::new(
-        TupleType::new()
-            .with_attribute("emp_id", ScalarType::Int)
-            .with_attribute("dept_id", ScalarType::Int),
-    );
-
-    db.create_relvar("DEPT", parent_type).unwrap();
-    db.create_relvar("EMP", child_type).unwrap();
-
-    // Add primary key to parent
-    let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
-    let dept_constraints = KeyConstraints::new().with_primary_key(pk);
-    db.set_key_constraints("DEPT", dept_constraints).unwrap();
+    let mut db = setup_parent_child_db();
 
     // Insert parent record
-    db.insert("DEPT", tuple! { dept_id: 10i64, dept_name: "Engineering" })
+    db.insert("PARENT", tuple! { id: 10i64, name: "Engineering" })
         .unwrap();
 
     // Add foreign key constraint
     let fk = ForeignKey::new(
-        vec!["dept_id".to_string()],
-        "DEPT".to_string(),
-        vec!["dept_id".to_string()],
+        vec!["parent_id".to_string()],
+        "PARENT".to_string(),
+        vec!["id".to_string()],
     )
     .unwrap();
     let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
-    db.set_foreign_key_constraints("EMP", fk_constraints)
+    db.set_foreign_key_constraints("CHILD", fk_constraints)
         .unwrap();
 
     // Insert with valid foreign key should succeed
-    db.insert("EMP", tuple! { emp_id: 1i64, dept_id: 10i64 })
+    db.insert("CHILD", tuple! { child_id: 1i64, parent_id: 10i64 })
         .unwrap();
 
     // Insert with invalid foreign key should fail
-    let result = db.insert("EMP", tuple! { emp_id: 2i64, dept_id: 99i64 });
+    let result = db.insert("CHILD", tuple! { child_id: 2i64, parent_id: 99i64 });
     assert!(result.is_err());
     assert!(matches!(
         result,
