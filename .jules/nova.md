@@ -36,3 +36,7 @@
 **Concept:** Implemented a Git-like VCS where blobs, trees, commits, and branches are pure relations. Operations like checkout and computing diffs are fully expressed using relational algebra (Join, Difference, Union, Extend, Restrict).
 **Fate:** Merged
 **Lesson:** Version control is fundamentally a relational problem! Calculating diffs gracefully maps to set differences and intersections of joined trees and blobs, elegantly demonstrating how trees and file histories map to relational schemas without procedural traversal algorithms.
+## Relational Logic Circuit
+**Concept:** Implemented `LogicCircuit` simulator that models gates, wires, and states as relations. Gate evaluation is performed iteratively using purely relational algebra operators like `join`, `extend`, and `summarize`.
+**Fate:** TBD
+**Lesson:** Relational algebra provides a surprisingly natural way to model and evaluate logical networks. By joining wire topologies with current states, we effectively map state transitions as a functional grouping problem, bridging logic design and relational set theory.

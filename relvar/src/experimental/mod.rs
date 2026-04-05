@@ -9,6 +9,7 @@
 //! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
+//! - **[`logic_circuit`](crate::experimental::logic_circuit)**: Relational Logic Circuit Simulator.
 //! - **[`matrix`](crate::experimental::matrix)**: Relational Linear Algebra (Sparse Matrices).
 //! - **[`mock`](crate::experimental::mock)**: Tools for generating random relations for testing.
 //! - **[`physics`](crate::experimental::physics)**: Relational N-Body Physics Engine.
@@ -28,6 +29,7 @@ pub mod cellular_automaton;
 pub mod ecs;
 pub mod graph;
 pub mod image;
+pub mod logic_circuit;
 pub mod matrix;
 pub mod mock;
 pub mod physics;
