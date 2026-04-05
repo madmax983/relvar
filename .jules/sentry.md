@@ -69,3 +69,6 @@
 ## 2025-03-28 - Database Schema Error Paths and Virtual Relvars
 **Learning:** Found several untested code paths regarding schema operations on `virtual_relvars`, specifically defining a virtual relvar when a base or virtual relvar already exists, and requesting types/dropping nonexistent relvars, mapping to `DatabaseError::RelationAlreadyExists` and `DatabaseError::Storage(StorageEngineError::RelationNotFound)`.
 **Action:** When implementing database schemas, explicitly test the boundary conditions between base relvars and virtual relvars, as virtual relvars share the namespace. Ensure `get_relvar_type` and existence tests adequately cover both.
+## 2025-03-28 - Database Schema Error Paths and Virtual Relvars
+**Learning:** Found several untested code paths regarding schema operations on `virtual_relvars`, specifically defining a virtual relvar when a base or virtual relvar already exists, and requesting types/dropping nonexistent relvars, mapping to `DatabaseError::RelationAlreadyExists` and `DatabaseError::Storage(StorageEngineError::RelationNotFound)`.
+**Action:** When implementing database schemas, explicitly test the boundary conditions between base relvars and virtual relvars, as virtual relvars share the namespace. Ensure `get_relvar_type` and existence tests adequately cover both.

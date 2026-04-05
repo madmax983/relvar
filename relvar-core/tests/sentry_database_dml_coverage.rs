@@ -18,8 +18,8 @@ fn test_database_update_tuple_mismatch() {
     // Update should fail due to returning a tuple of wrong type
     let result = db.update(
         "TEST",
-        |t: &relvar_core::values::Tuple| t.get_typed::<i64>("id").unwrap() == 1,
-        |_t: &relvar_core::values::Tuple| tuple! { id: 1i64, wrong_attr: 10i64 }, // Invalid tuple type
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_t| tuple! { id: 1i64, wrong_attr: 10i64 }, // Invalid tuple type
     );
 
     assert!(result.is_err());
