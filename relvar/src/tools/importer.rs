@@ -91,6 +91,30 @@ const MAX_CSV_LINE_LEN: usize = 1_000_000; // 1MB
 ///
 /// * `reader` - Source of JSON data (e.g., file, string bytes).
 /// * `relation_type` - The schema definition for the resulting relation.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::{TupleType, RelationType, ScalarType};
+/// use relvar::tools::importer;
+/// use std::io::Cursor;
+///
+/// let rel_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id".to_string(), ScalarType::Int)
+///         .with_attribute("name".to_string(), ScalarType::String)
+/// );
+///
+/// let json_data = r#"
+/// [
+///     {"id": 1, "name": "Alice"},
+///     {"id": 2, "name": "Bob"}
+/// ]
+/// "#;
+///
+/// let relation = importer::from_json(Cursor::new(json_data), rel_type).unwrap();
+/// assert_eq!(relation.cardinality(), 2);
+/// ```
 pub fn from_json<R: std::io::Read>(
     reader: R,
     relation_type: RelationType,
@@ -409,6 +433,25 @@ impl<'de> Visitor<'de> for ScalarValueVisitor {
 /// * `reader` - Source of CSV data.
 /// * `relation_type` - The schema definition.
 /// * `delimiter` - Field delimiter (e.g., `,`).
+///
+/// # Examples
+///
+/// ```
+/// use relvar::{TupleType, RelationType, ScalarType};
+/// use relvar::tools::importer;
+/// use std::io::Cursor;
+///
+/// let rel_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id".to_string(), ScalarType::Int)
+///         .with_attribute("name".to_string(), ScalarType::String)
+/// );
+///
+/// let csv_data = "id,name\n1,Alice\n2,Bob\n";
+///
+/// let relation = importer::from_csv(Cursor::new(csv_data), rel_type, ',').unwrap();
+/// assert_eq!(relation.cardinality(), 2);
+/// ```
 pub fn from_csv<R: std::io::Read>(
     reader: R,
     relation_type: RelationType,
