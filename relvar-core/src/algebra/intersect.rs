@@ -124,17 +124,14 @@ impl Relation {
     ///
     /// This is an optimized version of `intersect` that avoids O(N) tuple clones for the
     /// first relation by consuming it.
-    pub fn intersect_into(self, other: &Relation) -> Result<Self, IntersectError> {
+    pub fn intersect_into(mut self, other: &Relation) -> Result<Self, IntersectError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
             return Err(IntersectError::TypeMismatch);
         }
 
-        let rel_type = self.relation_type().clone();
-        Ok(Relation::from_tuples_unchecked(
-            rel_type,
-            self.into_iter().filter(|tuple| other.contains(tuple)),
-        ))
+        self.body.retain(|tuple| other.body.contains(tuple));
+        Ok(self)
     }
 }
 

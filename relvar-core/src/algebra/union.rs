@@ -124,9 +124,8 @@ impl Relation {
             return Err(UnionError::TypeMismatch);
         }
 
-        for tuple in other.tuples() {
-            self.insert(tuple.clone()).unwrap();
-        }
+        self.body.reserve(other.body.len());
+        self.body.extend(other.body.iter().cloned());
 
         Ok(self)
     }
