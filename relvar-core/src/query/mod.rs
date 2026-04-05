@@ -274,6 +274,11 @@ impl Query {
 
     fn explain_recursive(&self, depth: usize) -> String {
         let indent = "  ".repeat(depth);
+        self.format_explanation_node(depth, &indent)
+    }
+
+    /// Helper to format the explanation node.
+    fn format_explanation_node(&self, depth: usize, indent: &str) -> String {
         match self {
             Query::Scan(table) => format!("{}Scan({})", indent, table),
             Query::Restrict { input, predicate } => {
