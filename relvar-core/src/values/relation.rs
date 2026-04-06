@@ -145,7 +145,7 @@ pub struct Relation {
     /// The relation type (heading) that defines the structure.
     relation_type: RelationType,
     /// The body: a set of tuples conforming to the heading.
-    body: HashSet<Tuple>,
+    pub(crate) body: HashSet<Tuple>,
 }
 
 // Custom Hash implementation for Relation

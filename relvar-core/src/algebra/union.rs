@@ -124,9 +124,9 @@ impl Relation {
             return Err(UnionError::TypeMismatch);
         }
 
-        for tuple in other.tuples() {
-            self.insert(tuple.clone()).unwrap();
-        }
+        // Bypasses redundant type validation overhead and multiple re-hashing allocations.
+        self.body.reserve(other.body.len());
+        self.body.extend(other.tuples().cloned());
 
         Ok(self)
     }
