@@ -12,3 +12,8 @@
 **Bloat:** `DepthGuarded<T>` struct wrapper used to prevent recursive serialization/deserialization panics. Added nesting and `.0` boilerplate when unpacking scalars.
 **Cut:** Removed the wrapper struct, replacing it with a custom `deserialize_guarded` function applied via `#[serde(deserialize_with = "...")]` to directly flatten recursive structures.
 **Saved:** Reduced boilerplate wrapper types, streamlined Serde parsing logic, and eliminated intermediate `.0` tuple accesses.
+
+## [Reduction]
+**Bloat:** `MockRelation` builder struct in `relvar/src/experimental/mock.rs` that acted as a "Factory Factory" simply to collect basic arguments (`relation_type`, `count`, `seed`).
+**Cut:** Replaced the struct and its chainable methods with a single public free function `generate_mock_relation`. Internal methods became private module-level free functions.
+**Saved:** Reduced struct definition and builder boilerplate, making the API clearer and simpler to use.
