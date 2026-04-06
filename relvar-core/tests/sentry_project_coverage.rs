@@ -1,6 +1,6 @@
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
-use relvar_core::values::{Relation};
+use relvar_core::values::Relation;
 
 #[test]
 fn should_project_into_all_attributes() {
