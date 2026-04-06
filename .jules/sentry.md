@@ -69,3 +69,7 @@
 ## 2025-03-28 - Database Schema Error Paths and Virtual Relvars
 **Learning:** Found several untested code paths regarding schema operations on `virtual_relvars`, specifically defining a virtual relvar when a base or virtual relvar already exists, and requesting types/dropping nonexistent relvars, mapping to `DatabaseError::RelationAlreadyExists` and `DatabaseError::Storage(StorageEngineError::RelationNotFound)`.
 **Action:** When implementing database schemas, explicitly test the boundary conditions between base relvars and virtual relvars, as virtual relvars share the namespace. Ensure `get_relvar_type` and existence tests adequately cover both.
+
+## 2026-04-06 - Tarpaulin Reporting on Multiline Closures
+**Learning:** Line-based coverage tools like `cargo tarpaulin` often report missing coverage for multi-line format arguments or complex closures defined as macro/function parameters, even when the underlying logic path is hit.
+**Action:** Before trying to restructure methods strictly to satisfy the coverage tool on these specific lines, verify that it's a tooling artifact. If it is, accept it or look for real logical branches (like actual `if let Err(...)` statements) that are missing tests.
