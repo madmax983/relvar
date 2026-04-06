@@ -6,6 +6,7 @@
 //! # Included Features
 //!
 //! - **[`automl`](crate::experimental::automl)**: Relational Machine Learning (Naive Bayes).
+//! - **[`circuit`](crate::experimental::circuit)**: Relational Digital Logic Circuit Simulator.
 //! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
@@ -25,6 +26,7 @@
 pub mod automl;
 pub mod blockchain;
 pub mod cellular_automaton;
+pub mod circuit;
 pub mod ecs;
 pub mod graph;
 pub mod image;
