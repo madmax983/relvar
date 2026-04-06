@@ -8,7 +8,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar_core::query::Query;
+//! use relvar::query::Query;
 //! use relvar_core::constraints::{ConstraintExpression, CmpOp, ValueOrRef};
 //! use relvar_core::values::ScalarValue;
 //! use relvar_core::types::ScalarType;
@@ -39,12 +39,12 @@
 //! println!("{}", query.explain());
 //! ```
 
-use crate::algebra::Aggregation;
-use crate::constraints::{ConstraintExpression, ExpressionError};
-use crate::database::Database;
-use crate::error::DatabaseError;
-use crate::storage_engine::StorageEngine;
-use crate::values::Relation;
+use relvar_core::algebra::Aggregation;
+use relvar_core::constraints::{ConstraintExpression, ExpressionError};
+use relvar_core::database::Database;
+use relvar_core::error::DatabaseError;
+use relvar_core::storage_engine::StorageEngine;
+use relvar_core::values::Relation;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -58,7 +58,7 @@ use thiserror::Error;
 ///
 /// ```
 ///
-/// use relvar_core::query::Query;
+/// use relvar::query::Query;
 ///
 /// let q = Query::scan("users");
 /// ```
@@ -182,7 +182,7 @@ impl Query {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::query::Query;
+    /// use relvar::query::Query;
     /// use relvar_core::tuple;
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
@@ -261,7 +261,7 @@ impl Query {
     /// # Examples
     ///
     /// ```
-    /// use relvar_core::query::Query;
+    /// use relvar::query::Query;
     ///
     /// let q = Query::scan("TEST").project(vec!["x"]);
     /// let explanation = q.explain();
@@ -328,7 +328,7 @@ impl Query {
     /// # Examples
     ///
     /// ```
-    /// use relvar_core::query::Query;
+    /// use relvar::query::Query;
     ///
     /// let q = Query::scan("USERS");
     /// ```
@@ -340,7 +340,7 @@ impl Query {
     /// # Examples
     ///
     /// ```
-    /// use relvar_core::query::Query;
+    /// use relvar::query::Query;
     /// use relvar_core::constraints::{ConstraintExpression, CmpOp, ValueOrRef};
     /// use relvar_core::values::ScalarValue;
     ///
@@ -362,7 +362,7 @@ impl Query {
     /// # Examples
     ///
     /// ```
-    /// use relvar_core::query::Query;
+    /// use relvar::query::Query;
     ///
     /// let q = Query::scan("USERS").project(vec!["name", "email"]);
     /// ```
@@ -377,7 +377,7 @@ impl Query {
     /// # Examples
     ///
     /// ```
-    /// use relvar_core::query::Query;
+    /// use relvar::query::Query;
     ///
     /// let q = Query::scan("USERS").rename(vec![("name", "full_name")]);
     /// ```
@@ -395,7 +395,7 @@ impl Query {
     /// # Examples
     ///
     /// ```
-    /// use relvar_core::query::Query;
+    /// use relvar::query::Query;
     ///
     /// let users = Query::scan("USERS");
     /// let orders = Query::scan("ORDERS");
@@ -412,7 +412,7 @@ impl Query {
     /// # Examples
     ///
     /// ```
-    /// use relvar_core::query::Query;
+    /// use relvar::query::Query;
     /// use relvar_core::algebra::Aggregation;
     ///
     /// let q = Query::scan("USERS").summarize(vec!["department"], vec![Aggregation::count("emp_count")]);
@@ -432,12 +432,12 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constraints::CmpOp;
-    use crate::constraints::ValueOrRef;
-    use crate::storage_engine::InMemoryEngine;
-    use crate::tuple;
-    use crate::types::{RelationType, ScalarType, TupleType};
-    use crate::values::ScalarValue;
+    use relvar_core::constraints::CmpOp;
+    use relvar_core::constraints::ValueOrRef;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::ScalarValue;
 
     fn setup_db() -> Database<InMemoryEngine> {
         let mut db = Database::new(InMemoryEngine::new());

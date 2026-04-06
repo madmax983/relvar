@@ -1,6 +1,6 @@
+use relvar::query::Query;
 use relvar_core::constraints::{CmpOp, ConstraintExpression, ValueOrRef};
 use relvar_core::database::Database;
-use relvar_core::query::Query;
 use relvar_core::storage_engine::InMemoryEngine;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};

@@ -1,7 +1,6 @@
-## 2024-03-XX - Module Encapsulation Cleanup
-**Tangle:** Broad visibility (`pub mod`) across many internal modules (`algebra`, `values`, `types`, etc.) leaked implementation details and complicated the dependency graph.
-**Blueprint:** Converted most top-level internal module definitions in `relvar-core`, `relvar-storage`, and `relvar` to `pub(crate) mod`. Re-exported necessary types via their respective `mod.rs` files, ensuring clean, intention-revealing public APIs while maintaining low coupling between internal components.
-
-## 2024-03-XX - The Database Blob
-**Tangle:** The `relvar-core/src/database/mod.rs` module grew into a 1,000-line God Module holding DDL, DML, constraint validation, transaction boundaries, and Virtual Relvars in a single implementation block.
-**Blueprint:** Refactored `Database<E>` into a Facade pattern. The `mod.rs` file now orchestrates the public API while implementation details are cleanly separated into `schema.rs` (DDL), `data.rs` (DML/Querying), `integrity.rs` (Constraints), and `transaction.rs` (TCL) based on domain responsibility.
+## 2025-04-05 - Extracted Query Module to Facade Crate
+**Tangle:** The `query` module (which parses and acts as a generic AST over `relvar-core`) was tightly coupled inside `relvar-core`, expanding the core's surface area.
+**Blueprint:** Moved `relvar-core/src/query/` to `relvar/src/query/` to keep the core crate purely focused on Relational Algebra (Types, Values, Constraints, DB storage) and to make the Query layer part of the external UI facade.
+## 2025-04-05 - Extracted Query Module to Facade Crate
+**Tangle:** The `query` module (which parses and acts as a generic AST over `relvar-core`) was tightly coupled inside `relvar-core`, expanding the core's surface area.
+**Blueprint:** Moved `relvar-core/src/query/` to `relvar/src/query/` to keep the core crate purely focused on Relational Algebra (Types, Values, Constraints, DB storage) and to make the Query layer part of the external UI facade.

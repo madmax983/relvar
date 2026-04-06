@@ -128,9 +128,11 @@ pub mod prelude;
 // Core Components
 pub use relvar_core::DatabaseError;
 pub use relvar_core::database::Database;
-pub use relvar_core::query::{Query, QueryError};
 pub use relvar_core::types::{RelationType, ScalarType, TupleType};
 pub use relvar_core::values::{Relation, ScalarValue, Tuple};
+
+pub mod query;
+pub use query::{Query, QueryError};
 
 // Storage
 pub use relvar_core::storage_engine::{InMemoryEngine, StorageEngine, StorageError};
@@ -139,8 +141,8 @@ pub use relvar_core::storage_engine::{InMemoryEngine, StorageEngine, StorageErro
 pub use relvar_storage::PersistentEngine;
 
 // Modules
-pub use relvar_core::algebra;
-pub use relvar_core::constraints;
+pub use relvar_core::algebra::{self, Aggregation};
+pub use relvar_core::constraints::{self, ConstraintExpression, CmpOp, ValueOrRef};
 
 /// Tuple creation macro.
 pub use relvar_core::tuple;
