@@ -138,7 +138,18 @@ impl WalManager {
 
         // Auto-flush if buffer would overflow
         // Each record writes: 8 bytes (LSN) + 8 bytes (length) + data
-        if self.buffer.len() + serialized.len() + 16 > self.buffer_capacity {
+        let req_len = self
+            .buffer
+            .len()
+            .checked_add(serialized.len())
+            .and_then(|sum| sum.checked_add(16))
+            .ok_or_else(|| {
+                WalError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Overflow computing WAL record size",
+                ))
+            })?;
+        if req_len > self.buffer_capacity {
             self.flush()?;
         }
 
@@ -254,19 +265,31 @@ impl WalManager {
         let mut offset = 0;
         while offset < buffer.len() {
             // Need at least 16 bytes for LSN + length
-            if offset + 16 > buffer.len() {
+            let end_off = offset.checked_add(16).ok_or_else(|| {
+                WalError::Corrupted(
+                    Lsn::new(0),
+                    "Overflow checking record header length".to_string(),
+                )
+            })?;
+            if end_off > buffer.len() {
                 break;
             }
 
             // Read LSN (8 bytes)
-            let lsn_bytes: [u8; 8] = buffer[offset..offset + 8]
+            let lsn_end = offset.checked_add(8).ok_or_else(|| {
+                WalError::Corrupted(Lsn::new(0), "Overflow reading LSN".to_string())
+            })?;
+            let lsn_bytes: [u8; 8] = buffer[offset..lsn_end]
                 .try_into()
                 .map_err(|_| WalError::Corrupted(Lsn::new(0), "Invalid LSN".to_string()))?;
             let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
             offset += 8;
 
             // Read record length (8 bytes)
-            let len_bytes: [u8; 8] = buffer[offset..offset + 8]
+            let len_end = offset.checked_add(8).ok_or_else(|| {
+                WalError::Corrupted(Lsn::new(0), "Overflow reading length".to_string())
+            })?;
+            let len_bytes: [u8; 8] = buffer[offset..len_end]
                 .try_into()
                 .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
             let record_len_u64 = u64::from_le_bytes(len_bytes);
@@ -295,7 +318,7 @@ impl WalManager {
                 .map_err(|e| WalError::Corrupted(lsn, format!("Deserialization failed: {}", e)))?;
 
             records.push((lsn, record));
-            offset += record_len;
+            offset = end_offset;
         }
 
         // Seek back to end for future writes
@@ -336,12 +359,21 @@ impl WalManager {
 
         while offset < buffer.len() {
             // Need at least 16 bytes for LSN + length
-            if offset + 16 > buffer.len() {
+            let end_off = offset.checked_add(16).ok_or_else(|| {
+                WalError::Corrupted(
+                    Lsn::new(0),
+                    "Overflow checking record header length".to_string(),
+                )
+            })?;
+            if end_off > buffer.len() {
                 break;
             }
 
             // Read LSN (8 bytes)
-            let lsn_bytes: [u8; 8] = buffer[offset..offset + 8]
+            let lsn_end = offset.checked_add(8).ok_or_else(|| {
+                WalError::Corrupted(Lsn::new(0), "Overflow reading LSN".to_string())
+            })?;
+            let lsn_bytes: [u8; 8] = buffer[offset..lsn_end]
                 .try_into()
                 .map_err(|_| WalError::Corrupted(Lsn::new(0), "Invalid LSN".to_string()))?;
             let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
@@ -349,7 +381,10 @@ impl WalManager {
             offset += 8;
 
             // Read record length (8 bytes)
-            let len_bytes: [u8; 8] = buffer[offset..offset + 8]
+            let len_end = offset.checked_add(8).ok_or_else(|| {
+                WalError::Corrupted(Lsn::new(0), "Overflow reading length".to_string())
+            })?;
+            let len_bytes: [u8; 8] = buffer[offset..len_end]
                 .try_into()
                 .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
             let record_len_u64 = u64::from_le_bytes(len_bytes);

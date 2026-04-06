@@ -340,7 +340,13 @@ impl HeapFile {
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
 
-        if header_size + tuple_data_len > USABLE_PAGE_SIZE {
+        let required_size =
+            header_size
+                .checked_add(tuple_data_len)
+                .ok_or_else(|| HeapError::Serialization(
+                    "Overflow calculating tuple size".to_string(),
+                ))?;
+        if required_size > USABLE_PAGE_SIZE {
             return Err(HeapError::TupleTooLarge(tuple_data_len));
         }
         Ok(())
@@ -583,7 +589,12 @@ impl HeapFile {
 
         // Calculate total size correctly
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
-        let required_space = header_size + total_tuple_data_size;
+        let required_space =
+            header_size
+                .checked_add(total_tuple_data_size)
+                .ok_or_else(|| HeapError::Serialization(
+                    "Overflow calculating required space".to_string(),
+                ))?;
 
         if required_space > USABLE_PAGE_SIZE_V1 {
             return Err(HeapError::PageFull);
@@ -627,7 +638,21 @@ impl HeapFile {
                 let offset = entry.offset as usize;
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                    let end_offset = offset.checked_add(length).ok_or_else(|| {
+                        HeapError::Serialization(
+                            "Overflow calculating tuple end offset".to_string(),
+                        )
+                    })?;
+                    if end_offset > data.len() || offset < slot_dir.len() {
+                        return Err(HeapError::Serialization(format!(
+                            "Slot {} points outside buffer or overlaps header: offset={}, length={}, buffer_len={}",
+                            idx,
+                            offset,
+                            length,
+                            data.len()
+                        )));
+                    }
+                    data[offset..end_offset].copy_from_slice(&tuples[idx]);
                 }
             }
         }
@@ -1017,7 +1042,10 @@ impl HeapFile {
         data[1..5].copy_from_slice(&slot_dir_len.to_le_bytes());
 
         // Copy slot directory after header
-        data[HEADER_SIZE..HEADER_SIZE + slot_dir.len()].copy_from_slice(&slot_dir);
+        let header_end = HEADER_SIZE.checked_add(slot_dir.len()).ok_or_else(|| {
+            HeapError::Serialization("Overflow calculating header end".to_string())
+        })?;
+        data[HEADER_SIZE..header_end].copy_from_slice(&slot_dir);
 
         // Copy each tuple at its designated offset
         for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
@@ -1026,7 +1054,15 @@ impl HeapFile {
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
                     // Validate that offset + length doesn't exceed buffer and doesn't overlap header
-                    if offset + length > data.len() || offset < HEADER_SIZE + slot_dir.len() {
+                    let end_offset = offset.checked_add(length).ok_or_else(|| {
+                        HeapError::Serialization(
+                            "Overflow calculating tuple end offset".to_string(),
+                        )
+                    })?;
+                    let header_end = HEADER_SIZE.checked_add(slot_dir.len()).ok_or_else(|| {
+                        HeapError::Serialization("Overflow calculating header end".to_string())
+                    })?;
+                    if end_offset > data.len() || offset < header_end {
                         return Err(HeapError::Serialization(format!(
                             "Slot {} points outside buffer or overlaps header: offset={}, length={}, buffer_len={}, header_end={}",
                             idx,
@@ -1036,7 +1072,7 @@ impl HeapFile {
                             HEADER_SIZE + slot_dir.len()
                         )));
                     }
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                    data[offset..end_offset].copy_from_slice(&tuples[idx]);
                 }
             }
         }

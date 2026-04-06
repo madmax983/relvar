@@ -225,3 +225,7 @@ The CSV importer in `relvar/src/tools/importer.rs` enforced its `MAX_IMPORT_ROWS
 
 **Defense:**
 Modified the limit check in the CSV row iteration loop to validate against the processed row count (`line_idx >= MAX_IMPORT_ROWS`) rather than the deduplicated relation cardinality. This ensures the parsing engine stops strictly after evaluating 100,000 incoming lines, regardless of their content.
+
+## 2024-05-30 - [Buffer bounds validation logic overflow mitigation]
+**Threat:** The storage page handling mechanisms and WAL manager logic used standard addition (+) for boundary checks (e.g., header size + length, offset + record size). Malicious user input leading to crafted lengths could result in integer overflow. Due to standard math wrapping in release mode, checks like `offset + length > buffer.len()` could evaluate to false, leading to buffer overreads and out of bounds slices, thus causing panics (Denial of Service) or silent data corruption.
+**Defense:** Replaced bare addition operators with `checked_add` and properly chained error handling in `heap.rs`, `page.rs`, and `wal/manager.rs`. Out-of-bounds calculations now return explicit errors (`Serialization`, `Corrupted`) preventing execution of unsafe buffer indexing.

@@ -356,7 +356,9 @@ impl PageFile {
         let data_len = data_len_u64 as usize;
 
         // Check if declared length fits in the buffer (which might be smaller than PAGE_SIZE if read was short)
-        let required_len = data_len + 8; // No overflow possible (checked above)
+        let required_len = data_len.checked_add(8).ok_or_else(|| {
+            PageError::Serialization("Overflow adding page header size".to_string())
+        })?; // No overflow possible (checked above)
 
         if required_len > buffer.len() {
             return Err(PageError::Serialization(format!(
@@ -366,7 +368,10 @@ impl PageFile {
             )));
         }
 
-        let actual_data = buffer[8..8 + data_len].to_vec();
+        let actual_data_end = data_len.checked_add(8).ok_or_else(|| {
+            PageError::Serialization("Overflow calculating page bounds".to_string())
+        })?;
+        let actual_data = buffer[8..actual_data_end].to_vec();
         Page::from_data(page_id, actual_data)
     }
 
