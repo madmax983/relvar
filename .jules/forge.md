@@ -548,3 +548,7 @@ Build it right, make it fast, keep it simple.
 ## 2026-03-14 - Extract Database Test Setup Logic
 **Learning:** `relvar-core/src/database/tests.rs` contained significant duplicate test setup logic for creating `PARENT` and `CHILD` relation types and setting up their tables, making the tests noisy and harder to read.
 **Action:** Extract duplicate test setup into a helper function `setup_parent_child_db` inside the test module. This removes repetitive boilerplate across testing functions and simplifies test logic.
+
+## 2026-03-15 - Refactoring and Code Extraction
+**Learning:** Extracted grouping logic into `build_ungrouped_tuple` in `relvar-core/src/algebra/group.rs` to flatten structure and simplify `compute_ungrouped_tuples`. Extracted average computation into `compute_avg_int` and `compute_avg_float` in `relvar-core/src/algebra/summarize.rs` to break up a large match block. Refactored `test_foreign_key_constraint` in `relvar-core/src/database/tests.rs` to use the pre-existing `setup_parent_child_db` helper to eliminate boilerplate. Also learned to pass `Arc<T>` by value rather than reference `&Arc<T>` to avoid `clippy::ptr_arg`.
+**Action:** Continue identifying opportunities to extract complex loops, large match arms, and duplicate test setups into named helper functions to enforce DRY and single responsibility principles. Prefer passing `Arc` by value when the callee needs to take ownership or clone.
