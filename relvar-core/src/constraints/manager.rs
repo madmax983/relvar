@@ -81,7 +81,15 @@ pub struct ConstraintManager {
 }
 
 impl ConstraintManager {
-    /// Create a new constraint manager.
+    /// Initializes a new, empty constraint manager.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::ConstraintManager;
+    ///
+    /// let manager = ConstraintManager::new();
+    /// ```
     pub fn new() -> Self {
         Self::default()
     }
@@ -428,12 +436,12 @@ impl ConstraintManager {
         Ok(())
     }
 
-    /// Get the key constraints for a relation.
+    /// Retrieves the active key constraints (primary and candidate) for a given relation.
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.key_constraints.get(relation_name)
     }
 
-    /// Get the foreign key constraints for a relation.
+    /// Retrieves the active foreign key references defining relationships for a given relation.
     pub fn get_foreign_key_constraints(
         &self,
         relation_name: &str,

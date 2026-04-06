@@ -74,3 +74,6 @@ This ensures the map matches the territory.
 ## 2024-06-03 - Replaced "Returns the" and "Returns a" noise with descriptive verbs
 **Confusion:** A few methods and enums in `relvar-storage` (`storage/heap.rs`) and `relvar-core` (`query/mod.rs`) still had auto-generated boilerplate `/// Returns the...` or `/// Returns a...` comments, providing zero semantic value.
 **Clarification:** I updated these elements with precise verbs and context, explaining what information is retrieved or exposed, fully eradicating this boilerplate pattern.
+## 2025-02-12 - Replaced "Get the" boilerplate and added Constraint Examples
+**Confusion:** Users were encountering boilerplate getter documentation and lacked concrete examples for how to instantiate and evaluate `ConstraintManager` and `PreparedConstraintExpression`. The module-level documentation for `database/tests.rs` was completely missing.
+**Clarification:** Replaced the noisy getter comments in `ConstraintManager` with descriptive verbs. Added executable `## Examples` doc-tests for `ConstraintManager::new`, `PreparedConstraintExpression`, and `PreparedConstraintExpression::evaluate`. Removed module-level doc-test from `database/tests.rs` as it is dead code, but added the missing `//!` module summary block.

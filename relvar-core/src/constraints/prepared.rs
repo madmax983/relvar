@@ -13,6 +13,29 @@ use std::collections::HashSet;
 /// This structure is designed for efficient evaluation, particularly for
 /// operations that benefit from pre-computation or pre-allocation, such as
 /// `IN` (using `HashSet`) and `LIKE` (using `Vec<char>`).
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::constraints::{ConstraintExpression, CmpOp, ValueOrRef};
+/// use relvar_core::constraints::PreparedConstraintExpression;
+/// use relvar_core::values::ScalarValue;
+/// use relvar_core::tuple;
+///
+/// // Create a standard expression (e.g., id = 42)
+/// let expr = ConstraintExpression::Cmp {
+///     left: "id".to_string(),
+///     op: CmpOp::Eq,
+///     right: ValueOrRef::Value(ScalarValue::Int(42)),
+/// };
+///
+/// // Prepare it for efficient evaluation
+/// let prepared = expr.prepare();
+///
+/// // Use it to evaluate a tuple
+/// let my_tuple = tuple! { id: 42i64 };
+/// assert!(prepared.evaluate(&my_tuple).unwrap());
+/// ```
 #[derive(Debug, Clone)]
 pub enum PreparedConstraintExpression {
     /// Comparison: left_attr op right_value_or_ref
@@ -48,7 +71,25 @@ pub enum PreparedConstraintExpression {
 }
 
 impl PreparedConstraintExpression {
-    /// Evaluates this prepared expression against a tuple.
+    /// Executes the pre-compiled constraint logic against a given tuple to determine if it is satisfied.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::{ConstraintExpression, CmpOp, ValueOrRef};
+    /// use relvar_core::values::ScalarValue;
+    /// use relvar_core::tuple;
+    ///
+    /// let expr = ConstraintExpression::Cmp {
+    ///     left: "id".to_string(),
+    ///     op: CmpOp::Eq,
+    ///     right: ValueOrRef::Value(ScalarValue::Int(42)),
+    /// };
+    /// let prepared = expr.prepare();
+    ///
+    /// let valid_tuple = tuple! { id: 42i64 };
+    /// assert!(prepared.evaluate(&valid_tuple).unwrap());
+    /// ```
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
         match self {
             PreparedConstraintExpression::Cmp { left, op, right } => {

@@ -1,3 +1,9 @@
+//! Integration tests for the `Database` API and storage engines.
+//!
+//! This module contains test cases to verify the correct behavior of the
+//! database orchestrator (`Database`) when coordinating with the `ConstraintManager`
+//! and different `StorageEngine` implementations.
+
 use crate::constraints::ConstraintManagerError;
 use crate::constraints::expression::{CmpOp, ConstraintExpression, ValueOrRef};
 use crate::constraints::{CheckConstraint, CheckConstraints};
