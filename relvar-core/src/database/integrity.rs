@@ -17,25 +17,6 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
     /// use relvar_core::constraints::{KeyConstraints, PrimaryKey};
-    ///
-    /// let mut db = Database::new(InMemoryEngine::new());
-    /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
-    /// db.create_relvar("TEST", rel_type).unwrap();
-    ///
-    /// let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
-    /// let constraints = KeyConstraints::new().with_primary_key(pk);
-    /// db.set_key_constraints("TEST", constraints).unwrap();
-    /// let current_constraints = db.get_key_constraints("TEST").unwrap();
-    /// assert!(current_constraints.primary_key().is_some());
-    /// ```
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar_core::database::Database;
-    /// use relvar_core::storage_engine::InMemoryEngine;
-    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::constraints::{KeyConstraints, PrimaryKey};
-    ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
     /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
