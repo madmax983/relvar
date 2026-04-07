@@ -456,9 +456,35 @@ fn combine_tuples(
     secondary: &Tuple,
     result_heading: &Arc<TupleType>,
 ) -> Result<Tuple, DatabaseError> {
-    // Optimization: Use a merge-sort style iteration to combine values.
-    // Since both BTreeMaps are sorted, we can iterate through them simultaneously
-    // and build the new map in O(N) time without O(log N) insertions.
+    let values = merge_tuple_values(primary, secondary);
+
+    // Safety:
+    // 1. Primary and secondary tuples are valid and conform to their headings.
+    // 2. Result heading is the union of both headings.
+    // 3. We combined values from both, respecting types.
+    // 4. Therefore, the resulting map conforms to result_heading.
+    //
+    // BTreeMap::from_iter is efficient (O(N)) when input is already sorted.
+    // We defer cloning to the iterator mapping step to avoid repeatedly cloning
+    // discarded values or allocating strings inside the hot loop.
+    let combined_values =
+        BTreeMap::from_iter(values.into_iter().map(|(k, v)| (k.clone(), v.clone())));
+
+    Ok(Tuple::new_unchecked(
+        result_heading.clone(),
+        combined_values,
+    ))
+}
+
+/// Helper to merge values from two tuples.
+///
+/// Optimization: Uses a merge-sort style iteration to combine values.
+/// Since both BTreeMaps are sorted, we can iterate through them simultaneously
+/// and build the new map in O(N) time without O(log N) insertions.
+fn merge_tuple_values<'a>(
+    primary: &'a Tuple,
+    secondary: &'a Tuple,
+) -> Vec<(&'a String, &'a ScalarValue)> {
     let mut iter_p = primary.values().iter().peekable();
     let mut iter_s = secondary.values().iter().peekable();
 
@@ -497,23 +523,7 @@ fn combine_tuples(
             (None, None) => break,
         }
     }
-
-    // Safety:
-    // 1. Primary and secondary tuples are valid and conform to their headings.
-    // 2. Result heading is the union of both headings.
-    // 3. We combined values from both, respecting types.
-    // 4. Therefore, the resulting map conforms to result_heading.
-    //
-    // BTreeMap::from_iter is efficient (O(N)) when input is already sorted.
-    // We defer cloning to the iterator mapping step to avoid repeatedly cloning
-    // discarded values or allocating strings inside the hot loop.
-    let combined_values =
-        BTreeMap::from_iter(values.into_iter().map(|(k, v)| (k.clone(), v.clone())));
-
-    Ok(Tuple::new_unchecked(
-        result_heading.clone(),
-        combined_values,
-    ))
+    values
 }
 
 #[cfg(test)]
