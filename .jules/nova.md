@@ -17,6 +17,7 @@
 **Concept:** Modeled a Turing Machine purely with relations for tape, head position, and transition rules. Evaluated machine steps with pure relational algebra (Join, Extend, Difference, Union).
 **Fate:** Merged
 **Lesson:** Even Turing completeness can be modeled via relational operations, proving that the algebra is incredibly expressive for arbitrary iterative state transitions over unbounded tapes.
+
 ## Relational Blockchain
 **Concept:** A simplified blockchain simulation where blocks, transactions, and the ledger are represented as relations, and validation (e.g., balance checks, hash links) is done via relational algebra.
 **Fate:** TBD
@@ -41,3 +42,8 @@
 **Concept:** Modeled a basic feedforward neural network using purely relational algebra. Layers, activations, weights, and biases are all relations. Forward propagation is evaluated using Join, Extend, and Summarize.
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to matrix operations and graph traversals. By chaining joins and extends, we can naturally express dense neural network connections without loops or procedural code!
+
+## Relational Logic Circuit Simulator
+**Concept:** A synchronous digital logic circuit evaluated using pure relational algebra. Gates and wires are represented as relations, and each step evaluates one propagation delay via joins and logic gate extensions.
+**Fate:** Merged
+**Lesson:** Logic gates act exactly like database queries filtering and extending values over wires, beautifully showing that hardware simulations can be modeled entirely relationally!
