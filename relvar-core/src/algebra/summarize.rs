@@ -352,41 +352,53 @@ impl Aggregation {
         })?;
 
         match first_val.scalar_type() {
-            ScalarType::Int => {
-                let mut sum = 0i128;
-                for tuple in tuples {
-                    let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Failed to get attribute {} as i64",
-                            attr_name
-                        ))
-                    })?;
-                    sum = sum.checked_add(value as i128).ok_or_else(|| {
-                        SummarizeError::AggregationError("Integer overflow in AVG".to_string())
-                    })?;
-                }
-                let avg = sum as f64 / tuples.len() as f64;
-                Ok(ScalarValue::Float(avg))
-            }
-            ScalarType::Float => {
-                let mut sum = 0.0;
-                for tuple in tuples {
-                    let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Failed to get attribute {} as f64",
-                            attr_name
-                        ))
-                    })?;
-                    sum += value;
-                }
-                let avg = sum / tuples.len() as f64;
-                Ok(ScalarValue::Float(avg))
-            }
+            ScalarType::Int => self.compute_avg_int(attr_name, tuples),
+            ScalarType::Float => self.compute_avg_float(attr_name, tuples),
             _ => Err(SummarizeError::AggregationError(format!(
                 "Avg requires Int or Float attribute, got {:?}",
                 first_val.scalar_type()
             ))),
         }
+    }
+
+    fn compute_avg_int(
+        &self,
+        attr_name: &str,
+        tuples: &[&Tuple],
+    ) -> Result<ScalarValue, SummarizeError> {
+        let mut sum = 0i128;
+        for tuple in tuples {
+            let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!(
+                    "Failed to get attribute {} as i64",
+                    attr_name
+                ))
+            })?;
+            sum = sum.checked_add(value as i128).ok_or_else(|| {
+                SummarizeError::AggregationError("Integer overflow in AVG".to_string())
+            })?;
+        }
+        let avg = sum as f64 / tuples.len() as f64;
+        Ok(ScalarValue::Float(avg))
+    }
+
+    fn compute_avg_float(
+        &self,
+        attr_name: &str,
+        tuples: &[&Tuple],
+    ) -> Result<ScalarValue, SummarizeError> {
+        let mut sum = 0.0;
+        for tuple in tuples {
+            let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!(
+                    "Failed to get attribute {} as f64",
+                    attr_name
+                ))
+            })?;
+            sum += value;
+        }
+        let avg = sum / tuples.len() as f64;
+        Ok(ScalarValue::Float(avg))
     }
 
     fn compute_extremum<F>(

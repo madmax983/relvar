@@ -404,29 +404,48 @@ fn compute_ungrouped_tuples(
 
         // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
         for rva_tuple in rva_relation.tuples() {
-            let mut values = std::collections::BTreeMap::new();
-
-            // Add non-RVA attribute values
-            for attr_name in relation.relation_type().tuple_type().attribute_names() {
-                if attr_name != rva_name {
-                    values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
-                }
-            }
-
-            // Add RVA tuple's attribute values
-            for attr_name in rva_relation_type.tuple_type().attribute_names() {
-                values.insert(
-                    attr_name.to_string(),
-                    rva_tuple.get(attr_name).unwrap().clone(),
-                );
-            }
-
-            let result_tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
+            let result_tuple = build_ungrouped_tuple(
+                relation,
+                tuple,
+                rva_name,
+                rva_relation_type,
+                rva_tuple,
+                &result_heading_arc,
+            );
             result_tuples.push(result_tuple);
         }
     }
 
     Ok(result_tuples)
+}
+
+/// Helper to build a single ungrouped tuple by combining non-RVA and RVA attributes.
+fn build_ungrouped_tuple(
+    relation: &Relation,
+    tuple: &Tuple,
+    rva_name: &str,
+    rva_relation_type: &RelationType,
+    rva_tuple: &Tuple,
+    result_heading_arc: &std::sync::Arc<TupleType>,
+) -> Tuple {
+    let mut values = std::collections::BTreeMap::new();
+
+    // Add non-RVA attribute values
+    for attr_name in relation.relation_type().tuple_type().attribute_names() {
+        if attr_name != rva_name {
+            values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
+        }
+    }
+
+    // Add RVA tuple's attribute values
+    for attr_name in rva_relation_type.tuple_type().attribute_names() {
+        values.insert(
+            attr_name.to_string(),
+            rva_tuple.get(attr_name).unwrap().clone(),
+        );
+    }
+
+    Tuple::new_unchecked(result_heading_arc.clone(), values)
 }
 
 #[cfg(test)]
