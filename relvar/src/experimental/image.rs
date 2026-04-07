@@ -42,6 +42,10 @@ pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
         .with_attribute("g", ScalarType::Int)
         .with_attribute("b", ScalarType::Int);
 
+    if width.saturating_mul(height) > 10_000_000 {
+        return Relation::new(RelationType::new(heading));
+    }
+
     let rel_type = RelationType::new(heading);
     let mut relation = Relation::new(rel_type);
 
@@ -104,8 +108,13 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         }
     }
 
-    let width = (max_x - min_x + 1) as usize;
-    let height = (max_y - min_y + 1) as usize;
+    let width = (max_x.saturating_sub(min_x).saturating_add(1)) as usize;
+    let height = (max_y.saturating_sub(min_y).saturating_add(1)) as usize;
+
+    if width.saturating_mul(height) > 10_000_000 {
+        return (0, 0, Vec::new());
+    }
+
     let mut data = vec![0u8; width * height * 3];
 
     for tuple in relation.tuples() {
