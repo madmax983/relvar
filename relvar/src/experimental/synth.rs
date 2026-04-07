@@ -62,7 +62,7 @@ impl Synth {
 
     /// Computes the synthesized audio samples.
     ///
-    /// Returns a relation with schema `(t: Float, sample: Float)`.
+    /// Computes and returns the synthesized output relation with schema `(t: Float, sample: Float)`.
     pub fn synthesize(&self) -> Result<Relation, DatabaseError> {
         // 1. Cartesian product of timeline and oscillators
         // Since schemas share no attributes, join acts as cross join.

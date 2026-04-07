@@ -73,7 +73,7 @@ impl RelVcs {
     }
 
     /// Checks out the specified branch.
-    /// Returns a relation of the working directory: (path: String, content: String)
+    /// Computes and returns a relation representing the working directory: (path: String, content: String)
     pub fn checkout(&self, branch_name: &str) -> Result<Relation, DatabaseError> {
         // 1. Restrict branches to the given branch_name
         let branch = self
@@ -113,7 +113,7 @@ impl RelVcs {
     }
 
     /// Computes the diff between two commits.
-    /// Returns a relation of changes: (path: String, status: String)
+    /// Computes and returns a relation containing changes: (path: String, status: String)
     /// Statuses: "added", "removed", "modified"
     pub fn diff(
         &self,

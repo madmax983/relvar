@@ -47,7 +47,7 @@ impl TuringMachine {
     }
 
     /// Computes the next step of the Turing machine.
-    /// Returns true if the machine stepped, false if it halted (no matching transition).
+    /// Evaluates the machine step and yields `true` if it progressed, or `false` if it halted (no matching transition).
     pub fn step(&mut self) -> Result<bool, DatabaseError> {
         // 1. Read the symbol under the head.
         // We join `head` (state, pos) with `tape` (pos, symbol).
