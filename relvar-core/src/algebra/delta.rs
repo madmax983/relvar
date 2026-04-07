@@ -13,7 +13,7 @@
 //! use relvar_core::values::Relation;
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use relvar_core::tuple;
-//! use relvar_core::algebra::delta::Delta;
+//! use relvar_core::algebra::Delta;
 //!
 //! let heading = TupleType::new().with_attribute("x", ScalarType::Int);
 //! let rel_type = RelationType::new(heading);
@@ -64,7 +64,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -96,7 +96,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -138,7 +138,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -178,7 +178,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -212,7 +212,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
