@@ -124,9 +124,8 @@ impl Relation {
             return Err(UnionError::TypeMismatch);
         }
 
-        for tuple in other.tuples() {
-            self.insert(tuple.clone()).unwrap();
-        }
+        self.body.reserve(other.cardinality());
+        self.body.extend(other.tuples().cloned());
 
         Ok(self)
     }
