@@ -255,17 +255,12 @@ fn build_group_result_heading(
 /// Pre-allocates the `result_tuples` vector using `Vec::with_capacity(groups.len())`.
 /// Because the exact number of output tuples is known after grouping the input,
 /// this prevents dynamic heap reallocations when constructing the resulting relation.
-fn compute_grouped_tuples<'a>(
+fn group_tuples<'a>(
     relation: &'a Relation,
     grouping_attrs: &[String],
     attrs_to_group: &[&str],
-    result_heading: &TupleType,
-    rva_heading: &TupleType,
-    rva_name: &str,
-) -> Result<Vec<Tuple>, GroupError> {
-    let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
-    let result_heading_arc = std::sync::Arc::new(result_heading.clone());
-
+    rva_heading_arc: std::sync::Arc<TupleType>,
+) -> HashMap<Vec<&'a ScalarValue>, Vec<Tuple>> {
     let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<Tuple>> = HashMap::new();
 
     // Pre-allocate attribute name strings
@@ -296,6 +291,22 @@ fn compute_grouped_tuples<'a>(
             groups.insert(key_buffer.clone(), vec![rva_tuple]);
         }
     }
+
+    groups
+}
+
+fn compute_grouped_tuples(
+    relation: &Relation,
+    grouping_attrs: &[String],
+    attrs_to_group: &[&str],
+    result_heading: &TupleType,
+    rva_heading: &TupleType,
+    rva_name: &str,
+) -> Result<Vec<Tuple>, GroupError> {
+    let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
+    let result_heading_arc = std::sync::Arc::new(result_heading.clone());
+
+    let groups = group_tuples(relation, grouping_attrs, attrs_to_group, rva_heading_arc);
 
     // Build result tuples
     let mut result_tuples = Vec::with_capacity(groups.len());
