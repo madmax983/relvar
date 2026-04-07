@@ -119,7 +119,10 @@ pub fn from_json<R: std::io::Read>(
     reader: R,
     relation_type: RelationType,
 ) -> Result<Relation, ImporterError> {
-    let mut deserializer = serde_json::Deserializer::from_reader(reader);
+    // Security memory constraint: Using a Capped Reader. We limit the input stream to 10MB to
+    // prevent serde_json from reading an unbounded malicious payload into memory.
+    let mut capped_reader = reader.take(10_000_000);
+    let mut deserializer = serde_json::Deserializer::from_reader(&mut capped_reader);
     let counter = Rc::new(RefCell::new(0usize));
     let seed = RelationSeed {
         relation_type,
