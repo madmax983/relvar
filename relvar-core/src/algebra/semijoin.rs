@@ -789,4 +789,39 @@ mod tests {
 
         assert_eq!(direct, via_diff);
     }
+
+    #[test]
+    fn test_semijoin_key_missing_attributes() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hash;
+
+        let t1 = tuple! { a: 1i64 };
+        let attributes = vec!["a".to_string(), "b".to_string()];
+
+        let key1 = super::SemijoinKey {
+            tuple: &t1,
+            attributes: &attributes,
+        };
+
+        // Should not panic on missing attribute "b", and hashing should complete
+        let mut hasher = DefaultHasher::new();
+        key1.hash(&mut hasher);
+
+        let t2 = tuple! { a: 1i64, c: "test" };
+        let key2 = super::SemijoinKey {
+            tuple: &t2,
+            attributes: &attributes,
+        };
+
+        // Ensure missing attributes don't cause panics during partial eq comparison
+        assert_eq!(key1, key2);
+
+        let t3 = tuple! { a: 1i64, b: 2i64 };
+        let key3 = super::SemijoinKey {
+            tuple: &t3,
+            attributes: &attributes,
+        };
+
+        assert_ne!(key1, key3);
+    }
 }
