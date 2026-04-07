@@ -60,6 +60,15 @@ pub struct SchemaVisualizer<'a, E: StorageEngine> {
 
 impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
     /// Create a new schema visualizer for the given database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine, visualizer::SchemaVisualizer};
+    ///
+    /// let db = Database::new(InMemoryEngine::new());
+    /// let visualizer = SchemaVisualizer::new(&db);
+    /// ```
     pub fn new(db: &'a Database<E>) -> Self {
         Self { db }
     }
