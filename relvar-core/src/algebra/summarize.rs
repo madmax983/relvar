@@ -561,12 +561,20 @@ impl Relation {
         } else {
             // Group by specified attributes
             let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<&Tuple>> = HashMap::new();
+            // PERF: Reusable buffer for the grouping key avoids allocating a new Vec
+            // for every single tuple just to query the HashMap.
+            let mut key_buffer = Vec::with_capacity(group_by.len());
             for tuple in self.tuples() {
-                let key: Vec<&ScalarValue> = group_by
-                    .iter()
-                    .map(|attr| tuple.get(attr).unwrap())
-                    .collect();
-                groups.entry(key).or_default().push(tuple);
+                key_buffer.clear();
+                for attr in group_by {
+                    key_buffer.push(tuple.get(attr).unwrap());
+                }
+
+                if let Some(group) = groups.get_mut(key_buffer.as_slice()) {
+                    group.push(tuple);
+                } else {
+                    groups.insert(key_buffer.clone(), vec![tuple]);
+                }
             }
             groups
         }
