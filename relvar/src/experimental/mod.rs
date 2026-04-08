@@ -21,10 +21,12 @@
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 //! - **[`turing`](crate::experimental::turing)**: Relational Turing Machine.
 //! - **[`vcs`](crate::experimental::vcs)**: Relational Version Control System (RelGit).
+//! - **[`circuit`](crate::experimental::circuit)**: Relational Logic Circuit Simulator.
 
 pub mod automl;
 pub mod blockchain;
 pub mod cellular_automaton;
+pub mod circuit;
 pub mod ecs;
 pub mod graph;
 pub mod image;
