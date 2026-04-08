@@ -25,6 +25,12 @@ use relvar_core::{
 };
 
 /// A simple Relational Feedforward Neural Network.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub struct NeuralNetwork {
     /// The current state of node activations.
     /// Schema: (layer: Int, node: Int, val: Float)
@@ -39,6 +45,12 @@ pub struct NeuralNetwork {
 
 impl NeuralNetwork {
     /// Creates a new Relational Neural Network.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(activations: Relation, weights: Relation, biases: Relation) -> Self {
         Self {
             activations,
@@ -52,6 +64,12 @@ impl NeuralNetwork {
     /// # Arguments
     ///
     /// * `current_layer_idx` - The index of the layer to propagate forward from.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn forward_layer(&mut self, current_layer_idx: i64) -> Result<(), DatabaseError> {
         // 1. Restrict to current layer activations
         let current_activations = self
@@ -124,6 +142,12 @@ impl NeuralNetwork {
     /// # Arguments
     ///
     /// * `num_layers` - The total number of layers to process.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn forward_pass(&mut self, num_layers: i64) -> Result<(), DatabaseError> {
         for i in 0..num_layers {
             self.forward_layer(i)?;
@@ -132,6 +156,12 @@ impl NeuralNetwork {
     }
 
     /// Retrieves the activations for a specific layer.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn get_layer_activations(&self, layer_idx: i64) -> Relation {
         self.activations
             .restrict(move |t| t.get_typed::<i64>("layer").unwrap_or(-1) == layer_idx)

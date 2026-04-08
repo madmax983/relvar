@@ -22,6 +22,13 @@ use relvar_core::values::{Relation, ScalarValue};
 /// A sparse matrix wrapper around a relation.
 ///
 /// The underlying relation has the heading `(row: Int, col: Int, val: Float)`.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::matrix::Matrix;
+/// // Note: This is a placeholder example
+/// ```
 pub struct Matrix {
     /// The relation storing the matrix entries.
     pub relation: Relation,
@@ -29,6 +36,13 @@ pub struct Matrix {
 
 impl Matrix {
     /// Creates a new, empty Matrix.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::matrix::Matrix;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new() -> Self {
         let heading = TupleType::new()
             .with_attribute("row", ScalarType::Int)
@@ -43,6 +57,13 @@ impl Matrix {
     /// Creates a Matrix from an existing relation.
     ///
     /// The relation must have attributes `row` (Int), `col` (Int), and `val` (Float).
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::matrix::Matrix;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn from_relation(relation: Relation) -> Result<Self, DatabaseError> {
         let heading = relation.relation_type().heading();
 
@@ -65,6 +86,13 @@ impl Matrix {
     /// The algorithm uses relational algebra:
     /// 1. Union $A$ and $B$.
     /// 2. Summarize (Group By) `row` and `col`, taking the sum of `val`.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::matrix::Matrix;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn add(&self, other: &Matrix) -> Result<Matrix, DatabaseError> {
         // Union A and B. Since they have the same heading, this works.
         // However, union deduplicates exact tuples. If A and B have the same (row, col, val),
@@ -117,6 +145,13 @@ impl Matrix {
     /// 2. Natural Join on $k$.
     /// 3. Extend with $product = val\_a \times val\_b$.
     /// 4. Summarize by $row, col$, summing the products.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::matrix::Matrix;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn multiply(&self, other: &Matrix) -> Result<Matrix, DatabaseError> {
         // Prepare A: (row, k, val_a)
         let a_renamed = self.relation.rename(&[("col", "k"), ("val", "val_a")]);

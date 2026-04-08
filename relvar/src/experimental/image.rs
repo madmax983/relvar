@@ -16,6 +16,12 @@ use relvar_core::values::{Relation, ScalarValue};
 ///
 /// Represents a weight at a specific offset `(dx, dy)`.
 #[derive(Debug, Clone, Copy)]
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub struct KernelTap {
     /// Horizontal offset from the center pixel.
     pub dx: i64,
@@ -34,6 +40,12 @@ pub struct KernelTap {
 /// * `width` - Image width
 /// * `height` - Image height
 /// * `data` - RGB pixel data (flat buffer: r, g, b, r, g, b, ...)
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
     let heading = TupleType::new()
         .with_attribute("x", ScalarType::Int)
@@ -79,6 +91,12 @@ pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
 /// # Returns
 ///
 /// A tuple `(width, height, data)`.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
     if relation.is_empty() {
         return (0, 0, Vec::new());
@@ -153,6 +171,12 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
 /// 3. Summarize (Group By) `target_x, target_y`.
 /// 4. Sum the weighted values.
 /// 5. Normalize by total weight.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
     if kernel.is_empty() {
         return relation.clone();

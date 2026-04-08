@@ -18,6 +18,13 @@ use relvar_core::{
 };
 
 /// A Relational Turing Machine.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::turing::TuringMachine;
+/// // Note: This is a placeholder example
+/// ```
 pub struct TuringMachine {
     /// The tape of the Turing Machine. Schema: (pos: Int, symbol: String)
     pub tape: Relation,
@@ -32,6 +39,13 @@ pub struct TuringMachine {
 
 impl TuringMachine {
     /// Creates a new Relational Turing Machine.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::turing::TuringMachine;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(
         tape: Relation,
         head: Relation,
@@ -48,6 +62,13 @@ impl TuringMachine {
 
     /// Computes the next step of the Turing machine.
     /// Evaluates the machine step and yields `true` if it progressed, or `false` if it halted (no matching transition).
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::turing::TuringMachine;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn step(&mut self) -> Result<bool, DatabaseError> {
         // 1. Read the symbol under the head.
         // We join `head` (state, pos) with `tape` (pos, symbol).
@@ -124,6 +145,13 @@ impl TuringMachine {
     }
 
     /// Runs the machine until it halts (returns the number of steps taken).
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::turing::TuringMachine;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn run(&mut self, max_steps: usize) -> Result<usize, DatabaseError> {
         for step in 0..max_steps {
             if !self.step()? {

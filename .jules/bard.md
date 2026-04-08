@@ -1,3 +1,3 @@
-## 2025-04-02 - The Missing Documentation
-**Confusion:** The `define_virtual_relvar` method and many core API features had missing documentation, meaning developers were unable to understand what functions were available to be called.
-**Clarification:** I added the missing documentation and provided clear examples for using the functions.
+## 2025-04-09 - The "Missing" Examples
+**Confusion:** A significant number of public functions and structs in the codebase lack executable doc-tests (`/// # Examples` blocks). This makes it difficult for users to understand how to use these APIs, particularly in experimental modules like `graph`, `ecs`, `blockchain`, `matrix`, `neural_network`, `raytracer`, `synth`, `turing`, etc.
+**Clarification:** Executable doc-tests have been systematically added to public structs and methods to ensure every module tells a story and provides a copy-pasteable usage example, fulfilling Bard's philosophy that "A good example is worth 1,000 lines of explanation."

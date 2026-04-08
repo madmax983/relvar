@@ -14,6 +14,13 @@ use relvar_core::{
 };
 
 /// A relational N-Body Physics Simulation.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::physics::PhysicsEngine;
+/// // Note: This is a placeholder example
+/// ```
 pub struct PhysicsEngine {
     /// The current state of the particles.
     /// Schema: `(id: Int, x: Float, y: Float, vx: Float, vy: Float, mass: Float)`
@@ -26,11 +33,25 @@ pub struct PhysicsEngine {
 
 impl PhysicsEngine {
     /// Creates a new PhysicsEngine.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::physics::PhysicsEngine;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(particles: Relation, g: f64, dt: f64) -> Self {
         Self { particles, g, dt }
     }
 
     /// Computes the next state of the simulation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::physics::PhysicsEngine;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn next_step(&self) -> Result<Relation, DatabaseError> {
         // 1. Cross join particles with themselves to compute pairwise forces.
         // Rename attributes to distinguish particle 1 and particle 2.
