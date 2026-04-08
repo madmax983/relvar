@@ -17,3 +17,8 @@
 **Bloat:** Redundant per-tuple type validation using `self.insert()` in a loop inside `union_into` when relation headings are already explicitly verified to match.
 **Cut:** Exposed `body` as `pub(crate)` in `Relation` and replaced the loop with `.reserve()` and `.extend()` to directly insert tuples into the underlying `HashSet`.
 **Saved:** Eliminated O(N) redundant validations and reduced overhead in relational algebra merge operations.
+
+## [Reduction]
+**Bloat:** `relvar-core/src/storage_engine/` was a deep folder hierarchy containing only `mod.rs` and `in_memory.rs`.
+**Cut:** Flattened the directory by merging the contents of `mod.rs` and `in_memory.rs` into a single `relvar-core/src/storage_engine.rs` module.
+**Saved:** Eliminated unnecessary module nesting and directory structure for a small component.
