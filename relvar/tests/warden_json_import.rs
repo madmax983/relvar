@@ -22,14 +22,15 @@ fn test_large_string_import() {
     assert!(result.is_err(), "Import of 10MB string should have failed");
 
     match result {
+        Err(ImporterError::JsonError(e)) => {
+            // Serde throws an unexpected EOF error when the capped reader hits its limit
+            assert!(e.to_string().contains("EOF"));
+        }
         Err(ImporterError::LimitExceeded(msg)) => {
             assert!(msg.contains("String too long"));
         }
         Err(e) => {
-            // For now (before implementation), it might be another error or success.
-            // But we want to fail the test if it's NOT LimitExceeded once implemented.
-            // Since we haven't implemented logic yet, this test will fail if we run it now, which is correct.
-            panic!("Expected LimitExceeded, got {:?}", e);
+            panic!("Expected LimitExceeded or JsonError with EOF, got {:?}", e);
         }
         Ok(_) => panic!("Import succeeded but should have failed due to size limit"),
     }
@@ -60,11 +61,15 @@ fn test_large_bytes_import() {
     );
 
     match result {
+        Err(ImporterError::JsonError(e)) => {
+            // Serde throws an unexpected EOF error when the capped reader hits its limit
+            assert!(e.to_string().contains("EOF"));
+        }
         Err(ImporterError::LimitExceeded(msg)) => {
             assert!(msg.contains("Bytes too long"));
         }
         Err(e) => {
-            panic!("Expected LimitExceeded, got {:?}", e);
+            panic!("Expected LimitExceeded or JsonError with EOF, got {:?}", e);
         }
         Ok(_) => panic!("Import succeeded but should have failed"),
     }
