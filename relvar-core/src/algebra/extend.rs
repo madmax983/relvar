@@ -161,6 +161,56 @@ where
     Ok(Tuple::new_unchecked(new_heading.clone(), new_values))
 }
 
+impl Relation {
+    /// Extends the relation with a new computed attribute, consuming this relation.
+    ///
+    /// This is an optimized version of `extend` that avoids O(N) tuple clones
+    /// by consuming the relation and migrating the tuple values in-place.
+    pub fn extend_into<F>(
+        self,
+        attr_name: &str,
+        attr_type: crate::types::ScalarType,
+        compute: F,
+    ) -> Result<Relation, ExtendError>
+    where
+        F: Fn(&Tuple) -> ScalarValue,
+    {
+        // Check if attribute already exists
+        if self.relation_type().has_attribute(attr_name) {
+            return Err(ExtendError::AttributeExists(attr_name.to_string()));
+        }
+
+        // Create new heading with the additional attribute
+        let mut new_heading = self.relation_type().tuple_type().clone();
+        new_heading = new_heading.with_attribute(attr_name.to_string(), attr_type.clone());
+
+        let new_rel_type = crate::types::RelationType::new(new_heading.clone());
+        let new_heading_arc = std::sync::Arc::new(new_heading);
+
+        // Map over tuples, avoiding full clone
+        let mut extended_tuples = std::collections::HashSet::with_capacity(self.cardinality());
+        for tuple in self.into_iter() {
+            let computed_value = compute(&tuple);
+
+            if !computed_value.is_type(&attr_type) {
+                return Err(ExtendError::TupleCreation(format!(
+                    "Type mismatch for attribute '{}': expected {}, got {}",
+                    attr_name,
+                    attr_type.name(),
+                    computed_value.scalar_type().name()
+                )));
+            }
+
+            let mut new_values = tuple.into_values();
+            new_values.insert(attr_name.to_string(), computed_value);
+
+            extended_tuples.insert(Tuple::new_unchecked(new_heading_arc.clone(), new_values));
+        }
+
+        Ok(Relation::from_body_unchecked(new_rel_type, extended_tuples))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
