@@ -94,52 +94,49 @@ pub fn is_visible(
     snapshot: &TransactionSnapshot,
     committed: &HashSet<TransactionId>,
 ) -> bool {
-    // Rule 1: Check if xmin (creator) is committed or is our own transaction
+    if !is_created_visible(version, snapshot, committed) {
+        return false;
+    }
+
+    is_deletion_invisible(version, snapshot, committed)
+}
+
+fn is_created_visible(
+    version: &VersionMetadata,
+    snapshot: &TransactionSnapshot,
+    committed: &HashSet<TransactionId>,
+) -> bool {
     let xmin_visible = committed.contains(&version.xmin) || version.xmin == snapshot.txn_id;
 
-    // Rule 2: If xmin was active (concurrent) when our snapshot was taken, it's invisible
-    // Exception: if xmin is our own transaction
     if snapshot.is_active(version.xmin) && version.xmin != snapshot.txn_id {
         return false;
     }
 
-    // Rule 3: If xmin is not committed and not our transaction, invisible
-    if !xmin_visible {
+    xmin_visible
+}
+
+fn is_deletion_invisible(
+    version: &VersionMetadata,
+    snapshot: &TransactionSnapshot,
+    committed: &HashSet<TransactionId>,
+) -> bool {
+    let Some(xmax) = version.xmax else {
+        return true;
+    };
+
+    if xmax == snapshot.txn_id {
         return false;
     }
 
-    // Now check xmax (deletion marker)
-    match version.xmax {
-        None => {
-            // Not deleted, visible
-            true
-        }
-        Some(xmax) => {
-            // Deleted by xmax transaction
-            // Visible if:
-            // - xmax is our own transaction (we deleted it) -> invisible
-            // - xmax is not committed -> visible (deletion didn't happen)
-            // - xmax was active when we started -> visible (concurrent deletion)
-
-            if xmax == snapshot.txn_id {
-                // We deleted it ourselves
-                return false;
-            }
-
-            if !committed.contains(&xmax) {
-                // Deletion not committed, still visible
-                return true;
-            }
-
-            if snapshot.is_active(xmax) {
-                // Deletion was concurrent (active when we started), still visible to us
-                return true;
-            }
-
-            // Deletion committed before our snapshot, invisible
-            false
-        }
+    if !committed.contains(&xmax) {
+        return true;
     }
+
+    if snapshot.is_active(xmax) {
+        return true;
+    }
+
+    false
 }
 
 #[cfg(test)]

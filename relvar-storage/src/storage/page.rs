@@ -310,15 +310,8 @@ impl PageFile {
     ///
     /// Returns [`PageError::Io`] if the read fails.
     pub fn read_page(&mut self, page_id: PageId) -> Result<Page, PageError> {
-        // Seek to the page offset
-        let offset = page_id
-            .checked_mul(PAGE_SIZE as u64)
-            .ok_or(PageError::PageTooLarge)?;
-        self.file.seek(SeekFrom::Start(offset))?;
-
-        // Read the page data
         let mut buffer = vec![0u8; PAGE_SIZE];
-        let bytes_read = self.file.read(&mut buffer)?;
+        let bytes_read = self.read_raw_page(page_id, &mut buffer)?;
 
         // If we read nothing, it's a new/empty page
         if bytes_read == 0 {
@@ -327,7 +320,18 @@ impl PageFile {
 
         // Truncate to actual bytes read
         buffer.truncate(bytes_read);
+        Self::parse_page_data(page_id, &buffer)
+    }
 
+    fn read_raw_page(&mut self, page_id: PageId, buffer: &mut [u8]) -> Result<usize, PageError> {
+        let offset = page_id
+            .checked_mul(PAGE_SIZE as u64)
+            .ok_or(PageError::PageTooLarge)?;
+        self.file.seek(SeekFrom::Start(offset))?;
+        self.file.read(buffer).map_err(PageError::Io)
+    }
+
+    fn parse_page_data(page_id: PageId, buffer: &[u8]) -> Result<Page, PageError> {
         // We need at least 8 bytes for the length prefix
         if buffer.len() < 8 {
             return Err(PageError::Serialization(format!(
@@ -342,8 +346,6 @@ impl PageFile {
             })?);
 
         // Check if data length exceeds PAGE_SIZE - 8 (maximum possible data)
-        // We check this using u64 arithmetic BEFORE casting to usize to prevent
-        // truncation vulnerabilities on 32-bit systems (e.g., 4GB+1 -> 1).
         if data_len_u64 > (PAGE_SIZE - 8) as u64 {
             return Err(PageError::Serialization(format!(
                 "Page data length {} exceeds maximum {}",
@@ -352,10 +354,7 @@ impl PageFile {
             )));
         }
 
-        // Safe cast: we've already verified it's <= PAGE_SIZE - 8, which fits in usize
         let data_len = data_len_u64 as usize;
-
-        // Check if declared length fits in the buffer (which might be smaller than PAGE_SIZE if read was short)
         let required_len = data_len + 8; // No overflow possible (checked above)
 
         if required_len > buffer.len() {
