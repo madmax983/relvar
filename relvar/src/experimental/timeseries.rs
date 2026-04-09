@@ -77,9 +77,28 @@ pub fn moving_average(
     // 1. Prepare Self-Join
     // We need to join the relation with itself to find "previous" rows within the window.
     // To avoid attribute name collisions, we rename ALL attributes in the "previous" relation.
-    let prev_attr_suffix = "_prev";
-    let mut rename_map = Vec::new();
     let original_heading = relation.relation_type().heading();
+
+    // Dynamically generate a safe suffix that doesn't collide with existing attributes
+    let mut prev_attr_suffix = "_prev".to_string();
+    let mut suffix_idx = 1;
+    loop {
+        let mut collision = false;
+        for (attr_name, _) in original_heading.attributes().iter() {
+            let candidate_name = format!("{}{}", attr_name, prev_attr_suffix);
+            if original_heading.has_attribute(&candidate_name) {
+                collision = true;
+                break;
+            }
+        }
+        if !collision {
+            break;
+        }
+        prev_attr_suffix = format!("_prev_{}", suffix_idx);
+        suffix_idx += 1;
+    }
+
+    let mut rename_map = Vec::new();
 
     // Iterate over attributes to build rename map
     for (attr_name, _) in original_heading.attributes().iter() {
