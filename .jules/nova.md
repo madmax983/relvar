@@ -52,3 +52,8 @@
 **Concept:** Modeled Non-deterministic Finite Automata (NFA) using purely relational algebra. States and transitions are relations, and string matching is evaluated iteratively using joins, epsilon closure with tclose, and projects.
 **Fate:** TBD
 **Lesson:** TBD
+
+## Relational Knowledge Graph (RDF/SPARQL)
+**Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
+**Fate:** TBD
+**Lesson:** TBD

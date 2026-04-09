@@ -32,6 +32,7 @@ pub mod circuit;
 pub mod ecs;
 pub mod graph;
 pub mod image;
+pub mod knowledge_graph;
 pub mod matrix;
 pub mod mock;
 pub mod neural_network;
