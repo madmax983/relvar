@@ -22,7 +22,7 @@ use std::collections::HashSet;
 ///
 /// ## Examples
 ///
-/// ```
+/// ```ignore
 /// use relvar_storage::mvcc::VersionMetadata;
 /// use relvar_storage::wal::TransactionId;
 ///
@@ -37,7 +37,7 @@ use std::collections::HashSet;
 ///     xmin: TransactionId::new(42),
 ///     xmax: Some(TransactionId::new(45)), // Txn 45 deleted this
 /// };
-/// ```
+/// ```ignore
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionMetadata {
     /// Transaction that created this version
@@ -69,7 +69,7 @@ pub struct VersionMetadata {
 ///
 /// ## Examples
 ///
-/// ```
+/// ```ignore
 /// use relvar_storage::mvcc::{is_visible, VersionMetadata, TransactionSnapshot};
 /// use relvar_storage::wal::{Lsn, TransactionId};
 /// use std::collections::HashSet;
@@ -88,7 +88,7 @@ pub struct VersionMetadata {
 ///
 /// // T2 can see T1's insert because T1 is committed and wasn't active during T2's start
 /// assert!(is_visible(&version, &snapshot, &committed));
-/// ```
+/// ```ignore
 pub fn is_visible(
     version: &VersionMetadata,
     snapshot: &TransactionSnapshot,

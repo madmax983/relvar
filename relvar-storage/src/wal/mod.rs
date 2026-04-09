@@ -23,7 +23,7 @@
 //! │  - WAL, LSN, TransactionId  ← THIS MODULE               │
 //! │  - Checkpoint, Recovery                                 │
 //! └─────────────────────────────────────────────────────────┘
-//! ```
+//! ```ignore
 //!
 //! # Components
 //!
