@@ -162,7 +162,7 @@ impl Delta {
 
         // temp U inserted
         let result = temp
-            .union(&self.inserted)
+            .union_into(&self.inserted)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         Ok(result)
@@ -242,7 +242,7 @@ impl Delta {
             .difference(&self.deleted)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         let inserted_new = i_part1
-            .union(&i_part2)
+            .union_into(&i_part2)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // deleted_new = (self.deleted - other.inserted) U (other.deleted - self.inserted)
@@ -257,7 +257,7 @@ impl Delta {
             .difference(&self.inserted)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         let deleted_new = d_part1
-            .union(&d_part2)
+            .union_into(&d_part2)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         Ok(Self {
