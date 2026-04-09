@@ -73,3 +73,6 @@
 ## 2026-04-06 - Tarpaulin Reporting on Multiline Closures
 **Learning:** Line-based coverage tools like `cargo tarpaulin` often report missing coverage for multi-line format arguments or complex closures defined as macro/function parameters, even when the underlying logic path is hit.
 **Action:** Before trying to restructure methods strictly to satisfy the coverage tool on these specific lines, verify that it's a tooling artifact. If it is, accept it or look for real logical branches (like actual `if let Err(...)` statements) that are missing tests.
+## 2025-05-18 - [ForeignKey Constraint Panic]
+**Learning:** `ForeignKey` constraint validation methods (`is_satisfied_by`, `would_violate_on_insert`, `would_violate_on_delete`) panicked with `.unwrap()` when they were passed a tuple that was missing a required attribute, as dynamic relations might accept partially valid or mismatched inputs.
+**Action:** When validating constraints against tuples, use `.ok_or_else()` to explicitly handle missing attributes by returning an error instead of panicking via `.unwrap()`.

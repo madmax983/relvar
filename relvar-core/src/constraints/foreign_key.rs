@@ -87,6 +87,10 @@ pub enum ForeignKeyError {
     /// A foreign key must have at least one attribute.
     #[error("Foreign key cannot be empty")]
     EmptyForeignKey,
+
+    /// The tuple is missing an expected attribute.
+    #[error("Missing attribute in tuple: {0}")]
+    MissingAttribute(String),
 }
 
 /// A foreign key constraint ensuring referential integrity between relations.
@@ -201,7 +205,11 @@ impl ForeignKey {
             key_buffer.clear();
             for attr in &self.foreign_key_attributes {
                 // We know attribute exists because of check above
-                key_buffer.push(tuple.get(attr).unwrap());
+                key_buffer.push(
+                    tuple
+                        .get(attr)
+                        .ok_or_else(|| ForeignKeyError::MissingAttribute(attr.clone()))?,
+                );
             }
 
             if !referenced_keys.contains(&key_buffer) {
@@ -222,17 +230,22 @@ impl ForeignKey {
         // PERF: By hoisting the lookups for `new_tuple` outside the loop, we eliminate
         // the inner allocation of intermediate `Vec` inside the loop for every tuple in
         // `referenced_relation`. This makes `would_violate_on_insert` significantly faster.
-        let new_values: Vec<_> = self
-            .foreign_key_attributes
-            .iter()
-            .map(|attr| new_tuple.get(attr).unwrap())
-            .collect();
+        let mut new_values = Vec::with_capacity(self.foreign_key_attributes.len());
+        for attr in &self.foreign_key_attributes {
+            let val = new_tuple
+                .get(attr)
+                .ok_or_else(|| ForeignKeyError::MissingAttribute(attr.clone()))?;
+            new_values.push(val);
+        }
 
         // Check if any tuple in referenced relation matches
         for referenced_tuple in referenced_relation.tuples() {
             let mut matches = true;
             for (i, ref_attr) in self.referenced_attributes.iter().enumerate() {
-                if new_values[i] != referenced_tuple.get(ref_attr).unwrap() {
+                let ref_val = referenced_tuple
+                    .get(ref_attr)
+                    .ok_or_else(|| ForeignKeyError::MissingAttribute(ref_attr.clone()))?;
+                if new_values[i] != ref_val {
                     matches = false;
                     break;
                 }
@@ -255,17 +268,22 @@ impl ForeignKey {
         // PERF: By hoisting the lookups for `tuple_to_delete` outside the loop, we eliminate
         // the inner allocation of intermediate `Vec` inside the loop for every tuple in
         // `referencing_relation`. This makes `would_violate_on_delete` significantly faster.
-        let ref_values: Vec<_> = self
-            .referenced_attributes
-            .iter()
-            .map(|attr| tuple_to_delete.get(attr).unwrap())
-            .collect();
+        let mut ref_values = Vec::with_capacity(self.referenced_attributes.len());
+        for attr in &self.referenced_attributes {
+            let val = tuple_to_delete
+                .get(attr)
+                .ok_or_else(|| ForeignKeyError::MissingAttribute(attr.clone()))?;
+            ref_values.push(val);
+        }
 
         // Check if any tuple in referencing relation references this tuple
         for referencing_tuple in referencing_relation.tuples() {
             let mut matches = true;
             for (i, fk_attr) in self.foreign_key_attributes.iter().enumerate() {
-                if referencing_tuple.get(fk_attr).unwrap() != ref_values[i] {
+                let fk_val = referencing_tuple
+                    .get(fk_attr)
+                    .ok_or_else(|| ForeignKeyError::MissingAttribute(fk_attr.clone()))?;
+                if fk_val != ref_values[i] {
                     matches = false;
                     break;
                 }
@@ -373,6 +391,49 @@ mod tests {
         assert_eq!(fk.foreign_key_attributes(), &["dept_id"]);
         assert_eq!(fk.referenced_relation_name(), "DEPT");
         assert_eq!(fk.referenced_attributes(), &["dept_id"]);
+    }
+
+    #[test]
+    fn test_would_violate_on_insert_missing_attribute_error() {
+        let fk = ForeignKey::new(
+            vec!["dept_id".to_string()],
+            "DEPT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+
+        let dept_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        let depts = Relation::new(dept_type);
+
+        let t = crate::tuple! { emp_id: 1i64 };
+
+        let res = fk.would_violate_on_insert(&t, &depts);
+        assert!(res.is_err());
+        assert!(
+            matches!(res.unwrap_err(), ForeignKeyError::MissingAttribute(attr) if attr == "dept_id")
+        );
+    }
+
+    #[test]
+    fn test_would_violate_on_delete_missing_attribute_error() {
+        let fk = ForeignKey::new(
+            vec!["dept_id".to_string()],
+            "DEPT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+
+        let emp_type =
+            RelationType::new(TupleType::new().with_attribute("dept_id", ScalarType::Int));
+        let emps = Relation::new(emp_type);
+
+        let t = crate::tuple! { dept_id: 1i64 }; // intentionally missing "id"
+
+        let res = fk.would_violate_on_delete(&t, &emps);
+        assert!(res.is_err());
+        assert!(
+            matches!(res.unwrap_err(), ForeignKeyError::MissingAttribute(attr) if attr == "id")
+        );
     }
 
     #[test]
