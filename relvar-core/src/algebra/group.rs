@@ -456,7 +456,7 @@ fn build_ungrouped_tuple(
         );
     }
 
-    Tuple::new_unchecked(result_heading_arc.clone(), values)
+    Tuple::new_unchecked(std::sync::Arc::clone(result_heading_arc), values)
 }
 
 #[cfg(test)]
