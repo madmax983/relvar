@@ -47,3 +47,8 @@
 **Concept:** A synchronous digital logic circuit evaluated using pure relational algebra. Gates and wires are represented as relations, and each step evaluates one propagation delay via joins and logic gate extensions.
 **Fate:** Merged
 **Lesson:** Logic gates act exactly like database queries filtering and extending values over wires, beautifully showing that hardware simulations can be modeled entirely relationally!
+
+## Relational Automata
+**Concept:** Modeled Non-deterministic Finite Automata (NFA) using purely relational algebra. States and transitions are relations, and string matching is evaluated iteratively using joins, epsilon closure with tclose, and projects.
+**Fate:** TBD
+**Lesson:** TBD

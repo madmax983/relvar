@@ -22,7 +22,9 @@
 //! - **[`turing`](crate::experimental::turing)**: Relational Turing Machine.
 //! - **[`vcs`](crate::experimental::vcs)**: Relational Version Control System (RelGit).
 //! - **[`circuit`](crate::experimental::circuit)**: Relational Logic Circuit Simulator.
+//! - **[`automata`](crate::experimental::automata)**: Relational Automata (NFA).
 
+pub mod automata;
 pub mod automl;
 pub mod blockchain;
 pub mod cellular_automaton;
