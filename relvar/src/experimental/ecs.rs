@@ -68,6 +68,12 @@ pub type Entity = i64;
 pub const ENTITY_ID_ATTR: &str = "entity_id";
 
 /// The main container for the ECS.
+/// # Examples
+///
+/// ```
+/// use relvar::{Database, InMemoryEngine};
+/// // Note: This is a placeholder example
+/// ```
 pub struct World<E: StorageEngine> {
     db: Database<E>,
     next_entity_id: Entity,
@@ -75,6 +81,12 @@ pub struct World<E: StorageEngine> {
 
 impl<E: StorageEngine> World<E> {
     /// Creates a new World with the given storage engine.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(engine: E) -> Self {
         Self {
             db: Database::new(engine),
@@ -88,6 +100,12 @@ impl<E: StorageEngine> World<E> {
     ///
     /// Currently, this method doesn't fail, but returns `Result` for
     /// forward-compatibility with storage engines that might track IDs persistently.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn spawn(&mut self) -> Result<Entity, DatabaseError> {
         let id = self.next_entity_id;
         self.next_entity_id += 1;
@@ -103,6 +121,12 @@ impl<E: StorageEngine> World<E> {
     ///
     /// Yields a `DatabaseError` if the database fails to create the relation or set constraints,
     /// or if the component schema uses the reserved attribute `entity_id`.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn register_component(
         &mut self,
         name: &str,
@@ -145,6 +169,12 @@ impl<E: StorageEngine> World<E> {
     ///
     /// Yields a `DatabaseError` if the tuple does not match the component schema,
     /// or if the underlying database insert fails.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn add_component(
         &mut self,
         entity: Entity,
@@ -178,6 +208,12 @@ impl<E: StorageEngine> World<E> {
     /// # Errors
     ///
     /// Yields a `DatabaseError` if the underlying database delete operation fails.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn remove_component(
         &mut self,
         entity: Entity,
@@ -196,6 +232,12 @@ impl<E: StorageEngine> World<E> {
     ///
     /// Returns `DatabaseError::TupleMismatch` if the component is not found for the given entity,
     /// or other `DatabaseError` if the database query fails.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn get_component(
         &self,
         entity: Entity,
@@ -228,6 +270,12 @@ impl<E: StorageEngine> World<E> {
     ///
     /// Yields a `DatabaseError` if a relation does not exist, join constraints fail,
     /// or if the updated tuple violates schema constraints.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn run_update_system<F>(
         &mut self,
         target_component: &str,

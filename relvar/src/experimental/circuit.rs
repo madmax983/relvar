@@ -23,6 +23,13 @@ use relvar_core::{
 };
 
 /// A Relational Digital Logic Circuit Simulator.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::circuit::LogicSimulator;
+/// // Note: This is a placeholder example
+/// ```
 pub struct LogicSimulator {
     /// Binary gates in the circuit.
     /// Schema: (gate: String, gate_type: String, in1: String, in2: String, out: String)
@@ -34,6 +41,13 @@ pub struct LogicSimulator {
 
 impl LogicSimulator {
     /// Creates a new logic simulator.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::circuit::LogicSimulator;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(binary_gates: Relation, unary_gates: Relation) -> Self {
         Self {
             binary_gates,
@@ -47,6 +61,13 @@ impl LogicSimulator {
     ///
     /// * `current_wires` - The current states of the wires.
     /// * `inputs` - The external inputs that continually drive their wires.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::circuit::LogicSimulator;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn tick(
         &self,
         current_wires: &Relation,
@@ -131,6 +152,13 @@ impl LogicSimulator {
     ///
     /// Simulates gate propagation delays until the state of all wires stops changing.
     /// Returns an error if it fails to stabilize within `max_ticks` (e.g., due to an oscillator loop).
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::circuit::LogicSimulator;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn run_until_stable(
         &self,
         initial_wires: &Relation,

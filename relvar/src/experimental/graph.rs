@@ -49,6 +49,12 @@ use relvar_core::values::{Relation, ScalarValue, Tuple};
 /// A graph consists of:
 /// - A `nodes` relation containing at least a unique identifier attribute.
 /// - An `edges` relation containing source and target node identifiers.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub struct Graph {
     nodes: Relation,
     edges: Relation,
@@ -67,6 +73,12 @@ impl Graph {
     /// * `node_id_attr` - The attribute name for node IDs in the `nodes` relation.
     /// * `from_attr` - The attribute name for source node IDs in the `edges` relation.
     /// * `to_attr` - The attribute name for target node IDs in the `edges` relation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(
         nodes: Relation,
         edges: Relation,
@@ -92,6 +104,12 @@ impl Graph {
     ///
     /// Returns `DatabaseError::AlgebraError` if internal relational operations (Join, Project, etc.) fail,
     /// typically due to schema mismatches or invalid attribute names.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn bfs(&self, start_node_id: ScalarValue) -> Result<Relation, DatabaseError> {
         // 1. Initialize result schema: (node_id, distance)
         let result_heading = TupleType::new()
@@ -225,6 +243,12 @@ impl Graph {
     /// # Errors
     ///
     /// Returns `DatabaseError::AlgebraError` if internal relational operations fail.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn pagerank(
         &self,
         iterations: usize,

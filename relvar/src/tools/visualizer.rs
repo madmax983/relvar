@@ -54,6 +54,12 @@ use relvar_core::database::Database;
 use relvar_core::storage_engine::StorageEngine;
 
 /// A tool for visualizing the database schema.
+/// # Examples
+///
+/// ```
+/// use relvar::{Database, InMemoryEngine, visualizer::SchemaVisualizer};
+/// // Example usage
+/// ```
 pub struct SchemaVisualizer<'a, E: StorageEngine> {
     db: &'a Database<E>,
 }

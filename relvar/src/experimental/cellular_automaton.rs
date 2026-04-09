@@ -24,6 +24,13 @@ use relvar_core::{
 };
 
 /// A relational Cellular Automaton (Game of Life).
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::cellular_automaton::CellularAutomaton;
+/// // Note: This is a placeholder example
+/// ```
 pub struct CellularAutomaton {
     /// The current state of alive cells. Schema: (x, y)
     pub cells: Relation,
@@ -35,11 +42,25 @@ impl CellularAutomaton {
     /// # Arguments
     ///
     /// * `cells` - A relation with heading `(x: Int, y: Int)` representing alive cells.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::cellular_automaton::CellularAutomaton;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(cells: Relation) -> Self {
         Self { cells }
     }
 
     /// Computes the next generation of the cellular automaton.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::cellular_automaton::CellularAutomaton;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn next_generation(&self) -> Result<Relation, DatabaseError> {
         // 1. Create neighbor offsets relation: (dx, dy)
         let offset_heading = TupleType::new()

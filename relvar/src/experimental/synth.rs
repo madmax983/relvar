@@ -23,6 +23,13 @@ use relvar_core::{
 };
 
 /// A Relational Audio Synthesizer.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::synth::Synth;
+/// // Note: This is a placeholder example
+/// ```
 pub struct Synth {
     /// Timeline relation. Schema: `(t: Float)`
     pub timeline: Relation,
@@ -32,6 +39,13 @@ pub struct Synth {
 
 impl Synth {
     /// Creates a new Synthesizer.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::synth::Synth;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(timeline: Relation, oscillators: Relation) -> Self {
         Self {
             timeline,
@@ -40,6 +54,13 @@ impl Synth {
     }
 
     /// Helper to generate a timeline relation for a given duration and sample rate.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::synth::Synth;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn create_timeline(
         duration_secs: f64,
         sample_rate: u32,
@@ -63,6 +84,13 @@ impl Synth {
     /// Computes the synthesized audio samples.
     ///
     /// Computes and returns the synthesized output relation with schema `(t: Float, sample: Float)`.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::synth::Synth;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn synthesize(&self) -> Result<Relation, DatabaseError> {
         // 1. Cartesian product of timeline and oscillators
         // Since schemas share no attributes, join acts as cross join.

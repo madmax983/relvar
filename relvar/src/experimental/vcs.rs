@@ -23,6 +23,12 @@ use relvar_core::{
 };
 
 /// A relational Version Control System (VCS).
+/// # Examples
+///
+/// ```
+/// use relvar::{Database, InMemoryEngine, Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub struct RelVcs {
     /// Blobs: (hash: String, content: String)
     pub blobs: Relation,
@@ -36,6 +42,12 @@ pub struct RelVcs {
 
 impl RelVcs {
     /// Creates a new, empty RelVcs.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine, Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new() -> Self {
         let blobs_type = RelationType::new(
             TupleType::new()
@@ -74,6 +86,12 @@ impl RelVcs {
 
     /// Checks out the specified branch.
     /// Computes and returns a relation representing the working directory: (path: String, content: String)
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine, Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn checkout(&self, branch_name: &str) -> Result<Relation, DatabaseError> {
         // 1. Restrict branches to the given branch_name
         let branch = self
@@ -115,6 +133,12 @@ impl RelVcs {
     /// Computes the diff between two commits.
     /// Computes and returns a relation containing changes: (path: String, status: String)
     /// Statuses: "added", "removed", "modified"
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Database, InMemoryEngine, Relation, RelationType, ScalarType, TupleType};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn diff(
         &self,
         commit_a_hash: &str,
