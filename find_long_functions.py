@@ -6,7 +6,7 @@ def find_functions():
 
     results = []
 
-    for root, dirs, files in os.walk('relvar-core/src'):
+    for root, dirs, files in os.walk('.'):
         for file in files:
             if not file.endswith('.rs'):
                 continue

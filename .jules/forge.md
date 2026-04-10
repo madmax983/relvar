@@ -558,3 +558,6 @@ Build it right, make it fast, keep it simple.
 ## 2024-04-09 - Long Functions Refactor
 **Learning:** Found several "God Functions" in `relvar-storage` related to WAL parsing, Page loading, and MVCC visibility that exceeded 50 lines.
 **Action:** Refactored into smaller helper functions (e.g. `WalRecordIter`, `parse_page_data`, `is_created_visible`, `is_deletion_invisible`, `prepare_insert`) to flatten structure, reduce variables in scope, and improve readability without altering logic.
+## 2026-04-10 - Extract Complex Physics Calculation Steps
+**Learning:** The `next_step` function in `relvar/src/experimental/physics.rs` contained multiple distinct logical phases (computing forces, handling missing elements and summation, updating kinematics) in a single massive code block, making it hard to follow.
+**Action:** Refactored by extracting these phases into appropriately named private helper methods (`compute_pairwise_forces`, `summarize_net_forces`, `update_kinematics_and_project`), drastically reducing complexity and improving code clarity.
