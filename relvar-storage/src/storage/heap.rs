@@ -340,7 +340,11 @@ impl HeapFile {
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
 
-        if header_size + tuple_data_len > USABLE_PAGE_SIZE {
+        let required_space = header_size.checked_add(tuple_data_len).ok_or_else(|| {
+            HeapError::Serialization("Header size + tuple data length overflow".to_string())
+        })?;
+
+        if required_space > USABLE_PAGE_SIZE {
             return Err(HeapError::TupleTooLarge(tuple_data_len));
         }
         Ok(())
@@ -386,7 +390,9 @@ impl HeapFile {
         // 2. Serialize the updated slot directory. Now that the offsets are the large final values,
         //    the varint encoding will take its true maximum size.
         let slot_dir = serialize_compat(&versioned_page)?;
-        let header_size = V2_HEADER_SIZE + slot_dir.len();
+        let header_size = V2_HEADER_SIZE.checked_add(slot_dir.len()).ok_or_else(|| {
+            HeapError::Serialization("Header size + slot directory length overflow".to_string())
+        })?;
 
         // 3. Verify no overlap between the downward-growing tuples and the upward-growing header.
         for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
@@ -601,7 +607,11 @@ impl HeapFile {
 
         // Calculate total size correctly
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
-        let required_space = header_size + total_tuple_data_size;
+        let required_space = header_size
+            .checked_add(total_tuple_data_size)
+            .ok_or_else(|| {
+                HeapError::Serialization("Header size + total tuple data size overflow".to_string())
+            })?;
 
         if required_space > USABLE_PAGE_SIZE_V1 {
             return Err(HeapError::PageFull);
@@ -918,7 +928,14 @@ impl HeapFile {
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
         const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
 
-        if FORMAT_HEADER_SIZE + header_size + tuple_data_len > USABLE_PAGE_SIZE {
+        let total_header = FORMAT_HEADER_SIZE.checked_add(header_size).ok_or_else(|| {
+            HeapError::Serialization("Format header + header size overflow".to_string())
+        })?;
+        let required_space = total_header.checked_add(tuple_data_len).ok_or_else(|| {
+            HeapError::Serialization("Header size + tuple data length overflow".to_string())
+        })?;
+
+        if required_space > USABLE_PAGE_SIZE {
             return Err(HeapError::TupleTooLarge(tuple_data_len));
         }
         Ok(())
@@ -1080,18 +1097,26 @@ impl HeapFile {
                 let offset = entry.offset as usize;
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
+                    let end_offset = offset.checked_add(length).ok_or_else(|| {
+                        HeapError::Serialization("Tuple offset + length overflow".to_string())
+                    })?;
+                    let header_end = header_size.checked_add(slot_dir_len).ok_or_else(|| {
+                        HeapError::Serialization(
+                            "Header size + slot directory length overflow".to_string(),
+                        )
+                    })?;
                     // Validate that offset + length doesn't exceed buffer and doesn't overlap header
-                    if offset + length > data.len() || offset < header_size + slot_dir_len {
+                    if end_offset > data.len() || offset < header_end {
                         return Err(HeapError::Serialization(format!(
                             "Slot {} points outside buffer or overlaps header: offset={}, length={}, buffer_len={}, header_end={}",
                             idx,
                             offset,
                             length,
                             data.len(),
-                            header_size + slot_dir_len
+                            header_end
                         )));
                     }
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                    data[offset..end_offset].copy_from_slice(&tuples[idx]);
                 }
             }
         }
