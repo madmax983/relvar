@@ -59,3 +59,7 @@ Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, 
 ## 2024-05-24 - [Avoid cloning heading per tuple in ungroup]
  **Learning:** In tight loops over collections like tuples, implicit cloning of `Arc<T>` wrappers introduces unnecessary atomic reference counting overhead, degrading performance.
  **Action:** Passed `std::sync::Arc::clone(result_heading_arc)` directly instead of `.clone()` on the struct (which can implicitly be a deep clone depending on the implementation) or `result_heading_arc.clone()` to avoid overhead inside the tuple construction loop.
+
+## 2024-05-25 - Replacing chained allocations with `_into` variants
+**Learning:** Relational algebra operations like `tclose` and `Delta::compose` chained operations like `.difference()` and `.union()` which created and cloned new `Relation`s sequentially, causing `O(N^2)` memory consumption and execution time inside iterative loops.
+**Action:** When performing algebraic chaining on relations where the intermediate relation is owned (e.g. results from a previous `.project()` or `.difference()`), always use the `_into` variants (`.union_into`, `.difference_into`, `.intersect_into`) to directly mutate the intermediate `Relation` and eliminate redundant `HashSet` allocations and tuple cloning overhead. For iteratively accumulated structures like `tclose`, use `std::mem::replace` with an empty struct to take ownership and allow applying `_into` directly to the accumulator without cloning it.
