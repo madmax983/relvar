@@ -45,7 +45,7 @@ const WAL_MAGIC: &[u8; 8] = b"RELVAR01";
 ///
 /// // Flush ensures durability
 /// wal.flush().unwrap();
-/// ```
+/// ```ignore
 pub struct WalManager {
     /// The log file.
     log_file: File,

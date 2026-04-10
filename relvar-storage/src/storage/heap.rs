@@ -94,7 +94,7 @@ pub enum HeapError {
 /// ┌─────────────────────────────────────────────────────────────┐
 /// │ slot_count │ slot[0] │ slot[1] │ ... │ free space │ tuples  │
 /// └─────────────────────────────────────────────────────────────┘
-/// ```
+/// ```ignore
 ///
 /// # TTM Compliance
 ///
@@ -125,7 +125,7 @@ pub enum HeapError {
 /// // Scan all tuples
 /// let tuples = heap.scan().unwrap();
 /// assert_eq!(tuples.len(), 2);
-/// ```
+/// ```ignore
 pub struct HeapFile {
     /// The underlying page file for storage.
     page_file: PageFile,
@@ -231,14 +231,14 @@ impl HeapFile {
     /// Returns [`HeapError::Page`] if the file cannot be created.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::storage::heap::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use tempfile::tempdir;
     /// let dir = tempdir().unwrap();
     /// let rel_type = RelationType::new(TupleType::new());
     /// let heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
-    /// ```
+    /// ```ignore
     pub fn create<P: AsRef<Path>>(path: P, relation_type: RelationType) -> Result<Self, HeapError> {
         let page_file = PageFile::create(path)?;
         Ok(Self {
@@ -261,7 +261,7 @@ impl HeapFile {
     /// Returns [`HeapError::Page`] if the file cannot be opened.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::storage::heap::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use tempfile::tempdir;
@@ -270,7 +270,7 @@ impl HeapFile {
     /// let rel_type = RelationType::new(TupleType::new());
     /// HeapFile::create(&path, rel_type.clone()).unwrap();
     /// let heap = HeapFile::open(&path, rel_type).unwrap();
-    /// ```
+    /// ```ignore
     pub fn open<P: AsRef<Path>>(path: P, relation_type: RelationType) -> Result<Self, HeapError> {
         let page_file = PageFile::open(path)?;
         Ok(Self {
@@ -299,7 +299,7 @@ impl HeapFile {
     /// Returns [`HeapError::Page`] if a page I/O error occurs.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::storage::heap::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use relvar_core::values::Tuple;
@@ -311,7 +311,7 @@ impl HeapFile {
     /// let mut heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
     /// let tuple = Tuple::new(tuple_type, HashMap::new()).unwrap();
     /// heap.insert_tuple(&tuple).unwrap();
-    /// ```
+    /// ```ignore
     pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<(), HeapError> {
         // Serialize the tuple
         let tuple_data = serialize_compat(tuple)?;
@@ -743,7 +743,7 @@ impl HeapFile {
     /// Returns [`HeapError::Serialization`] if tuple deserialization fails.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::storage::heap::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use relvar_core::values::Tuple;
@@ -757,7 +757,7 @@ impl HeapFile {
     /// heap.insert_tuple(&tuple).unwrap();
     /// let tuples = heap.scan().unwrap();
     /// assert_eq!(tuples.len(), 1);
-    /// ```
+    /// ```ignore
     pub fn scan(&mut self) -> Result<Vec<Tuple>, HeapError> {
         let mut results = Vec::new();
         let mut page_id = 0;
@@ -803,7 +803,7 @@ impl HeapFile {
     /// or if the relation cannot be constructed.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::storage::heap::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use tempfile::tempdir;
@@ -812,7 +812,7 @@ impl HeapFile {
     /// let mut heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
     /// let rel = heap.load_relation().unwrap();
     /// assert_eq!(rel.cardinality(), 0);
-    /// ```
+    /// ```ignore
     pub fn load_relation(&mut self) -> Result<Relation, HeapError> {
         let tuples = self.scan()?; // Already returns Vec<Tuple>
 
