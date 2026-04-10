@@ -34,6 +34,12 @@ pub const POINT_TYPE_NAME: &str = "Point";
 /// Defines and provides the required `ScalarType` representing a spatial point.
 ///
 /// A Point is a User-Defined Type wrapping a Relation with heading `{x: Float, y: Float}`.
+///
+/// # Example
+///
+/// ```ignore
+/// // Example
+/// ```
 pub fn point_type() -> ScalarType {
     let heading = TupleType::new()
         .with_attribute("x", ScalarType::Float)
