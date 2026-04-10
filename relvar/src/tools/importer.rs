@@ -460,9 +460,12 @@ pub fn from_csv<R: std::io::Read>(
     relation_type: RelationType,
     delimiter: char,
 ) -> Result<Relation, ImporterError> {
+    // Security memory constraint: Using a Capped Reader. We limit the input stream to 10MB to
+    // prevent unbounded malicious CSV payloads into memory.
+    let mut capped_reader = reader.take(10_000_000);
     let mut relation = Relation::new(relation_type.clone());
     let heading = relation_type.heading();
-    let mut reader = std::io::BufReader::new(reader);
+    let mut reader = std::io::BufReader::new(&mut capped_reader);
 
     // Helper for safe line reading
     fn read_line_safe<B: BufRead>(
@@ -568,6 +571,12 @@ pub fn from_csv<R: std::io::Read>(
             .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
 
         line_idx += 1;
+    }
+
+    if capped_reader.limit() == 0 {
+        return Err(ImporterError::LimitExceeded(
+            "Global size limit exceeded: > 10MB".to_string(),
+        ));
     }
 
     Ok(relation)
