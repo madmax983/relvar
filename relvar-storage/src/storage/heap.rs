@@ -561,6 +561,24 @@ impl HeapFile {
             (sp, tuples)
         };
 
+        let slot_number =
+            Self::prepare_insert(&mut slotted_page, &mut existing_tuples, tuple_data)?;
+
+        // Serialize the updated page with all tuples
+        let page_data = self.serialize_slotted_page_with_tuples(&slotted_page, &existing_tuples)?;
+
+        // Write the page
+        let updated_page = Page::from_data(page_id, page_data)?;
+        self.page_file.write_page(&updated_page)?;
+
+        Ok(slot_number)
+    }
+
+    fn prepare_insert(
+        slotted_page: &mut SlottedPage,
+        existing_tuples: &mut Vec<Vec<u8>>,
+        tuple_data: &[u8],
+    ) -> Result<u32, HeapError> {
         // Find free slot or add new one
         let slot_number =
             Self::find_or_allocate_slot(&mut slotted_page.slots, &mut slotted_page.slot_count);
@@ -592,16 +610,9 @@ impl HeapFile {
         // Repack slots
         Self::repack_slots(
             &mut slotted_page.slots,
-            &existing_tuples,
+            existing_tuples,
             USABLE_PAGE_SIZE_V1,
         )?;
-
-        // Serialize the updated page with all tuples
-        let page_data = self.serialize_slotted_page_with_tuples(&slotted_page, &existing_tuples)?;
-
-        // Write the page
-        let updated_page = Page::from_data(page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
 
         Ok(slot_number)
     }
@@ -940,6 +951,32 @@ impl HeapFile {
             (vp, tuples)
         };
 
+        let slot_number = Self::prepare_insert_versioned(
+            &mut versioned_page,
+            &mut existing_tuples,
+            tuple_data,
+            txn_id,
+            prev_version,
+        )?;
+
+        // Serialize the updated page with all tuples
+        let page_data =
+            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+
+        // Write the page
+        let updated_page = Page::from_data(page_id, page_data)?;
+        self.page_file.write_page(&updated_page)?;
+
+        Ok(slot_number)
+    }
+
+    fn prepare_insert_versioned(
+        versioned_page: &mut VersionedSlottedPage,
+        existing_tuples: &mut Vec<Vec<u8>>,
+        tuple_data: &[u8],
+        txn_id: crate::wal::TransactionId,
+        prev_version: Option<TupleId>,
+    ) -> Result<u32, HeapError> {
         // Find free slot or add new one
         // NOTE: We do this BEFORE space calculation so we know the final slot count
         let slot_number =
@@ -961,15 +998,7 @@ impl HeapFile {
             prev_version,
         });
 
-        Self::repack_and_verify_space(&mut versioned_page, &existing_tuples, USABLE_PAGE_SIZE_V2)?;
-
-        // Serialize the updated page with all tuples
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
-
-        // Write the page
-        let updated_page = Page::from_data(page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
+        Self::repack_and_verify_space(versioned_page, existing_tuples, USABLE_PAGE_SIZE_V2)?;
 
         Ok(slot_number)
     }
@@ -987,24 +1016,7 @@ impl HeapFile {
         const HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
 
-        if slot_dir.len() > u32::MAX as usize {
-            return Err(HeapError::Serialization(
-                "Slot directory too large to be represented by u32 length prefix".to_string(),
-            ));
-        }
-
-        if slot_dir
-            .len()
-            .checked_add(HEADER_SIZE)
-            .ok_or_else(|| HeapError::Serialization("Header size overflow".to_string()))?
-            > USABLE_PAGE_SIZE
-        {
-            return Err(HeapError::Serialization(format!(
-                "slot directory too large for page: {} > {}",
-                slot_dir.len() + HEADER_SIZE,
-                USABLE_PAGE_SIZE
-            )));
-        }
+        Self::verify_versioned_page_size(&slot_dir, HEADER_SIZE, USABLE_PAGE_SIZE)?;
 
         // Create page buffer
         let mut data = vec![0u8; USABLE_PAGE_SIZE];
@@ -1019,29 +1031,71 @@ impl HeapFile {
         // Copy slot directory after header
         data[HEADER_SIZE..HEADER_SIZE + slot_dir.len()].copy_from_slice(&slot_dir);
 
-        // Copy each tuple at its designated offset
+        Self::copy_versioned_tuples_to_buffer(
+            &mut data,
+            versioned_page,
+            tuples,
+            HEADER_SIZE,
+            slot_dir.len(),
+        )?;
+
+        Ok(data)
+    }
+
+    fn verify_versioned_page_size(
+        slot_dir: &[u8],
+        header_size: usize,
+        usable_size: usize,
+    ) -> Result<(), HeapError> {
+        if slot_dir.len() > u32::MAX as usize {
+            return Err(HeapError::Serialization(
+                "Slot directory too large to be represented by u32 length prefix".to_string(),
+            ));
+        }
+
+        if slot_dir
+            .len()
+            .checked_add(header_size)
+            .ok_or_else(|| HeapError::Serialization("Header size overflow".to_string()))?
+            > usable_size
+        {
+            return Err(HeapError::Serialization(format!(
+                "slot directory too large for page: {} > {}",
+                slot_dir.len() + header_size,
+                usable_size
+            )));
+        }
+        Ok(())
+    }
+
+    fn copy_versioned_tuples_to_buffer(
+        data: &mut [u8],
+        versioned_page: &VersionedSlottedPage,
+        tuples: &[Vec<u8>],
+        header_size: usize,
+        slot_dir_len: usize,
+    ) -> Result<(), HeapError> {
         for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
             if let Some(entry) = slot_entry {
                 let offset = entry.offset as usize;
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
                     // Validate that offset + length doesn't exceed buffer and doesn't overlap header
-                    if offset + length > data.len() || offset < HEADER_SIZE + slot_dir.len() {
+                    if offset + length > data.len() || offset < header_size + slot_dir_len {
                         return Err(HeapError::Serialization(format!(
                             "Slot {} points outside buffer or overlaps header: offset={}, length={}, buffer_len={}, header_end={}",
                             idx,
                             offset,
                             length,
                             data.len(),
-                            HEADER_SIZE + slot_dir.len()
+                            header_size + slot_dir_len
                         )));
                     }
                     data[offset..offset + length].copy_from_slice(&tuples[idx]);
                 }
             }
         }
-
-        Ok(data)
+        Ok(())
     }
 
     /// Checks if a page is a versioned page (MVCC).
@@ -1323,64 +1377,81 @@ impl HeapFile {
                 continue;
             }
 
-            // Try to deserialize as versioned page
-            let mut versioned_page = match self.deserialize_versioned_page(&page) {
-                Ok(vp) => vp,
-                Err(_) => {
-                    // Not a versioned page or corrupted, skip
-                    page_id += 1;
-                    continue;
-                }
-            };
-
-            // Extract existing tuple data
-            let mut existing_tuples =
-                self.extract_all_versioned_tuples(&page, &versioned_page.slots)?;
-
-            let mut page_modified = false;
-
-            // Check each slot for dead versions
-            for (idx, slot_option) in versioned_page.slots.iter_mut().enumerate() {
-                if let Some(slot) = slot_option {
-                    // Check if this version is dead
-                    if let Some(xmax) = slot.xmax {
-                        // Has xmax - was deleted or updated
-                        if committed.contains(&xmax) {
-                            // xmax transaction committed
-                            // Check if it's old enough (before oldest active)
-                            // Note: We need to compare transaction IDs as proxy for LSN
-                            // since we don't track commit LSNs yet
-                            if xmax.value() < oldest_active_lsn.value() {
-                                // This version is dead - remove it
-                                *slot_option = None;
-                                existing_tuples[idx] = Vec::new();
-                                removed_count += 1;
-                                page_modified = true;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Write page back if modified
-            if page_modified {
-                // Repack slots
-                Self::repack_versioned_slots(
-                    &mut versioned_page.slots,
-                    &existing_tuples,
-                    USABLE_PAGE_SIZE_V2,
-                )?;
-
-                let page_data =
-                    self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
-                let updated_page = Page::from_data(page_id, page_data)?;
-                self.page_file.write_page(&updated_page)?;
-            }
+            removed_count += self.gc_process_page(page_id, &page, oldest_active_lsn, committed)?;
 
             page_id += 1;
         }
 
         Ok(removed_count)
+    }
+
+    fn gc_process_page(
+        &mut self,
+        page_id: PageId,
+        page: &Page,
+        oldest_active_lsn: crate::wal::Lsn,
+        committed: &std::collections::HashSet<crate::wal::TransactionId>,
+    ) -> Result<usize, HeapError> {
+        // Try to deserialize as versioned page
+        let mut versioned_page = match self.deserialize_versioned_page(page) {
+            Ok(vp) => vp,
+            Err(_) => return Ok(0), // Not a versioned page or corrupted, skip
+        };
+
+        // Extract existing tuple data
+        let mut existing_tuples = self.extract_all_versioned_tuples(page, &versioned_page.slots)?;
+
+        let mut removed_count = 0;
+        let mut page_modified = false;
+
+        // Check each slot for dead versions
+        for (idx, slot_option) in versioned_page.slots.iter_mut().enumerate() {
+            if let Some(slot) = slot_option
+                && Self::is_dead_version(slot, oldest_active_lsn, committed)
+            {
+                // This version is dead - remove it
+                *slot_option = None;
+                existing_tuples[idx] = Vec::new();
+                removed_count += 1;
+                page_modified = true;
+            }
+        }
+
+        // Write page back if modified
+        if page_modified {
+            // Repack slots
+            Self::repack_versioned_slots(
+                &mut versioned_page.slots,
+                &existing_tuples,
+                USABLE_PAGE_SIZE_V2,
+            )?;
+
+            let page_data =
+                self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+            let updated_page = Page::from_data(page_id, page_data)?;
+            self.page_file.write_page(&updated_page)?;
+        }
+
+        Ok(removed_count)
+    }
+
+    fn is_dead_version(
+        slot: &VersionedSlotEntry,
+        oldest_active_lsn: crate::wal::Lsn,
+        committed: &std::collections::HashSet<crate::wal::TransactionId>,
+    ) -> bool {
+        // Check if this version is dead
+        if let Some(xmax) = slot.xmax {
+            // Has xmax - was deleted or updated
+            if committed.contains(&xmax) {
+                // xmax transaction committed
+                // Check if it's old enough (before oldest active)
+                // Note: We need to compare transaction IDs as proxy for LSN
+                // since we don't track commit LSNs yet
+                return xmax.value() < oldest_active_lsn.value();
+            }
+        }
+        false
     }
 
     /// Scans all visible tuples for a given transaction snapshot.
