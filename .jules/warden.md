@@ -225,3 +225,11 @@ The CSV importer in `relvar/src/tools/importer.rs` enforced its `MAX_IMPORT_ROWS
 
 **Defense:**
 Modified the limit check in the CSV row iteration loop to validate against the processed row count (`line_idx >= MAX_IMPORT_ROWS`) rather than the deduplicated relation cardinality. This ensures the parsing engine stops strictly after evaluating 100,000 incoming lines, regardless of their content.
+## 2026-04-05 - Image Processing Memory Exhaustion DoS and Integer Overflow Panic
+**Threat:**
+The image processing module (`relvar::experimental::image::save`, `load` and `apply_kernel`) relied on unchecked arithmetic and dynamic collections `vec![0u8; width * height * 3]` when transforming between Relations and raw RGB image bytes. An attacker could construct a malicious Relation with just two tuples containing extreme spatial coordinate values (e.g. `x = -9223372036854775808i64` and `x = 9223372036854775807i64`). When calculating image bounding boxes, this resulted in integer subtraction panics or out-of-memory panics (DoS) due to unbounded `vec!` allocation sizes.
+
+**Defense:**
+1. Replaced unchecked arithmetic with safe `checked_sub`, `checked_add`, `saturating_add`, and `saturating_mul`.
+2. Fallback coordinates safely map out-of-bounds calculations using `unwrap_or(usize::MAX)` and standard size checks to gracefully skip invalid points.
+3. Implemented a strict `width.saturating_mul(height) > 10_000_000` bounds check, preventing any allocation over ~30MB memory and safely returning an empty image or relation `(0, 0, Vec::new())` if coordinates exceed this threshold.

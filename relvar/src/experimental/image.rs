@@ -45,10 +45,15 @@ pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
     let rel_type = RelationType::new(heading);
     let mut relation = Relation::new(rel_type);
 
+    // Enforce size caps for imported images to prevent CPU DoS
+    if width.saturating_mul(height) > 10_000_000 {
+        return relation;
+    }
+
     for y in 0..height {
         for x in 0..width {
-            let idx = (y * width + x) * 3;
-            if idx + 2 < data.len() {
+            let idx = y.saturating_mul(width).saturating_add(x).saturating_mul(3);
+            if idx.saturating_add(2) < data.len() {
                 let r = data[idx] as i64;
                 let g = data[idx + 1] as i64;
                 let b = data[idx + 2] as i64;
@@ -104,9 +109,24 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         }
     }
 
-    let width = (max_x - min_x + 1) as usize;
-    let height = (max_y - min_y + 1) as usize;
-    let mut data = vec![0u8; width * height * 3];
+    let width = max_x
+        .checked_sub(min_x)
+        .and_then(|w| w.checked_add(1))
+        .and_then(|w| usize::try_from(w).ok())
+        .unwrap_or(0);
+
+    let height = max_y
+        .checked_sub(min_y)
+        .and_then(|h| h.checked_add(1))
+        .and_then(|h| usize::try_from(h).ok())
+        .unwrap_or(0);
+
+    // Limit image resolution to prevent memory exhaustion DoS (e.g. 10 million pixels)
+    if width.saturating_mul(height) > 10_000_000 {
+        return (0, 0, Vec::new());
+    }
+
+    let mut data = vec![0u8; width.saturating_mul(height).saturating_mul(3)];
 
     for tuple in relation.tuples() {
         let x = tuple.get_typed::<i64>("x").unwrap_or(0);
@@ -115,14 +135,25 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         let g = tuple.get_typed::<i64>("g").unwrap_or(0).clamp(0, 255) as u8;
         let b = tuple.get_typed::<i64>("b").unwrap_or(0).clamp(0, 255) as u8;
 
-        let img_x = (x - min_x) as usize;
-        let img_y = (y - min_y) as usize;
+        let img_x = x
+            .checked_sub(min_x)
+            .and_then(|v| usize::try_from(v).ok())
+            .unwrap_or(usize::MAX);
+        let img_y = y
+            .checked_sub(min_y)
+            .and_then(|v| usize::try_from(v).ok())
+            .unwrap_or(usize::MAX);
 
         if img_x < width && img_y < height {
-            let idx = (img_y * width + img_x) * 3;
-            data[idx] = r;
-            data[idx + 1] = g;
-            data[idx + 2] = b;
+            let idx = img_y
+                .saturating_mul(width)
+                .saturating_add(img_x)
+                .saturating_mul(3);
+            if idx.saturating_add(2) < data.len() {
+                data[idx] = r;
+                data[idx + 1] = g;
+                data[idx + 2] = b;
+            }
         }
     }
 
@@ -177,31 +208,31 @@ pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
         // Extend 1: Calculate target coordinates
         let with_coords = relation
             .extend("tx", ScalarType::Int, move |t| {
-                let x = t.get_typed::<i64>("x").unwrap();
-                ScalarValue::Int(x + dx)
+                let x = t.get_typed::<i64>("x").unwrap_or(0);
+                ScalarValue::Int(x.saturating_add(dx))
             })
             .unwrap()
             .extend("ty", ScalarType::Int, move |t| {
-                let y = t.get_typed::<i64>("y").unwrap();
-                ScalarValue::Int(y + dy)
+                let y = t.get_typed::<i64>("y").unwrap_or(0);
+                ScalarValue::Int(y.saturating_add(dy))
             })
             .unwrap();
 
         // Extend 2: Calculate weighted color components
         let with_weights = with_coords
             .extend("wr", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("r").unwrap();
-                ScalarValue::Int(v * weight)
+                let v = t.get_typed::<i64>("r").unwrap_or(0);
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap()
             .extend("wg", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("g").unwrap();
-                ScalarValue::Int(v * weight)
+                let v = t.get_typed::<i64>("g").unwrap_or(0);
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap()
             .extend("wb", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("b").unwrap();
-                ScalarValue::Int(v * weight)
+                let v = t.get_typed::<i64>("b").unwrap_or(0);
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap();
 
@@ -253,17 +284,17 @@ pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
     // Extend with final values: sum / total_weight
     let normalized = summarized
         .extend("final_r", ScalarType::Int, move |t| {
-            let s = t.get_typed::<i64>("sum_r").unwrap();
+            let s = t.get_typed::<i64>("sum_r").unwrap_or(0);
             ScalarValue::Int(s / total_weight)
         })
         .unwrap()
         .extend("final_g", ScalarType::Int, move |t| {
-            let s = t.get_typed::<i64>("sum_g").unwrap();
+            let s = t.get_typed::<i64>("sum_g").unwrap_or(0);
             ScalarValue::Int(s / total_weight)
         })
         .unwrap()
         .extend("final_b", ScalarType::Int, move |t| {
-            let s = t.get_typed::<i64>("sum_b").unwrap();
+            let s = t.get_typed::<i64>("sum_b").unwrap_or(0);
             ScalarValue::Int(s / total_weight)
         })
         .unwrap();
