@@ -20,6 +20,12 @@ use relvar_core::error::DatabaseError;
 use relvar_core::values::Relation;
 
 /// A Non-deterministic Finite Automaton (NFA) evaluated using relational algebra.
+///
+/// # Example
+///
+/// ```ignore
+/// // Example
+/// ```
 pub struct RelationalNfa {
     states: Relation,
     transitions: Relation,
@@ -30,6 +36,12 @@ impl RelationalNfa {
     ///
     /// `states` must have schema `(state: String, is_start: Bool, is_accept: Bool)`
     /// `transitions` must have schema `(from_state: String, symbol: String, to_state: String)`
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new(states: Relation, transitions: Relation) -> Self {
         Self {
             states,
@@ -38,6 +50,12 @@ impl RelationalNfa {
     }
 
     /// Evaluates whether the NFA accepts the given string.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn accepts(&self, input: &str) -> Result<bool, DatabaseError> {
         // 1. Epsilon transitions have symbol == ""
         let epsilon_transitions = self

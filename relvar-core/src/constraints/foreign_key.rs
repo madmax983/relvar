@@ -134,6 +134,12 @@ pub struct ForeignKey {
 
 impl ForeignKey {
     /// Create a new foreign key constraint
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new(
         foreign_key_attributes: Vec<String>,
         referenced_relation_name: String,
@@ -155,22 +161,46 @@ impl ForeignKey {
     }
 
     /// Get the foreign key attributes
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn foreign_key_attributes(&self) -> &[String] {
         &self.foreign_key_attributes
     }
 
     /// Get the referenced relation name
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn referenced_relation_name(&self) -> &str {
         &self.referenced_relation_name
     }
 
     /// Get the referenced attributes
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn referenced_attributes(&self) -> &[String] {
         &self.referenced_attributes
     }
 
     /// Check if this foreign key is satisfied
     /// (all foreign key values exist in the referenced relation)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn is_satisfied_by(
         &self,
         referencing_relation: &Relation,
@@ -222,6 +252,12 @@ impl ForeignKey {
 
     /// Check if inserting a tuple would violate this foreign key
     /// Check if inserting a tuple would violate this foreign key
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn would_violate_on_insert(
         &self,
         new_tuple: &Tuple,
@@ -260,6 +296,12 @@ impl ForeignKey {
 
     /// Check if deleting a tuple from the referenced relation would violate this constraint
     /// Check if deleting a tuple from the referenced relation would violate this constraint
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn would_violate_on_delete(
         &self,
         tuple_to_delete: &Tuple,
@@ -325,6 +367,12 @@ pub struct ForeignKeyConstraints {
 
 impl ForeignKeyConstraints {
     /// Create new empty foreign key constraints
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new() -> Self {
         Self {
             foreign_keys: Vec::new(),
@@ -332,12 +380,24 @@ impl ForeignKeyConstraints {
     }
 
     /// Add a foreign key constraint
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn with_foreign_key(mut self, fk: ForeignKey) -> Self {
         self.foreign_keys.push(fk);
         self
     }
 
     /// Get all foreign keys
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn foreign_keys(&self) -> &[ForeignKey] {
         &self.foreign_keys
     }

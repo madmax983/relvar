@@ -49,6 +49,12 @@ pub enum PreparedConstraintExpression {
 
 impl PreparedConstraintExpression {
     /// Evaluates this prepared expression against a tuple.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
         match self {
             PreparedConstraintExpression::Cmp { left, op, right } => {

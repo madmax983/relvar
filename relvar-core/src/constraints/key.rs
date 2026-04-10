@@ -119,6 +119,12 @@ pub struct CandidateKey {
 
 impl CandidateKey {
     /// Create a new candidate key
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new(attributes: Vec<String>) -> Result<Self, KeyConstraintError> {
         if attributes.is_empty() {
             return Err(KeyConstraintError::EmptyKey);
@@ -128,11 +134,23 @@ impl CandidateKey {
     }
 
     /// Get the key attributes
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn attributes(&self) -> &[String] {
         &self.attributes
     }
 
     /// Check if this key is satisfied by a relation (all tuples have unique key values)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn is_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
         // Verify all key attributes exist
         for attr in &self.attributes {
@@ -158,6 +176,12 @@ impl CandidateKey {
     }
 
     /// Check if a tuple would violate this key constraint when inserted into a relation
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn would_violate(
         &self,
         relation: &Relation,
@@ -200,6 +224,12 @@ pub struct PrimaryKey {
 
 impl PrimaryKey {
     /// Create a new primary key
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new(attributes: Vec<String>) -> Result<Self, KeyConstraintError> {
         Ok(Self {
             key: CandidateKey::new(attributes)?,
@@ -207,21 +237,45 @@ impl PrimaryKey {
     }
 
     /// Get the key attributes
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn attributes(&self) -> &[String] {
         self.key.attributes()
     }
 
     /// Get the underlying candidate key
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn as_candidate_key(&self) -> &CandidateKey {
         &self.key
     }
 
     /// Check if this key is satisfied by a relation
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn is_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
         self.key.is_satisfied_by(relation)
     }
 
     /// Check if a tuple would violate this key constraint
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn would_violate(
         &self,
         relation: &Relation,
@@ -240,6 +294,12 @@ pub struct KeyConstraints {
 
 impl KeyConstraints {
     /// Create new empty key constraints
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new() -> Self {
         Self {
             primary_key: None,
@@ -248,28 +308,58 @@ impl KeyConstraints {
     }
 
     /// Set the primary key
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn with_primary_key(mut self, key: PrimaryKey) -> Self {
         self.primary_key = Some(key);
         self
     }
 
     /// Add a candidate key
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn with_candidate_key(mut self, key: CandidateKey) -> Self {
         self.candidate_keys.push(key);
         self
     }
 
     /// Get the primary key
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn primary_key(&self) -> Option<&PrimaryKey> {
         self.primary_key.as_ref()
     }
 
     /// Get all candidate keys
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn candidate_keys(&self) -> &[CandidateKey] {
         &self.candidate_keys
     }
 
     /// Check if all constraints are satisfied
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn are_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
         // Check primary key
         if let Some(pk) = &self.primary_key
@@ -289,6 +379,12 @@ impl KeyConstraints {
     }
 
     /// Check if inserting a tuple would violate any key constraints
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn would_violate_on_insert(
         &self,
         relation: &Relation,

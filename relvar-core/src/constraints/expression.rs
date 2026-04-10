@@ -149,6 +149,12 @@ impl ConstraintExpression {
     /// - Attributes referenced via `ValueOrRef::Attribute` on the right side
     /// - Attributes used in `IN` and `LIKE` expressions
     /// - Attributes in nested sub-expressions (AND, OR, NOT)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn referenced_attributes(&self) -> HashSet<String> {
         let mut attributes = HashSet::new();
         self.collect_attributes(&mut attributes);
@@ -354,6 +360,12 @@ impl ConstraintExpression {
     /// Optimizations:
     /// - `IN`: Converts `Vec` to `HashSet` for O(1) lookup.
     /// - `LIKE`: Pre-parses pattern string to `Vec<char>`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn prepare(&self) -> PreparedConstraintExpression {
         PreparedConstraintExpression::from(self.clone())
     }

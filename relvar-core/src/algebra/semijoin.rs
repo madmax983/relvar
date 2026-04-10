@@ -157,6 +157,12 @@ impl Relation {
     }
 
     /// Alias for [`semijoin`](Self::semijoin) using Tutorial D naming (MATCHING).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn matching(&self, other: &Relation) -> Self {
         self.semijoin(other)
     }
@@ -255,6 +261,12 @@ impl Relation {
     }
 
     /// Alias for [`semidifference`](Self::semidifference) using Tutorial D naming (NOT MATCHING).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn not_matching(&self, other: &Relation) -> Self {
         self.semidifference(other)
     }

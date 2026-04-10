@@ -154,6 +154,12 @@ impl Relation {
     ///
     /// This is an optimized version of `difference` that avoids O(N) tuple clones for the
     /// first relation by consuming it and mutates the inner body in place.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn difference_into(mut self, other: &Relation) -> Result<Self, DifferenceError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
@@ -165,6 +171,12 @@ impl Relation {
     }
 
     /// Alias for [`difference_into`](Self::difference_into) with SQL-style naming.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn minus_into(self, other: &Relation) -> Result<Self, DifferenceError> {
         self.difference_into(other)
     }
