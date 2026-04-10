@@ -56,6 +56,9 @@ Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, 
 ## 2024-03-31 - Optimize String Allocations in RVA extraction
 **Learning:** Calling `.to_string()` repeatedly inside a hot loop (like grouping tuples over thousands of rows) severely impacts performance by dynamically allocating memory for strings over and over. Pre-allocating elements into arrays/vectors avoids the recurring overhead.
 **Action:** Lifted `attr.to_string()` out of the `relation.tuples()` loop in `relvar-core/src/algebra/group.rs` when generating attributes for Relational-Valued Attributes (RVA), storing them into `attr_names: Vec<String>` and doing `.clone()` instead. Yielded a 31% reduction in latency for a 10K record dataset.
+## 2024-05-24 - [Avoid cloning heading per tuple in ungroup]
+ **Learning:** In tight loops over collections like tuples, implicit cloning of `Arc<T>` wrappers introduces unnecessary atomic reference counting overhead, degrading performance.
+ **Action:** Passed `std::sync::Arc::clone(result_heading_arc)` directly instead of `.clone()` on the struct (which can implicitly be a deep clone depending on the implementation) or `result_heading_arc.clone()` to avoid overhead inside the tuple construction loop.
 
 ## 2024-05-25 - Replacing chained allocations with `_into` variants
 **Learning:** Relational algebra operations like `tclose` and `Delta::compose` chained operations like `.difference()` and `.union()` which created and cloned new `Relation`s sequentially, causing `O(N^2)` memory consumption and execution time inside iterative loops.
