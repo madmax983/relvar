@@ -152,11 +152,13 @@ impl<E: StorageEngine> Database<E> {
         let (new_relation, delete_count) =
             compute_relation_after_delete(current_relation, predicate)?;
 
-        self.constraints.validate_referencing_foreign_keys(
+        if let Err(e) = self.constraints.validate_referencing_foreign_keys(
             &mut self.engine,
             relation_name,
             &new_relation,
-        )?;
+        ) {
+            return Err(e.into());
+        }
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -261,11 +263,13 @@ impl<E: StorageEngine> Database<E> {
 
         self.validate_relation_constraints(relation_name, &new_relation)?;
 
-        self.constraints.validate_referencing_foreign_keys(
+        if let Err(e) = self.constraints.validate_referencing_foreign_keys(
             &mut self.engine,
             relation_name,
             &new_relation,
-        )?;
+        ) {
+            return Err(e.into());
+        }
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -293,19 +297,23 @@ impl<E: StorageEngine> Database<E> {
         self.constraints
             .validate_tuple_type(&self.engine, relation_name, tuple)?;
 
-        self.constraints.validate_tuple_content_constraints(
+        if let Err(e) = self.constraints.validate_tuple_content_constraints(
             &mut self.engine,
             relation_name,
             tuple,
-        )?;
+        ) {
+            return Err(e.into());
+        }
 
         // Load current relation to check key constraints
         let current_relation = self.query(relation_name)?;
-        self.constraints.validate_key_constraints_single_tuple(
+        if let Err(e) = self.constraints.validate_key_constraints_single_tuple(
             relation_name,
             tuple,
             &current_relation,
-        )?;
+        ) {
+            return Err(e.into());
+        }
 
         Ok(())
     }
@@ -324,11 +332,13 @@ impl<E: StorageEngine> Database<E> {
         // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
         // NOTE: In a production system we'd only validate changed tuples, but for now
         // we validate everything to ensure total consistency.
-        self.constraints.validate_tuple_content_constraints_bulk(
+        if let Err(e) = self.constraints.validate_tuple_content_constraints_bulk(
             &mut self.engine,
             relation_name,
             relation,
-        )?;
+        ) {
+            return Err(e.into());
+        }
 
         Ok(())
     }

@@ -211,13 +211,11 @@ impl<E: StorageEngine> Database<E> {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
         }
 
-        self.virtual_relvars.insert(
-            name.to_string(),
-            VirtualRelvarDefinition {
-                relation_type,
-                evaluator,
-            },
-        );
+        let def = VirtualRelvarDefinition {
+            relation_type,
+            evaluator,
+        };
+        self.virtual_relvars.insert(name.to_string(), def);
 
         Ok(())
     }

@@ -114,9 +114,10 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: KeyConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self
-            .constraints
-            .set_key_constraints(&mut self.engine, relation_name, constraints)?)
+        let res =
+            self.constraints
+                .set_key_constraints(&mut self.engine, relation_name, constraints);
+        res.map_err(DatabaseError::from)
     }
 
     /// Set foreign key constraints for a relation.
@@ -157,11 +158,12 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: ForeignKeyConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self.constraints.set_foreign_key_constraints(
+        let res = self.constraints.set_foreign_key_constraints(
             &mut self.engine,
             relation_name,
             constraints,
-        )?)
+        );
+        res.map_err(DatabaseError::from)
     }
 
     /// Set type constraints for an attribute.
@@ -193,12 +195,13 @@ impl<E: StorageEngine> Database<E> {
         attribute_name: &str,
         constraints: AttributeConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self.constraints.set_type_constraints(
+        let res = self.constraints.set_type_constraints(
             &mut self.engine,
             relation_name,
             attribute_name,
             constraints,
-        )?)
+        );
+        res.map_err(DatabaseError::from)
     }
 
     /// Set CHECK constraints for a relation.
@@ -238,8 +241,9 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: CheckConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self
-            .constraints
-            .set_check_constraints(&mut self.engine, relation_name, constraints)?)
+        let res =
+            self.constraints
+                .set_check_constraints(&mut self.engine, relation_name, constraints);
+        res.map_err(DatabaseError::from)
     }
 }
