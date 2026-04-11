@@ -127,7 +127,7 @@ fn test_database_insert_type_constraint_violation() {
 fn test_database_insert_duplicate_primary_key() {
     let mut db = setup();
 
-    let pk = relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = relvar_core::constraints::CandidateKey::new(vec!["id".to_string()]).unwrap();
     let key_constraints = relvar_core::constraints::KeyConstraints::new().with_primary_key(pk);
     db.set_key_constraints("TEST", key_constraints).unwrap();
 
@@ -179,7 +179,7 @@ fn test_database_update_referencing_foreign_keys_violation() {
 fn test_database_update_key_constraint_violation() {
     let mut db = setup();
 
-    let pk = relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = relvar_core::constraints::CandidateKey::new(vec!["id".to_string()]).unwrap();
     let key_constraints = relvar_core::constraints::KeyConstraints::new().with_primary_key(pk);
     db.set_key_constraints("TEST", key_constraints).unwrap();
 

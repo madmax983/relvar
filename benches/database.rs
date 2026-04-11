@@ -3,7 +3,7 @@ use criterion::{
 };
 use relvar::Database;
 use relvar::constraints::{
-    CheckConstraint, CheckConstraints, ConstraintExpression, KeyConstraints, PrimaryKey,
+    CheckConstraint, CheckConstraints, ConstraintExpression, KeyConstraints, CandidateKey,
     ValueOrRef,
 };
 use relvar::tuple;
@@ -115,7 +115,7 @@ fn bench_insert_with_key_constraint(c: &mut Criterion) {
                 || {
                     // Setup: create database, relvar, and add constraint
                     let (_temp_dir, mut db) = create_database_with_relvar();
-                    let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+                    let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
                     db.set_key_constraints("EMP", KeyConstraints::new().with_primary_key(pk))
                         .unwrap();
                     (_temp_dir, db)

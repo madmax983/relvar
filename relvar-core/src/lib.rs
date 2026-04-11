@@ -117,8 +117,8 @@ pub use values::{Relation, ScalarValue, Tuple};
 pub use constraints::{
     AttributeConstraints, CandidateKey, CheckConstraint, CheckConstraintError, CheckConstraints,
     CmpOp, ConstraintExpression, ConstraintManagerError, ExpressionError, ForeignKey,
-    ForeignKeyConstraints, ForeignKeyError, KeyConstraintError, KeyConstraints, PrimaryKey,
-    TypeConstraint, TypeConstraintError, ValueOrRef,
+    ForeignKeyConstraints, ForeignKeyError, KeyConstraintError, KeyConstraints, TypeConstraint,
+    TypeConstraintError, ValueOrRef,
 };
 
 // Re-export storage engine types

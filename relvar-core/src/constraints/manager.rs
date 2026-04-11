@@ -474,8 +474,7 @@ impl ConstraintManager {
 mod tests {
     use super::*;
     use crate::constraints::{
-        AttributeConstraints, CandidateKey, CheckConstraint, ConstraintExpression, PrimaryKey,
-        TypeConstraint,
+        AttributeConstraints, CandidateKey, CheckConstraint, ConstraintExpression, TypeConstraint,
     };
     use crate::storage_engine::InMemoryEngine;
     use crate::tuple;
@@ -569,7 +568,7 @@ mod tests {
         let mut engine = setup_engine();
         let mut manager = ConstraintManager::new();
 
-        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
         let ck = CandidateKey::new(vec!["id".to_string()]).unwrap();
         let keys = KeyConstraints::new()
             .with_primary_key(pk)
@@ -610,7 +609,7 @@ mod tests {
     #[test]
     fn should_return_error_when_bulk_key_constraints_violated() {
         let manager = ConstraintManager::new();
-        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
         let ck = CandidateKey::new(vec!["id".to_string()]).unwrap();
         let keys = KeyConstraints::new()
             .with_primary_key(pk)
@@ -637,7 +636,7 @@ mod tests {
         let mut engine = setup_engine();
         let mut manager = ConstraintManager::new();
 
-        let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+        let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
         let ck = CandidateKey::new(vec!["id".to_string()]).unwrap();
         let keys = KeyConstraints::new()
             .with_primary_key(pk)

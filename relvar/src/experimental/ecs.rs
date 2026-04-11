@@ -126,8 +126,8 @@ impl<E: StorageEngine> World<E> {
         self.db.create_relvar(&rel_name, rel_type)?;
 
         // Set Primary Key on entity_id
-        use relvar_core::constraints::{KeyConstraints, PrimaryKey};
-        let pk = PrimaryKey::new(vec![ENTITY_ID_ATTR.to_string()])
+        use relvar_core::constraints::{CandidateKey, KeyConstraints};
+        let pk = CandidateKey::new(vec![ENTITY_ID_ATTR.to_string()])
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         let constraints = KeyConstraints::new().with_primary_key(pk);
         self.db.set_key_constraints(&rel_name, constraints)?;

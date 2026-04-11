@@ -104,13 +104,13 @@ fn test_transactions() {
 
 #[test]
 fn test_primary_key_constraint() {
-    use crate::constraints::{KeyConstraints, PrimaryKey};
+    use crate::constraints::{CandidateKey, KeyConstraints};
 
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
     db.create_relvar("TEST", test_rel_type()).unwrap();
 
     // Add primary key constraint
-    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
     let constraints = KeyConstraints::new().with_primary_key(pk);
     db.set_key_constraints("TEST", constraints).unwrap();
 
@@ -158,7 +158,7 @@ fn test_candidate_key_constraint() {
 
 #[test]
 fn test_foreign_key_constraint() {
-    use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+    use crate::constraints::{CandidateKey, ForeignKey, ForeignKeyConstraints, KeyConstraints};
 
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
@@ -178,7 +178,7 @@ fn test_foreign_key_constraint() {
     db.create_relvar("EMP", child_type).unwrap();
 
     // Add primary key to parent
-    let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["dept_id".to_string()]).unwrap();
     let dept_constraints = KeyConstraints::new().with_primary_key(pk);
     db.set_key_constraints("DEPT", dept_constraints).unwrap();
 
@@ -314,7 +314,7 @@ fn test_virtual_relvar() {
 
 #[test]
 fn test_delete_with_foreign_key_constraint() {
-    use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+    use crate::constraints::{CandidateKey, ForeignKey, ForeignKeyConstraints, KeyConstraints};
 
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
@@ -333,7 +333,7 @@ fn test_delete_with_foreign_key_constraint() {
     db.create_relvar("PARENT", parent_type).unwrap();
     db.create_relvar("CHILD", child_type).unwrap();
 
-    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
     let parent_constraints = KeyConstraints::new().with_primary_key(pk);
     db.set_key_constraints("PARENT", parent_constraints)
         .unwrap();
@@ -367,12 +367,12 @@ fn test_delete_with_foreign_key_constraint() {
 
 #[test]
 fn test_update_with_primary_key_violation() {
-    use crate::constraints::{KeyConstraints, PrimaryKey};
+    use crate::constraints::{CandidateKey, KeyConstraints};
 
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
     db.create_relvar("TEST", test_rel_type()).unwrap();
 
-    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
     let constraints = KeyConstraints::new().with_primary_key(pk);
     db.set_key_constraints("TEST", constraints).unwrap();
 
@@ -399,12 +399,12 @@ fn test_update_with_primary_key_violation() {
 
 #[test]
 fn test_transaction_rollback_with_constraints() {
-    use crate::constraints::{KeyConstraints, PrimaryKey};
+    use crate::constraints::{CandidateKey, KeyConstraints};
 
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
     db.create_relvar("TEST", test_rel_type()).unwrap();
 
-    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
     let constraints = KeyConstraints::new().with_primary_key(pk);
     db.set_key_constraints("TEST", constraints).unwrap();
 
@@ -663,7 +663,7 @@ fn test_virtual_relvar_error_propagation() {
 
 #[test]
 fn test_set_foreign_key_constraints_with_existing_valid_data() {
-    use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+    use crate::constraints::{CandidateKey, ForeignKey, ForeignKeyConstraints, KeyConstraints};
 
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
@@ -683,7 +683,7 @@ fn test_set_foreign_key_constraints_with_existing_valid_data() {
     db.create_relvar("CHILD", child_type).unwrap();
 
     // Set PK on parent
-    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
     db.set_key_constraints("PARENT", KeyConstraints::new().with_primary_key(pk))
         .unwrap();
 
@@ -709,7 +709,7 @@ fn test_set_foreign_key_constraints_with_existing_valid_data() {
 
 #[test]
 fn test_set_foreign_key_constraints_with_existing_invalid_data() {
-    use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+    use crate::constraints::{CandidateKey, ForeignKey, ForeignKeyConstraints, KeyConstraints};
 
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
@@ -729,7 +729,7 @@ fn test_set_foreign_key_constraints_with_existing_invalid_data() {
     db.create_relvar("CHILD", child_type).unwrap();
 
     // Set PK on parent
-    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
     db.set_key_constraints("PARENT", KeyConstraints::new().with_primary_key(pk))
         .unwrap();
 
@@ -762,7 +762,7 @@ fn test_set_foreign_key_constraints_with_existing_invalid_data() {
 
 #[test]
 fn test_delete_referenced_parent_success() {
-    use crate::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+    use crate::constraints::{CandidateKey, ForeignKey, ForeignKeyConstraints, KeyConstraints};
 
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
@@ -780,7 +780,7 @@ fn test_delete_referenced_parent_success() {
     db.create_relvar("PARENT", parent_type).unwrap();
     db.create_relvar("CHILD", child_type).unwrap();
 
-    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
     db.set_key_constraints("PARENT", KeyConstraints::new().with_primary_key(pk))
         .unwrap();
 

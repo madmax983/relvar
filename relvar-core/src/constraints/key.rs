@@ -17,10 +17,10 @@
 //! # Example
 //!
 //! ```
-//! use relvar_core::constraints::{PrimaryKey, CandidateKey, KeyConstraints};
+//! use relvar_core::constraints::{CandidateKey, KeyConstraints};
 //!
 //! // Single-attribute primary key
-//! let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+//! let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
 //!
 //! // Composite candidate key (email must also be unique)
 //! let ck = CandidateKey::new(vec!["email".to_string()]).unwrap();
@@ -36,7 +36,7 @@
 //! Key constraints can detect when an insert would create duplicates:
 //!
 //! ```
-//! use relvar_core::constraints::{PrimaryKey, KeyConstraints};
+//! use relvar_core::constraints::{CandidateKey, KeyConstraints};
 //! use relvar_core::types::{TupleType, RelationType, ScalarType};
 //! use relvar_core::values::Relation;
 //! use relvar_core::tuple;
@@ -51,7 +51,7 @@
 //! relation.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
 //!
 //! // Define primary key on emp_id
-//! let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+//! let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
 //! let constraints = KeyConstraints::new().with_primary_key(pk);
 //!
 //! // Check if current data satisfies the key constraint
@@ -192,49 +192,10 @@ impl CandidateKey {
     }
 }
 
-/// A primary key is a designated candidate key
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PrimaryKey {
-    key: CandidateKey,
-}
-
-impl PrimaryKey {
-    /// Create a new primary key
-    pub fn new(attributes: Vec<String>) -> Result<Self, KeyConstraintError> {
-        Ok(Self {
-            key: CandidateKey::new(attributes)?,
-        })
-    }
-
-    /// Get the key attributes
-    pub fn attributes(&self) -> &[String] {
-        self.key.attributes()
-    }
-
-    /// Get the underlying candidate key
-    pub fn as_candidate_key(&self) -> &CandidateKey {
-        &self.key
-    }
-
-    /// Check if this key is satisfied by a relation
-    pub fn is_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
-        self.key.is_satisfied_by(relation)
-    }
-
-    /// Check if a tuple would violate this key constraint
-    pub fn would_violate(
-        &self,
-        relation: &Relation,
-        new_tuple: &Tuple,
-    ) -> Result<bool, KeyConstraintError> {
-        self.key.would_violate(relation, new_tuple)
-    }
-}
-
 /// Key constraints for a relation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyConstraints {
-    primary_key: Option<PrimaryKey>,
+    primary_key: Option<CandidateKey>,
     candidate_keys: Vec<CandidateKey>,
 }
 
@@ -248,7 +209,7 @@ impl KeyConstraints {
     }
 
     /// Set the primary key
-    pub fn with_primary_key(mut self, key: PrimaryKey) -> Self {
+    pub fn with_primary_key(mut self, key: CandidateKey) -> Self {
         self.primary_key = Some(key);
         self
     }
@@ -260,7 +221,7 @@ impl KeyConstraints {
     }
 
     /// Get the primary key
-    pub fn primary_key(&self) -> Option<&PrimaryKey> {
+    pub fn primary_key(&self) -> Option<&CandidateKey> {
         self.primary_key.as_ref()
     }
 
@@ -406,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_primary_key() {
-        let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+        let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
         assert_eq!(pk.attributes(), &["emp_id"]);
 
         let mut relation = create_employee_relation();
@@ -422,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_key_constraints_with_primary_key() {
-        let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+        let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
         let constraints = KeyConstraints::new().with_primary_key(pk);
 
         let mut relation = create_employee_relation();
@@ -438,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_key_constraints_violation_detection() {
-        let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+        let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
         let constraints = KeyConstraints::new().with_primary_key(pk);
 
         let mut relation = create_employee_relation();
@@ -470,7 +431,7 @@ mod tests {
             .insert(tuple! { emp_id: 2i64, email: "bob@example.com", name: "Bob" })
             .unwrap();
 
-        let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+        let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
         let ck = CandidateKey::new(vec!["email".to_string()]).unwrap();
 
         let constraints = KeyConstraints::new()

@@ -24,7 +24,7 @@ fn setup() -> Database<InMemoryEngine> {
 #[test]
 fn test_database_set_key_constraints_fails() {
     let mut db = setup();
-    let pk = relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = relvar_core::constraints::CandidateKey::new(vec!["id".to_string()]).unwrap();
     let key_constraints = relvar_core::constraints::KeyConstraints::new().with_primary_key(pk);
 
     // Duplicate 1i64 to make it fail

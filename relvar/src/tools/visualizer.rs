@@ -9,7 +9,7 @@
 //! ```
 //! use relvar::{Database, InMemoryEngine};
 //! use relvar::{TupleType, RelationType, ScalarType};
-//! use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+//! use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, CandidateKey};
 //! use relvar::tools::visualizer::SchemaVisualizer;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
@@ -22,7 +22,7 @@
 //! );
 //! db.create_relvar("DEPT", dept_type).unwrap();
 //!
-//! let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
+//! let pk = CandidateKey::new(vec!["dept_id".to_string()]).unwrap();
 //! db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(pk)).unwrap();
 //!
 //! // Define Employees
@@ -192,7 +192,9 @@ fn escape_dot_string_content(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use relvar_core::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+    use relvar_core::constraints::{
+        CandidateKey, ForeignKey, ForeignKeyConstraints, KeyConstraints,
+    };
     use relvar_core::storage_engine::InMemoryEngine;
     use relvar_core::types::{RelationType, ScalarType, TupleType};
 
@@ -208,7 +210,7 @@ mod tests {
         );
         db.create_relvar("DEPT", dept_type).unwrap();
 
-        let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
+        let pk = CandidateKey::new(vec!["dept_id".to_string()]).unwrap();
         db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(pk))
             .unwrap();
 

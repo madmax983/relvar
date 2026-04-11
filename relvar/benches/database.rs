@@ -1,7 +1,7 @@
 use criterion::{
     BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
-use relvar::constraints::{KeyConstraints, PrimaryKey};
+use relvar::constraints::{CandidateKey, KeyConstraints};
 use relvar::tuple;
 use relvar::{PersistentEngine, RelationType, ScalarType, TupleType};
 use tempfile::TempDir;
@@ -110,7 +110,7 @@ fn bench_insert_with_key_constraint(c: &mut Criterion) {
                 || {
                     // Setup: create database, relvar, and add constraint
                     let (_temp_dir, mut db) = create_database_with_relvar();
-                    let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+                    let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
                     db.set_key_constraints("EMP", KeyConstraints::new().with_primary_key(pk))
                         .unwrap();
                     (_temp_dir, db)

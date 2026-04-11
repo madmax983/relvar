@@ -17,10 +17,10 @@
 //! # Example
 //!
 //! ```
-//! use relvar_core::constraints::{PrimaryKey, KeyConstraints, ForeignKey};
+//! use relvar_core::constraints::{CandidateKey, KeyConstraints, ForeignKey};
 //!
 //! // Define a primary key on emp_id
-//! let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+//! let pk = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
 //!
 //! // Create key constraints with the primary key
 //! let key_constraints = KeyConstraints::new()
@@ -46,7 +46,7 @@ pub(crate) mod type_constraint;
 pub use check::{CheckConstraint, CheckConstraintError, CheckConstraints};
 pub use expression::{CmpOp, ConstraintExpression, ExpressionError, ValueOrRef};
 pub use foreign_key::{ForeignKey, ForeignKeyConstraints, ForeignKeyError};
-pub use key::{CandidateKey, KeyConstraintError, KeyConstraints, PrimaryKey};
+pub use key::{CandidateKey, KeyConstraintError, KeyConstraints};
 pub use manager::{ConstraintManager, ConstraintManagerError};
 pub use prepared::PreparedConstraintExpression;
 pub use type_constraint::{AttributeConstraints, TypeConstraint, TypeConstraintError};

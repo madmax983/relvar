@@ -1,5 +1,5 @@
 use relvar_core::constraints::{
-    ConstraintManagerError, ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey,
+    CandidateKey, ConstraintManagerError, ForeignKey, ForeignKeyConstraints, KeyConstraints,
 };
 use relvar_core::database::Database;
 use relvar_core::error::DatabaseError;
@@ -25,7 +25,7 @@ fn test_update_referenced_parent_fails() {
     db.create_relvar("PARENT", parent_type).unwrap();
     db.create_relvar("CHILD", child_type).unwrap();
 
-    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let pk = CandidateKey::new(vec!["id".to_string()]).unwrap();
     db.set_key_constraints("PARENT", KeyConstraints::new().with_primary_key(pk))
         .unwrap();
 
