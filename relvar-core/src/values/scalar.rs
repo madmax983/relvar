@@ -111,7 +111,7 @@ pub enum ScalarValue {
     /// Implements the POSSREP pattern: the value carries both its type
     /// identity (via `type_def`) and its representation value (via `value`).
     ///
-    /// Use [`ScalarType::selector()`] to create user-defined values.
+    /// Use [`ScalarValue::select()`] to create user-defined values.
     UserDefined {
         /// The type definition for this user-defined value.
         type_def: ScalarType,
@@ -121,6 +121,39 @@ pub enum ScalarValue {
 }
 
 impl ScalarValue {
+    /// POSSREP selector: constructs a value of this type from its representation.
+    ///
+    /// TTM: The selector takes a value of the representation type and produces
+    /// a value of this user-defined type.
+    pub fn select(
+        type_def: &crate::types::ScalarType,
+        value: ScalarValue,
+    ) -> Result<ScalarValue, crate::types::scalar::ScalarTypeError> {
+        match type_def {
+            crate::types::ScalarType::UserDefined { representation, .. } => {
+                if !value.is_type(representation) {
+                    return Err(crate::types::scalar::ScalarTypeError::TypeMismatch {
+                        expected: representation.name().to_string(),
+                        actual: value.scalar_type().name().to_string(),
+                    });
+                }
+                Ok(ScalarValue::UserDefined {
+                    type_def: type_def.clone(),
+                    value: Box::new(value),
+                })
+            }
+            ty => {
+                if !value.is_type(ty) {
+                    return Err(crate::types::scalar::ScalarTypeError::TypeMismatch {
+                        expected: ty.name().to_string(),
+                        actual: value.scalar_type().name().to_string(),
+                    });
+                }
+                Ok(value)
+            }
+        }
+    }
+
     /// Resolves the concrete scalar type of this value instance.
     ///
     /// Every value in the relational model carries its type. This method
@@ -180,7 +213,7 @@ impl ScalarValue {
     /// use relvar_core::values::ScalarValue;
     ///
     /// let widget_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
-    /// let widget_val = widget_type.selector(ScalarValue::Int(42)).unwrap();
+    /// let widget_val = ScalarValue::select(&widget_type, ScalarValue::Int(42)).unwrap();
     ///
     /// // Observer extracts the Int(42)
     /// let representation = widget_val.observer().unwrap();
@@ -203,7 +236,7 @@ impl ScalarValue {
     }
 
     /// Helper constructor for user-defined values (used in tests).
-    /// Prefer using `ScalarType::selector()` in production code.
+    /// Prefer using `ScalarValue::select()` in production code.
     #[cfg(test)]
     pub fn user_defined(type_def: ScalarType, value: ScalarValue) -> Self {
         ScalarValue::UserDefined {
@@ -753,7 +786,7 @@ mod tests {
         let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
 
         // Selector: construct a WidgetId from an Int
-        let widget = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
+        let widget = ScalarValue::select(&widget_id_type, ScalarValue::Int(42)).unwrap();
 
         assert_eq!(widget.scalar_type(), widget_id_type);
     }
@@ -761,7 +794,7 @@ mod tests {
     #[test]
     fn test_possrep_observer_extracts_representation() {
         let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
-        let widget = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
+        let widget = ScalarValue::select(&widget_id_type, ScalarValue::Int(42)).unwrap();
 
         // Observer: extract the underlying Int value
         let underlying = widget.observer().unwrap();
@@ -775,8 +808,8 @@ mod tests {
         let special_widget_type =
             ScalarType::user_defined("SpecialWidgetId", widget_id_type.clone());
 
-        let widget = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
-        let special_widget = special_widget_type.selector(widget.clone()).unwrap();
+        let widget = ScalarValue::select(&widget_id_type, ScalarValue::Int(42)).unwrap();
+        let special_widget = ScalarValue::select(&special_widget_type, widget.clone()).unwrap();
 
         assert_ne!(special_widget.scalar_type(), widget_id_type);
         assert_eq!(special_widget.scalar_type(), special_widget_type);
@@ -787,7 +820,10 @@ mod tests {
         let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
 
         // Should fail: trying to construct WidgetId from String
-        let result = widget_id_type.selector(ScalarValue::String("not an int".to_string()));
+        let result = ScalarValue::select(
+            &widget_id_type,
+            ScalarValue::String("not an int".to_string()),
+        );
 
         assert!(result.is_err());
     }
@@ -795,7 +831,7 @@ mod tests {
     #[test]
     fn test_user_defined_types_serialize() {
         let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
-        let widget = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
+        let widget = ScalarValue::select(&widget_id_type, ScalarValue::Int(42)).unwrap();
 
         let serialized = serde_json::to_string(&widget).unwrap();
         let deserialized: ScalarValue = serde_json::from_str(&serialized).unwrap();
@@ -812,9 +848,9 @@ mod tests {
         let supplier_id_type = ScalarType::user_defined("SupplierId", ScalarType::Int);
 
         let mut set = HashSet::new();
-        set.insert(widget_id_type.selector(ScalarValue::Int(5)).unwrap());
-        set.insert(widget_id_type.selector(ScalarValue::Int(5)).unwrap()); // Duplicate
-        set.insert(supplier_id_type.selector(ScalarValue::Int(5)).unwrap()); // Different type
+        set.insert(ScalarValue::select(&widget_id_type, ScalarValue::Int(5)).unwrap());
+        set.insert(ScalarValue::select(&widget_id_type, ScalarValue::Int(5)).unwrap()); // Duplicate
+        set.insert(ScalarValue::select(&supplier_id_type, ScalarValue::Int(5)).unwrap()); // Different type
         set.insert(ScalarValue::Int(5)); // Raw Int
 
         // Should have 3 distinct values:

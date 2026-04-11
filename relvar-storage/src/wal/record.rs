@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
 
-use crate::storage::{PageId, heap::TupleId};
-
 /// Errors that can occur during WAL record operations.
 #[derive(Debug, Error)]
 pub enum WalRecordError {
@@ -67,7 +65,7 @@ pub enum WalRecord {
         /// The name of the relation being modified.
         relation_name: String,
         /// The page ID being written.
-        page_id: PageId,
+        page_id: u64,
         /// The page data (before-image for undo).
         page_data: Vec<u8>,
     },
@@ -121,7 +119,7 @@ pub enum WalRecord {
         /// The minimum LSN of any active transaction.
         min_active_lsn: Lsn,
         /// Dirty pages per relation.
-        dirty_pages: HashMap<String, Vec<PageId>>,
+        dirty_pages: HashMap<String, Vec<u64>>,
     },
 }
 
