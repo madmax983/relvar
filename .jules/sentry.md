@@ -76,3 +76,6 @@
 ## 2025-05-18 - [ForeignKey Constraint Panic]
 **Learning:** `ForeignKey` constraint validation methods (`is_satisfied_by`, `would_violate_on_insert`, `would_violate_on_delete`) panicked with `.unwrap()` when they were passed a tuple that was missing a required attribute, as dynamic relations might accept partially valid or mismatched inputs.
 **Action:** When validating constraints against tuples, use `.ok_or_else()` to explicitly handle missing attributes by returning an error instead of panicking via `.unwrap()`.
+## 2026-03-31 - WalRecordIter error paths
+**Learning:** `WalRecordIter` implements an iterator over WAL records. It had some `unwrap()`s inside tests but what is really missing from coverage is the error handling paths `WalError::Corrupted` inside the iterator's `read_length` and `next` methods which handle buffer length issues and `offset.checked_add()` overflows, and `record_len` overflows.
+**Action:** When testing iterators reading from byte arrays, verify handling of malformed and corrupted buffers. Added tests explicitly triggering `WalError::Corrupted` by passing exceedingly large `record_len` and truncated buffers.

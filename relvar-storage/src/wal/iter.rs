@@ -87,3 +87,74 @@ impl<'a> Iterator for WalRecordIter<'a> {
         Some(Ok((lsn, record_len_u64, record_bytes)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_empty_buffer() {
+        let buffer = vec![];
+        let mut iter = WalRecordIter::new(&buffer);
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_valid_record() {
+        let mut buffer = vec![];
+        // LSN
+        buffer.extend_from_slice(&1u64.to_le_bytes());
+        // Length
+        buffer.extend_from_slice(&5u64.to_le_bytes());
+        // Data
+        buffer.extend_from_slice(&[1, 2, 3, 4, 5]);
+
+        let mut iter = WalRecordIter::new(&buffer);
+        let item = iter.next().unwrap().unwrap();
+        assert_eq!(item.0.value(), 1);
+        assert_eq!(item.1, 5);
+        assert_eq!(item.2, &[1, 2, 3, 4, 5]);
+
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_corrupted_length_exceeds_memory() {
+        let mut buffer = vec![];
+        // LSN
+        buffer.extend_from_slice(&1u64.to_le_bytes());
+        // Length - extremely large
+        buffer.extend_from_slice(&u64::MAX.to_le_bytes());
+
+        let mut iter = WalRecordIter::new(&buffer);
+        let err = iter.next().unwrap().unwrap_err();
+        match err {
+            WalError::Corrupted(lsn, msg) => {
+                assert_eq!(lsn.value(), 1);
+                assert!(msg.contains("exceeds memory limits") || msg.contains("offset overflow"));
+            }
+            _ => panic!("Expected Corrupted error"),
+        }
+    }
+
+    #[test]
+    fn test_corrupted_record_extends_beyond_file() {
+        let mut buffer = vec![];
+        // LSN
+        buffer.extend_from_slice(&1u64.to_le_bytes());
+        // Length
+        buffer.extend_from_slice(&100u64.to_le_bytes()); // Expects 100 bytes of data
+        // Data
+        buffer.extend_from_slice(&[1, 2, 3]); // Only 3 bytes available
+
+        let mut iter = WalRecordIter::new(&buffer);
+        let err = iter.next().unwrap().unwrap_err();
+        match err {
+            WalError::Corrupted(lsn, msg) => {
+                assert_eq!(lsn.value(), 1);
+                assert!(msg.contains("Record extends beyond file"));
+            }
+            _ => panic!("Expected Corrupted error"),
+        }
+    }
+}
