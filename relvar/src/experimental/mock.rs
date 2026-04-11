@@ -28,7 +28,7 @@
 //! ```
 
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use relvar_core::types::{RelationType, ScalarType};
 use relvar_core::values::{Relation, ScalarValue, Tuple};
 use std::collections::BTreeMap;
@@ -120,7 +120,7 @@ impl MockRelation {
         let mut rng = if let Some(seed) = self.seed {
             StdRng::seed_from_u64(seed)
         } else {
-            StdRng::from_entropy()
+            StdRng::from_rng(&mut rand::rng())
         };
 
         for _ in 0..self.count {
@@ -146,20 +146,20 @@ impl MockRelation {
 
     fn generate_value(&self, scalar_type: &ScalarType, rng: &mut StdRng) -> ScalarValue {
         match scalar_type {
-            ScalarType::Int => ScalarValue::Int(rng.r#gen()),
-            ScalarType::Float => ScalarValue::Float(rng.r#gen()),
+            ScalarType::Int => ScalarValue::Int(rng.random()),
+            ScalarType::Float => ScalarValue::Float(rng.random()),
             ScalarType::String => {
                 // Generate a random string of length 5-15
-                let len = rng.gen_range(5..=15);
+                let len = rng.random_range(5..=15);
                 let s: String = (0..len)
-                    .map(|_| rng.sample(rand::distributions::Alphanumeric) as char)
+                    .map(|_| rng.sample(rand::distr::Alphanumeric) as char)
                     .collect();
                 ScalarValue::String(s)
             }
-            ScalarType::Bool => ScalarValue::Bool(rng.r#gen()),
+            ScalarType::Bool => ScalarValue::Bool(rng.random()),
             ScalarType::Bytes => {
-                let len = rng.gen_range(1..=32);
-                let bytes: Vec<u8> = (0..len).map(|_| rng.r#gen()).collect();
+                let len = rng.random_range(1..=32);
+                let bytes: Vec<u8> = (0..len).map(|_| rng.random()).collect();
                 ScalarValue::Bytes(bytes)
             }
             ScalarType::Relation(rel_type) => {
