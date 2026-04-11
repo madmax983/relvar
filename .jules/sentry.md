@@ -69,3 +69,6 @@
 ## 2025-03-28 - Database Schema Error Paths and Virtual Relvars
 **Learning:** Found several untested code paths regarding schema operations on `virtual_relvars`, specifically defining a virtual relvar when a base or virtual relvar already exists, and requesting types/dropping nonexistent relvars, mapping to `DatabaseError::RelationAlreadyExists` and `DatabaseError::Storage(StorageEngineError::RelationNotFound)`.
 **Action:** When implementing database schemas, explicitly test the boundary conditions between base relvars and virtual relvars, as virtual relvars share the namespace. Ensure `get_relvar_type` and existence tests adequately cover both.
+## 2026-04-10 - Extend and Group Error Paths
+**Learning:** Found several untested code paths regarding the failure branches of `extend` and `group` algebra operations, specifically `ExtendError::TupleCreation` for computation type mismatches, and `GroupError::ResultAttributeExists`, `UngroupError::AttributeNotFound`, `UngroupError::NotRelationValued`, and `UngroupError::TupleCreation`.
+**Action:** When implementing database algebra operators that construct new tuples or relation types from existing data, always write specific test cases targeting type validations, attribute name conflicts, and missing attributes.
