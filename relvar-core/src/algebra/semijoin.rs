@@ -160,8 +160,24 @@ impl Relation {
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// // Example
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading1 = TupleType::new().with_attribute("id", ScalarType::Int).with_attribute("name", ScalarType::String);
+    /// let rel_type1 = RelationType::new(heading1);
+    /// let mut all = Relation::new(rel_type1.clone());
+    /// all.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+    /// all.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
+    ///
+    /// let heading2 = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type2 = RelationType::new(heading2);
+    /// let mut subset = Relation::new(rel_type2);
+    /// subset.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// let result = all.matching(&subset);
+    /// assert_eq!(result.cardinality(), 1);
     /// ```
     pub fn matching(&self, other: &Relation) -> Self {
         self.semijoin(other)
@@ -264,8 +280,24 @@ impl Relation {
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// // Example
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading1 = TupleType::new().with_attribute("id", ScalarType::Int).with_attribute("name", ScalarType::String);
+    /// let rel_type1 = RelationType::new(heading1);
+    /// let mut all = Relation::new(rel_type1.clone());
+    /// all.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+    /// all.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
+    ///
+    /// let heading2 = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type2 = RelationType::new(heading2);
+    /// let mut subset = Relation::new(rel_type2);
+    /// subset.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// let result = all.not_matching(&subset);
+    /// assert_eq!(result.cardinality(), 1);
     /// ```
     pub fn not_matching(&self, other: &Relation) -> Self {
         self.semidifference(other)

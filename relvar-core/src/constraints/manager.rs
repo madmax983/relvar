@@ -85,7 +85,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new() -> Self {
@@ -96,7 +96,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn remove_constraints_for_relation(&mut self, relation_name: &str) {
@@ -110,7 +110,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn set_key_constraints<E: StorageEngine>(
@@ -138,7 +138,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn set_foreign_key_constraints<E: StorageEngine>(
@@ -187,7 +187,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn set_type_constraints<E: StorageEngine>(
@@ -245,7 +245,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn set_check_constraints<E: StorageEngine>(
@@ -307,7 +307,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_tuple_type<E: StorageEngine>(
@@ -328,7 +328,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_type_constraints(
@@ -357,7 +357,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_check_constraints(
@@ -375,7 +375,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_key_constraints_single_tuple(
@@ -410,7 +410,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_tuple_content_constraints_bulk<E: StorageEngine>(
@@ -430,7 +430,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_tuple_content_constraints<E: StorageEngine>(
@@ -451,7 +451,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_foreign_keys_single_tuple<E: StorageEngine>(
@@ -485,7 +485,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_key_constraints_bulk(
@@ -516,7 +516,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
@@ -527,7 +527,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn get_foreign_key_constraints(
@@ -541,7 +541,7 @@ impl ConstraintManager {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn validate_referencing_foreign_keys<E: StorageEngine>(

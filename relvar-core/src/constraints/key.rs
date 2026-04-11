@@ -122,7 +122,7 @@ impl CandidateKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new(attributes: Vec<String>) -> Result<Self, KeyConstraintError> {
@@ -137,7 +137,7 @@ impl CandidateKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn attributes(&self) -> &[String] {
@@ -148,7 +148,7 @@ impl CandidateKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn is_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
@@ -179,7 +179,7 @@ impl CandidateKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn would_violate(
@@ -227,7 +227,7 @@ impl PrimaryKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new(attributes: Vec<String>) -> Result<Self, KeyConstraintError> {
@@ -240,7 +240,7 @@ impl PrimaryKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn attributes(&self) -> &[String] {
@@ -251,7 +251,7 @@ impl PrimaryKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn as_candidate_key(&self) -> &CandidateKey {
@@ -262,7 +262,7 @@ impl PrimaryKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn is_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
@@ -273,7 +273,7 @@ impl PrimaryKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn would_violate(
@@ -297,7 +297,7 @@ impl KeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new() -> Self {
@@ -311,7 +311,7 @@ impl KeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn with_primary_key(mut self, key: PrimaryKey) -> Self {
@@ -323,7 +323,7 @@ impl KeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn with_candidate_key(mut self, key: CandidateKey) -> Self {
@@ -335,7 +335,7 @@ impl KeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn primary_key(&self) -> Option<&PrimaryKey> {
@@ -346,7 +346,7 @@ impl KeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn candidate_keys(&self) -> &[CandidateKey] {
@@ -357,7 +357,7 @@ impl KeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn are_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
@@ -382,7 +382,7 @@ impl KeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn would_violate_on_insert(
