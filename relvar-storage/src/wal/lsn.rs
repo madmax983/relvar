@@ -76,6 +76,14 @@ impl Lsn {
     /// let lsn = Lsn::new(42);
     /// assert_eq!(lsn.next(), Lsn::new(43));
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::wal::Lsn;
+    /// let lsn = Lsn::new(10);
+    /// let next = lsn.next();
+    /// assert_eq!(next.value(), 11);
+    /// ```
     pub fn next(self) -> Self {
         Self(self.0 + 1)
     }
@@ -89,6 +97,13 @@ impl Lsn {
     /// ```
     /// use relvar_storage::wal::Lsn;
     ///
+    /// let lsn = Lsn::new(42);
+    /// assert_eq!(lsn.value(), 42);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::wal::Lsn;
     /// let lsn = Lsn::new(42);
     /// assert_eq!(lsn.value(), 42);
     /// ```
@@ -169,6 +184,16 @@ impl TransactionIdGenerator {
     /// let generator = TransactionIdGenerator::new();
     /// let txn_id = generator.generate();
     /// assert_eq!(txn_id.value(), 1);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::wal::TransactionIdGenerator;
+    /// fn main() {
+    ///     let gen = TransactionIdGenerator::new(0);
+    ///     let txn_id = gen.generate();
+    ///     assert_eq!(txn_id.value(), 1);
+    /// }
     /// ```
     pub fn generate(&self) -> TransactionId {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);

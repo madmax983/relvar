@@ -29,6 +29,15 @@ impl<E: StorageEngine> Database<E> {
     /// let mut db = Database::new(InMemoryEngine::new());
     /// db.begin().unwrap();
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// db.begin().unwrap();
+    /// ```
     pub fn begin(&mut self) -> Result<(), DatabaseError> {
         if self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -64,6 +73,16 @@ impl<E: StorageEngine> Database<E> {
     /// db.begin().unwrap();
     /// db.commit().unwrap();
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// db.begin().unwrap();
+    /// db.commit().unwrap();
+    /// ```
     pub fn commit(&mut self) -> Result<(), DatabaseError> {
         if !self.in_transaction {
             return Err(DatabaseError::TransactionError(
@@ -87,6 +106,16 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns `DatabaseError::TransactionError` if no transaction is in progress.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// db.begin().unwrap();
+    /// db.rollback().unwrap();
+    /// ```
     /// # Examples
     ///
     /// ```

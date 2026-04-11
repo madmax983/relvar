@@ -69,6 +69,14 @@ impl WalManager {
     /// # Errors
     ///
     /// Returns `WalError::Io` if file creation or header write fails.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use relvar_storage::wal::WalManager;
+    /// use tempfile::NamedTempFile;
+    /// let file = NamedTempFile::new().unwrap();
+    /// let wal = WalManager::create(file.path()).unwrap();
+    /// ```
     pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, WalError> {
         let mut log_file = OpenOptions::new()
             .read(true)
@@ -96,6 +104,16 @@ impl WalManager {
     ///
     /// Returns `WalError::Io` if file open fails.
     /// Returns `WalError::Corrupted` if the header is invalid.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use relvar_storage::wal::WalManager;
+    /// use tempfile::NamedTempFile;
+    /// let file = NamedTempFile::new().unwrap();
+    /// let mut wal = WalManager::create(file.path()).unwrap();
+    /// drop(wal);
+    /// let opened = WalManager::open(file.path()).unwrap();
+    /// ```
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, WalError> {
         let mut log_file = OpenOptions::new().read(true).write(true).open(path)?;
 
@@ -133,6 +151,15 @@ impl WalManager {
     ///
     /// Returns `WalError::Record` if serialization fails.
     /// Returns `WalError::Io` if flush fails.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use relvar_storage::wal::{WalManager, WalRecord, TransactionId};
+    /// use tempfile::NamedTempFile;
+    /// let file = NamedTempFile::new().unwrap();
+    /// let mut wal = WalManager::create(file.path()).unwrap();
+    /// wal.log(WalRecord::Begin { txn_id: TransactionId::new(1) }).unwrap();
+    /// ```
     pub fn log(&mut self, record: WalRecord) -> Result<Lsn, WalError> {
         let serialized = record.serialize()?;
 
@@ -163,6 +190,16 @@ impl WalManager {
     /// # Errors
     ///
     /// Returns `WalError::Io` if write or sync fails.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use relvar_storage::wal::{WalManager, WalRecord, TransactionId};
+    /// use tempfile::NamedTempFile;
+    /// let file = NamedTempFile::new().unwrap();
+    /// let mut wal = WalManager::create(file.path()).unwrap();
+    /// wal.log(WalRecord::Begin { txn_id: TransactionId::new(1) }).unwrap();
+    /// wal.flush().unwrap();
+    /// ```
     pub fn flush(&mut self) -> Result<(), WalError> {
         if self.buffer.is_empty() {
             return Ok(());
@@ -187,6 +224,16 @@ impl WalManager {
     ///
     /// This is useful for checking the current logical position within the WAL
     /// before performing new log writes.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use relvar_storage::wal::{WalManager, WalRecord, TransactionId};
+    /// use tempfile::NamedTempFile;
+    /// let file = NamedTempFile::new().unwrap();
+    /// let mut wal = WalManager::create(file.path()).unwrap();
+    /// wal.log(WalRecord::Begin { txn_id: TransactionId::new(1) }).unwrap();
+    /// let lsn = wal.current_lsn();
+    /// ```
     pub fn current_lsn(&self) -> Lsn {
         self.current_lsn
     }
@@ -195,6 +242,17 @@ impl WalManager {
     ///
     /// Any record with an LSN less than or equal to this value is guaranteed to
     /// be durably persisted to disk. This is heavily utilized during checkpoints.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use relvar_storage::wal::{WalManager, WalRecord, TransactionId};
+    /// use tempfile::NamedTempFile;
+    /// let file = NamedTempFile::new().unwrap();
+    /// let mut wal = WalManager::create(file.path()).unwrap();
+    /// wal.log(WalRecord::Begin { txn_id: TransactionId::new(1) }).unwrap();
+    /// wal.flush().unwrap();
+    /// let lsn = wal.flush_lsn();
+    /// ```
     pub fn flush_lsn(&self) -> Lsn {
         self.flush_lsn
     }
@@ -221,6 +279,18 @@ impl WalManager {
     ///
     /// Returns `WalError::Io` if reading fails.
     /// Returns `WalError::Corrupted` if a record cannot be deserialized.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use relvar_storage::wal::{WalManager, WalRecord, TransactionId};
+    /// use tempfile::NamedTempFile;
+    /// let file = NamedTempFile::new().unwrap();
+    /// let mut wal = WalManager::create(file.path()).unwrap();
+    /// wal.log(WalRecord::Begin { txn_id: TransactionId::new(1) }).unwrap();
+    /// wal.flush().unwrap();
+    /// let records = wal.scan().unwrap();
+    /// assert_eq!(records.len(), 1);
+    /// ```
     pub fn scan(&mut self) -> Result<Vec<(Lsn, WalRecord)>, WalError> {
         use std::io::Read;
 

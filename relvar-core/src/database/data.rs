@@ -22,6 +22,19 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
+    /// ```
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
         self.ensure_not_virtual(relation_name)?;
         self.validate_insert(relation_name, &tuple)?;
@@ -70,6 +83,18 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// let rel = db.query("USERS").unwrap();
     /// assert_eq!(rel.cardinality(), 1);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// let rel = db.query("USERS").unwrap();
     /// ```
     pub fn query(&self, relation_name: &str) -> Result<Relation, DatabaseError> {
         // Check if this is a virtual relvar
@@ -138,6 +163,20 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// let deleted_count = db.delete("USERS", |t| t.get_typed::<i64>("id").unwrap() == 1).unwrap();
     /// assert_eq!(deleted_count, 1);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
+    /// db.delete("USERS", |t| t.get_typed::<i64>("id") == Some(1)).unwrap();
     /// ```
     pub fn delete<F>(&mut self, relation_name: &str, predicate: F) -> Result<usize, DatabaseError>
     where
@@ -239,6 +278,24 @@ impl<E: StorageEngine> Database<E> {
     ///     |t| { let mut t2 = t.clone(); t2.set("id".to_string(), ScalarValue::Int(2)).unwrap(); t2 }
     /// ).unwrap();
     /// assert_eq!(updated_count, 1);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::values::ScalarValue;
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
+    /// db.update("USERS",
+    ///     |t| t.get_typed::<i64>("id") == Some(1),
+    ///     |mut t| { t.set("id".to_string(), ScalarValue::Int(2)).unwrap(); t }
+    /// ).unwrap();
     /// ```
     pub fn update<F, U>(
         &mut self,

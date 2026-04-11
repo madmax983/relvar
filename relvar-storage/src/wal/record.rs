@@ -140,6 +140,13 @@ impl WalRecord {
     /// let bytes = record.serialize().unwrap();
     /// assert!(!bytes.is_empty());
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::wal::{WalRecord, TransactionId};
+    /// let record = WalRecord::Begin { txn_id: TransactionId::new(1) };
+    /// let bytes = record.serialize().unwrap();
+    /// ```
     pub fn serialize(&self) -> Result<Vec<u8>, WalRecordError> {
         let bytes = postcard::to_allocvec(self)?;
 
@@ -163,6 +170,14 @@ impl WalRecord {
     /// let bytes = record.serialize().unwrap();
     /// let deserialized = WalRecord::deserialize(&bytes).unwrap();
     /// assert_eq!(record.txn_id(), deserialized.txn_id());
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::wal::{WalRecord, TransactionId};
+    /// let record = WalRecord::Begin { txn_id: TransactionId::new(1) };
+    /// let bytes = record.serialize().unwrap();
+    /// let decoded = WalRecord::deserialize(&bytes).unwrap();
     /// ```
     pub fn deserialize(bytes: &[u8]) -> Result<Self, WalRecordError> {
         // Enforce maximum record size on the input buffer.
@@ -194,6 +209,13 @@ impl WalRecord {
     /// ```
     ///
     /// Checkpoint records don't have a transaction ID.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage::wal::{WalRecord, TransactionId};
+    /// let record = WalRecord::Begin { txn_id: TransactionId::new(1) };
+    /// assert_eq!(record.txn_id().unwrap().value(), 1);
+    /// ```
     pub fn txn_id(&self) -> Option<TransactionId> {
         match self {
             WalRecord::Begin { txn_id }

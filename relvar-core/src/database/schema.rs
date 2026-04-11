@@ -28,6 +28,17 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns `DatabaseError::RelationAlreadyExists` if a relation with this name exists.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// ```
     pub fn create_relvar(
         &mut self,
         name: &str,
@@ -68,6 +79,18 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// db.drop_relvar("USERS").unwrap();
+    /// ```
     pub fn drop_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
         // Remove associated constraints
         self.constraints.remove_constraints_for_relation(name);
@@ -122,6 +145,16 @@ impl<E: StorageEngine> Database<E> {
     /// relvars.sort();
     /// assert_eq!(relvars, vec!["TABLE_1", "VIEW_1"]);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let relvars = db.list_relvars();
+    /// assert!(relvars.is_empty());
+    /// ```
     pub fn list_relvars(&self) -> Vec<String> {
         let mut names = self.engine.list_relations();
         names.extend(self.virtual_relvars.keys().cloned());
@@ -149,6 +182,18 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// let fetched_type = db.get_relvar_type("USERS").unwrap();
     /// assert_eq!(fetched_type.degree(), 1);
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// let ty = db.get_relvar_type("USERS").unwrap();
     /// ```
     pub fn get_relvar_type(&self, name: &str) -> Result<RelationType, DatabaseError> {
         // Check virtual relvars first
@@ -201,6 +246,22 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Yields an error if a relvar with this name already exists.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    ///
+    /// let view_heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.define_virtual_relvar("ACTIVE_USERS", RelationType::new(view_heading), |db| {
+    ///     db.query("USERS")
+    /// }).unwrap();
+    /// ```
     pub fn define_virtual_relvar(
         &mut self,
         name: &str,
@@ -250,6 +311,23 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Yields an error if the virtual relvar doesn't exist.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    ///
+    /// let view_heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.define_virtual_relvar("ACTIVE_USERS", RelationType::new(view_heading), |db| {
+    ///     db.query("USERS")
+    /// }).unwrap();
+    /// db.drop_virtual_relvar("ACTIVE_USERS").unwrap();
+    /// ```
     pub fn drop_virtual_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
         self.virtual_relvars
             .remove(name)

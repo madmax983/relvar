@@ -46,6 +46,18 @@ impl<E: StorageEngine> Database<E> {
     /// let constraints = db.get_key_constraints("USERS").unwrap();
     /// assert!(constraints.primary_key().is_some());
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// let keys = db.get_key_constraints("USERS");
+    /// ```
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.constraints.get_key_constraints(relation_name)
     }
@@ -81,6 +93,18 @@ impl<E: StorageEngine> Database<E> {
     /// let current_fks = db.get_foreign_key_constraints("B").unwrap();
     /// assert_eq!(current_fks.foreign_keys().len(), 1);
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// let fks = db.get_foreign_key_constraints("USERS");
+    /// ```
     pub fn get_foreign_key_constraints(
         &self,
         relation_name: &str,
@@ -108,6 +132,21 @@ impl<E: StorageEngine> Database<E> {
     /// let constraints = KeyConstraints::new().with_primary_key(pk);
     ///
     /// db.set_key_constraints("TEST", constraints).unwrap();
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::constraints::KeyConstraints;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// let mut keys = KeyConstraints::new();
+    /// keys.add_key(vec!["id".to_string()]).unwrap();
+    /// db.set_key_constraints("USERS", keys).unwrap();
     /// ```
     pub fn set_key_constraints(
         &mut self,
@@ -152,6 +191,22 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// db.set_foreign_key_constraints("EMP", constraints).unwrap();
     /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::constraints::{ForeignKeyConstraints, ForeignKey};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int).with_attribute("user_id", ScalarType::Int);
+    /// db.create_relvar("ORDERS", RelationType::new(heading.clone())).unwrap();
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// let mut fks = ForeignKeyConstraints::new();
+    /// fks.add_foreign_key(ForeignKey::new(vec!["user_id".to_string()], "USERS".to_string(), vec!["id".to_string()])).unwrap();
+    /// db.set_foreign_key_constraints("ORDERS", fks).unwrap();
+    /// ```
     pub fn set_foreign_key_constraints(
         &mut self,
         relation_name: &str,
@@ -186,6 +241,21 @@ impl<E: StorageEngine> Database<E> {
     ///     .with_constraint(TypeConstraint::Range { min: ScalarValue::Int(1), max: ScalarValue::Int(i64::MAX) });
     ///
     /// db.set_type_constraints("TEST", "count", attr_constraints).unwrap();
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::constraints::{TypeConstraints, TypeConstraint};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// let mut tc = TypeConstraints::new();
+    /// tc.add_constraint("id".to_string(), TypeConstraint::BuiltIn(ScalarType::Int)).unwrap();
+    /// db.set_type_constraints("USERS", tc).unwrap();
     /// ```
     pub fn set_type_constraints(
         &mut self,
@@ -232,6 +302,21 @@ impl<E: StorageEngine> Database<E> {
     ///     ));
     ///
     /// db.set_check_constraints("PEOPLE", constraints).unwrap();
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::constraints::{CheckConstraints, Expression, Constraint};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    /// let mut checks = CheckConstraints::new();
+    /// checks.add_constraint("positive_id", Constraint::Expression(Expression::GreaterThan(Box::new(Expression::Attribute("id".to_string())), Box::new(Expression::Constant(relvar_core::values::ScalarValue::Int(0)))))).unwrap();
+    /// db.set_check_constraints("USERS", checks).unwrap();
     /// ```
     pub fn set_check_constraints(
         &mut self,

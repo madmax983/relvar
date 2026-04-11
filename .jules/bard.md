@@ -74,3 +74,6 @@ This ensures the map matches the territory.
 ## 2024-06-03 - Replaced "Returns the" and "Returns a" noise with descriptive verbs
 **Confusion:** A few methods and enums in `relvar-storage` (`storage/heap.rs`) and `relvar-core` (`query/mod.rs`) still had auto-generated boilerplate `/// Returns the...` or `/// Returns a...` comments, providing zero semantic value.
 **Clarification:** I updated these elements with precise verbs and context, explaining what information is retrieved or exposed, fully eradicating this boilerplate pattern.
+## 2024-06-04 - Fixed Core API Doctests and Storage WAL
+**Confusion:** The core database operations (transaction, schema, data, integrity) lacked copy-pasteable examples showing the exact instantiation of an in-memory engine and proper method calls, leaving users struggling to quickly start. Furthermore, some ghost comments like "Gets the" and "Returns a" added zero semantic value.
+**Clarification:** I added exhaustive `## Examples` doctests across `relvar-core/src/database/*.rs` demonstrating the complete setup flow using `InMemoryEngine`, and I replaced all auto-generated ghost comments throughout the entire codebase with precise verbs to eliminate noise. I also added doctests to `relvar-storage/src/wal/*.rs`, using `ignore` carefully on `pub(crate)` types to avoid compilation errors while preserving the knowledge.

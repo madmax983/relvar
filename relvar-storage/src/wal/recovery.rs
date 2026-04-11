@@ -54,6 +54,15 @@ pub struct AnalysisResult {
 /// # Errors
 ///
 /// Returns `WalError` if WAL cannot be read or is corrupted.
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::{WalManager, analyze};
+/// use tempfile::NamedTempFile;
+/// let file = NamedTempFile::new().unwrap();
+/// let mut wal = WalManager::create(file.path()).unwrap();
+/// let analysis = analyze(&mut wal).unwrap();
+/// ```
 pub fn analyze(wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
     // Scan all records from WAL
     let records = wal.scan()?;
@@ -122,6 +131,15 @@ pub struct RecoveryResult {
 /// # Errors
 ///
 /// Returns `WalError` if analysis fails.
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::{WalManager, recover};
+/// use tempfile::NamedTempFile;
+/// let file = NamedTempFile::new().unwrap();
+/// let mut wal = WalManager::create(file.path()).unwrap();
+/// let result = recover(&mut wal).unwrap();
+/// ```
 pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     // Analysis pass
     let analysis = analyze(wal)?;
