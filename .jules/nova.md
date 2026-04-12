@@ -57,6 +57,10 @@
 **Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
 **Fate:** TBD
 **Lesson:** TBD
+## Relational Sudoku Solver
+**Concept:** Modeled a Sudoku solver using purely relational algebra. Cells and domain are relations, constraints are evaluated with joins, and domain reduction and propagation are performed via relational difference, summarization and union.
+**Fate:** Merged
+**Lesson:** Constraint satisfaction problems (like Sudoku) are perfectly suited to set-based relational operations. Set difference iteratively narrows valid domains and aggregations find cells that are fully determined.
 
 ## Relational Enigma Machine
 **Concept:** Modeled an Enigma Machine purely with relations for plugboard, rotors, and reflector. Evaluated message encryption in parallel by resolving the electrical pathways via relational joins and computing rotation offsets via extensions.
