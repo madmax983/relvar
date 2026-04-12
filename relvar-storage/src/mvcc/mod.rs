@@ -72,7 +72,6 @@
 //! unaware of versions, snapshots, or transaction IDs.
 
 pub(crate) mod active_txn_table;
-pub(crate) mod gc;
 pub(crate) mod snapshot;
 pub(crate) mod visibility;
 

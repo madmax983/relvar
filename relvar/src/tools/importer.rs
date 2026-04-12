@@ -275,8 +275,7 @@ impl<'de> DeserializeSeed<'de> for ScalarValueSeed {
                     counter: self.counter,
                 };
                 let inner_val = inner_seed.deserialize(deserializer)?;
-                self.scalar_type
-                    .selector(inner_val)
+                ScalarValue::select(&self.scalar_type, inner_val)
                     .map_err(|e| serde::de::Error::custom(format!("Selector error: {:?}", e)))
             }
             _ => deserializer.deserialize_any(ScalarValueVisitor {
@@ -644,9 +643,7 @@ fn str_to_scalar(s: &str, expected_type: &ScalarType) -> Result<ScalarValue, Str
         ScalarType::Relation(_) => Err("Cannot import nested relations from CSV".to_string()),
         ScalarType::UserDefined { representation, .. } => {
             let inner_val = str_to_scalar(s, representation)?;
-            expected_type
-                .selector(inner_val)
-                .map_err(|e| format!("{:?}", e))
+            ScalarValue::select(expected_type, inner_val).map_err(|e| format!("{:?}", e))
         }
     }
 }

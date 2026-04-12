@@ -455,7 +455,7 @@ mod tests {
 
         // Create a user defined type
         let user_type = ScalarType::user_defined("MyInt", ScalarType::Int);
-        let user_val = user_type.selector(ScalarValue::Int(42)).unwrap();
+        let user_val = ScalarValue::select(&user_type, ScalarValue::Int(42)).unwrap();
 
         let heading = TupleType::new()
             .with_attribute("int_col", ScalarType::Int)
