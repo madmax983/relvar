@@ -8,3 +8,7 @@
 ## 2026-04-11 - Unsoundness in rand
 **Threat:** The `rand` crate versions 0.8.5 and 0.9.2 contain a vulnerability (RUSTSEC-2026-0097) where they are unsound when using a custom logger with `rand::rng()`.
 **Defense:** Updated the `rand` dependency to 0.10.1 and `proptest` to 1.11.0 to pull in a secure version of `rand`. Updated `relvar/src/experimental/mock.rs` to match the new `rand` API (`random()`, `random_range()`, `RngExt`, `distr::Alphanumeric`, and `StdRng::from_rng(&mut rand::rng())`).
+
+## 2026-04-12 - LimitExceeded Silent Truncation
+**Threat:** The `importer.rs` json import and `catalog.rs` load functions were using `serde_json::from_reader(capped_reader)`. While the reader properly capped bounds (10MB limit), if the reader exhausted its cap during stream parsing, `serde_json` could silently truncate valid partial streams or emit a generic JSON parse error instead of enforcing memory safety visibility, leaving the application vulnerable to partial unvalidated data loads or mimicking data integrity on 0-metadata length unbounded device files.
+**Defense:** Added explicit trailing validation of `capped_reader.limit() == 0` strictly post-deserialization. If the cap hits 0, the functions explicitly map the result to `LimitExceeded` / `CatalogError` regardless of prior silent or EOF conditions, assuring full data integrity validation and preventing unbounded stream spoofing.
