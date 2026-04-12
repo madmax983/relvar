@@ -119,7 +119,7 @@ impl CheckConstraint {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn name(&self) -> &str {
@@ -130,7 +130,7 @@ impl CheckConstraint {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn description(&self) -> &str {
@@ -141,7 +141,7 @@ impl CheckConstraint {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn expression(&self) -> &ConstraintExpression {
@@ -156,7 +156,7 @@ impl CheckConstraint {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn is_satisfied_by(&self, tuple: &Tuple) -> Result<bool, CheckConstraintError> {
@@ -169,7 +169,7 @@ impl CheckConstraint {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn referenced_attributes(&self) -> HashSet<String> {
@@ -191,7 +191,7 @@ impl CheckConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new() -> Self {
@@ -204,7 +204,7 @@ impl CheckConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn with_constraint(mut self, constraint: CheckConstraint) -> Self {
@@ -222,7 +222,7 @@ impl CheckConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn are_all_satisfied_by(&self, tuple: &Tuple) -> Result<bool, CheckConstraintError> {
@@ -241,7 +241,7 @@ impl CheckConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn constraints(&self) -> &[CheckConstraint] {
@@ -252,7 +252,7 @@ impl CheckConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn referenced_attributes(&self) -> HashSet<String> {

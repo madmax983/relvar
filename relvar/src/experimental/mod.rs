@@ -23,6 +23,7 @@
 //! - **[`vcs`](crate::experimental::vcs)**: Relational Version Control System (RelGit).
 //! - **[`circuit`](crate::experimental::circuit)**: Relational Logic Circuit Simulator.
 //! - **[`automata`](crate::experimental::automata)**: Relational Automata (NFA).
+//! - **[`enigma`](crate::experimental::enigma)**: Relational Enigma Machine.
 
 pub mod automata;
 pub mod automl;
@@ -30,6 +31,7 @@ pub mod blockchain;
 pub mod cellular_automaton;
 pub mod circuit;
 pub mod ecs;
+pub mod enigma;
 pub mod graph;
 pub mod image;
 pub mod knowledge_graph;

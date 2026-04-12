@@ -189,16 +189,12 @@ fn validate_group_request(
     }
 
     // Determine grouping attributes (the ones NOT being grouped into RVA)
-    let all_attrs: Vec<String> = relation
+    let grouping_attrs: Vec<String> = relation
         .relation_type()
         .tuple_type()
         .attribute_names()
-        .map(|s| s.to_string())
-        .collect();
-    let grouping_attrs: Vec<String> = all_attrs
-        .iter()
         .filter(|attr| !attrs_to_group.contains(&attr.as_str()))
-        .cloned()
+        .map(|s| s.to_string())
         .collect();
 
     // Check RVA name doesn't conflict with grouping attributes

@@ -5,3 +5,7 @@
 ## 2024-03-XX - The Database Blob
 **Tangle:** The `relvar-core/src/database/mod.rs` module grew into a 1,000-line God Module holding DDL, DML, constraint validation, transaction boundaries, and Virtual Relvars in a single implementation block.
 **Blueprint:** Refactored `Database<E>` into a Facade pattern. The `mod.rs` file now orchestrates the public API while implementation details are cleanly separated into `schema.rs` (DDL), `data.rs` (DML/Querying), `integrity.rs` (Constraints), and `transaction.rs` (TCL) based on domain responsibility.
+
+## 2026-04-11 - Module Coupling Refactor
+**Tangle:** Several circular dependencies existed across modules: `types` <-> `values` in `relvar-core`, `mvcc` <-> `storage`, and `wal` <-> `storage` in `relvar-storage`.
+**Blueprint:** Refactored dependencies by reallocating shared functionality. The `selector` method on `ScalarType` was replaced with `ScalarValue::select(&type, value)` mapping to correct responsibility since `ScalarValue` relies on `types`, thereby untangling the `relvar-core` loop. In `relvar-storage`, `collect_garbage` was relocated directly into the `storage::heap` namespace, eliminating the cyclical jump between `mvcc` and `storage`. Also decoupled `wal` <-> `storage` by replacing domain-specific struct pointers in `WalRecord` with primitive `u64` representing the page id, establishing unidirectional flow and solid boundaries.

@@ -52,7 +52,7 @@ impl PreparedConstraintExpression {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
