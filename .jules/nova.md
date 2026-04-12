@@ -66,3 +66,7 @@
 **Concept:** Modeled an Enigma Machine purely with relations for plugboard, rotors, and reflector. Evaluated message encryption in parallel by resolving the electrical pathways via relational joins and computing rotation offsets via extensions.
 **Fate:** TBD
 **Lesson:** TBD
+## Expert System
+**Concept:** I built a Relational Expert System (`ExpertSystem`) using forward chaining that executes over `Facts`, `Rule Conditions`, and `Rule Conclusions` relations. It iteratively joins facts against conditions, verifies rules have all criteria met, and extracts conclusions to insert as new facts until reaching a fixpoint.
+**Fate:** Merged
+**Lesson:** Relational algebra handles state machines and derivation well! We must use `Aggregation::count` coupled with `summarize` and `restrict` to ensure all conditions are fulfilled before pulling the conclusion from `rule_conclusions`. It perfectly captures the essence of rule engines in the Relational framework!
