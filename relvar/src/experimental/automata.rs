@@ -23,7 +23,7 @@ use relvar_core::values::Relation;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// // Example
 /// ```
 pub struct RelationalNfa {
@@ -39,7 +39,7 @@ impl RelationalNfa {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new(states: Relation, transitions: Relation) -> Self {
@@ -53,7 +53,7 @@ impl RelationalNfa {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn accepts(&self, input: &str) -> Result<bool, DatabaseError> {
