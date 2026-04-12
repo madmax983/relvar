@@ -76,3 +76,6 @@
 ## 2025-05-18 - [ForeignKey Constraint Panic]
 **Learning:** `ForeignKey` constraint validation methods (`is_satisfied_by`, `would_violate_on_insert`, `would_violate_on_delete`) panicked with `.unwrap()` when they were passed a tuple that was missing a required attribute, as dynamic relations might accept partially valid or mismatched inputs.
 **Action:** When validating constraints against tuples, use `.ok_or_else()` to explicitly handle missing attributes by returning an error instead of panicking via `.unwrap()`.
+## 2024-04-10 - Database Facade Constraint Tests
+**Learning:** Many of the Database facade constraint manipulation methods (`get_key_constraints`, `set_key_constraints`, etc) were uncovered because constraints were typically interacted with directly, but the facade handles translating names properly to the underlying engine. Also `drop_relvar` and `drop_virtual_relvar` error conditions were not covered.
+**Action:** Wrote targeted coverage tests for Database methods verifying they behave correctly and emit the right error enumerations (like `TupleMismatch` and constraint errors) directly on `Database<E>`. Always ensure integration-style tests cover the outermost boundary layer.

@@ -1,5 +1,6 @@
 use relvar_core::constraints::{
-    AttributeConstraints, CheckConstraints, ForeignKeyConstraints, KeyConstraints,
+    AttributeConstraints, CheckConstraints, ForeignKey, ForeignKeyConstraints, KeyConstraints,
+    PrimaryKey,
 };
 use relvar_core::database::Database;
 use relvar_core::error::DatabaseError;
@@ -230,4 +231,32 @@ fn test_database_set_check_constraints_success() {
 
     let result = db.set_check_constraints("TEST", constraints);
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_get_constraints() {
+    let mut db = Database::new(InMemoryEngine::new());
+
+    // Key constraints
+    let type1 = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("TEST_KEY", type1.clone()).unwrap();
+    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    db.set_key_constraints("TEST_KEY", KeyConstraints::new().with_primary_key(pk))
+        .unwrap();
+    let kc = db.get_key_constraints("TEST_KEY").unwrap();
+    assert!(kc.primary_key().is_some());
+
+    // FK constraints
+    let type2 = RelationType::new(TupleType::new().with_attribute("ref_id", ScalarType::Int));
+    db.create_relvar("TEST_FK", type2.clone()).unwrap();
+    let fk = ForeignKey::new(
+        vec!["ref_id".to_string()],
+        "TEST_KEY".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    db.set_foreign_key_constraints("TEST_FK", ForeignKeyConstraints::new().with_foreign_key(fk))
+        .unwrap();
+    let fkc = db.get_foreign_key_constraints("TEST_FK").unwrap();
+    assert_eq!(fkc.foreign_keys().len(), 1);
 }
