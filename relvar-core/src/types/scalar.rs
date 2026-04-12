@@ -46,7 +46,7 @@ use thiserror::Error;
 /// let emp_id_type = ScalarType::user_defined("EmployeeId", ScalarType::Int);
 ///
 /// // Attempting to use a String representation for an Int-backed type will fail
-/// let result = emp_id_type.selector(ScalarValue::String("Not an Int".into()));
+/// let result = relvar_core::values::ScalarValue::select(&emp_id_type, ScalarValue::String("Not an Int".into()));
 ///
 /// assert!(matches!(result, Err(ScalarTypeError::TypeMismatch { .. })));
 /// ```
@@ -223,7 +223,7 @@ pub enum ScalarType {
     /// assert_ne!(emp_id_type, dept_id_type);
     ///
     /// // Creating values requires the selector
-    /// let id_val = emp_id_type.selector(ScalarValue::Int(100)).unwrap();
+    /// let id_val = relvar_core::values::ScalarValue::select(&emp_id_type, ScalarValue::Int(100)).unwrap();
     /// assert_eq!(id_val.scalar_type().name(), "EmployeeId");
     /// ```
     UserDefined {
@@ -317,77 +317,6 @@ impl ScalarType {
         ScalarType::UserDefined {
             name: name.into(),
             representation: Box::new(representation),
-        }
-    }
-
-    /// POSSREP selector: constructs a value of this type from its representation.
-    ///
-    /// TTM: The selector takes a value of the representation type and produces
-    /// a value of this user-defined type.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use relvar_core::types::ScalarType;
-    /// use relvar_core::values::ScalarValue;
-    ///
-    /// // Define a user-defined type backed by Int
-    /// let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
-    ///
-    /// // Successful selection
-    /// let widget = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
-    /// assert_eq!(widget.scalar_type().name(), "WidgetId");
-    ///
-    /// // Type mismatch error
-    /// let result = widget_id_type.selector(ScalarValue::String("not an int".into()));
-    /// assert!(result.is_err());
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if the provided value's type doesn't match the expected
-    /// representation type.
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar_core::types::ScalarType;
-    /// use relvar_core::values::ScalarValue;
-    ///
-    /// let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
-    /// let val = widget_id_type.selector(ScalarValue::Int(42)).unwrap();
-    ///
-    /// assert!(val.is_type(&widget_id_type));
-    /// ```
-    pub fn selector(
-        &self,
-        value: crate::values::ScalarValue,
-    ) -> Result<crate::values::ScalarValue, ScalarTypeError> {
-        use crate::values::ScalarValue;
-
-        match self {
-            ScalarType::UserDefined { representation, .. } => {
-                // Check that the value matches the representation type
-                if !value.is_type(representation) {
-                    return Err(ScalarTypeError::TypeMismatch {
-                        expected: representation.name().to_string(),
-                        actual: value.scalar_type().name().to_string(),
-                    });
-                }
-                Ok(ScalarValue::UserDefined {
-                    type_def: self.clone(),
-                    value: Box::new(value),
-                })
-            }
-            // For built-in types, the value must already be of this type
-            ty => {
-                if !value.is_type(ty) {
-                    return Err(ScalarTypeError::TypeMismatch {
-                        expected: ty.name().to_string(),
-                        actual: value.scalar_type().name().to_string(),
-                    });
-                }
-                Ok(value)
-            }
         }
     }
 }
@@ -590,24 +519,6 @@ mod tests {
         assert_eq!(set.len(), 2); // Only Int and Float
         assert!(set.contains(&ScalarType::Int));
         assert!(set.contains(&ScalarType::Float));
-    }
-
-    #[test]
-    fn test_builtin_selector_validates_type() {
-        use crate::values::ScalarValue;
-
-        // Selector for built-in types should reject values of wrong type
-        let int_type = ScalarType::Int;
-        let string_value = ScalarValue::String("not an int".to_string());
-
-        let result = int_type.selector(string_value);
-        assert!(result.is_err());
-
-        // Should accept correct type
-        let int_value = ScalarValue::Int(42);
-        let result = int_type.selector(int_value.clone());
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), int_value);
     }
 
     // Tests for Ord/PartialOrd implementations (for coverage)

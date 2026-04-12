@@ -7,7 +7,7 @@ fn test_type_mismatch_error_display() {
     let int_type = ScalarType::Int;
     let string_value = ScalarValue::String("not an int".to_string());
 
-    let result = int_type.selector(string_value);
+    let result = relvar_core::values::ScalarValue::select(&int_type, string_value);
     if let Err(e) = result {
         assert_eq!(e.to_string(), "Type mismatch: expected Int, got String");
     } else {
@@ -20,7 +20,7 @@ fn test_user_defined_selector_type_mismatch() {
     let user_type = ScalarType::user_defined("UserId", ScalarType::Int);
     let string_value = ScalarValue::String("not an int".to_string());
 
-    let result = user_type.selector(string_value);
+    let result = relvar_core::values::ScalarValue::select(&user_type, string_value);
     if let Err(e) = result {
         assert_eq!(e.to_string(), "Type mismatch: expected Int, got String");
     } else {

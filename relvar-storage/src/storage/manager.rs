@@ -308,7 +308,8 @@ impl StorageManager {
         committed_txns: &HashSet<TransactionId>,
     ) -> Result<(), StorageError> {
         for heap_file in self.heap_files.values_mut() {
-            crate::mvcc::gc::collect_garbage(heap_file, gc_lsn, committed_txns)
+            heap_file
+                .gc_remove_dead_versions(gc_lsn, committed_txns)
                 .map_err(|e| StorageError::Other(format!("GC error: {}", e)))?;
         }
         Ok(())
