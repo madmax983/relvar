@@ -57,3 +57,8 @@
 **Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
 **Fate:** TBD
 **Lesson:** TBD
+
+## Relational Enigma Machine
+**Concept:** Modeled an Enigma Machine purely with relations for plugboard, rotors, and reflector. Evaluated message encryption in parallel by resolving the electrical pathways via relational joins and computing rotation offsets via extensions.
+**Fate:** TBD
+**Lesson:** TBD
