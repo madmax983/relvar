@@ -137,7 +137,7 @@ impl ForeignKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new(
@@ -164,7 +164,7 @@ impl ForeignKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn foreign_key_attributes(&self) -> &[String] {
@@ -175,7 +175,7 @@ impl ForeignKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn referenced_relation_name(&self) -> &str {
@@ -186,7 +186,7 @@ impl ForeignKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn referenced_attributes(&self) -> &[String] {
@@ -198,7 +198,7 @@ impl ForeignKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn is_satisfied_by(
@@ -255,7 +255,7 @@ impl ForeignKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn would_violate_on_insert(
@@ -299,7 +299,7 @@ impl ForeignKey {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn would_violate_on_delete(
@@ -370,7 +370,7 @@ impl ForeignKeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new() -> Self {
@@ -383,7 +383,7 @@ impl ForeignKeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn with_foreign_key(mut self, fk: ForeignKey) -> Self {
@@ -395,7 +395,7 @@ impl ForeignKeyConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn foreign_keys(&self) -> &[ForeignKey] {

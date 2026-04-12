@@ -37,7 +37,7 @@ pub const POINT_TYPE_NAME: &str = "Point";
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// // Example
 /// ```
 pub fn point_type() -> ScalarType {

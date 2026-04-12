@@ -157,8 +157,24 @@ impl Relation {
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// // Example
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    ///
+    /// let mut r1 = Relation::new(rel_type.clone());
+    /// r1.insert(tuple! { id: 1i64 }).unwrap();
+    /// r1.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// let mut r2 = Relation::new(rel_type.clone());
+    /// r2.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// // difference_into mutates r1
+    /// let r1 = r1.difference_into(&r2).unwrap();
+    /// assert_eq!(r1.cardinality(), 1);
+    /// assert!(r1.contains(&tuple! { id: 1i64 }));
     /// ```
     pub fn difference_into(mut self, other: &Relation) -> Result<Self, DifferenceError> {
         // Check type compatibility
@@ -174,8 +190,22 @@ impl Relation {
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// // Example
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    ///
+    /// let mut r1 = Relation::new(rel_type.clone());
+    /// r1.insert(tuple! { id: 1i64 }).unwrap();
+    /// r1.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// let mut r2 = Relation::new(rel_type.clone());
+    /// r2.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// let r1 = r1.minus_into(&r2).unwrap();
+    /// assert_eq!(r1.cardinality(), 1);
     /// ```
     pub fn minus_into(self, other: &Relation) -> Result<Self, DifferenceError> {
         self.difference_into(other)

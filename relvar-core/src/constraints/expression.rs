@@ -152,7 +152,7 @@ impl ConstraintExpression {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn referenced_attributes(&self) -> HashSet<String> {
@@ -363,7 +363,7 @@ impl ConstraintExpression {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn prepare(&self) -> PreparedConstraintExpression {

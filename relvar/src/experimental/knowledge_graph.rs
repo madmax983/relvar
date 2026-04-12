@@ -20,6 +20,13 @@ use relvar_core::{
 use std::collections::HashMap;
 
 /// A component of a triple pattern, which can be either a concrete value or a variable.
+///
+/// # Example
+/// ```
+/// use relvar::experimental::knowledge_graph::Term;
+/// let t1 = Term::var("X");
+/// let t2 = Term::val("Alice");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Term {
     /// A concrete URI or literal value.
@@ -77,6 +84,12 @@ impl Default for KnowledgeGraph {
 
 impl KnowledgeGraph {
     /// Creates a new, empty Knowledge Graph.
+    ///
+    /// # Example
+    /// ```
+    /// use relvar::experimental::knowledge_graph::KnowledgeGraph;
+    /// let kg = KnowledgeGraph::new();
+    /// ```
     pub fn new() -> Self {
         let heading = TupleType::new()
             .with_attribute("subject".to_string(), ScalarType::String)

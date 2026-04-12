@@ -160,7 +160,7 @@ impl Relation {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn matching(&self, other: &Relation) -> Self {
@@ -264,7 +264,7 @@ impl Relation {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn not_matching(&self, other: &Relation) -> Self {

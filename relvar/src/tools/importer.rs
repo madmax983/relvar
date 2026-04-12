@@ -46,6 +46,13 @@ use std::rc::Rc;
 use thiserror::Error;
 
 /// Errors that can occur during import.
+///
+/// # Example
+/// ```
+/// use relvar::data::importer::ImporterError;
+/// let e = ImporterError::FormatError("id".to_string());
+/// println!("{}", e);
+/// ```
 #[derive(Debug, Error)]
 pub enum ImporterError {
     /// I/O error reading the input.

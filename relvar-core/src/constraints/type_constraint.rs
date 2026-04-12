@@ -107,7 +107,7 @@ impl TypeConstraint {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn is_satisfied_by(&self, value: &ScalarValue) -> Result<bool, TypeConstraintError> {
@@ -166,7 +166,7 @@ impl AttributeConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn new(attribute_name: String, scalar_type: ScalarType) -> Self {
@@ -181,7 +181,7 @@ impl AttributeConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn with_constraint(mut self, constraint: TypeConstraint) -> Self {
@@ -193,7 +193,7 @@ impl AttributeConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn attribute_name(&self) -> &str {
@@ -204,7 +204,7 @@ impl AttributeConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn scalar_type(&self) -> &ScalarType {
@@ -215,7 +215,7 @@ impl AttributeConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn constraints(&self) -> &[TypeConstraint] {
@@ -226,7 +226,7 @@ impl AttributeConstraints {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// // Example
     /// ```
     pub fn is_satisfied_by(&self, value: &ScalarValue) -> Result<bool, TypeConstraintError> {

@@ -134,12 +134,12 @@ impl WalRecord {
     /// Returns `WalRecordError::RecordTooLarge` if the record exceeds MAX_RECORD_SIZE.
     ///
     /// # Examples
-    /// ```ignore
+    /// ```text
     /// use relvar_storage::wal::{WalRecord, TransactionId};
     /// let record = WalRecord::Begin { txn_id: TransactionId::new(1) };
     /// let bytes = record.serialize().unwrap();
     /// assert!(!bytes.is_empty());
-    /// ```ignore
+    /// ```text
     pub fn serialize(&self) -> Result<Vec<u8>, WalRecordError> {
         let bytes = postcard::to_allocvec(self)?;
 
@@ -157,13 +157,13 @@ impl WalRecord {
     /// Returns `WalRecordError::Serialization` if deserialization fails.
     ///
     /// # Examples
-    /// ```ignore
+    /// ```text
     /// use relvar_storage::wal::{WalRecord, TransactionId};
     /// let record = WalRecord::Begin { txn_id: TransactionId::new(1) };
     /// let bytes = record.serialize().unwrap();
     /// let deserialized = WalRecord::deserialize(&bytes).unwrap();
     /// assert_eq!(record.txn_id(), deserialized.txn_id());
-    /// ```ignore
+    /// ```text
     pub fn deserialize(bytes: &[u8]) -> Result<Self, WalRecordError> {
         // Enforce maximum record size on the input buffer.
         if bytes.len() > MAX_RECORD_SIZE {
@@ -184,14 +184,14 @@ impl WalRecord {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```text
     /// use relvar_storage::wal::{WalRecord, TransactionId};
     ///
     /// let txn_id = TransactionId::new(5);
     /// let record = WalRecord::Begin { txn_id };
     ///
     /// assert_eq!(record.txn_id(), Some(txn_id));
-    /// ```ignore
+    /// ```text
     ///
     /// Checkpoint records don't have a transaction ID.
     pub fn txn_id(&self) -> Option<TransactionId> {
@@ -210,7 +210,7 @@ impl WalRecord {
     /// Returns true if this is a transaction end marker (commit or abort).
     ///
     /// # Examples
-    /// ```ignore
+    /// ```text
     /// use relvar_storage::wal::{WalRecord, TransactionId};
     /// let commit = WalRecord::Commit { txn_id: TransactionId::new(1) };
     /// let abort = WalRecord::Abort { txn_id: TransactionId::new(1) };
@@ -218,7 +218,7 @@ impl WalRecord {
     /// assert!(commit.is_txn_end());
     /// assert!(abort.is_txn_end());
     /// assert!(!begin.is_txn_end());
-    /// ```ignore
+    /// ```text
     pub fn is_txn_end(&self) -> bool {
         matches!(self, WalRecord::Commit { .. } | WalRecord::Abort { .. })
     }

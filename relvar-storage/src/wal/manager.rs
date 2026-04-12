@@ -32,7 +32,7 @@ const WAL_MAGIC: &[u8; 8] = b"RELVAR01";
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// use relvar_storage::wal::WalManager;
 /// use relvar_storage::wal::WalRecord;
 /// use relvar_storage::wal::TransactionId;
@@ -45,7 +45,7 @@ const WAL_MAGIC: &[u8; 8] = b"RELVAR01";
 ///
 /// // Flush ensures durability
 /// wal.flush().unwrap();
-/// ```ignore
+/// ```text
 pub struct WalManager {
     /// The log file.
     log_file: File,
