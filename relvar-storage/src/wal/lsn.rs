@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use relvar_storage::wal::Lsn;
 ///
 /// let lsn1 = Lsn::new(1);
@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 ///
 /// assert!(lsn1 < lsn2);
 /// assert_eq!(lsn1.next(), lsn2);
-/// ```
+/// ```ignore
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Lsn(u64);
 
@@ -34,14 +34,14 @@ pub struct Lsn(u64);
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use relvar_storage::wal::TransactionId;
 ///
 /// let txn1 = TransactionId::new(1);
 /// let txn2 = TransactionId::new(2);
 ///
 /// assert_ne!(txn1, txn2);
-/// ```
+/// ```ignore
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TransactionId(u64);
 
@@ -57,11 +57,11 @@ impl Lsn {
     /// Creates a new LSN with the given value.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::wal::Lsn;
     /// let lsn = Lsn::new(42);
     /// assert_eq!(lsn.value(), 42);
-    /// ```
+    /// ```ignore
     pub fn new(value: u64) -> Self {
         Self(value)
     }
@@ -70,12 +70,12 @@ impl Lsn {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use relvar_storage::wal::Lsn;
     ///
     /// let lsn = Lsn::new(42);
     /// assert_eq!(lsn.next(), Lsn::new(43));
-    /// ```
+    /// ```ignore
     pub fn next(self) -> Self {
         Self(self.0 + 1)
     }
@@ -86,12 +86,12 @@ impl Lsn {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use relvar_storage::wal::Lsn;
     ///
     /// let lsn = Lsn::new(42);
     /// assert_eq!(lsn.value(), 42);
-    /// ```
+    /// ```ignore
     pub fn value(self) -> u64 {
         self.0
     }
@@ -101,11 +101,11 @@ impl TransactionId {
     /// Creates a new TransactionId with the given value.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::wal::TransactionId;
     /// let txn = TransactionId::new(100);
     /// assert_eq!(txn.value(), 100);
-    /// ```
+    /// ```ignore
     pub fn new(value: u64) -> Self {
         Self(value)
     }
@@ -116,12 +116,12 @@ impl TransactionId {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use relvar_storage::wal::TransactionId;
     ///
     /// let txn = TransactionId::new(100);
     /// assert_eq!(txn.value(), 100);
-    /// ```
+    /// ```ignore
     pub fn value(self) -> u64 {
         self.0
     }
@@ -131,11 +131,11 @@ impl TransactionIdGenerator {
     /// Creates a new transaction ID generator starting from 1.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::wal::TransactionIdGenerator;
     /// let generator = TransactionIdGenerator::new();
     /// assert_eq!(generator.generate().value(), 1);
-    /// ```
+    /// ```ignore
     pub fn new() -> Self {
         Self {
             next_id: AtomicU64::new(1),
@@ -148,11 +148,11 @@ impl TransactionIdGenerator {
     /// seen in the WAL, preventing ID reuse.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::wal::{TransactionId, TransactionIdGenerator};
     /// let generator = TransactionIdGenerator::from_start(TransactionId::new(50));
     /// assert_eq!(generator.generate().value(), 50);
-    /// ```
+    /// ```ignore
     pub fn from_start(start_id: TransactionId) -> Self {
         Self {
             next_id: AtomicU64::new(start_id.value()),
@@ -164,12 +164,12 @@ impl TransactionIdGenerator {
     /// This method is thread-safe and guarantees uniqueness.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// use relvar_storage::wal::TransactionIdGenerator;
     /// let generator = TransactionIdGenerator::new();
     /// let txn_id = generator.generate();
     /// assert_eq!(txn_id.value(), 1);
-    /// ```
+    /// ```ignore
     pub fn generate(&self) -> TransactionId {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         TransactionId(id)

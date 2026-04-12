@@ -3,7 +3,6 @@ use relvar::tuple;
 use relvar::{Relation, RelationType, ScalarType, TupleType};
 
 #[test]
-#[should_panic(expected = "Bug: moving_average collision returns incorrect result")]
 fn test_moving_average_attribute_collision() {
     // This test demonstrates a vulnerability in `moving_average`.
     // The implementation renames attributes by appending "_prev".
@@ -63,14 +62,9 @@ fn test_moving_average_attribute_collision() {
     let avg = t2.get_typed::<f64>("moving_avg").unwrap();
 
     // Check if we hit the bug
-    if (avg - 15.0).abs() < 0.001 {
-        // Test passed (bug fixed or logic handles it)
-        // This path will cause the test to FAIL (because #[should_panic] expects a panic),
-        // which alerts us that the bug has been fixed and we can remove the attribute.
-    } else if (avg - 200.0).abs() < 0.001 {
-        // Bug confirmed
-        panic!("Bug: moving_average collision returns incorrect result");
-    } else {
-        panic!("Unexpected result: {}", avg);
-    }
+    assert!(
+        (avg - 15.0).abs() < 0.001,
+        "Expected moving average to be 15.0, got {}",
+        avg
+    );
 }

@@ -352,41 +352,53 @@ impl Aggregation {
         })?;
 
         match first_val.scalar_type() {
-            ScalarType::Int => {
-                let mut sum = 0i128;
-                for tuple in tuples {
-                    let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Failed to get attribute {} as i64",
-                            attr_name
-                        ))
-                    })?;
-                    sum = sum.checked_add(value as i128).ok_or_else(|| {
-                        SummarizeError::AggregationError("Integer overflow in AVG".to_string())
-                    })?;
-                }
-                let avg = sum as f64 / tuples.len() as f64;
-                Ok(ScalarValue::Float(avg))
-            }
-            ScalarType::Float => {
-                let mut sum = 0.0;
-                for tuple in tuples {
-                    let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
-                        SummarizeError::AggregationError(format!(
-                            "Failed to get attribute {} as f64",
-                            attr_name
-                        ))
-                    })?;
-                    sum += value;
-                }
-                let avg = sum / tuples.len() as f64;
-                Ok(ScalarValue::Float(avg))
-            }
+            ScalarType::Int => self.compute_avg_int(attr_name, tuples),
+            ScalarType::Float => self.compute_avg_float(attr_name, tuples),
             _ => Err(SummarizeError::AggregationError(format!(
                 "Avg requires Int or Float attribute, got {:?}",
                 first_val.scalar_type()
             ))),
         }
+    }
+
+    fn compute_avg_int(
+        &self,
+        attr_name: &str,
+        tuples: &[&Tuple],
+    ) -> Result<ScalarValue, SummarizeError> {
+        let mut sum = 0i128;
+        for tuple in tuples {
+            let value = tuple.get_typed::<i64>(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!(
+                    "Failed to get attribute {} as i64",
+                    attr_name
+                ))
+            })?;
+            sum = sum.checked_add(value as i128).ok_or_else(|| {
+                SummarizeError::AggregationError("Integer overflow in AVG".to_string())
+            })?;
+        }
+        let avg = sum as f64 / tuples.len() as f64;
+        Ok(ScalarValue::Float(avg))
+    }
+
+    fn compute_avg_float(
+        &self,
+        attr_name: &str,
+        tuples: &[&Tuple],
+    ) -> Result<ScalarValue, SummarizeError> {
+        let mut sum = 0.0;
+        for tuple in tuples {
+            let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!(
+                    "Failed to get attribute {} as f64",
+                    attr_name
+                ))
+            })?;
+            sum += value;
+        }
+        let avg = sum / tuples.len() as f64;
+        Ok(ScalarValue::Float(avg))
     }
 
     fn compute_extremum<F>(
@@ -561,12 +573,20 @@ impl Relation {
         } else {
             // Group by specified attributes
             let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<&Tuple>> = HashMap::new();
+            // PERF: Reusable buffer for the grouping key avoids allocating a new Vec
+            // for every single tuple just to query the HashMap.
+            let mut key_buffer = Vec::with_capacity(group_by.len());
             for tuple in self.tuples() {
-                let key: Vec<&ScalarValue> = group_by
-                    .iter()
-                    .map(|attr| tuple.get(attr).unwrap())
-                    .collect();
-                groups.entry(key).or_default().push(tuple);
+                key_buffer.clear();
+                for attr in group_by {
+                    key_buffer.push(tuple.get(attr).unwrap());
+                }
+
+                if let Some(group) = groups.get_mut(key_buffer.as_slice()) {
+                    group.push(tuple);
+                } else {
+                    groups.insert(key_buffer.clone(), vec![tuple]);
+                }
             }
             groups
         }

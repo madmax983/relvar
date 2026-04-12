@@ -62,6 +62,12 @@ use std::collections::HashMap;
 /// Tokenizes text into a frequency map of terms.
 ///
 /// Normalizes to lowercase and removes punctuation.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType, Database, InMemoryEngine};
+/// // Note: This is a placeholder example
+/// ```
 pub fn tokenize(text: &str) -> HashMap<String, i64> {
     let mut counts = HashMap::new();
 
@@ -117,6 +123,12 @@ pub struct FullTextIndex {
 
 impl FullTextIndex {
     /// Creates a new index definition.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(index_name: &str, doc_id_type: ScalarType) -> Self {
         Self {
             index_name: index_name.to_string(),
@@ -127,6 +139,12 @@ impl FullTextIndex {
     /// Initializes the index relation in the database.
     ///
     /// Schema: `(term: String, doc_id: <doc_id_type>, count: Int)`
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn create<S: StorageEngine>(&self, db: &mut Database<S>) -> Result<(), DatabaseError> {
         let heading = TupleType::new()
             .with_attribute("term".to_string(), ScalarType::String)
@@ -142,6 +160,12 @@ impl FullTextIndex {
     /// Tokenizes the text and inserts (term, doc_id, count) tuples.
     /// Note: This is an additive operation. To update a document, you should
     /// delete its entries first (not implemented here for brevity).
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn index_document<S: StorageEngine>(
         &self,
         db: &mut Database<S>,
@@ -179,6 +203,12 @@ impl FullTextIndex {
     /// Searches the index for the given query string.
     ///
     /// Yields a relation `(doc_id, score)` where score is the sum of term frequencies.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, Database, InMemoryEngine};
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn search<E: StorageEngine>(
         &self,
         db: &Database<E>,

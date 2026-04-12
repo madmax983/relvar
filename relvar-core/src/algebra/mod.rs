@@ -88,7 +88,8 @@
 //! - Results are always valid relations
 
 /// Relational Delta operator.
-pub mod delta;
+pub(crate) mod delta;
+pub use delta::Delta;
 
 /// Set difference operator (A MINUS B).
 pub(crate) mod difference;

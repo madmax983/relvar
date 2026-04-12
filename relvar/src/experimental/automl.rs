@@ -56,6 +56,13 @@ use relvar_core::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
 
 /// A simple Naive Bayes classifier.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType, Tuple};
+/// use relvar::experimental::automl::NaiveBayesClassifier;
+/// // Note: This is a placeholder example
+/// ```
 pub struct NaiveBayesClassifier {
     /// Class Prior Probabilities: P(C)
     /// Key: Class Value (as String) -> Value: Log Probability
@@ -88,6 +95,13 @@ impl NaiveBayesClassifier {
     ///
     /// Returns `DatabaseError::AttributeNotFound` if `target_attr` is not in the relation.
     /// Returns `DatabaseError::AlgebraError` if internal algebra operations fail.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, Tuple};
+    /// use relvar::experimental::automl::NaiveBayesClassifier;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn train(relation: &Relation, target_attr: &str) -> Result<Self, DatabaseError> {
         let heading = relation.relation_type().heading();
 
@@ -196,6 +210,13 @@ impl NaiveBayesClassifier {
     /// # Arguments
     ///
     /// * `tuple` - The tuple to classify. Must contain all feature attributes used in training.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, Tuple};
+    /// use relvar::experimental::automl::NaiveBayesClassifier;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn predict(&self, tuple: &Tuple) -> ScalarValue {
         let mut best_class = None;
         let mut max_score = f64::NEG_INFINITY;

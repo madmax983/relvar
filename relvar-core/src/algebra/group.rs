@@ -255,28 +255,27 @@ fn build_group_result_heading(
 /// Pre-allocates the `result_tuples` vector using `Vec::with_capacity(groups.len())`.
 /// Because the exact number of output tuples is known after grouping the input,
 /// this prevents dynamic heap reallocations when constructing the resulting relation.
-fn compute_grouped_tuples<'a>(
+fn group_tuples<'a>(
     relation: &'a Relation,
     grouping_attrs: &[String],
     attrs_to_group: &[&str],
-    result_heading: &TupleType,
-    rva_heading: &TupleType,
-    rva_name: &str,
-) -> Result<Vec<Tuple>, GroupError> {
-    let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
-    let result_heading_arc = std::sync::Arc::new(result_heading.clone());
-
+    rva_heading_arc: std::sync::Arc<TupleType>,
+) -> HashMap<Vec<&'a ScalarValue>, Vec<Tuple>> {
     let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<Tuple>> = HashMap::new();
 
     // Pre-allocate attribute name strings
     let attr_names: Vec<String> = attrs_to_group.iter().map(|a| a.to_string()).collect();
 
+    // PERF: Reusable buffer for the grouping key avoids allocating a new Vec
+    // for every single tuple just to query the HashMap.
+    let mut key_buffer = Vec::with_capacity(grouping_attrs.len());
+
     for tuple in relation.tuples() {
         // Extract grouping key
-        let key: Vec<&ScalarValue> = grouping_attrs
-            .iter()
-            .map(|attr| tuple.get(attr).unwrap())
-            .collect();
+        key_buffer.clear();
+        for attr in grouping_attrs.iter() {
+            key_buffer.push(tuple.get(attr).unwrap());
+        }
 
         // Extract grouped attributes for RVA
         let mut rva_values = std::collections::BTreeMap::new();
@@ -286,8 +285,28 @@ fn compute_grouped_tuples<'a>(
 
         let rva_tuple = Tuple::new_unchecked(rva_heading_arc.clone(), rva_values);
 
-        groups.entry(key).or_default().push(rva_tuple);
+        if let Some(group) = groups.get_mut(key_buffer.as_slice()) {
+            group.push(rva_tuple);
+        } else {
+            groups.insert(key_buffer.clone(), vec![rva_tuple]);
+        }
     }
+
+    groups
+}
+
+fn compute_grouped_tuples(
+    relation: &Relation,
+    grouping_attrs: &[String],
+    attrs_to_group: &[&str],
+    result_heading: &TupleType,
+    rva_heading: &TupleType,
+    rva_name: &str,
+) -> Result<Vec<Tuple>, GroupError> {
+    let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
+    let result_heading_arc = std::sync::Arc::new(result_heading.clone());
+
+    let groups = group_tuples(relation, grouping_attrs, attrs_to_group, rva_heading_arc);
 
     // Build result tuples
     let mut result_tuples = Vec::with_capacity(groups.len());
@@ -396,29 +415,48 @@ fn compute_ungrouped_tuples(
 
         // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
         for rva_tuple in rva_relation.tuples() {
-            let mut values = std::collections::BTreeMap::new();
-
-            // Add non-RVA attribute values
-            for attr_name in relation.relation_type().tuple_type().attribute_names() {
-                if attr_name != rva_name {
-                    values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
-                }
-            }
-
-            // Add RVA tuple's attribute values
-            for attr_name in rva_relation_type.tuple_type().attribute_names() {
-                values.insert(
-                    attr_name.to_string(),
-                    rva_tuple.get(attr_name).unwrap().clone(),
-                );
-            }
-
-            let result_tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
+            let result_tuple = build_ungrouped_tuple(
+                relation,
+                tuple,
+                rva_name,
+                rva_relation_type,
+                rva_tuple,
+                &result_heading_arc,
+            );
             result_tuples.push(result_tuple);
         }
     }
 
     Ok(result_tuples)
+}
+
+/// Helper to build a single ungrouped tuple by combining non-RVA and RVA attributes.
+fn build_ungrouped_tuple(
+    relation: &Relation,
+    tuple: &Tuple,
+    rva_name: &str,
+    rva_relation_type: &RelationType,
+    rva_tuple: &Tuple,
+    result_heading_arc: &std::sync::Arc<TupleType>,
+) -> Tuple {
+    let mut values = std::collections::BTreeMap::new();
+
+    // Add non-RVA attribute values
+    for attr_name in relation.relation_type().tuple_type().attribute_names() {
+        if attr_name != rva_name {
+            values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
+        }
+    }
+
+    // Add RVA tuple's attribute values
+    for attr_name in rva_relation_type.tuple_type().attribute_names() {
+        values.insert(
+            attr_name.to_string(),
+            rva_tuple.get(attr_name).unwrap().clone(),
+        );
+    }
+
+    Tuple::new_unchecked(std::sync::Arc::clone(result_heading_arc), values)
 }
 
 #[cfg(test)]

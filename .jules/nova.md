@@ -17,6 +17,7 @@
 **Concept:** Modeled a Turing Machine purely with relations for tape, head position, and transition rules. Evaluated machine steps with pure relational algebra (Join, Extend, Difference, Union).
 **Fate:** Merged
 **Lesson:** Even Turing completeness can be modeled via relational operations, proving that the algebra is incredibly expressive for arbitrary iterative state transitions over unbounded tapes.
+
 ## Relational Blockchain
 **Concept:** A simplified blockchain simulation where blocks, transactions, and the ledger are represented as relations, and validation (e.g., balance checks, hash links) is done via relational algebra.
 **Fate:** TBD
@@ -29,5 +30,35 @@
 
 ## Relational N-Body Physics Engine
 **Concept:** Modeled an N-body gravity simulation where particles are relations, and interactions (pairwise gravity) and kinematics are computed using pure relational algebra operators (Join, Extend, Summarize, Restrict).
+**Fate:** TBD
+**Lesson:** TBD
+
+## Relational Version Control System (RelGit)
+**Concept:** Implemented a Git-like VCS where blobs, trees, commits, and branches are pure relations. Operations like checkout and computing diffs are fully expressed using relational algebra (Join, Difference, Union, Extend, Restrict).
+**Fate:** Merged
+**Lesson:** Version control is fundamentally a relational problem! Calculating diffs gracefully maps to set differences and intersections of joined trees and blobs, elegantly demonstrating how trees and file histories map to relational schemas without procedural traversal algorithms.
+
+## Relational Neural Networks
+**Concept:** Modeled a basic feedforward neural network using purely relational algebra. Layers, activations, weights, and biases are all relations. Forward propagation is evaluated using Join, Extend, and Summarize.
+**Fate:** Merged
+**Lesson:** Relational algebra maps exceptionally well to matrix operations and graph traversals. By chaining joins and extends, we can naturally express dense neural network connections without loops or procedural code!
+
+## Relational Logic Circuit Simulator
+**Concept:** A synchronous digital logic circuit evaluated using pure relational algebra. Gates and wires are represented as relations, and each step evaluates one propagation delay via joins and logic gate extensions.
+**Fate:** Merged
+**Lesson:** Logic gates act exactly like database queries filtering and extending values over wires, beautifully showing that hardware simulations can be modeled entirely relationally!
+
+## Relational Automata
+**Concept:** Modeled Non-deterministic Finite Automata (NFA) using purely relational algebra. States and transitions are relations, and string matching is evaluated iteratively using joins, epsilon closure with tclose, and projects.
+**Fate:** TBD
+**Lesson:** TBD
+
+## Relational Knowledge Graph (RDF/SPARQL)
+**Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
+**Fate:** TBD
+**Lesson:** TBD
+
+## Relational Enigma Machine
+**Concept:** Modeled an Enigma Machine purely with relations for plugboard, rotors, and reflector. Evaluated message encryption in parallel by resolving the electrical pathways via relational joins and computing rotation offsets via extensions.
 **Fate:** TBD
 **Lesson:** TBD

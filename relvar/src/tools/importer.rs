@@ -91,11 +91,38 @@ const MAX_CSV_LINE_LEN: usize = 1_000_000; // 1MB
 ///
 /// * `reader` - Source of JSON data (e.g., file, string bytes).
 /// * `relation_type` - The schema definition for the resulting relation.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::{TupleType, RelationType, ScalarType};
+/// use relvar::tools::importer;
+/// use std::io::Cursor;
+///
+/// let rel_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id".to_string(), ScalarType::Int)
+///         .with_attribute("name".to_string(), ScalarType::String)
+/// );
+///
+/// let json_data = r#"
+/// [
+///     {"id": 1, "name": "Alice"},
+///     {"id": 2, "name": "Bob"}
+/// ]
+/// "#;
+///
+/// let relation = importer::from_json(Cursor::new(json_data), rel_type).unwrap();
+/// assert_eq!(relation.cardinality(), 2);
+/// ```
 pub fn from_json<R: std::io::Read>(
     reader: R,
     relation_type: RelationType,
 ) -> Result<Relation, ImporterError> {
-    let mut deserializer = serde_json::Deserializer::from_reader(reader);
+    // Security memory constraint: Using a Capped Reader. We limit the input stream to 10MB to
+    // prevent serde_json from reading an unbounded malicious payload into memory.
+    let mut capped_reader = reader.take(10_000_000);
+    let mut deserializer = serde_json::Deserializer::from_reader(&mut capped_reader);
     let counter = Rc::new(RefCell::new(0usize));
     let seed = RelationSeed {
         relation_type,
@@ -409,14 +436,36 @@ impl<'de> Visitor<'de> for ScalarValueVisitor {
 /// * `reader` - Source of CSV data.
 /// * `relation_type` - The schema definition.
 /// * `delimiter` - Field delimiter (e.g., `,`).
+///
+/// # Examples
+///
+/// ```
+/// use relvar::{TupleType, RelationType, ScalarType};
+/// use relvar::tools::importer;
+/// use std::io::Cursor;
+///
+/// let rel_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id".to_string(), ScalarType::Int)
+///         .with_attribute("name".to_string(), ScalarType::String)
+/// );
+///
+/// let csv_data = "id,name\n1,Alice\n2,Bob\n";
+///
+/// let relation = importer::from_csv(Cursor::new(csv_data), rel_type, ',').unwrap();
+/// assert_eq!(relation.cardinality(), 2);
+/// ```
 pub fn from_csv<R: std::io::Read>(
     reader: R,
     relation_type: RelationType,
     delimiter: char,
 ) -> Result<Relation, ImporterError> {
+    // Security memory constraint: Using a Capped Reader. We limit the input stream to 10MB to
+    // prevent unbounded malicious CSV payloads into memory.
+    let mut capped_reader = reader.take(10_000_000);
     let mut relation = Relation::new(relation_type.clone());
     let heading = relation_type.heading();
-    let mut reader = std::io::BufReader::new(reader);
+    let mut reader = std::io::BufReader::new(&mut capped_reader);
 
     // Helper for safe line reading
     fn read_line_safe<B: BufRead>(
@@ -474,7 +523,7 @@ pub fn from_csv<R: std::io::Read>(
     let mut line_buf = String::new();
     let mut line_idx = 0;
     while read_line_safe(&mut reader, &mut line_buf)? > 0 {
-        if relation.cardinality() >= MAX_IMPORT_ROWS {
+        if line_idx >= MAX_IMPORT_ROWS {
             return Err(ImporterError::LimitExceeded(format!(
                 "Size limit exceeded: Max rows: {}",
                 MAX_IMPORT_ROWS
@@ -522,6 +571,12 @@ pub fn from_csv<R: std::io::Read>(
             .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
 
         line_idx += 1;
+    }
+
+    if capped_reader.limit() == 0 {
+        return Err(ImporterError::LimitExceeded(
+            "Global size limit exceeded: > 10MB".to_string(),
+        ));
     }
 
     Ok(relation)

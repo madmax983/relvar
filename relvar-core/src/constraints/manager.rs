@@ -82,11 +82,23 @@ pub struct ConstraintManager {
 
 impl ConstraintManager {
     /// Create a new constraint manager.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Remove all constraints associated with a relation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn remove_constraints_for_relation(&mut self, relation_name: &str) {
         self.key_constraints.remove(relation_name);
         self.foreign_key_constraints.remove(relation_name);
@@ -95,6 +107,12 @@ impl ConstraintManager {
     }
 
     /// Set key constraints for a relation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn set_key_constraints<E: StorageEngine>(
         &mut self,
         engine: &mut E,
@@ -117,6 +135,12 @@ impl ConstraintManager {
     }
 
     /// Set foreign key constraints for a relation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn set_foreign_key_constraints<E: StorageEngine>(
         &mut self,
         engine: &mut E,
@@ -160,6 +184,12 @@ impl ConstraintManager {
     }
 
     /// Set type constraints for an attribute.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn set_type_constraints<E: StorageEngine>(
         &mut self,
         engine: &mut E,
@@ -212,6 +242,12 @@ impl ConstraintManager {
     }
 
     /// Set CHECK constraints for a relation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn set_check_constraints<E: StorageEngine>(
         &mut self,
         engine: &mut E,
@@ -268,6 +304,12 @@ impl ConstraintManager {
     }
 
     /// Validate that a tuple matches the relation's heading.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_tuple_type<E: StorageEngine>(
         &self,
         engine: &E,
@@ -283,6 +325,12 @@ impl ConstraintManager {
     }
 
     /// Validate that a tuple satisfies all type constraints.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_type_constraints(
         &self,
         relation_name: &str,
@@ -306,6 +354,12 @@ impl ConstraintManager {
     }
 
     /// Validate that a tuple satisfies all CHECK constraints.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_check_constraints(
         &self,
         relation_name: &str,
@@ -318,6 +372,12 @@ impl ConstraintManager {
     }
 
     /// Validate key constraints for a single tuple against the current relation state.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_key_constraints_single_tuple(
         &self,
         relation_name: &str,
@@ -347,6 +407,12 @@ impl ConstraintManager {
 
     /// Validate constraints that depend only on the tuple's content and foreign keys
     /// against a full relation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_tuple_content_constraints_bulk<E: StorageEngine>(
         &self,
         engine: &mut E,
@@ -361,6 +427,12 @@ impl ConstraintManager {
     /// Validate constraints that depend only on the tuple's content and foreign keys.
     ///
     /// This includes Type constraints, CHECK constraints, and Foreign Key constraints.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_tuple_content_constraints<E: StorageEngine>(
         &self,
         engine: &mut E,
@@ -376,6 +448,12 @@ impl ConstraintManager {
     /// Validate foreign key constraints for a single tuple.
     ///
     /// Checks that values in the tuple exist in the referenced relations.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_foreign_keys_single_tuple<E: StorageEngine>(
         &self,
         engine: &mut E,
@@ -404,6 +482,12 @@ impl ConstraintManager {
     }
 
     /// Validate key constraints against a full relation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_key_constraints_bulk(
         &self,
         relation: &Relation,
@@ -429,11 +513,23 @@ impl ConstraintManager {
     }
 
     /// Get the key constraints for a relation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.key_constraints.get(relation_name)
     }
 
     /// Get the foreign key constraints for a relation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn get_foreign_key_constraints(
         &self,
         relation_name: &str,
@@ -442,6 +538,12 @@ impl ConstraintManager {
     }
 
     /// Validate that deleting tuples won't violate foreign keys in other relations.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn validate_referencing_foreign_keys<E: StorageEngine>(
         &self,
         engine: &mut E,

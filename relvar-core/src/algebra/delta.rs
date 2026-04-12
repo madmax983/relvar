@@ -13,7 +13,7 @@
 //! use relvar_core::values::Relation;
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use relvar_core::tuple;
-//! use relvar_core::algebra::delta::Delta;
+//! use relvar_core::algebra::Delta;
 //!
 //! let heading = TupleType::new().with_attribute("x", ScalarType::Int);
 //! let rel_type = RelationType::new(heading);
@@ -64,7 +64,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -96,7 +96,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -138,7 +138,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -162,7 +162,7 @@ impl Delta {
 
         // temp U inserted
         let result = temp
-            .union(&self.inserted)
+            .union_into(&self.inserted)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         Ok(result)
@@ -178,7 +178,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -212,7 +212,7 @@ impl Delta {
     /// ```
     /// use relvar_core::values::Relation;
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
-    /// use relvar_core::algebra::delta::Delta;
+    /// use relvar_core::algebra::Delta;
     ///
     /// let heading = TupleType::new().with_attribute("x", ScalarType::Int);
     /// let rel_type = RelationType::new(heading);
@@ -242,7 +242,7 @@ impl Delta {
             .difference(&self.deleted)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         let inserted_new = i_part1
-            .union(&i_part2)
+            .union_into(&i_part2)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // deleted_new = (self.deleted - other.inserted) U (other.deleted - self.inserted)
@@ -257,7 +257,7 @@ impl Delta {
             .difference(&self.inserted)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         let deleted_new = d_part1
-            .union(&d_part2)
+            .union_into(&d_part2)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         Ok(Self {

@@ -20,6 +20,13 @@ use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};
 
 /// A Collaborative Filtering Recommender.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::recommend::CollaborativeFilter;
+/// // Note: This is a placeholder example
+/// ```
 pub struct CollaborativeFilter {
     /// The ratings relation. Schema: (user_id_attr, item_id_attr, score_attr)
     ratings: Relation,
@@ -37,6 +44,13 @@ impl CollaborativeFilter {
     /// * `user_id_attr` - The attribute name for the user identifier.
     /// * `item_id_attr` - The attribute name for the item identifier.
     /// * `score_attr` - The attribute name for the rating/score (must be numeric, ideally Float).
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::recommend::CollaborativeFilter;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(
         ratings: Relation,
         user_id_attr: &str,
@@ -55,6 +69,13 @@ impl CollaborativeFilter {
     ///
     /// Yields a relation with heading `(item_id_attr, predicted_score)` containing
     /// items the user has not yet rated. (The caller must sort if ordering is desired).
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::recommend::CollaborativeFilter;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn recommend_user_based(
         &self,
         target_user_id: ScalarValue,

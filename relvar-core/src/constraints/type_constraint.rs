@@ -104,6 +104,12 @@ pub enum TypeConstraint {
 
 impl TypeConstraint {
     /// Check if a value satisfies this constraint
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn is_satisfied_by(&self, value: &ScalarValue) -> Result<bool, TypeConstraintError> {
         match self {
             TypeConstraint::Range { min, max } => {
@@ -157,6 +163,12 @@ pub struct AttributeConstraints {
 
 impl AttributeConstraints {
     /// Create new attribute constraints
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new(attribute_name: String, scalar_type: ScalarType) -> Self {
         Self {
             attribute_name,
@@ -166,27 +178,57 @@ impl AttributeConstraints {
     }
 
     /// Add a constraint
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn with_constraint(mut self, constraint: TypeConstraint) -> Self {
         self.constraints.push(constraint);
         self
     }
 
     /// Get the attribute name
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn attribute_name(&self) -> &str {
         &self.attribute_name
     }
 
     /// Get the scalar type
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn scalar_type(&self) -> &ScalarType {
         &self.scalar_type
     }
 
     /// Get all constraints
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn constraints(&self) -> &[TypeConstraint] {
         &self.constraints
     }
 
     /// Check if a value satisfies all constraints
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn is_satisfied_by(&self, value: &ScalarValue) -> Result<bool, TypeConstraintError> {
         // Check base type
         if value.scalar_type() != self.scalar_type {

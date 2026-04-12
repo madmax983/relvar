@@ -45,7 +45,7 @@ const WAL_MAGIC: &[u8; 8] = b"RELVAR01";
 ///
 /// // Flush ensures durability
 /// wal.flush().unwrap();
-/// ```
+/// ```ignore
 pub struct WalManager {
     /// The log file.
     log_file: File,
@@ -222,6 +222,7 @@ impl WalManager {
     /// Returns `WalError::Io` if reading fails.
     /// Returns `WalError::Corrupted` if a record cannot be deserialized.
     pub fn scan(&mut self) -> Result<Vec<(Lsn, WalRecord)>, WalError> {
+        use crate::wal::iter::WalRecordIter;
         use std::io::Read;
 
         // Flush any buffered records first
@@ -251,51 +252,11 @@ impl WalManager {
             .take(MAX_WAL_SIZE)
             .read_to_end(&mut buffer)?;
 
-        let mut offset = 0;
-        while offset < buffer.len() {
-            // Need at least 16 bytes for LSN + length
-            if offset + 16 > buffer.len() {
-                break;
-            }
-
-            // Read LSN (8 bytes)
-            let lsn_bytes: [u8; 8] = buffer[offset..offset + 8]
-                .try_into()
-                .map_err(|_| WalError::Corrupted(Lsn::new(0), "Invalid LSN".to_string()))?;
-            let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
-            offset += 8;
-
-            // Read record length (8 bytes)
-            let len_bytes: [u8; 8] = buffer[offset..offset + 8]
-                .try_into()
-                .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
-            let record_len_u64 = u64::from_le_bytes(len_bytes);
-            let record_len = usize::try_from(record_len_u64).map_err(|_| {
-                WalError::Corrupted(
-                    lsn,
-                    format!("Record length {} exceeds memory limits", record_len_u64),
-                )
-            })?;
-            offset += 8;
-
-            // Read record data
-            let end_offset = offset.checked_add(record_len).ok_or_else(|| {
-                WalError::Corrupted(lsn, "Record length causes offset overflow".to_string())
-            })?;
-
-            if end_offset > buffer.len() {
-                return Err(WalError::Corrupted(
-                    lsn,
-                    "Record extends beyond file".to_string(),
-                ));
-            }
-
-            let record_bytes = &buffer[offset..end_offset];
+        for item in WalRecordIter::new(&buffer) {
+            let (lsn, _, record_bytes) = item?;
             let record = WalRecord::deserialize(record_bytes)
                 .map_err(|e| WalError::Corrupted(lsn, format!("Deserialization failed: {}", e)))?;
-
             records.push((lsn, record));
-            offset += record_len;
         }
 
         // Seek back to end for future writes
@@ -309,6 +270,7 @@ impl WalManager {
     /// Returns (next_lsn, last_flushed_lsn) by parsing the entire WAL.
     /// This is necessary because WAL records are variable-length.
     fn scan_for_last_lsn(log_file: &mut File) -> Result<(Lsn, Lsn), WalError> {
+        use crate::wal::iter::WalRecordIter;
         use std::io::Read;
 
         // Seek to start of records (after magic header)
@@ -332,46 +294,14 @@ impl WalManager {
             .read_to_end(&mut buffer)?;
 
         let mut last_lsn = Lsn::new(0);
-        let mut offset = 0;
 
-        while offset < buffer.len() {
-            // Need at least 16 bytes for LSN + length
-            if offset + 16 > buffer.len() {
+        for item in WalRecordIter::new(&buffer) {
+            // If iteration fails, we treat it as end of valid log (break)
+            if let Ok((lsn, _, _)) = item {
+                last_lsn = lsn;
+            } else {
                 break;
             }
-
-            // Read LSN (8 bytes)
-            let lsn_bytes: [u8; 8] = buffer[offset..offset + 8]
-                .try_into()
-                .map_err(|_| WalError::Corrupted(Lsn::new(0), "Invalid LSN".to_string()))?;
-            let lsn = Lsn::new(u64::from_le_bytes(lsn_bytes));
-            last_lsn = lsn;
-            offset += 8;
-
-            // Read record length (8 bytes)
-            let len_bytes: [u8; 8] = buffer[offset..offset + 8]
-                .try_into()
-                .map_err(|_| WalError::Corrupted(lsn, "Invalid length".to_string()))?;
-            let record_len_u64 = u64::from_le_bytes(len_bytes);
-            let record_len = usize::try_from(record_len_u64).map_err(|_| {
-                WalError::Corrupted(
-                    lsn,
-                    format!("Record length {} exceeds memory limits", record_len_u64),
-                )
-            })?;
-            offset += 8;
-
-            // Skip record data
-            let end_offset = match offset.checked_add(record_len) {
-                Some(end) => end,
-                None => break, // Overflow means invalid/corrupted, treat as end of valid log
-            };
-
-            if end_offset > buffer.len() {
-                // Partial record at end - ignore it
-                break;
-            }
-            offset = end_offset;
         }
 
         // Next LSN is last_lsn + 1

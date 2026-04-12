@@ -22,6 +22,13 @@ use relvar_core::{
 };
 
 /// A Relational Blockchain.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::blockchain::Blockchain;
+/// // Note: This is a placeholder example
+/// ```
 pub struct Blockchain {
     /// The blocks in the chain. Schema: (block_id: Int, prev_hash: String, hash: String)
     pub blocks: Relation,
@@ -31,6 +38,13 @@ pub struct Blockchain {
 
 impl Blockchain {
     /// Creates a new Blockchain from relations.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::blockchain::Blockchain;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(blocks: Relation, transactions: Relation) -> Self {
         Self {
             blocks,
@@ -45,6 +59,13 @@ impl Blockchain {
     /// 2. Projecting and renaming 'to' to 'account' and keeping 'amount'.
     /// 3. Unioning both sets.
     /// 4. Summarizing by 'account' and summing the amounts.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::blockchain::Blockchain;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn compute_balances(&self) -> Result<Relation, DatabaseError> {
         // Debits (from)
         let debits = self
@@ -86,6 +107,13 @@ impl Blockchain {
     /// 1. Hashes link up: Every block's prev_hash matches the previous block's hash.
     ///    (Except genesis block).
     /// 2. No negative balances: The final balances of all accounts (except "Mint") must be >= 0.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::blockchain::Blockchain;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn is_valid(&self) -> Result<bool, DatabaseError> {
         // 1. Check balances
         let balances = self.compute_balances()?;

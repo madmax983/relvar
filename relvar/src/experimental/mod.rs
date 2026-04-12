@@ -20,15 +20,24 @@
 //! - **[`synth`](crate::experimental::synth)**: Relational Audio Synthesizer.
 //! - **[`timeseries`](crate::experimental::timeseries)**: Relational Time Series Analysis (Moving Averages).
 //! - **[`turing`](crate::experimental::turing)**: Relational Turing Machine.
+//! - **[`vcs`](crate::experimental::vcs)**: Relational Version Control System (RelGit).
+//! - **[`circuit`](crate::experimental::circuit)**: Relational Logic Circuit Simulator.
+//! - **[`automata`](crate::experimental::automata)**: Relational Automata (NFA).
+//! - **[`enigma`](crate::experimental::enigma)**: Relational Enigma Machine.
 
+pub mod automata;
 pub mod automl;
 pub mod blockchain;
 pub mod cellular_automaton;
+pub mod circuit;
 pub mod ecs;
+pub mod enigma;
 pub mod graph;
 pub mod image;
+pub mod knowledge_graph;
 pub mod matrix;
 pub mod mock;
+pub mod neural_network;
 pub mod physics;
 pub mod pivot;
 pub mod raytracer;
@@ -38,3 +47,4 @@ pub mod spatial;
 pub mod synth;
 pub mod timeseries;
 pub mod turing;
+pub mod vcs;

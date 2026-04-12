@@ -14,6 +14,13 @@ use relvar_core::{
 };
 
 /// A relational N-Body Physics Simulation.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::physics::PhysicsEngine;
+/// // Note: This is a placeholder example
+/// ```
 pub struct PhysicsEngine {
     /// The current state of the particles.
     /// Schema: `(id: Int, x: Float, y: Float, vx: Float, vy: Float, mass: Float)`
@@ -26,12 +33,32 @@ pub struct PhysicsEngine {
 
 impl PhysicsEngine {
     /// Creates a new PhysicsEngine.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::physics::PhysicsEngine;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(particles: Relation, g: f64, dt: f64) -> Self {
         Self { particles, g, dt }
     }
 
     /// Computes the next state of the simulation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::physics::PhysicsEngine;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn next_step(&self) -> Result<Relation, DatabaseError> {
+        let with_forces = self.compute_pairwise_forces()?;
+        let all_particles_with_forces = self.summarize_net_forces(&with_forces)?;
+        self.update_kinematics_and_project(&all_particles_with_forces)
+    }
+
+    fn compute_pairwise_forces(&self) -> Result<Relation, DatabaseError> {
         // 1. Cross join particles with themselves to compute pairwise forces.
         // Rename attributes to distinguish particle 1 and particle 2.
         let p1 = self.particles.rename(&[
@@ -63,7 +90,7 @@ impl PhysicsEngine {
 
         // 3. Compute forces for each pair
         let g = self.g;
-        let with_forces = interactions
+        interactions
             .extend("fx", ScalarType::Float, move |t| {
                 let x1 = t.get_typed::<f64>("x1").unwrap();
                 let y1 = t.get_typed::<f64>("y1").unwrap();
@@ -110,8 +137,10 @@ impl PhysicsEngine {
 
                 ScalarValue::Float(fy)
             })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
+    fn summarize_net_forces(&self, with_forces: &Relation) -> Result<Relation, DatabaseError> {
         // 4. Summarize to get net forces for each particle
         let net_forces = with_forces
             .summarize(
@@ -147,10 +176,15 @@ impl PhysicsEngine {
             .extend("net_fy", ScalarType::Float, |_| ScalarValue::Float(0.0))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        let all_particles_with_forces = particles_with_forces
+        particles_with_forces
             .union(&missing_with_zero_forces)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
+    fn update_kinematics_and_project(
+        &self,
+        all_particles_with_forces: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 6. Update kinematics: v = v + a*dt, p = p + v*dt
         let dt = self.dt;
         let updated = all_particles_with_forces

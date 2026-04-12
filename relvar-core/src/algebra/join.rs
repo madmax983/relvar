@@ -456,47 +456,7 @@ fn combine_tuples(
     secondary: &Tuple,
     result_heading: &Arc<TupleType>,
 ) -> Result<Tuple, DatabaseError> {
-    // Optimization: Use a merge-sort style iteration to combine values.
-    // Since both BTreeMaps are sorted, we can iterate through them simultaneously
-    // and build the new map in O(N) time without O(log N) insertions.
-    let mut iter_p = primary.values().iter().peekable();
-    let mut iter_s = secondary.values().iter().peekable();
-
-    // Pre-allocate to avoid reallocations
-    let mut values = Vec::with_capacity(primary.degree() + secondary.degree());
-
-    loop {
-        match (iter_p.peek(), iter_s.peek()) {
-            (Some(&(k_p, v_p)), Some(&(k_s, v_s))) => {
-                if k_p == k_s {
-                    // Collision: Primary wins (as per doc)
-                    // Consume both since they match
-                    values.push((k_p, v_p));
-                    iter_p.next();
-                    iter_s.next();
-                } else if k_p < k_s {
-                    // Primary is smaller, take it
-                    values.push((k_p, v_p));
-                    iter_p.next();
-                } else {
-                    // Secondary is smaller, take it
-                    values.push((k_s, v_s));
-                    iter_s.next();
-                }
-            }
-            (Some(&(k_p, v_p)), None) => {
-                // Only primary remaining
-                values.push((k_p, v_p));
-                iter_p.next();
-            }
-            (None, Some(&(k_s, v_s))) => {
-                // Only secondary remaining
-                values.push((k_s, v_s));
-                iter_s.next();
-            }
-            (None, None) => break,
-        }
-    }
+    let values = merge_tuple_values(primary, secondary);
 
     // Safety:
     // 1. Primary and secondary tuples are valid and conform to their headings.
@@ -514,6 +474,71 @@ fn combine_tuples(
         result_heading.clone(),
         combined_values,
     ))
+}
+
+/// Helper to merge values from two tuples.
+///
+/// Optimization: Uses a merge-sort style iteration to combine values.
+/// Since both BTreeMaps are sorted, we can iterate through them simultaneously
+/// and build the new map in O(N) time without O(log N) insertions.
+fn merge_tuple_values<'a>(
+    primary: &'a Tuple,
+    secondary: &'a Tuple,
+) -> Vec<(&'a String, &'a ScalarValue)> {
+    let mut iter_p = primary.values().iter().peekable();
+    let mut iter_s = secondary.values().iter().peekable();
+
+    // Pre-allocate to avoid reallocations
+    let mut values = Vec::with_capacity(primary.degree() + secondary.degree());
+
+    loop {
+        if !merge_next_values(&mut iter_p, &mut iter_s, &mut values) {
+            break;
+        }
+    }
+    values
+}
+
+/// Helper to merge the next value from the primary and secondary tuples.
+/// Returns `true` if a value was merged, `false` if both iterators are empty.
+fn merge_next_values<'a>(
+    iter_p: &mut std::iter::Peekable<std::collections::btree_map::Iter<'a, String, ScalarValue>>,
+    iter_s: &mut std::iter::Peekable<std::collections::btree_map::Iter<'a, String, ScalarValue>>,
+    values: &mut Vec<(&'a String, &'a ScalarValue)>,
+) -> bool {
+    match (iter_p.peek(), iter_s.peek()) {
+        (Some(&(k_p, v_p)), Some(&(k_s, v_s))) => {
+            if k_p == k_s {
+                // Collision: Primary wins (as per doc)
+                // Consume both since they match
+                values.push((k_p, v_p));
+                iter_p.next();
+                iter_s.next();
+            } else if k_p < k_s {
+                // Primary is smaller, take it
+                values.push((k_p, v_p));
+                iter_p.next();
+            } else {
+                // Secondary is smaller, take it
+                values.push((k_s, v_s));
+                iter_s.next();
+            }
+            true
+        }
+        (Some(&(k_p, v_p)), None) => {
+            // Only primary remaining
+            values.push((k_p, v_p));
+            iter_p.next();
+            true
+        }
+        (None, Some(&(k_s, v_s))) => {
+            // Only secondary remaining
+            values.push((k_s, v_s));
+            iter_s.next();
+            true
+        }
+        (None, None) => false,
+    }
 }
 
 #[cfg(test)]

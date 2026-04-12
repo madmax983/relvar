@@ -141,32 +141,51 @@ impl Relation {
         let edges = self.rename(&self_mappings);
 
         loop {
-            let new_unique_paths = compute_next_paths(
-                &r_delta,
+            if !perform_tclose_iteration(
+                &mut r_delta,
                 &edges,
                 &delta_mappings,
                 from_attr,
                 to_attr,
-                &r_total,
-            )?;
-
-            // 6. Termination check
-            if new_unique_paths.is_empty() {
+                &mut r_total,
+            )? {
                 break;
             }
-
-            // 7. Update accumulators
-            // r_total = r_total UNION new_unique_paths
-            r_total = r_total
-                .union(&new_unique_paths)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // r_delta = new_unique_paths (only extend from newly found paths)
-            r_delta = new_unique_paths;
         }
 
         Ok(r_total)
     }
+}
+
+/// Helper to perform a single iteration of the transitive closure algorithm.
+/// Returns `true` if new paths were found (continue), `false` if not (terminate).
+fn perform_tclose_iteration(
+    r_delta: &mut Relation,
+    edges: &Relation,
+    delta_mappings: &[(&str, &str)],
+    from_attr: &str,
+    to_attr: &str,
+    r_total: &mut Relation,
+) -> Result<bool, DatabaseError> {
+    let new_unique_paths =
+        compute_next_paths(r_delta, edges, delta_mappings, from_attr, to_attr, r_total)?;
+
+    // 6. Termination check
+    if new_unique_paths.is_empty() {
+        return Ok(false);
+    }
+
+    // 7. Update accumulators
+    // r_total = r_total UNION new_unique_paths
+    let old_total = std::mem::replace(r_total, Relation::new(r_total.relation_type().clone()));
+    *r_total = old_total
+        .union_into(&new_unique_paths)
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+    // r_delta = new_unique_paths (only extend from newly found paths)
+    *r_delta = new_unique_paths;
+
+    Ok(true)
 }
 
 fn compute_next_paths(
@@ -189,7 +208,7 @@ fn compute_next_paths(
     // 5. Difference: new_paths = new_paths MINUS r_total
     // This filters out paths we already know about.
     new_paths
-        .difference(r_total)
+        .difference_into(r_total)
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
 }
 

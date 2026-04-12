@@ -1,4 +1,4 @@
-use relvar_core::algebra::delta::Delta;
+use relvar_core::algebra::Delta;
 use relvar_core::error::DatabaseError;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Relation;

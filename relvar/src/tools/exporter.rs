@@ -52,6 +52,13 @@ use thiserror::Error;
 
 /// Errors that can occur during export.
 #[derive(Debug, Error)]
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::tools::exporter;
+/// // Example usage
+/// ```
 pub enum ExporterError {
     /// JSON serialization error.
     #[error("JSON serialization error: {0}")]

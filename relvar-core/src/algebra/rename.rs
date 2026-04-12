@@ -92,25 +92,8 @@ impl Relation {
     /// assert!(renamed.relation_type().heading().has_attribute("name"));
     /// ```
     pub fn rename(&self, mappings: &[(&str, &str)]) -> Self {
-        // Build new heading with renamed attributes
-        let mut new_heading = TupleType::new();
-
-        // Also pre-calculate the new names in the sorted order of attributes
-        // This vector will align perfectly with tuple.values().values() iteration
-        // because both follow BTreeMap's sorted key order.
-        let mut new_names = Vec::with_capacity(self.relation_type().heading().degree());
-
-        for (old_name, attr_type) in self.relation_type().heading().attributes() {
-            // Check if this attribute should be renamed
-            let new_name = mappings
-                .iter()
-                .find(|(from, _)| from == old_name)
-                .map(|(_, to)| *to)
-                .unwrap_or(old_name.as_str());
-
-            new_heading = new_heading.with_attribute(new_name, attr_type.clone());
-            new_names.push(new_name.to_string());
-        }
+        let (new_heading, new_names) =
+            build_renamed_heading_and_names(self.relation_type().heading(), mappings);
 
         let new_rel_type = RelationType::new(new_heading.clone());
         let new_heading_arc = Arc::new(new_heading);
@@ -155,25 +138,8 @@ impl Relation {
             return self;
         }
 
-        // Build new heading with renamed attributes
-        let mut new_heading = TupleType::new();
-
-        // Also pre-calculate the new names in the sorted order of attributes
-        // This vector will align perfectly with tuple.values().values() iteration
-        // because both follow BTreeMap's sorted key order.
-        let mut new_names = Vec::with_capacity(self.relation_type().heading().degree());
-
-        for (old_name, attr_type) in self.relation_type().heading().attributes() {
-            // Check if this attribute should be renamed
-            let new_name = mappings
-                .iter()
-                .find(|(from, _)| from == old_name)
-                .map(|(_, to)| *to)
-                .unwrap_or(old_name.as_str());
-
-            new_heading = new_heading.with_attribute(new_name, attr_type.clone());
-            new_names.push(new_name.to_string());
-        }
+        let (new_heading, new_names) =
+            build_renamed_heading_and_names(self.relation_type().heading(), mappings);
 
         let new_rel_type = RelationType::new(new_heading.clone());
         let new_heading_arc = Arc::new(new_heading);
@@ -197,6 +163,34 @@ impl Relation {
         // Safety: We guarantee that renamed_tuples conform to new_rel_type
         Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
     }
+}
+
+/// Helper to build the new heading and name mappings for the rename operator.
+fn build_renamed_heading_and_names(
+    old_heading: &TupleType,
+    mappings: &[(&str, &str)],
+) -> (TupleType, Vec<String>) {
+    // Build new heading with renamed attributes
+    let mut new_heading = TupleType::new();
+
+    // Also pre-calculate the new names in the sorted order of attributes
+    // This vector will align perfectly with tuple.values().values() iteration
+    // because both follow BTreeMap's sorted key order.
+    let mut new_names = Vec::with_capacity(old_heading.degree());
+
+    for (old_name, attr_type) in old_heading.attributes() {
+        // Check if this attribute should be renamed
+        let new_name = mappings
+            .iter()
+            .find(|(from, _)| from == old_name)
+            .map(|(_, to)| *to)
+            .unwrap_or(old_name.as_str());
+
+        new_heading = new_heading.with_attribute(new_name, attr_type.clone());
+        new_names.push(new_name.to_string());
+    }
+
+    (new_heading, new_names)
 }
 
 #[cfg(test)]

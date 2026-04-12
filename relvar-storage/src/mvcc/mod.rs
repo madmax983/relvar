@@ -30,7 +30,7 @@
 //! │ xmax: 105    │       │ xmax: 110    │       │ xmax: None   │
 //! │ Value: "A"   │       │ Value: "B"   │       │ Value: "C"   │
 //! └──────────────┘       └──────────────┘       └──────────────┘
-//! ```
+//! ```ignore
 //!
 //! ## 3. Visibility Rules
 //!
@@ -78,4 +78,4 @@ pub(crate) mod visibility;
 
 pub use active_txn_table::ActiveTransactionTable;
 pub use snapshot::TransactionSnapshot;
-pub use visibility::{VersionMetadata, is_visible};
+pub use visibility::VersionMetadata;

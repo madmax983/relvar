@@ -1,17 +1,27 @@
-import sys
+import re
 
-def process_file(path, replacements):
-    with open(path, 'r') as f:
-        content = f.read()
+with open("relvar-storage/src/lib.rs", "r") as f:
+    content = f.read()
 
-    for old, new in replacements:
-        content = content.replace(old, new)
+content = content.replace("pub mod wal;", "pub(crate) mod wal;")
+content = content.replace("pub mod mvcc;", "pub(crate) mod mvcc;")
 
-    with open(path, 'w') as f:
-        f.write(content)
+with open("relvar-storage/src/lib.rs", "w") as f:
+    f.write(content)
 
-process_file("relvar-core/src/algebra/mod.rs", [
-    ("let delta = Delta::between(&r1, &r2).unwrap();", ""),
-    ("/// use relvar_core::algebra::delta::Delta;", ""),
-    ("/// let delta = Delta::between(&r1, &r2).unwrap();", "")
-])
+with open("relvar-storage/src/storage/mod.rs", "r") as f:
+    content = f.read()
+
+content = content.replace("pub mod heap;", "pub(crate) mod heap;")
+
+with open("relvar-storage/src/storage/mod.rs", "w") as f:
+    f.write(content)
+
+with open("relvar-storage/src/mvcc/mod.rs", "r") as f:
+    content = f.read()
+
+content = content.replace("pub use visibility::{VersionMetadata, is_visible};", "pub use visibility::VersionMetadata;")
+
+with open("relvar-storage/src/mvcc/mod.rs", "w") as f:
+    f.write(content)
+

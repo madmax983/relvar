@@ -49,20 +49,19 @@ pub enum PreparedConstraintExpression {
 
 impl PreparedConstraintExpression {
     /// Evaluates this prepared expression against a tuple.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn evaluate(&self, tuple: &Tuple) -> Result<bool, ExpressionError> {
         match self {
             PreparedConstraintExpression::Cmp { left, op, right } => {
                 let (left_val, right_val) =
                     ConstraintExpression::get_comparison_operands(tuple, left, right)?;
 
-                match op {
-                    CmpOp::Eq => Ok(left_val == right_val),
-                    CmpOp::Ne => Ok(left_val != right_val),
-                    CmpOp::Lt => Ok(left_val < right_val),
-                    CmpOp::Le => Ok(left_val <= right_val),
-                    CmpOp::Gt => Ok(left_val > right_val),
-                    CmpOp::Ge => Ok(left_val >= right_val),
-                }
+                Self::evaluate_cmp(left_val, op, right_val)
             }
             PreparedConstraintExpression::And(left, right) => {
                 Ok(left.evaluate(tuple)? && right.evaluate(tuple)?)
@@ -98,6 +97,22 @@ impl PreparedConstraintExpression {
                     pattern_chars,
                 ))
             }
+        }
+    }
+
+    /// Evaluates a comparison operation.
+    fn evaluate_cmp(
+        left_val: &ScalarValue,
+        op: &CmpOp,
+        right_val: &ScalarValue,
+    ) -> Result<bool, ExpressionError> {
+        match op {
+            CmpOp::Eq => Ok(left_val == right_val),
+            CmpOp::Ne => Ok(left_val != right_val),
+            CmpOp::Lt => Ok(left_val < right_val),
+            CmpOp::Le => Ok(left_val <= right_val),
+            CmpOp::Gt => Ok(left_val > right_val),
+            CmpOp::Ge => Ok(left_val >= right_val),
         }
     }
 }

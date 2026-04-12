@@ -50,6 +50,13 @@ use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};
 
 /// A 3D scene containing spheres to be rendered.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::raytracer::Scene;
+/// // Note: This is a placeholder example
+/// ```
 pub struct Scene {
     spheres: Relation,
     next_id: i64,
@@ -57,6 +64,13 @@ pub struct Scene {
 
 impl Scene {
     /// Creates a new, empty scene.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::raytracer::Scene;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new() -> Self {
         let heading = TupleType::new()
             .with_attribute("id", ScalarType::Int)
@@ -82,6 +96,13 @@ impl Scene {
     /// * `radius` - Radius of the sphere.
     /// * `r`, `g`, `b` - Color of the sphere (0-255).
     #[allow(clippy::too_many_arguments)]
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::raytracer::Scene;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn add_sphere(
         &mut self,
         cx: f64,
@@ -308,6 +329,13 @@ impl Scene {
     /// Renders the scene to a relation of pixels.
     ///
     /// Yields a relation with heading `(x, y, r, g, b)`.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::raytracer::Scene;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn render(&self, width: i64, height: i64) -> Result<Relation, DatabaseError> {
         let rays = self.generate_rays(width, height)?;
         let intersections = self.compute_intersections(&rays)?;

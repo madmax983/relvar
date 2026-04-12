@@ -143,15 +143,35 @@ impl Relation {
 /// and result heading attributes. Both are sorted BTreeMaps (or iterate in sorted order).
 /// This avoids O(log N) lookup for each attribute, reducing complexity from O(M log N) to O(N).
 fn project_tuple_values(source_tuple: &Tuple, target_heading: &Arc<TupleType>) -> Tuple {
-    // Optimization: Iterate over the source tuple and check if the target heading needs the attribute.
-    // This simplifies the logic, removes the .collect() which involves internal allocations,
-    // and leverages the pre-allocated map size.
-    let mut values = std::collections::BTreeMap::new();
-    for (attr, val) in source_tuple.values() {
-        if target_heading.has_attribute(attr) {
-            values.insert(attr.clone(), val.clone());
+    // Optimization: Uses synchronized iteration (merge-sort style) between source tuple values
+    // and result heading attributes. Both are sorted BTreeMaps.
+    // This avoids O(log K) lookup for each attribute, reducing complexity from O(N log K) to O(N + K).
+    let mut tuple_iter = source_tuple.values().iter();
+    let mut heading_iter = target_heading.attributes().iter();
+
+    let mut current_tuple = tuple_iter.next();
+    let mut current_heading = heading_iter.next();
+
+    let mut result_items = Vec::with_capacity(target_heading.degree());
+
+    while let (Some((t_attr, t_val)), Some((h_attr, _))) = (current_tuple, current_heading) {
+        use std::cmp::Ordering;
+        match t_attr.cmp(h_attr) {
+            Ordering::Equal => {
+                result_items.push((t_attr.clone(), t_val.clone()));
+                current_tuple = tuple_iter.next();
+                current_heading = heading_iter.next();
+            }
+            Ordering::Less => {
+                current_tuple = tuple_iter.next();
+            }
+            Ordering::Greater => {
+                current_heading = heading_iter.next();
+            }
         }
     }
+
+    let values = std::collections::BTreeMap::from_iter(result_items);
 
     // Safety: We constructed values exactly from attributes present in new_heading
     // derived from the source relation schema, so types match by definition.
@@ -159,9 +179,28 @@ fn project_tuple_values(source_tuple: &Tuple, target_heading: &Arc<TupleType>) -
 }
 
 fn project_tuple_values_owned(source_tuple: Tuple, target_heading: &Arc<TupleType>) -> Tuple {
-    // Retain only the attributes present in the target heading
+    // Optimization: Retain only the attributes present in the target heading
+    // using a merge-sort style iteration. Both are sorted BTreeMaps.
     let mut values = source_tuple.into_values();
-    values.retain(|k, _| target_heading.has_attribute(k));
+    let mut heading_iter = target_heading.attributes().keys().peekable();
+
+    values.retain(|k, _| {
+        while let Some(&h_attr) = heading_iter.peek() {
+            use std::cmp::Ordering;
+            match h_attr.cmp(k) {
+                Ordering::Less => {
+                    heading_iter.next();
+                }
+                Ordering::Equal => {
+                    return true;
+                }
+                Ordering::Greater => {
+                    return false;
+                }
+            }
+        }
+        false
+    });
 
     // Safety: We retained only attributes present in target_heading
     Tuple::new_unchecked(target_heading.clone(), values)

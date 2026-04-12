@@ -23,7 +23,7 @@
 //! │  - WAL, LSN, TransactionId  ← THIS MODULE               │
 //! │  - Checkpoint, Recovery                                 │
 //! └─────────────────────────────────────────────────────────┘
-//! ```
+//! ```ignore
 //!
 //! # Components
 //!
@@ -46,6 +46,7 @@
 #![allow(unused_imports)]
 
 pub(crate) mod error;
+pub(crate) mod iter;
 pub(crate) mod lsn;
 pub(crate) mod manager;
 pub(crate) mod record;

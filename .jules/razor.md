@@ -12,3 +12,8 @@
 **Bloat:** `DepthGuarded<T>` struct wrapper used to prevent recursive serialization/deserialization panics. Added nesting and `.0` boilerplate when unpacking scalars.
 **Cut:** Removed the wrapper struct, replacing it with a custom `deserialize_guarded` function applied via `#[serde(deserialize_with = "...")]` to directly flatten recursive structures.
 **Saved:** Reduced boilerplate wrapper types, streamlined Serde parsing logic, and eliminated intermediate `.0` tuple accesses.
+
+## [Reduction]
+**Bloat:** Redundant per-tuple type validation using `self.insert()` in a loop inside `union_into` when relation headings are already explicitly verified to match.
+**Cut:** Exposed `body` as `pub(crate)` in `Relation` and replaced the loop with `.reserve()` and `.extend()` to directly insert tuples into the underlying `HashSet`.
+**Saved:** Eliminated O(N) redundant validations and reduced overhead in relational algebra merge operations.

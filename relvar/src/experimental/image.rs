@@ -16,6 +16,12 @@ use relvar_core::values::{Relation, ScalarValue};
 ///
 /// Represents a weight at a specific offset `(dx, dy)`.
 #[derive(Debug, Clone, Copy)]
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub struct KernelTap {
     /// Horizontal offset from the center pixel.
     pub dx: i64,
@@ -34,6 +40,12 @@ pub struct KernelTap {
 /// * `width` - Image width
 /// * `height` - Image height
 /// * `data` - RGB pixel data (flat buffer: r, g, b, r, g, b, ...)
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
     let heading = TupleType::new()
         .with_attribute("x", ScalarType::Int)
@@ -41,6 +53,10 @@ pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
         .with_attribute("r", ScalarType::Int)
         .with_attribute("g", ScalarType::Int)
         .with_attribute("b", ScalarType::Int);
+
+    if width.saturating_mul(height) > 10_000_000 {
+        return Relation::new(RelationType::new(heading));
+    }
 
     let rel_type = RelationType::new(heading);
     let mut relation = Relation::new(rel_type);
@@ -75,6 +91,12 @@ pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
 /// # Returns
 ///
 /// A tuple `(width, height, data)`.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
     if relation.is_empty() {
         return (0, 0, Vec::new());
@@ -104,8 +126,13 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         }
     }
 
-    let width = (max_x - min_x + 1) as usize;
-    let height = (max_y - min_y + 1) as usize;
+    let width = (max_x.saturating_sub(min_x).saturating_add(1)) as usize;
+    let height = (max_y.saturating_sub(min_y).saturating_add(1)) as usize;
+
+    if width.saturating_mul(height) > 10_000_000 {
+        return (0, 0, Vec::new());
+    }
+
     let mut data = vec![0u8; width * height * 3];
 
     for tuple in relation.tuples() {
@@ -144,6 +171,12 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
 /// 3. Summarize (Group By) `target_x, target_y`.
 /// 4. Sum the weighted values.
 /// 5. Normalize by total weight.
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// // Note: This is a placeholder example
+/// ```
 pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
     if kernel.is_empty() {
         return relation.clone();

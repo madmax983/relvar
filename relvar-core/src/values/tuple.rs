@@ -874,4 +874,38 @@ mod tests {
 
         assert_eq!(tuple_from_vec, tuple_from_btree);
     }
+
+    #[test]
+    fn test_try_from_scalar_value_mismatch() {
+        let int_val = ScalarValue::Int(42);
+        let float_val = ScalarValue::Float(1.23);
+        let str_val = ScalarValue::String("hello".to_string());
+        let bool_val = ScalarValue::Bool(true);
+        let bytes_val = ScalarValue::Bytes(vec![1, 2, 3]);
+
+        // Test TryFrom<ScalarValue> mismatch (consuming)
+        assert_eq!(i64::try_from(float_val.clone()), Err(()));
+        assert_eq!(f64::try_from(int_val.clone()), Err(()));
+        assert_eq!(String::try_from(int_val.clone()), Err(()));
+        assert_eq!(bool::try_from(int_val.clone()), Err(()));
+        assert_eq!(Vec::<u8>::try_from(int_val.clone()), Err(()));
+
+        // Test TryFrom<&ScalarValue> mismatch (borrowing)
+        assert_eq!(<&str>::try_from(&int_val), Err(()));
+        assert_eq!(i64::try_from(&str_val), Err(()));
+        assert_eq!(f64::try_from(&str_val), Err(()));
+        assert_eq!(String::try_from(&bool_val), Err(()));
+        assert_eq!(bool::try_from(&bytes_val), Err(()));
+        assert_eq!(Vec::<u8>::try_from(&str_val), Err(()));
+
+        // Test get_typed mismatch
+        let tuple = tuple! {
+            id: 1i64,
+            name: "Alice",
+        };
+
+        assert_eq!(tuple.get_typed::<f64>("id"), None);
+        assert_eq!(tuple.get_typed::<String>("id"), None);
+        assert_eq!(tuple.get_typed::<i64>("name"), None);
+    }
 }

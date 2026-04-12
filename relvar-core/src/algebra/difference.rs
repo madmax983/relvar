@@ -153,21 +153,30 @@ impl Relation {
     /// Computes the set difference of this relation with another, consuming this relation.
     ///
     /// This is an optimized version of `difference` that avoids O(N) tuple clones for the
-    /// first relation by consuming it.
-    pub fn difference_into(self, other: &Relation) -> Result<Self, DifferenceError> {
+    /// first relation by consuming it and mutates the inner body in place.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
+    pub fn difference_into(mut self, other: &Relation) -> Result<Self, DifferenceError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
             return Err(DifferenceError::TypeMismatch);
         }
 
-        let rel_type = self.relation_type().clone();
-        Ok(Relation::from_tuples_unchecked(
-            rel_type,
-            self.into_iter().filter(|tuple| !other.contains(tuple)),
-        ))
+        self.body.retain(|tuple| !other.contains(tuple));
+        Ok(self)
     }
 
     /// Alias for [`difference_into`](Self::difference_into) with SQL-style naming.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn minus_into(self, other: &Relation) -> Result<Self, DifferenceError> {
         self.difference_into(other)
     }

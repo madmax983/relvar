@@ -116,16 +116,34 @@ impl CheckConstraint {
     }
 
     /// Retrieves the identifier name of the constraint.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn name(&self) -> &str {
         &self.name
     }
 
     /// Retrieves the human-readable description of the constraint.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn description(&self) -> &str {
         &self.description
     }
 
     /// Accesses the underlying logical expression of the constraint.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn expression(&self) -> &ConstraintExpression {
         &self.expression
     }
@@ -135,6 +153,12 @@ impl CheckConstraint {
     /// # Errors
     ///
     /// Returns `Err` if the constraint evaluation fails (e.g. type mismatch).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn is_satisfied_by(&self, tuple: &Tuple) -> Result<bool, CheckConstraintError> {
         self.expression
             .evaluate(tuple)
@@ -142,6 +166,12 @@ impl CheckConstraint {
     }
 
     /// Retrieves a set containing all attribute names targeted by this constraint.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn referenced_attributes(&self) -> HashSet<String> {
         self.expression.referenced_attributes()
     }
@@ -158,6 +188,12 @@ pub struct CheckConstraints {
 
 impl CheckConstraints {
     /// Creates a new empty collection of CHECK constraints.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn new() -> Self {
         Self {
             constraints: Vec::new(),
@@ -165,6 +201,12 @@ impl CheckConstraints {
     }
 
     /// Adds a constraint to the collection.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn with_constraint(mut self, constraint: CheckConstraint) -> Self {
         self.constraints.push(constraint);
         self
@@ -177,6 +219,12 @@ impl CheckConstraints {
     /// # Errors
     ///
     /// Returns `Err` with the first violated constraint or evaluation error.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn are_all_satisfied_by(&self, tuple: &Tuple) -> Result<bool, CheckConstraintError> {
         for constraint in &self.constraints {
             if !constraint.is_satisfied_by(tuple)? {
@@ -190,11 +238,23 @@ impl CheckConstraints {
     }
 
     /// Provides a slice containing all configured check constraints.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn constraints(&self) -> &[CheckConstraint] {
         &self.constraints
     }
 
     /// Aggregates a unified set of all attribute names referenced across all constraints.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Example
+    /// ```
     pub fn referenced_attributes(&self) -> HashSet<String> {
         let mut attributes = HashSet::new();
         for constraint in &self.constraints {

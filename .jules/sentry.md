@@ -72,3 +72,13 @@
 ## 2026-04-10 - Extend and Group Error Paths
 **Learning:** Found several untested code paths regarding the failure branches of `extend` and `group` algebra operations, specifically `ExtendError::TupleCreation` for computation type mismatches, and `GroupError::ResultAttributeExists`, `UngroupError::AttributeNotFound`, `UngroupError::NotRelationValued`, and `UngroupError::TupleCreation`.
 **Action:** When implementing database algebra operators that construct new tuples or relation types from existing data, always write specific test cases targeting type validations, attribute name conflicts, and missing attributes.
+
+## 2026-04-06 - Tarpaulin Reporting on Multiline Closures
+**Learning:** Line-based coverage tools like `cargo tarpaulin` often report missing coverage for multi-line format arguments or complex closures defined as macro/function parameters, even when the underlying logic path is hit.
+**Action:** Before trying to restructure methods strictly to satisfy the coverage tool on these specific lines, verify that it's a tooling artifact. If it is, accept it or look for real logical branches (like actual `if let Err(...)` statements) that are missing tests.
+## 2025-05-18 - [ForeignKey Constraint Panic]
+**Learning:** `ForeignKey` constraint validation methods (`is_satisfied_by`, `would_violate_on_insert`, `would_violate_on_delete`) panicked with `.unwrap()` when they were passed a tuple that was missing a required attribute, as dynamic relations might accept partially valid or mismatched inputs.
+**Action:** When validating constraints against tuples, use `.ok_or_else()` to explicitly handle missing attributes by returning an error instead of panicking via `.unwrap()`.
+## 2024-04-10 - Database Facade Constraint Tests
+**Learning:** Many of the Database facade constraint manipulation methods (`get_key_constraints`, `set_key_constraints`, etc) were uncovered because constraints were typically interacted with directly, but the facade handles translating names properly to the underlying engine. Also `drop_relvar` and `drop_virtual_relvar` error conditions were not covered.
+**Action:** Wrote targeted coverage tests for Database methods verifying they behave correctly and emit the right error enumerations (like `TupleMismatch` and constraint errors) directly on `Database<E>`. Always ensure integration-style tests cover the outermost boundary layer.

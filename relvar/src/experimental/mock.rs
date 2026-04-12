@@ -62,6 +62,13 @@ pub struct MockRelation {
 
 impl MockRelation {
     /// Create a new MockRelation builder for the given relation type.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::mock::MockRelation;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn new(relation_type: RelationType) -> Self {
         Self {
             relation_type,
@@ -75,18 +82,39 @@ impl MockRelation {
     /// Note: Since relations are sets, duplicate tuples will be ignored.
     /// If the random generation produces duplicates, the final cardinality
     /// might be less than `count`.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::mock::MockRelation;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn count(mut self, count: usize) -> Self {
         self.count = count;
         self
     }
 
     /// Set the random seed for deterministic generation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::mock::MockRelation;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn seed(mut self, seed: u64) -> Self {
         self.seed = Some(seed);
         self
     }
 
     /// Generate the relation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::mock::MockRelation;
+    /// // Note: This is a placeholder example
+    /// ```
     pub fn generate(self) -> Relation {
         let mut relation = Relation::new(self.relation_type.clone());
         let mut rng = if let Some(seed) = self.seed {
