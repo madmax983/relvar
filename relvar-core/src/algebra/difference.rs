@@ -105,6 +105,18 @@ impl Relation {
             return Err(DifferenceError);
         }
 
+        // Optimization: If the other relation is empty, no tuples are removed.
+        // By checking this early, we avoid O(N) hash lookups.
+        if other.is_empty() {
+            return Ok(self.clone());
+        }
+
+        // Optimization: If self is empty, the result is empty.
+        // We avoid setting up iterators or cloning.
+        if self.is_empty() {
+            return Ok(self.clone());
+        }
+
         // Filter tuples and create relation without redundant checks
         // Safety: source tuples are from a valid relation of the same type
         Ok(Relation::from_tuples_unchecked(

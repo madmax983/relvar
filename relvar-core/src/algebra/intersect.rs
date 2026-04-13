@@ -106,11 +106,30 @@ impl Relation {
             return Err(IntersectError);
         }
 
+        // Optimization: If either relation is empty, the intersection is empty.
+        // By checking this early, we avoid setting up iterators or cloning any tuples
+        // for vacuous intersections.
+        if self.is_empty() || other.is_empty() {
+            return Ok(Relation::new(self.relation_type().clone()));
+        }
+
+        // Optimization: always iterate over the smaller relation and check membership
+        // in the larger relation. This minimizes the number of O(1) hash lookups
+        // and `.clone()` operations for the result.
+        let (smaller, larger) = if self.cardinality() <= other.cardinality() {
+            (self, other)
+        } else {
+            (other, self)
+        };
+
         // Filter tuples and create relation without redundant checks
         // Safety: source tuples are from a valid relation of the same type
         Ok(Relation::from_tuples_unchecked(
             self.relation_type().clone(),
-            self.tuples().filter(|tuple| other.contains(tuple)).cloned(),
+            smaller
+                .tuples()
+                .filter(|tuple| larger.contains(tuple))
+                .cloned(),
         ))
     }
 
