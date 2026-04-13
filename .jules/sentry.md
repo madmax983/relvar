@@ -82,3 +82,6 @@
 ## 2024-04-10 - Database Facade Constraint Tests
 **Learning:** Many of the Database facade constraint manipulation methods (`get_key_constraints`, `set_key_constraints`, etc) were uncovered because constraints were typically interacted with directly, but the facade handles translating names properly to the underlying engine. Also `drop_relvar` and `drop_virtual_relvar` error conditions were not covered.
 **Action:** Wrote targeted coverage tests for Database methods verifying they behave correctly and emit the right error enumerations (like `TupleMismatch` and constraint errors) directly on `Database<E>`. Always ensure integration-style tests cover the outermost boundary layer.
+## 2024-05-01 - [Coverage Gap in Storage Page Buffer Reading]
+**Learning:** `PageFile::read_page` had uncovered error paths when handling short, malformed, or corrupt file buffers from disk.
+**Action:** Wrote 5 new unit tests mapping specifically to those missing branch coverage blocks (PageError::Serialization mappings).
