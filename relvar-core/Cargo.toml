@@ -30,3 +30,7 @@ harness = false
 [[bench]]
 name = "group_bench"
 harness = false
+
+[[bench]]
+name = "extend_into_bench"
+harness = false

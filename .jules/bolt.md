@@ -66,3 +66,9 @@ Without pre-allocating the vector for `extended_tuples` with `with_capacity()`, 
 ## 2024-05-19 - Removed intermediate Vector and String allocations
 **Learning:** In `relvar-core/src/algebra/group.rs`, an intermediate vector of strings was being collected just to be filtered. This caused `O(N)` unnecessary `String` allocations and an extra `Vec` allocation.
 **Action:** Always filter iterators *before* applying mapping functions that allocate (like `.to_string()`), and avoid collecting into intermediate collections when the items can be filtered directly from the source iterator.
+
+## 2025-02-20 - Add `extend_into` operator to `Relation`
+
+**Learning:** Cloning entire relationships during extended operations (adding computed attributes) results in significant performance overhead due to iterating over tuple maps and instantiating many copies. Creating tuples efficiently by taking ownership of the `into_values()` map and utilizing an `_into` semantic variant results in measurable performance gains (e.g. `extend_into`).
+
+**Action:** Added `extend_into` method and `create_extended_tuple_owned` utility to bypass tuple cloning when the relation is fully owned, increasing throughput for extension chained operations.

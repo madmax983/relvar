@@ -125,6 +125,44 @@ impl Relation {
         // - create_extended_tuple ensures the computed value type matches
         Ok(Relation::from_body_unchecked(new_rel_type, extended_tuples))
     }
+
+    /// Extends the relation with a new computed attribute in-place.
+    ///
+    /// This avoids cloning the tuples when the relation is owned.
+    pub fn extend_into<F>(
+        self,
+        attr_name: &str,
+        attr_type: crate::types::ScalarType,
+        compute: F,
+    ) -> Result<Relation, ExtendError>
+    where
+        F: Fn(&Tuple) -> ScalarValue,
+    {
+        // Check if attribute already exists
+        if self.relation_type().has_attribute(attr_name) {
+            return Err(ExtendError::AttributeExists(attr_name.to_string()));
+        }
+
+        // Create new heading with the additional attribute
+        let mut new_heading = self.relation_type().tuple_type().clone();
+        new_heading = new_heading.with_attribute(attr_name.to_string(), attr_type.clone());
+
+        let new_rel_type = crate::types::RelationType::new(new_heading.clone());
+        let new_heading_arc = std::sync::Arc::new(new_heading);
+
+        let mut extended_tuples = std::collections::HashSet::with_capacity(self.cardinality());
+        for tuple in self.into_iter() {
+            extended_tuples.insert(create_extended_tuple_owned(
+                tuple,
+                attr_name,
+                &attr_type,
+                &new_heading_arc,
+                &compute,
+            )?);
+        }
+
+        Ok(Relation::from_body_unchecked(new_rel_type, extended_tuples))
+    }
 }
 
 /// Helper function to create a single extended tuple.
@@ -161,11 +199,75 @@ where
     Ok(Tuple::new_unchecked(new_heading.clone(), new_values))
 }
 
+/// Helper function to create a single extended tuple taking ownership of the tuple values.
+fn create_extended_tuple_owned<F>(
+    tuple: Tuple,
+    attr_name: &str,
+    attr_type: &crate::types::ScalarType,
+    new_heading: &std::sync::Arc<crate::types::TupleType>,
+    compute: &F,
+) -> Result<Tuple, ExtendError>
+where
+    F: Fn(&Tuple) -> ScalarValue,
+{
+    let computed_value = compute(&tuple);
+
+    if !computed_value.is_type(attr_type) {
+        return Err(ExtendError::TupleCreation(format!(
+            "Type mismatch for attribute '{}': expected {}, got {}",
+            attr_name,
+            attr_type.name(),
+            computed_value.scalar_type().name()
+        )));
+    }
+
+    let mut new_values = tuple.into_values();
+    new_values.insert(attr_name.to_string(), computed_value);
+
+    Ok(Tuple::new_unchecked(new_heading.clone(), new_values))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tuple;
     use crate::types::{RelationType, ScalarType, TupleType};
+
+    #[test]
+    fn test_extend_into_adds_computed_attribute() {
+        let heading = TupleType::new()
+            .with_attribute("price".to_string(), ScalarType::Int)
+            .with_attribute("quantity".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { price: 10i64, quantity: 5i64 })
+            .unwrap();
+        relation
+            .insert(tuple! { price: 20i64, quantity: 3i64 })
+            .unwrap();
+
+        let result = relation
+            .extend_into("total", ScalarType::Int, |t| {
+                let price = t.get_typed::<i64>("price").unwrap();
+                let quantity = t.get_typed::<i64>("quantity").unwrap();
+                ScalarValue::Int(price * quantity)
+            })
+            .unwrap();
+
+        assert_eq!(result.cardinality(), 2);
+        assert_eq!(result.degree(), 3);
+        assert!(result.relation_type().has_attribute("total"));
+
+        for tuple in result.tuples() {
+            let price = tuple.get_typed::<i64>("price").unwrap();
+            let quantity = tuple.get_typed::<i64>("quantity").unwrap();
+            let total = tuple.get_typed::<i64>("total").unwrap();
+            assert_eq!(total, price * quantity);
+        }
+    }
 
     #[test]
     fn test_extend_adds_computed_attribute() {
