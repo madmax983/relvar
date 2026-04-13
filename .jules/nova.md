@@ -70,3 +70,7 @@
 **Concept:** I built a Relational Expert System (`ExpertSystem`) using forward chaining that executes over `Facts`, `Rule Conditions`, and `Rule Conclusions` relations. It iteratively joins facts against conditions, verifies rules have all criteria met, and extracts conclusions to insert as new facts until reaching a fixpoint.
 **Fate:** Merged
 **Lesson:** Relational algebra handles state machines and derivation well! We must use `Aggregation::count` coupled with `summarize` and `restrict` to ensure all conditions are fulfilled before pulling the conclusion from `rule_conclusions`. It perfectly captures the essence of rule engines in the Relational framework!
+## Relational K-Means Clustering
+**Concept:** Implemented `KMeans` clustering using purely relational algebra (Join, Extend, Summarize). Represented points and centroids as relations, performing nearest neighbor assignment and centroid updating via standard relation operations like aggregation and cartesian products.
+**Fate:** Merged
+**Lesson:** Relational algebra proves surprisingly versatile for vector-based machine learning algorithms. Cross joins correctly compute pairwise distances, and `Aggregation::min` with joins elegantly act as an `argmin` function to assign the closest points cleanly.
