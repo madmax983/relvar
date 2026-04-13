@@ -186,8 +186,17 @@ impl Catalog {
         }
 
         let reader = BufReader::new(file);
-        serde_json::from_reader(reader.take(limit))
-            .map_err(|e| CatalogError::Serialization(e.to_string()))
+        let mut capped_reader = reader.take(limit);
+        let catalog = serde_json::from_reader(&mut capped_reader)
+            .map_err(|e| CatalogError::Serialization(e.to_string()))?;
+
+        if capped_reader.limit() == 0 {
+            return Err(CatalogError::Serialization(
+                "Catalog file too large".to_string(),
+            ));
+        }
+
+        Ok(catalog)
     }
 
     /// Saves the catalog to a JSON file.

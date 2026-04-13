@@ -187,10 +187,14 @@ pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
         return relation.clone(); // Avoid division by zero
     }
 
-    // We accumulate the shifted relations.
-    // Since we can't easily modify Relation in place effectively without potentially
-    // re-allocating, we collect them.
-    let mut contributions = Vec::new();
+    let contributions = compute_kernel_contributions(relation, kernel);
+    let unioned = union_contributions(&contributions);
+
+    summarize_and_normalize(&unioned, total_weight)
+}
+
+fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Vec<Relation> {
+    let mut contributions = Vec::with_capacity(kernel.len());
 
     for (i, tap) in kernel.iter().enumerate() {
         let dx = tap.dx;
@@ -261,13 +265,20 @@ pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
         contributions.push(renamed);
     }
 
+    contributions
+}
+
+fn union_contributions(contributions: &[Relation]) -> Relation {
     // Step 2: Union
     // Start with the first contribution
     let mut unioned = contributions[0].clone();
     for other in contributions.iter().skip(1) {
         unioned = unioned.union(other).unwrap();
     }
+    unioned
+}
 
+fn summarize_and_normalize(unioned: &Relation, total_weight: i64) -> Relation {
     // Step 3: Summarize
     // Group by (x, y)
     // Sum (r, g, b) -> (sum_r, sum_g, sum_b)

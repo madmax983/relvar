@@ -128,13 +128,21 @@ pub fn from_json<R: std::io::Read>(
         relation_type,
         counter,
     };
-    seed.deserialize(&mut deserializer).map_err(|e| {
+    let relation = seed.deserialize(&mut deserializer).map_err(|e| {
         if e.to_string().contains("Size limit exceeded") {
             ImporterError::LimitExceeded(e.to_string())
         } else {
             ImporterError::JsonError(e)
         }
-    })
+    })?;
+
+    if capped_reader.limit() == 0 {
+        return Err(ImporterError::LimitExceeded(
+            "Global size limit exceeded: > 10MB".to_string(),
+        ));
+    }
+
+    Ok(relation)
 }
 
 struct RelationSeed {
@@ -897,5 +905,47 @@ mod tests {
             result.unwrap_err(),
             ImporterError::TypeError(attr, _, _) if attr == "rel"
         ));
+    }
+
+    #[test]
+    fn test_json_limit_exceeded() {
+        use std::io::Read;
+
+        struct InfiniteJsonReader {
+            count: usize,
+        }
+
+        impl Read for InfiniteJsonReader {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                let mut i = 0;
+                while i < buf.len() {
+                    if self.count == 0 {
+                        buf[i] = b'[';
+                    } else if self.count > 10_000_000 {
+                        buf[i] = b']';
+                    } else {
+                        let s = b"{\"id\": 1},";
+                        let idx = (self.count - 1) % s.len();
+                        buf[i] = s[idx];
+                    }
+                    self.count += 1;
+                    i += 1;
+                }
+                Ok(buf.len())
+            }
+        }
+
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let reader = InfiniteJsonReader { count: 0 };
+
+        let result = from_json(reader, rel_type);
+        assert!(result.is_err());
+        match result {
+            Err(ImporterError::LimitExceeded(_msg)) => {
+                // Return gracefully for any limit exceeded message.
+            }
+            _ => panic!("Expected LimitExceeded error, got {:?}", result),
+        }
     }
 }

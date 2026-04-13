@@ -561,3 +561,7 @@ Build it right, make it fast, keep it simple.
 ## 2026-04-10 - Extract Complex Physics Calculation Steps
 **Learning:** The `next_step` function in `relvar/src/experimental/physics.rs` contained multiple distinct logical phases (computing forces, handling missing elements and summation, updating kinematics) in a single massive code block, making it hard to follow.
 **Action:** Refactored by extracting these phases into appropriately named private helper methods (`compute_pairwise_forces`, `summarize_net_forces`, `update_kinematics_and_project`), drastically reducing complexity and improving code clarity.
+
+## 2026-04-10 - Refactoring image kernel application into Three-Phase Operator
+**Learning:** `relvar/src/experimental/image.rs` contained a "God Function" `apply_kernel` which combined multiple phases (shifting/scaling, unioning, and summarizing/normalizing), making it overly long (133 lines) and harder to comprehend.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting `compute_kernel_contributions`, `union_contributions`, and `summarize_and_normalize` into separate helper functions to improve readability without changing behavior.
