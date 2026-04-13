@@ -58,6 +58,84 @@ impl EnigmaMachine {
         }
     }
 
+    fn apply_static_mapping(rel: &Relation, mapping: &Relation) -> Result<Relation, DatabaseError> {
+        Ok(rel
+            .rename(&[("char", "pin_in")])
+            .join(mapping)?
+            .project(&["pos", "pin_out"])
+            .rename(&[("pin_out", "char")]))
+    }
+
+    fn pass_forward(
+        rel: Relation,
+        rotor: &Relation,
+        step_divisor: i64,
+    ) -> Result<Relation, DatabaseError> {
+        let offset_rel = rel
+            .extend("offset", ScalarType::Int, move |t| {
+                let pos = t.get_typed::<i64>("pos").unwrap();
+                ScalarValue::Int((pos / step_divisor) % 26)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        let enter_rel = offset_rel
+            .extend("pin_in", ScalarType::Int, |t| {
+                let c = t.get_typed::<i64>("char").unwrap();
+                let offset = t.get_typed::<i64>("offset").unwrap();
+                ScalarValue::Int((c + offset).rem_euclid(26))
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        let joined = enter_rel
+            .project(&["pos", "pin_in", "offset"])
+            .join(rotor)?;
+
+        Ok(joined
+            .extend("out_char", ScalarType::Int, |t| {
+                let pin_out = t.get_typed::<i64>("pin_out").unwrap();
+                let offset = t.get_typed::<i64>("offset").unwrap();
+                ScalarValue::Int((pin_out - offset).rem_euclid(26))
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .project(&["pos", "out_char"])
+            .rename(&[("out_char", "char")]))
+    }
+
+    fn pass_backward(
+        rel: Relation,
+        rotor: &Relation,
+        step_divisor: i64,
+    ) -> Result<Relation, DatabaseError> {
+        let offset_rel = rel
+            .extend("offset", ScalarType::Int, move |t| {
+                let pos = t.get_typed::<i64>("pos").unwrap();
+                ScalarValue::Int((pos / step_divisor) % 26)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        let enter_rel = offset_rel
+            .extend("pin_out", ScalarType::Int, |t| {
+                let c = t.get_typed::<i64>("char").unwrap();
+                let offset = t.get_typed::<i64>("offset").unwrap();
+                ScalarValue::Int((c + offset).rem_euclid(26))
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        let joined = enter_rel
+            .project(&["pos", "pin_out", "offset"])
+            .join(rotor)?;
+
+        Ok(joined
+            .extend("out_char", ScalarType::Int, |t| {
+                let pin_in = t.get_typed::<i64>("pin_in").unwrap();
+                let offset = t.get_typed::<i64>("offset").unwrap();
+                ScalarValue::Int((pin_in - offset).rem_euclid(26))
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .project(&["pos", "out_char"])
+            .rename(&[("out_char", "char")]))
+    }
+
     /// Encrypts (or decrypts) a message relation.
     ///
     /// The message should have the schema `(pos: Int, char: Int)`.
@@ -72,116 +150,23 @@ impl EnigmaMachine {
         // reflector -> rotor3 (inverse) -> rotor2 (inverse) -> rotor1 (inverse) -> plugboard -> output
 
         // 1. Pass through plugboard
-        let mut current = message
-            .rename(&[("char", "pin_in")])
-            .join(&self.plugboard)?
-            .project(&["pos", "pin_out"])
-            .rename(&[("pin_out", "char")]);
-
-        // Helper to pass through a rotor forward
-        let pass_forward = |rel: Relation,
-                            rotor: &Relation,
-                            step_divisor: i64|
-         -> Result<Relation, DatabaseError> {
-            // Calculate effective rotation offset for this position
-            let offset_rel = rel
-                .extend("offset", ScalarType::Int, move |t| {
-                    let pos = t.get_typed::<i64>("pos").unwrap();
-                    ScalarValue::Int((pos / step_divisor) % 26)
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // Calculate actual pin entering the rotor: (char + offset) % 26
-            let enter_rel = offset_rel
-                .extend("pin_in", ScalarType::Int, |t| {
-                    let c = t.get_typed::<i64>("char").unwrap();
-                    let offset = t.get_typed::<i64>("offset").unwrap();
-                    ScalarValue::Int((c + offset).rem_euclid(26))
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // We join with the static wiring of the rotor (pin_in: Int, pin_out: Int)
-            // since the offset has already been applied dynamically based on position.
-            let joined = enter_rel
-                .project(&["pos", "pin_in", "offset"])
-                .join(rotor)?;
-
-            // Output pin from rotor needs to be reverse rotated: (pin_out - offset) % 26
-            Ok(joined
-                .extend("out_char", ScalarType::Int, |t| {
-                    let pin_out = t.get_typed::<i64>("pin_out").unwrap();
-                    let offset = t.get_typed::<i64>("offset").unwrap();
-                    ScalarValue::Int((pin_out - offset).rem_euclid(26))
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-                .project(&["pos", "out_char"])
-                .rename(&[("out_char", "char")]))
-        };
+        let mut current = Self::apply_static_mapping(message, &self.plugboard)?;
 
         // 2. Forward through rotors
-        // Rotor 1 steps every character (divisor 1)
-        current = pass_forward(current, &self.rotor1, 1)?;
-        // Rotor 2 steps every 26 characters (divisor 26)
-        current = pass_forward(current, &self.rotor2, 26)?;
-        // Rotor 3 steps every 26*26 characters (divisor 676)
-        current = pass_forward(current, &self.rotor3, 676)?;
+        current = Self::pass_forward(current, &self.rotor1, 1)?;
+        current = Self::pass_forward(current, &self.rotor2, 26)?;
+        current = Self::pass_forward(current, &self.rotor3, 676)?;
 
         // 3. Pass through reflector
-        current = current
-            .rename(&[("char", "pin_in")])
-            .join(&self.reflector)?
-            .project(&["pos", "pin_out"])
-            .rename(&[("pin_out", "char")]);
-
-        // Helper to pass through a rotor backward
-        let pass_backward = |rel: Relation,
-                             rotor: &Relation,
-                             step_divisor: i64|
-         -> Result<Relation, DatabaseError> {
-            let offset_rel = rel
-                .extend("offset", ScalarType::Int, move |t| {
-                    let pos = t.get_typed::<i64>("pos").unwrap();
-                    ScalarValue::Int((pos / step_divisor) % 26)
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            let enter_rel = offset_rel
-                .extend("pin_out", ScalarType::Int, |t| {
-                    let c = t.get_typed::<i64>("char").unwrap();
-                    let offset = t.get_typed::<i64>("offset").unwrap();
-                    ScalarValue::Int((c + offset).rem_euclid(26))
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // Join using pin_out instead of pin_in
-            let joined = enter_rel
-                .project(&["pos", "pin_out", "offset"])
-                .join(rotor)?;
-
-            Ok(joined
-                .extend("out_char", ScalarType::Int, |t| {
-                    let pin_in = t.get_typed::<i64>("pin_in").unwrap();
-                    let offset = t.get_typed::<i64>("offset").unwrap();
-                    ScalarValue::Int((pin_in - offset).rem_euclid(26))
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-                .project(&["pos", "out_char"])
-                .rename(&[("out_char", "char")]))
-        };
+        current = Self::apply_static_mapping(&current, &self.reflector)?;
 
         // 4. Backward through rotors
-        current = pass_backward(current, &self.rotor3, 676)?;
-        current = pass_backward(current, &self.rotor2, 26)?;
-        current = pass_backward(current, &self.rotor1, 1)?;
+        current = Self::pass_backward(current, &self.rotor3, 676)?;
+        current = Self::pass_backward(current, &self.rotor2, 26)?;
+        current = Self::pass_backward(current, &self.rotor1, 1)?;
 
-        // 5. Backward through plugboard (plugboard is symmetric, pin_in <-> pin_out)
-        // Since the plugboard operates symmetrically, we can evaluate it identically to the forward pass
-        // by joining on pin_in and projecting out pin_out.
-        current = current
-            .rename(&[("char", "pin_in")])
-            .join(&self.plugboard)?
-            .project(&["pos", "pin_out"])
-            .rename(&[("pin_out", "char")]);
+        // 5. Backward through plugboard
+        current = Self::apply_static_mapping(&current, &self.plugboard)?;
 
         Ok(current)
     }

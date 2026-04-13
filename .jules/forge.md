@@ -565,3 +565,8 @@ Build it right, make it fast, keep it simple.
 ## 2026-04-10 - Refactoring image kernel application into Three-Phase Operator
 **Learning:** `relvar/src/experimental/image.rs` contained a "God Function" `apply_kernel` which combined multiple phases (shifting/scaling, unioning, and summarizing/normalizing), making it overly long (133 lines) and harder to comprehend.
 **Action:** Applied the "Three-Phase Operator" pattern by extracting `compute_kernel_contributions`, `union_contributions`, and `summarize_and_normalize` into separate helper functions to improve readability without changing behavior.
+## 2024-05-30 - Extract God Function in Enigma\n**Learning:** Enigma machine's  function was over 120 lines long because of large inline closures and duplicated mapping logic. \n**Action:** Refactored by extracting the forward/backward rotor passes and the static mapping into private associated functions. The main  function is now much cleaner and easier to read.
+
+## 2024-05-30 - Extract God Function in Enigma
+**Learning:** Enigma machine's `encrypt` function was over 120 lines long because of large inline closures and duplicated mapping logic.
+**Action:** Refactored by extracting the forward/backward rotor passes and the static mapping into private associated functions. The main `encrypt` function is now much cleaner and easier to read.
