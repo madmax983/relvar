@@ -342,7 +342,15 @@ fn format_scalar_csv(val: &ScalarValue) -> String {
     match val {
         ScalarValue::Int(v) => v.to_string(),
         ScalarValue::Float(v) => v.to_string(),
-        ScalarValue::String(v) => format!("\"{}\"", v.replace("\"", "\"\"")), // CSV escaping
+        ScalarValue::String(v) => {
+            let mut sanitized = v.clone();
+            if let Some(first_char) = sanitized.chars().next() {
+                if matches!(first_char, '=' | '+' | '-' | '@' | '\t' | '\r' | '\n') {
+                    sanitized.insert(0, '\'');
+                }
+            }
+            format!("\"{}\"", sanitized.replace("\"", "\"\""))
+        }
         ScalarValue::Bool(v) => v.to_string(),
         ScalarValue::Bytes(v) => format!("{:?}", v),
         ScalarValue::Relation(_) => "<Relation>".to_string(),
