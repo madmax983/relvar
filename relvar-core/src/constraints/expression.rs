@@ -109,7 +109,7 @@ pub enum ConstraintExpression {
     Not(Box<ConstraintExpression>),
 
     /// Set membership: attribute IN (value1, value2, ...)
-    In(String, Vec<ScalarValue>),
+    In(String, std::collections::HashSet<ScalarValue>),
 
     /// Pattern matching: attribute LIKE pattern
     ///
@@ -250,21 +250,13 @@ impl ConstraintExpression {
     fn evaluate_in(
         tuple: &Tuple,
         attr: &str,
-        values: &[ScalarValue],
+        values: &std::collections::HashSet<ScalarValue>,
     ) -> Result<bool, ExpressionError> {
         let tuple_value = tuple
             .get(attr)
             .ok_or_else(|| ExpressionError::AttributeNotFound(attr.to_string()))?;
 
-        // Use HashSet for O(1) lookup instead of Vec::contains O(N)
-        // For small lists (< 10 items), Vec is actually faster due to cache locality
-        if values.len() < 10 {
-            Ok(values.contains(tuple_value))
-        } else {
-            use std::collections::HashSet;
-            let value_set: HashSet<_> = values.iter().collect();
-            Ok(value_set.contains(tuple_value))
-        }
+        Ok(values.contains(tuple_value))
     }
 
     fn evaluate_like(tuple: &Tuple, attr: &str, pattern: &str) -> Result<bool, ExpressionError> {
@@ -673,7 +665,9 @@ mod tests {
                 ScalarValue::String("active".to_string()),
                 ScalarValue::String("pending".to_string()),
                 ScalarValue::String("approved".to_string()),
-            ],
+            ]
+            .into_iter()
+            .collect(),
         );
 
         let valid_active = tuple! { status: "active" };
@@ -694,7 +688,9 @@ mod tests {
                 ScalarValue::Int(1),
                 ScalarValue::Int(2),
                 ScalarValue::Int(3),
-            ],
+            ]
+            .into_iter()
+            .collect(),
         );
 
         let valid = tuple! { priority: 2i64 };

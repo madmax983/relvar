@@ -30,11 +30,29 @@ pub enum Term {
 
 impl Term {
     /// Helper to create a variable term.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::knowledge_graph::Term;
+    ///
+    /// let variable = Term::var("person");
+    /// assert_eq!(variable, Term::Variable("person".to_string()));
+    /// ```
     pub fn var(name: &str) -> Self {
         Term::Variable(name.to_string())
     }
 
     /// Helper to create a value term.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::knowledge_graph::Term;
+    ///
+    /// let value = Term::val("Alice");
+    /// assert_eq!(value, Term::Value("Alice".to_string()));
+    /// ```
     pub fn val(value: &str) -> Self {
         Term::Value(value.to_string())
     }
@@ -54,6 +72,18 @@ pub struct TriplePattern {
 
 impl TriplePattern {
     /// Creates a new TriplePattern.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::knowledge_graph::{Term, TriplePattern};
+    ///
+    /// let pattern = TriplePattern::new(
+    ///     Term::var("person"),
+    ///     Term::val("type"),
+    ///     Term::val("Artist"),
+    /// );
+    /// ```
     pub fn new(subject: Term, predicate: Term, object: Term) -> Self {
         Self {
             subject,
@@ -64,6 +94,15 @@ impl TriplePattern {
 }
 
 /// A Relational Knowledge Graph representing RDF-like triples.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::experimental::knowledge_graph::{KnowledgeGraph, Term, TriplePattern};
+///
+/// let mut kg = KnowledgeGraph::new();
+/// kg.insert("Alice", "knows", "Bob").unwrap();
+/// ```
 pub struct KnowledgeGraph {
     /// The relation storing the triples. Schema: (subject: String, predicate: String, object: String)
     pub triples: Relation,
@@ -77,6 +116,15 @@ impl Default for KnowledgeGraph {
 
 impl KnowledgeGraph {
     /// Creates a new, empty Knowledge Graph.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::knowledge_graph::KnowledgeGraph;
+    ///
+    /// let kg = KnowledgeGraph::new();
+    /// assert_eq!(kg.triples.cardinality(), 0);
+    /// ```
     pub fn new() -> Self {
         let heading = TupleType::new()
             .with_attribute("subject".to_string(), ScalarType::String)
@@ -88,6 +136,16 @@ impl KnowledgeGraph {
     }
 
     /// Inserts a new triple into the knowledge graph.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::knowledge_graph::KnowledgeGraph;
+    ///
+    /// let mut kg = KnowledgeGraph::new();
+    /// kg.insert("Alice", "type", "Artist").unwrap();
+    /// assert_eq!(kg.triples.cardinality(), 1);
+    /// ```
     pub fn insert(
         &mut self,
         subject: &str,
@@ -184,6 +242,26 @@ impl KnowledgeGraph {
 
     /// Evaluates a Basic Graph Pattern (a list of triple patterns ANDed together).
     /// This is equivalent to joining the results of all individual triple patterns.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::knowledge_graph::{KnowledgeGraph, Term, TriplePattern};
+    ///
+    /// let mut kg = KnowledgeGraph::new();
+    /// kg.insert("Alice", "knows", "Bob").unwrap();
+    /// kg.insert("Bob", "knows", "Charlie").unwrap();
+    ///
+    /// // Find who knows Bob: ?person knows Bob
+    /// let pattern = TriplePattern::new(
+    ///     Term::var("person"),
+    ///     Term::val("knows"),
+    ///     Term::val("Bob"),
+    /// );
+    ///
+    /// let result = kg.query(&[pattern]).unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
     pub fn query(&self, patterns: &[TriplePattern]) -> Result<Relation, DatabaseError> {
         if patterns.is_empty() {
             return Err(DatabaseError::AlgebraError("Empty query".to_string()));

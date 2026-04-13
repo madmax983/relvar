@@ -30,3 +30,7 @@ harness = false
 [[bench]]
 name = "group_bench"
 harness = false
+
+[[bench]]
+name = "expression_in"
+harness = false

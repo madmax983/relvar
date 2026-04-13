@@ -32,6 +32,7 @@ pub mod cellular_automaton;
 pub mod circuit;
 pub mod ecs;
 pub mod enigma;
+pub mod expert_system;
 pub mod graph;
 pub mod image;
 pub mod knowledge_graph;

@@ -51,7 +51,9 @@ fn test_constraint_in_type_inconsistency() {
     // 1 and 2 are Ints. 'status' is String.
     let in_expr = ConstraintExpression::In(
         "status".to_string(),
-        vec![ScalarValue::Int(1), ScalarValue::Int(2)],
+        vec![ScalarValue::Int(1), ScalarValue::Int(2)]
+            .into_iter()
+            .collect(),
     );
 
     // IN evaluation should succeed and return false (no match)

@@ -263,7 +263,7 @@ mod tests {
         for i in 0..100 {
             values.push(ScalarValue::Int(i));
         }
-        let expr = ConstraintExpression::In("id".to_string(), values);
+        let expr = ConstraintExpression::In("id".to_string(), values.into_iter().collect());
 
         // Prepare it
         let prepared = expr.prepare();
@@ -322,7 +322,9 @@ mod tests {
             }),
             Box::new(ConstraintExpression::In(
                 "role".to_string(),
-                vec![ScalarValue::String("admin".to_string())],
+                vec![ScalarValue::String("admin".to_string())]
+                    .into_iter()
+                    .collect(),
             )),
         );
 
