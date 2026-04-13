@@ -422,7 +422,10 @@ fn compute_ungrouped_tuples(
         for rva_tuple in rva_relation.tuples() {
             let mut values = base_values.clone();
             for attr_name in rva_relation_type.tuple_type().attribute_names() {
-                values.insert(attr_name.to_string(), rva_tuple.get(attr_name).unwrap().clone());
+                values.insert(
+                    attr_name.to_string(),
+                    rva_tuple.get(attr_name).unwrap().clone(),
+                );
             }
 
             // Re-use the cloned heading_arc
@@ -433,8 +436,6 @@ fn compute_ungrouped_tuples(
 
     Ok(result_tuples)
 }
-
-
 
 #[cfg(test)]
 mod tests {
