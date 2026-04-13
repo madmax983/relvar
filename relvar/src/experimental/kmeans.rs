@@ -210,14 +210,26 @@ mod tests {
         let mut points = Relation::new(RelationType::new(p_heading));
 
         // Group 1: near (1.0, 1.0)
-        points.insert(tuple! { point_id: 1i64, x: 1.0f64, y: 1.0f64 }).unwrap();
-        points.insert(tuple! { point_id: 2i64, x: 1.1f64, y: 0.9f64 }).unwrap();
-        points.insert(tuple! { point_id: 3i64, x: 0.9f64, y: 1.1f64 }).unwrap();
+        points
+            .insert(tuple! { point_id: 1i64, x: 1.0f64, y: 1.0f64 })
+            .unwrap();
+        points
+            .insert(tuple! { point_id: 2i64, x: 1.1f64, y: 0.9f64 })
+            .unwrap();
+        points
+            .insert(tuple! { point_id: 3i64, x: 0.9f64, y: 1.1f64 })
+            .unwrap();
 
         // Group 2: near (10.0, 10.0)
-        points.insert(tuple! { point_id: 4i64, x: 10.0f64, y: 10.0f64 }).unwrap();
-        points.insert(tuple! { point_id: 5i64, x: 10.1f64, y: 9.9f64 }).unwrap();
-        points.insert(tuple! { point_id: 6i64, x: 9.9f64, y: 10.1f64 }).unwrap();
+        points
+            .insert(tuple! { point_id: 4i64, x: 10.0f64, y: 10.0f64 })
+            .unwrap();
+        points
+            .insert(tuple! { point_id: 5i64, x: 10.1f64, y: 9.9f64 })
+            .unwrap();
+        points
+            .insert(tuple! { point_id: 6i64, x: 9.9f64, y: 10.1f64 })
+            .unwrap();
 
         // Initial Centroids
         let c_heading = TupleType::new()
@@ -227,8 +239,12 @@ mod tests {
         let mut centroids = Relation::new(RelationType::new(c_heading));
 
         // Bad initial centroids
-        centroids.insert(tuple! { cluster_id: 1i64, c_x: 0.0f64, c_y: 0.0f64 }).unwrap();
-        centroids.insert(tuple! { cluster_id: 2i64, c_x: 2.0f64, c_y: 2.0f64 }).unwrap();
+        centroids
+            .insert(tuple! { cluster_id: 1i64, c_x: 0.0f64, c_y: 0.0f64 })
+            .unwrap();
+        centroids
+            .insert(tuple! { cluster_id: 2i64, c_x: 2.0f64, c_y: 2.0f64 })
+            .unwrap();
 
         let mut kmeans = KMeans::new(centroids);
 
