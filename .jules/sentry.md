@@ -85,3 +85,6 @@
 ## 2024-05-01 - [Coverage Gap in Storage Page Buffer Reading]
 **Learning:** `PageFile::read_page` had uncovered error paths when handling short, malformed, or corrupt file buffers from disk.
 **Action:** Wrote 5 new unit tests mapping specifically to those missing branch coverage blocks (PageError::Serialization mappings).
+## 2026-04-13 - Data Constraint Coverage Gaps
+**Learning:** Found several untested code paths regarding DML operations in `relvar-core/src/database/data.rs`. Specifically, the failure paths for constraint bulk validation during `update` and `validate_referencing_foreign_keys` during `update` and `delete` were entirely unexercised. This masked whether changes invalidating parent constraints actually correctly errored out in the database API facade.
+**Action:** When implementing DML APIs, verify constraint orchestration layers thoroughly, specifically focusing on how operations on parent datasets affect linked child datasets, and ensure operations triggering bulk evaluations handle constraints exactly as expected.
