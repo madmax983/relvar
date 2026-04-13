@@ -409,16 +409,24 @@ fn compute_ungrouped_tuples(
             _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
         };
 
+        // Pre-compute the invariant non-RVA attributes for this outer tuple
+        let mut base_values = std::collections::BTreeMap::new();
+        for attr_name in relation.relation_type().tuple_type().attribute_names() {
+            if attr_name != rva_name {
+                base_values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
+            }
+        }
+
         // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
+        let heading_arc = result_heading_arc.clone();
         for rva_tuple in rva_relation.tuples() {
-            let result_tuple = build_ungrouped_tuple(
-                relation,
-                tuple,
-                rva_name,
-                rva_relation_type,
-                rva_tuple,
-                &result_heading_arc,
-            );
+            let mut values = base_values.clone();
+            for attr_name in rva_relation_type.tuple_type().attribute_names() {
+                values.insert(attr_name.to_string(), rva_tuple.get(attr_name).unwrap().clone());
+            }
+
+            // Re-use the cloned heading_arc
+            let result_tuple = Tuple::new_unchecked(heading_arc.clone(), values);
             result_tuples.push(result_tuple);
         }
     }
@@ -426,34 +434,7 @@ fn compute_ungrouped_tuples(
     Ok(result_tuples)
 }
 
-/// Helper to build a single ungrouped tuple by combining non-RVA and RVA attributes.
-fn build_ungrouped_tuple(
-    relation: &Relation,
-    tuple: &Tuple,
-    rva_name: &str,
-    rva_relation_type: &RelationType,
-    rva_tuple: &Tuple,
-    result_heading_arc: &std::sync::Arc<TupleType>,
-) -> Tuple {
-    let mut values = std::collections::BTreeMap::new();
 
-    // Add non-RVA attribute values
-    for attr_name in relation.relation_type().tuple_type().attribute_names() {
-        if attr_name != rva_name {
-            values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
-        }
-    }
-
-    // Add RVA tuple's attribute values
-    for attr_name in rva_relation_type.tuple_type().attribute_names() {
-        values.insert(
-            attr_name.to_string(),
-            rva_tuple.get(attr_name).unwrap().clone(),
-        );
-    }
-
-    Tuple::new_unchecked(std::sync::Arc::clone(result_heading_arc), values)
-}
 
 #[cfg(test)]
 mod tests {
