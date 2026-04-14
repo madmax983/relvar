@@ -283,3 +283,127 @@ fn test_database_update_foreign_key_violation() {
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
 }
+
+#[test]
+fn test_database_update_bulk_validation_fails_check_constraint() {
+    let mut db = setup();
+
+    let check = CheckConstraint::new(
+        "val_positive".to_string(),
+        "val must be positive".to_string(),
+        ConstraintExpression::Cmp {
+            left: "val".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Value(relvar_core::values::ScalarValue::Int(0)),
+        },
+    );
+    let checks = CheckConstraints::new().with_constraint(check);
+    db.set_check_constraints("TEST", checks).unwrap();
+
+    // This will update 'val' to -5, which violates the check constraint.
+    // It should be caught in `validate_relation_constraints` (bulk content validation).
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |t| {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("id".to_string(), relvar_core::values::ScalarValue::Int(1));
+            map.insert("val".to_string(), relvar_core::values::ScalarValue::Int(-5));
+            relvar_core::values::Tuple::new(std::sync::Arc::new(t.tuple_type().clone()), map)
+                .unwrap()
+        },
+    );
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::CheckConstraintViolation(_)
+        ))
+    ));
+}
+
+#[test]
+fn test_database_update_parent_violates_child_foreign_key() {
+    let mut db = setup();
+
+    // Create child table
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("parent_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type).unwrap();
+
+    let fk = relvar_core::constraints::ForeignKey::new(
+        vec!["parent_id".to_string()],
+        "TEST".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let fk_constraints =
+        relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("CHILD", fk_constraints)
+        .unwrap();
+
+    db.insert("CHILD", tuple! { child_id: 10i64, parent_id: 1i64 })
+        .unwrap();
+
+    // Update the parent's id, causing the child's reference to become invalid.
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |t| {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("id".to_string(), relvar_core::values::ScalarValue::Int(2));
+            map.insert("val".to_string(), relvar_core::values::ScalarValue::Int(10));
+            relvar_core::values::Tuple::new(std::sync::Arc::new(t.tuple_type().clone()), map)
+                .unwrap()
+        },
+    );
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::ForeignKeyViolation(_)
+        ))
+    ));
+}
+
+#[test]
+fn test_database_delete_parent_violates_child_foreign_key() {
+    let mut db = setup();
+
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("parent_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type).unwrap();
+
+    let fk = relvar_core::constraints::ForeignKey::new(
+        vec!["parent_id".to_string()],
+        "TEST".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let fk_constraints =
+        relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("CHILD", fk_constraints)
+        .unwrap();
+
+    db.insert("CHILD", tuple! { child_id: 10i64, parent_id: 1i64 })
+        .unwrap();
+
+    // Delete the parent, causing the child's reference to become invalid.
+    let result = db.delete("TEST", |t| t.get_typed::<i64>("id").unwrap() == 1);
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            relvar_core::constraints::ConstraintManagerError::ForeignKeyViolation(_)
+        ))
+    ));
+}
