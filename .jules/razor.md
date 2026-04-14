@@ -12,3 +12,8 @@
 **Bloat:** Single-variant enum `ScalarValueError` with a single variant `NotUserDefined` acting as a unit error.
 **Cut:** Converted to unit struct `pub struct ScalarValueError;` for consistency and to reduce boilerplate and nested code matching.
 **Saved:** Unnecessary enum matching for single error condition, simpler `return Err(ScalarValueError);` rather than `return Err(ScalarValueError::NotUserDefined);`
+
+## [Reduction]
+**Bloat:** Single-variant enum `ScalarTypeError` with a single variant `TypeMismatch` acting as a unit error struct but containing fields, in `relvar-core/src/types/scalar.rs`.
+**Cut:** Converted to struct `pub struct ScalarTypeError;` with fields for expected and actual types for consistency and to reduce boilerplate and nested code matching, aligning with the KISS principle.
+**Saved:** Unnecessary enum matching for a single error condition.
