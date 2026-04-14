@@ -100,12 +100,25 @@ impl Relation {
             return Err(UnionError);
         }
 
-        // Chain iterators and create relation without redundant checks
-        // Safety: both relations are verified to have the same type, so their tuples must conform
-        Ok(Relation::from_tuples_unchecked(
-            self.relation_type().clone(),
-            self.tuples().chain(other.tuples()).cloned(),
-        ))
+        // Optimization: If one relation is empty, we just need to clone the other
+        // and avoid instantiating iterators or chaining.
+        if self.is_empty() {
+            return Ok(other.clone());
+        }
+        if other.is_empty() {
+            return Ok(self.clone());
+        }
+
+        let (larger, smaller) = if self.cardinality() >= other.cardinality() {
+            (self, other)
+        } else {
+            (other, self)
+        };
+
+        // Optimization: By cloning the larger relation and extending it with the smaller,
+        // we ensure that the underlying capacity is properly reserved from the start,
+        // and insertions are optimally handled. `union_into` achieves this exact behavior.
+        larger.clone().union_into(smaller)
     }
 
     /// Computes the union of this relation with another, consuming this relation.
