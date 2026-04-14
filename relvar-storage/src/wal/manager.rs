@@ -144,7 +144,7 @@ impl WalManager {
             .checked_add(serialized.len())
             .and_then(|sum| sum.checked_add(16));
 
-        if required_len.map_or(true, |len| len > self.buffer_capacity) {
+        if required_len.is_none_or(|len| len > self.buffer_capacity) {
             self.flush()?;
         }
 
