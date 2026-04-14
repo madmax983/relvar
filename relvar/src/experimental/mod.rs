@@ -24,6 +24,7 @@
 //! - **[`circuit`](crate::experimental::circuit)**: Relational Logic Circuit Simulator.
 //! - **[`automata`](crate::experimental::automata)**: Relational Automata (NFA).
 //! - **[`enigma`](crate::experimental::enigma)**: Relational Enigma Machine.
+//! - **[`kmeans`](crate::experimental::kmeans)**: Relational K-Means Clustering.
 
 pub mod automata;
 pub mod automl;
@@ -35,6 +36,7 @@ pub mod enigma;
 pub mod expert_system;
 pub mod graph;
 pub mod image;
+pub mod kmeans;
 pub mod knowledge_graph;
 pub mod matrix;
 pub mod mock;
