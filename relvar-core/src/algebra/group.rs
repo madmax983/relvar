@@ -101,6 +101,24 @@ impl Relation {
     /// - [`GroupError::NoAttributesSpecified`] - Empty attributes list
     /// - [`GroupError::AllAttributesGrouped`] - No grouping key attributes remain
     /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("dept", ScalarType::String)
+    ///     .with_attribute("emp_id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let mut rel = Relation::new(rel_type);
+    /// rel.insert(tuple! { dept: "IT", emp_id: 1i64 }).unwrap();
+    /// rel.insert(tuple! { dept: "IT", emp_id: 2i64 }).unwrap();
+    ///
+    /// let grouped = rel.group(&["emp_id"], "emps").unwrap();
+    /// assert_eq!(grouped.cardinality(), 1);
+    /// ```
     pub fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError> {
         // 1. Validate request and determine grouping attributes
         let grouping_attrs = validate_group_request(self, attrs_to_group, rva_name)?;
@@ -145,6 +163,11 @@ impl Relation {
     ///
     /// - [`UngroupError::AttributeNotFound`] - The attribute doesn't exist
     /// - [`UngroupError::NotRelationValued`] - The attribute is not an RVA
+    /// # Examples
+    ///
+    /// ```text
+    /// // Inverse of group
+    /// ```
     pub fn ungroup(&self, rva_name: &str) -> Result<Relation, UngroupError> {
         // 1. Validate request and get RVA type
         let rva_relation_type = validate_ungroup_request(self, rva_name)?;

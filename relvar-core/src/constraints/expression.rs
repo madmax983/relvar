@@ -124,7 +124,7 @@ pub enum ConstraintExpression {
     /// # Case Sensitivity
     /// The matching is **case-sensitive**. "A" does not match "a".
     ///
-    /// # Example
+    /// # Examples
     /// ```
     /// use relvar_core::ConstraintExpression;
     /// use relvar_core::tuple;
@@ -150,7 +150,7 @@ impl ConstraintExpression {
     /// - Attributes used in `IN` and `LIKE` expressions
     /// - Attributes in nested sub-expressions (AND, OR, NOT)
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -197,7 +197,7 @@ impl ConstraintExpression {
     /// - A type mismatch occurs during comparison
     /// - An invalid comparison is attempted
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::{ConstraintExpression, CmpOp, ValueOrRef};
@@ -353,7 +353,7 @@ impl ConstraintExpression {
     /// - `IN`: Converts `Vec` to `HashSet` for O(1) lookup.
     /// - `LIKE`: Pre-parses pattern string to `Vec<char>`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example

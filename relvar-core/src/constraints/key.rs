@@ -97,7 +97,7 @@ pub enum KeyConstraintError {
 /// 1. **Uniqueness** - No two tuples can have the same values for all key attributes
 /// 2. **Minimality** - No proper subset of the attributes has the uniqueness property
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::constraints::CandidateKey;
@@ -120,7 +120,7 @@ pub struct CandidateKey {
 impl CandidateKey {
     /// Create a new candidate key
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -135,7 +135,7 @@ impl CandidateKey {
 
     /// Get the key attributes
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -146,7 +146,7 @@ impl CandidateKey {
 
     /// Check if this key is satisfied by a relation (all tuples have unique key values)
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -177,7 +177,7 @@ impl CandidateKey {
 
     /// Check if a tuple would violate this key constraint when inserted into a relation
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -225,7 +225,7 @@ pub struct PrimaryKey {
 impl PrimaryKey {
     /// Create a new primary key
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -238,7 +238,7 @@ impl PrimaryKey {
 
     /// Get the key attributes
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -249,7 +249,7 @@ impl PrimaryKey {
 
     /// Get the underlying candidate key
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -260,7 +260,7 @@ impl PrimaryKey {
 
     /// Check if this key is satisfied by a relation
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -271,7 +271,7 @@ impl PrimaryKey {
 
     /// Check if a tuple would violate this key constraint
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -295,7 +295,7 @@ pub struct KeyConstraints {
 impl KeyConstraints {
     /// Create new empty key constraints
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -309,7 +309,7 @@ impl KeyConstraints {
 
     /// Set the primary key
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -321,7 +321,7 @@ impl KeyConstraints {
 
     /// Add a candidate key
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -333,7 +333,7 @@ impl KeyConstraints {
 
     /// Get the primary key
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -344,7 +344,7 @@ impl KeyConstraints {
 
     /// Get all candidate keys
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -355,7 +355,7 @@ impl KeyConstraints {
 
     /// Check if all constraints are satisfied
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -380,7 +380,7 @@ impl KeyConstraints {
 
     /// Check if inserting a tuple would violate any key constraints
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example

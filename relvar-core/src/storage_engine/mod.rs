@@ -52,7 +52,7 @@ pub struct RelationMetadata {
 /// - `InMemoryEngine` - Pure in-memory storage (no I/O)
 /// - `PersistentEngine` - Disk-based storage (in relvar-storage crate)
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::storage_engine::{StorageEngine, InMemoryEngine};

@@ -84,7 +84,7 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
     /// The output is a valid DOT file that can be rendered using Graphviz tools
     /// (e.g. `dot -Tpng schema.dot -o schema.png`).
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar::{Database, InMemoryEngine, visualizer::SchemaVisualizer};

@@ -165,7 +165,7 @@ pub mod data {
 ///
 /// This is a convenience function for creating a database with an in-memory storage engine.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar;
@@ -180,7 +180,7 @@ pub fn in_memory() -> Database<InMemoryEngine> {
 ///
 /// This is a convenience function for creating a database with a persistent storage engine.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// # #[cfg(feature = "storage")]

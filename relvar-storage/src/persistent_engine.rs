@@ -37,7 +37,7 @@ pub struct PersistentSnapshot {
 ///   sees a consistent snapshot of the database as of its start time. Writes create
 ///   new versions of tuples rather than overwriting them in place.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```no_run
 /// use relvar_storage::PersistentEngine;

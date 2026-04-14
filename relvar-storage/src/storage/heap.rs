@@ -103,7 +103,7 @@ pub enum HeapError {
 /// - `scan()` returns `Vec<Tuple>` (no TupleId)
 /// - `read_tuple(TupleId)` is `pub(crate)` (internal only)
 ///
-/// # Example
+/// # Examples
 ///
 /// ```no_run
 /// use relvar_storage::storage::HeapFile;

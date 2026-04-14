@@ -54,6 +54,12 @@ pub struct SudokuSolver {
 
 impl SudokuSolver {
     /// Create a new solver
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::sudoku::SudokuSolver;
+    /// let solver = SudokuSolver::new().unwrap();
+    /// ```
     pub fn new() -> Result<Self, DatabaseError> {
         let cells_type = RelationType::new(
             TupleType::new()
@@ -99,6 +105,11 @@ impl SudokuSolver {
 
     /// Solves the puzzle given the relation of known values.
     /// The givens relation must have attributes `(row: Int, col: Int, val: Int)`.
+    /// # Examples
+    ///
+    /// ```text
+    /// // Solve sudoku
+    /// ```
     pub fn solve(&self, givens: &Relation) -> Result<Relation, DatabaseError> {
         let mut known = givens.clone();
 

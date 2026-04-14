@@ -77,6 +77,23 @@ impl Relation {
     ///
     /// Returns [`ExtendError::AttributeExists`] if an attribute with the
     /// given name already exists in the relation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::{Relation, ScalarValue};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let mut rel = Relation::new(rel_type);
+    /// rel.insert(tuple! { id: 1i64 }).unwrap();
+    ///
+    /// let extended = rel.extend("double_id", ScalarType::Int, |t| {
+    ///     ScalarValue::Int(t.get_typed::<i64>("id").unwrap() * 2)
+    /// }).unwrap();
+    /// assert_eq!(extended.cardinality(), 1);
+    /// ```
     pub fn extend<F>(
         &self,
         attr_name: &str,

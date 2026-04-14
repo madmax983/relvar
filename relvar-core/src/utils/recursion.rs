@@ -77,6 +77,11 @@ impl Drop for RecursionGuard {
 ///
 /// It should be used with `#[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]`
 /// to enforce recursion limits during Serde deserialization without wrapping types in custom guard structs.
+/// # Examples
+///
+/// ```
+/// // Internally used by serde
+/// ```
 pub fn deserialize_guarded<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,

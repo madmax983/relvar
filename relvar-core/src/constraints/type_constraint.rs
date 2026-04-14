@@ -54,7 +54,7 @@ pub enum TypeConstraintError {
 /// Type constraints add domain restrictions beyond the basic type system.
 /// They can enforce ranges, enumerated values, or string lengths.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::constraints::TypeConstraint;
@@ -105,7 +105,7 @@ pub enum TypeConstraint {
 impl TypeConstraint {
     /// Check if a value satisfies this constraint
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -164,7 +164,7 @@ pub struct AttributeConstraints {
 impl AttributeConstraints {
     /// Create new attribute constraints
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -179,7 +179,7 @@ impl AttributeConstraints {
 
     /// Add a constraint
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -191,7 +191,7 @@ impl AttributeConstraints {
 
     /// Get the attribute name
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -202,7 +202,7 @@ impl AttributeConstraints {
 
     /// Get the scalar type
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -213,7 +213,7 @@ impl AttributeConstraints {
 
     /// Get all constraints
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -224,7 +224,7 @@ impl AttributeConstraints {
 
     /// Check if a value satisfies all constraints
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example

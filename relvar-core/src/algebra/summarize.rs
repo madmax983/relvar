@@ -103,7 +103,7 @@ pub enum AggregationFn {
 /// An aggregation specifies what to compute (the function), what to call
 /// the result (the name), and what type the result will be.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::types::ScalarType;
@@ -140,7 +140,7 @@ impl Aggregation {
     ///
     /// * `result_name` - The name for the count result attribute
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::algebra::Aggregation;
@@ -165,7 +165,7 @@ impl Aggregation {
     /// * `result_name` - The name for the sum result attribute
     /// * `attr_name` - The attribute to sum (must be Int type)
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::algebra::Aggregation;
@@ -190,7 +190,7 @@ impl Aggregation {
     /// * `result_name` - The name for the sum result attribute
     /// * `attr_name` - The attribute to sum (must be Float type)
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::algebra::Aggregation;
@@ -215,7 +215,7 @@ impl Aggregation {
     /// * `result_name` - The name for the average result attribute
     /// * `attr_name` - The attribute to average (must be Int type)
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::algebra::Aggregation;
@@ -241,7 +241,7 @@ impl Aggregation {
     /// * `attr_name` - The attribute to find the minimum of
     /// * `result_type` - The type of the result (should match the attribute type)
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::ScalarType;
@@ -268,7 +268,7 @@ impl Aggregation {
     /// * `attr_name` - The attribute to find the maximum of
     /// * `result_type` - The type of the result (should match the attribute type)
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::ScalarType;
@@ -467,6 +467,27 @@ impl Relation {
     /// Pre-allocates the `result_tuples` vector using `Vec::with_capacity(groups.len())`.
     /// Because the exact number of output tuples is known after grouping the input,
     /// this prevents dynamic heap reallocations when constructing the resulting relation.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    /// use relvar_core::algebra::Aggregation;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("dept", ScalarType::String)
+    ///     .with_attribute("salary", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let mut emp = Relation::new(rel_type);
+    /// emp.insert(tuple! { dept: "IT", salary: 100i64 }).unwrap();
+    /// emp.insert(tuple! { dept: "IT", salary: 200i64 }).unwrap();
+    ///
+    /// let result = emp.summarize(&["dept"], &[
+    ///     Aggregation::sum("total", "salary"),
+    /// ]).unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
     pub fn summarize(
         &self,
         group_by: &[&str],

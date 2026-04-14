@@ -58,7 +58,7 @@ impl Relation {
     /// - The predicate is evaluated once per tuple
     /// - An empty predicate result yields an empty relation
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};

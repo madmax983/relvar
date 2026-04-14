@@ -33,7 +33,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Query a relation (base or virtual).
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;
@@ -98,7 +98,7 @@ impl<E: StorageEngine> Database<E> {
     /// It then constructs a new relation containing the remaining tuples.
     /// Complexity is O(N) where N is the relation size.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;
@@ -184,7 +184,7 @@ impl<E: StorageEngine> Database<E> {
     ///   This ensures total consistency but has O(N) complexity where N is the relation size.
     ///   Future versions may optimize this to O(K) where K is the number of updated tuples.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;

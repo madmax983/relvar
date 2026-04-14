@@ -83,7 +83,7 @@ pub struct ConstraintManager {
 impl ConstraintManager {
     /// Create a new constraint manager.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -94,7 +94,7 @@ impl ConstraintManager {
 
     /// Remove all constraints associated with a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -108,7 +108,7 @@ impl ConstraintManager {
 
     /// Set key constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -136,7 +136,7 @@ impl ConstraintManager {
 
     /// Set foreign key constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -185,7 +185,7 @@ impl ConstraintManager {
 
     /// Set type constraints for an attribute.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -243,7 +243,7 @@ impl ConstraintManager {
 
     /// Set CHECK constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -305,7 +305,7 @@ impl ConstraintManager {
 
     /// Validate that a tuple matches the relation's heading.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -326,7 +326,7 @@ impl ConstraintManager {
 
     /// Validate that a tuple satisfies all type constraints.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -355,7 +355,7 @@ impl ConstraintManager {
 
     /// Validate that a tuple satisfies all CHECK constraints.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -373,7 +373,7 @@ impl ConstraintManager {
 
     /// Validate key constraints for a single tuple against the current relation state.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -408,7 +408,7 @@ impl ConstraintManager {
     /// Validate constraints that depend only on the tuple's content and foreign keys
     /// against a full relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -428,7 +428,7 @@ impl ConstraintManager {
     ///
     /// This includes Type constraints, CHECK constraints, and Foreign Key constraints.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -449,7 +449,7 @@ impl ConstraintManager {
     ///
     /// Checks that values in the tuple exist in the referenced relations.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -483,7 +483,7 @@ impl ConstraintManager {
 
     /// Validate key constraints against a full relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -514,7 +514,7 @@ impl ConstraintManager {
 
     /// Get the key constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -525,7 +525,7 @@ impl ConstraintManager {
 
     /// Get the foreign key constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -539,7 +539,7 @@ impl ConstraintManager {
 
     /// Validate that deleting tuples won't violate foreign keys in other relations.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example

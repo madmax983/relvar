@@ -70,7 +70,7 @@ impl Relation {
     /// - Union with self returns an equivalent relation
     /// - Union with empty relation returns the non-empty relation
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -125,6 +125,25 @@ impl Relation {
     ///
     /// This is an optimized version of `union` that avoids O(N) tuple clones for the
     /// first relation by consuming it.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    ///
+    /// let mut rel1 = Relation::new(rel_type.clone());
+    /// rel1.insert(tuple! { id: 1i64 }).unwrap();
+    ///
+    /// let mut rel2 = Relation::new(rel_type);
+    /// rel2.insert(tuple! { id: 2i64 }).unwrap();
+    ///
+    /// let result = rel1.union_into(&rel2).unwrap();
+    /// assert_eq!(result.cardinality(), 2);
+    /// ```
     pub fn union_into(mut self, other: &Relation) -> Result<Self, UnionError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {
