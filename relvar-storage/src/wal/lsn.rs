@@ -77,7 +77,7 @@ impl Lsn {
     /// assert_eq!(lsn.next(), Lsn::new(43));
     /// ```ignore
     pub fn next(self) -> Self {
-        Self(self.0 + 1)
+        Self(self.0.checked_add(1).expect("LSN overflow"))
     }
 
     /// Extracts the raw numerical value of this `Lsn`.
@@ -172,6 +172,9 @@ impl TransactionIdGenerator {
     /// ```ignore
     pub fn generate(&self) -> TransactionId {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        if id == u64::MAX {
+            panic!("TransactionId overflow");
+        }
         TransactionId(id)
     }
 }
