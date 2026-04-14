@@ -88,3 +88,6 @@
 ## 2026-04-13 - Data Constraint Coverage Gaps
 **Learning:** Found several untested code paths regarding DML operations in `relvar-core/src/database/data.rs`. Specifically, the failure paths for constraint bulk validation during `update` and `validate_referencing_foreign_keys` during `update` and `delete` were entirely unexercised. This masked whether changes invalidating parent constraints actually correctly errored out in the database API facade.
 **Action:** When implementing DML APIs, verify constraint orchestration layers thoroughly, specifically focusing on how operations on parent datasets affect linked child datasets, and ensure operations triggering bulk evaluations handle constraints exactly as expected.
+## 2024-05-18 - Database Integrity Operations Coverage
+**Learning:** We needed full coverage for public APIs `get_key_constraints` and `set_type_constraints` in `database::integrity`.
+**Action:** Added `test_database_integrity_getters` and `test_database_integrity_type_and_check` to `sentry_database_integrity_coverage.rs` to comprehensively test getters/setters for constraints without destroying existing tests.
