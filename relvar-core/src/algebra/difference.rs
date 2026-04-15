@@ -84,7 +84,10 @@ impl Relation {
                 result_tuples.push(tuple.clone());
             }
         }
-        Ok(Relation::from_tuples_unchecked(self.relation_type().clone(), result_tuples))
+        Ok(Relation::from_tuples_unchecked(
+            self.relation_type().clone(),
+            result_tuples,
+        ))
     }
 
     /// Alias for [`difference`](Self::difference) with SQL-style naming.
