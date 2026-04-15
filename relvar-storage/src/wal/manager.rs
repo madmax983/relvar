@@ -138,7 +138,13 @@ impl WalManager {
 
         // Auto-flush if buffer would overflow
         // Each record writes: 8 bytes (LSN) + 8 bytes (length) + data
-        if self.buffer.len() + serialized.len() + 16 > self.buffer_capacity {
+        let required_len = self
+            .buffer
+            .len()
+            .checked_add(serialized.len())
+            .and_then(|sum| sum.checked_add(16));
+
+        if required_len.is_none_or(|len| len > self.buffer_capacity) {
             self.flush()?;
         }
 
