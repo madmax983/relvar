@@ -30,7 +30,7 @@ const WAL_MAGIC: &[u8; 8] = b"RELVAR01";
 /// It implements a simple single-buffer design with automatic flushing when
 /// the buffer reaches capacity.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```ignore
 /// use relvar_storage::wal::WalManager;

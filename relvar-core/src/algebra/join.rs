@@ -76,7 +76,7 @@ impl Relation {
     /// This implementation uses a Hash Join algorithm, significantly outperforming
     /// the O(n * m) nested-loop join for large relations.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -220,6 +220,26 @@ impl Relation {
     /// // Result now has both: "id" (from r1) and "r2_id" (from r2)
     /// assert!(result.relation_type().has_attribute("id"));
     /// assert!(result.relation_type().has_attribute("r2_id"));
+    /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let h1 = TupleType::new().with_attribute("x", ScalarType::Int);
+    /// let mut r1 = Relation::new(RelationType::new(h1));
+    /// r1.insert(tuple! { x: 1i64 }).unwrap();
+    ///
+    /// let h2 = TupleType::new().with_attribute("y", ScalarType::Int);
+    /// let mut r2 = Relation::new(RelationType::new(h2));
+    /// r2.insert(tuple! { y: 2i64 }).unwrap();
+    ///
+    /// let result = r1.theta_join(&r2, |t1, t2| {
+    ///     t1.get_typed::<i64>("x").unwrap() < t2.get_typed::<i64>("y").unwrap()
+    /// });
+    /// assert_eq!(result.cardinality(), 1);
     /// ```
     pub fn theta_join<F>(&self, other: &Relation, predicate: F) -> Self
     where

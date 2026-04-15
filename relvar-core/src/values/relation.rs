@@ -92,7 +92,7 @@ pub enum RelationError {
 /// All tuples in a relation must conform to the relation's heading. Attempting
 /// to insert a tuple with a different structure results in an error.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -190,7 +190,7 @@ impl Relation {
     ///
     /// * `relation_type` - The type defining the relation's structure
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -258,7 +258,7 @@ impl Relation {
     /// Returns [`RelationError::TypeMismatch`] if any tuple doesn't conform
     /// to the relation type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -371,7 +371,7 @@ impl Relation {
 
     /// Retrieves the relation type (heading) defining this relation's structure.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -403,7 +403,7 @@ impl Relation {
 
     /// Calculates the cardinality (total number of tuples) currently held in this relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -440,7 +440,7 @@ impl Relation {
     ///
     /// This is determined by the relation type's heading.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -485,7 +485,7 @@ impl Relation {
     /// Returns [`RelationError::TypeMismatch`] if the tuple doesn't conform
     /// to the relation's type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -532,7 +532,7 @@ impl Relation {
     ///
     /// * `tuple` - The tuple to search for
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -571,7 +571,7 @@ impl Relation {
     /// Per TTM Proscription 3, tuples have no inherent ordering. The
     /// iteration order is not guaranteed to be consistent.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -609,7 +609,7 @@ impl Relation {
 
     /// Checks if the relation has no tuples.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};

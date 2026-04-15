@@ -75,7 +75,7 @@ impl Relation {
     /// O(n * m) where n and m are the cardinalities of the two relations,
     /// due to tuple membership testing.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -132,7 +132,7 @@ impl Relation {
     /// This method is identical to `difference()` but uses the SQL-style
     /// name "minus" which some users may find more intuitive.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -161,7 +161,7 @@ impl Relation {
     /// This is an optimized version of `difference` that avoids O(N) tuple clones for the
     /// first relation by consuming it and mutates the inner body in place.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -193,7 +193,7 @@ impl Relation {
 
     /// Alias for [`difference_into`](Self::difference_into) with SQL-style naming.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};

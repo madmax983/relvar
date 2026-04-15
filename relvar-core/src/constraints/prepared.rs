@@ -50,7 +50,7 @@ pub enum PreparedConstraintExpression {
 impl PreparedConstraintExpression {
     /// Evaluates this prepared expression against a tuple.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example

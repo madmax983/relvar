@@ -10,7 +10,7 @@ use crate::storage_engine::StorageEngine;
 impl<E: StorageEngine> Database<E> {
     /// Get the key constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;
@@ -37,7 +37,7 @@ impl<E: StorageEngine> Database<E> {
     /// to draw relationships between relvars, or by automated testing tools
     /// to understand dependency insertion order.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;
@@ -71,7 +71,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Set key constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;
@@ -102,7 +102,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Set foreign key constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;
@@ -147,7 +147,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Set type constraints for an attribute.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;
@@ -184,7 +184,7 @@ impl<E: StorageEngine> Database<E> {
 
     /// Set CHECK constraints for a relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;

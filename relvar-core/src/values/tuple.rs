@@ -46,6 +46,13 @@ mod arc_serde {
     ///
     /// # Errors
     /// Yields a Serde error if the inner value cannot be serialized.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    /// use std::sync::Arc;
+    /// // Internally used by serde
+    /// ```
     pub fn serialize<S, T>(val: &Arc<T>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -61,6 +68,13 @@ mod arc_serde {
     ///
     /// # Errors
     /// Yields a Serde error if the inner value cannot be deserialized.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType};
+    /// use std::sync::Arc;
+    /// // Internally used by serde
+    /// ```
     pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Arc<T>, D::Error>
     where
         D: Deserializer<'de>,
@@ -107,7 +121,7 @@ pub enum TupleError {
 /// all their attribute values are equal. The order of insertion does not
 /// affect equality.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::tuple;
@@ -152,7 +166,7 @@ impl Tuple {
     /// - [`TupleError::AttributeNotFound`] - A value is provided for an undefined attribute
     /// - [`TupleError::TypeMismatch`] - A value's type doesn't match the attribute type
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};

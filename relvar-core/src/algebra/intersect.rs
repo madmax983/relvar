@@ -76,7 +76,7 @@ impl Relation {
     /// O(n * m) where n and m are the cardinalities of the two relations,
     /// due to tuple membership testing.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -137,6 +137,23 @@ impl Relation {
     ///
     /// This is an optimized version of `intersect` that avoids O(N) tuple clones for the
     /// first relation by consuming it and mutates the inner body in place.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let mut r1 = Relation::new(rel_type.clone());
+    /// r1.insert(tuple! { id: 1i64 }).unwrap();
+    /// let mut r2 = Relation::new(rel_type);
+    /// r2.insert(tuple! { id: 1i64 }).unwrap();
+    ///
+    /// let result = r1.intersect_into(&r2).unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
     pub fn intersect_into(mut self, other: &Relation) -> Result<Self, IntersectError> {
         // Check type compatibility
         if self.relation_type() != other.relation_type() {

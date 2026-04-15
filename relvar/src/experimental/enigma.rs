@@ -42,6 +42,17 @@ pub struct EnigmaMachine {
 
 impl EnigmaMachine {
     /// Creates a new Enigma machine from its constituent relational components.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar::experimental::enigma::EnigmaMachine;
+    ///
+    /// let rel_type = RelationType::new(TupleType::new().with_attribute("pin_in", ScalarType::Int).with_attribute("pin_out", ScalarType::Int));
+    /// let empty = Relation::new(rel_type);
+    /// let enigma = EnigmaMachine::new(empty.clone(), empty.clone(), empty.clone(), empty.clone(), empty.clone());
+    /// ```
     pub fn new(
         plugboard: Relation,
         rotor1: Relation,
@@ -140,6 +151,11 @@ impl EnigmaMachine {
     ///
     /// The message should have the schema `(pos: Int, char: Int)`.
     /// Returns a relation with the same schema containing the encrypted characters.
+    /// # Examples
+    ///
+    /// ```text
+    /// // Encrypt relation
+    /// ```
     pub fn encrypt(&self, message: &Relation) -> Result<Relation, DatabaseError> {
         // We evaluate the electrical path for the entire message in parallel!
         //

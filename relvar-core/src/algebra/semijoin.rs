@@ -91,7 +91,7 @@ impl Relation {
     /// O(n + m) where n and m are the cardinalities of the two relations.
     /// Optimized using a hash-based lookup.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -158,7 +158,7 @@ impl Relation {
 
     /// Alias for [`semijoin`](Self::semijoin) using Tutorial D naming (MATCHING).
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -212,7 +212,7 @@ impl Relation {
     /// O(n + m) where n and m are the cardinalities of the two relations.
     /// Optimized using a hash-based lookup.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -278,7 +278,7 @@ impl Relation {
 
     /// Alias for [`semidifference`](Self::semidifference) using Tutorial D naming (NOT MATCHING).
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};

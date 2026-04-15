@@ -81,7 +81,7 @@ pub enum PageError {
 /// has a unique ID and can hold up to [`PAGE_SIZE`] bytes of data. The actual
 /// data is stored along with its length to handle variable-size content.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_storage::storage::{Page, PAGE_SIZE};
@@ -110,7 +110,7 @@ impl Page {
     ///
     /// * `id` - The unique identifier for this page
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_storage::storage::Page;
@@ -137,7 +137,7 @@ impl Page {
     ///
     /// Returns [`PageError::PageTooLarge`] if `data.len() > PAGE_SIZE`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_storage::storage::Page;
@@ -235,7 +235,7 @@ impl Page {
 /// ...
 /// ```
 ///
-/// # Example
+/// # Examples
 ///
 /// ```no_run
 /// use relvar_storage::storage::{Page, PageFile};

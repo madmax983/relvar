@@ -35,7 +35,7 @@ pub const POINT_TYPE_NAME: &str = "Point";
 ///
 /// A Point is a User-Defined Type wrapping a Relation with heading `{x: Float, y: Float}`.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```text
 /// // Example

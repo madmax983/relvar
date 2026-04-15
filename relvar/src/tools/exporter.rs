@@ -105,7 +105,7 @@ impl<'a> Ord for SortableTuple<'a> {
 ///
 /// A `String` containing the CSV data, or an `ExporterError` if formatting fails.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::values::Relation;
@@ -179,7 +179,7 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
 ///
 /// A pretty-printed JSON string.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::values::Relation;
@@ -231,7 +231,7 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
 ///
 /// A string containing the ASCII table.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::values::Relation;

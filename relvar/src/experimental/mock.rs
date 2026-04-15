@@ -35,7 +35,7 @@ use std::collections::BTreeMap;
 
 /// A builder for generating mock relations with random data.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar::experimental::mock::MockRelation;

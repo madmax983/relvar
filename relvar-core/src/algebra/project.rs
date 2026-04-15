@@ -57,7 +57,7 @@ impl Relation {
     ///   the relation and the request list.
     /// - Duplicate tuples are automatically eliminated.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -113,6 +113,23 @@ impl Relation {
     ///
     /// This is an optimized version of `project` that avoids allocating a new
     /// collection by mutating the tuples in-place when possible.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("x", ScalarType::Int)
+    ///     .with_attribute("y", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let mut rel = Relation::new(rel_type);
+    /// rel.insert(tuple! { x: 1i64, y: 2i64 }).unwrap();
+    ///
+    /// let projected = rel.project_into(&["x"]);
+    /// assert_eq!(projected.relation_type().degree(), 1);
+    /// ```
     pub fn project_into(self, attributes: &[&str]) -> Self {
         // Build new heading with selected attributes
         let mut new_heading = TupleType::new();

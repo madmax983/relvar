@@ -42,7 +42,7 @@ use serde::{Deserialize, Serialize};
 /// relation type (identical headings). This is required for set operations
 /// like union, intersection, and difference.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
@@ -76,7 +76,7 @@ impl RelationType {
     ///
     /// * `heading` - The tuple type defining the relation's structure
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
@@ -128,7 +128,7 @@ impl RelationType {
     ///
     /// The heading defines what attributes tuples in this relation must have.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
@@ -157,7 +157,7 @@ impl RelationType {
     ///
     /// This is equivalent to `self.heading().degree()`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
@@ -189,7 +189,7 @@ impl RelationType {
     ///
     /// This is an alias for [`heading()`](Self::heading).
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
@@ -220,7 +220,7 @@ impl RelationType {
     ///
     /// * `name` - The attribute name to check
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{RelationType, TupleType, ScalarType};
