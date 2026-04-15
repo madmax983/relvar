@@ -4,7 +4,7 @@ use criterion::{
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Tuple;
-use relvar_storage::storage::{HeapFile, Page, PageFile};
+use relvar_storage::storage::{HeapFile, Page, PageFile, PageId};
 use tempfile::NamedTempFile;
 
 fn create_test_relation_type() -> RelationType {
@@ -36,7 +36,7 @@ fn bench_page_write(c: &mut Criterion) {
                     let temp_file = NamedTempFile::new().unwrap();
                     let page_file = PageFile::create(temp_file.path()).unwrap();
                     let data = vec![0u8; size];
-                    let page = Page::from_data(0, data).unwrap();
+                    let page = Page::from_data(PageId(0), data).unwrap();
                     (page_file, page, temp_file)
                 },
                 |(mut page_file, page, _temp_file)| {
@@ -60,11 +60,11 @@ fn bench_page_read(c: &mut Criterion) {
             let temp_file = NamedTempFile::new().unwrap();
             let mut page_file = PageFile::create(temp_file.path()).unwrap();
             let data = vec![42u8; size];
-            let page = Page::from_data(0, data).unwrap();
+            let page = Page::from_data(PageId(0), data).unwrap();
             page_file.write_page(&page).unwrap();
 
             b.iter(|| {
-                let result = page_file.read_page(0).unwrap();
+                let result = page_file.read_page(PageId(0)).unwrap();
                 black_box(result);
             });
         });
