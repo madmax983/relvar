@@ -532,7 +532,7 @@ impl HeapFile {
     {
         let mut page_id = 0;
         loop {
-            match insert_fn(self, PageId(page_id)) {
+            match insert_fn(self, page_id) {
                 Ok(result) => return Ok(result),
                 Err(HeapError::PageFull) => {
                     page_id += 1;
@@ -774,7 +774,7 @@ impl HeapFile {
 
         // Scan pages until we hit an empty one
         loop {
-            let page = self.page_file.read_page(PageId(page_id))?;
+            let page = self.page_file.read_page(page_id)?;
 
             if page.is_empty() {
                 // Empty page means no more data
@@ -821,7 +821,7 @@ impl HeapFile {
     /// let rel_type = RelationType::new(TupleType::new());
     /// let mut heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
     /// let rel = heap.load_relation().unwrap();
-    /// assert_eq!(rel.cardinality(), PageId(0));
+    /// assert_eq!(rel.cardinality(), 0);
     /// ```text
     pub fn load_relation(&mut self) -> Result<Relation, HeapError> {
         let tuples = self.scan()?; // Already returns Vec<Tuple>
@@ -914,7 +914,7 @@ impl HeapFile {
                 xmax: None,
                 prev_version: if is_update {
                     Some(TupleId {
-                        page_id: PageId(0),
+                        page_id: 0,
                         slot: 0,
                     })
                 } else {
@@ -1391,7 +1391,7 @@ impl HeapFile {
         let mut page_id = 0;
 
         loop {
-            let page = self.page_file.read_page(PageId(page_id))?;
+            let page = self.page_file.read_page(page_id)?;
 
             if page.is_empty() {
                 break;
@@ -1402,8 +1402,7 @@ impl HeapFile {
                 continue;
             }
 
-            removed_count +=
-                self.gc_process_page(PageId(page_id), &page, oldest_active_lsn, committed)?;
+            removed_count += self.gc_process_page(page_id, &page, oldest_active_lsn, committed)?;
 
             page_id += 1;
         }
@@ -1506,7 +1505,7 @@ impl HeapFile {
         let mut page_id = 0;
 
         loop {
-            let page = self.page_file.read_page(PageId(page_id))?;
+            let page = self.page_file.read_page(page_id)?;
 
             if page.is_empty() {
                 // Empty page means no more data
@@ -1835,7 +1834,7 @@ mod tests {
                 .serialize_slotted_page_with_tuples(&slotted_page, &[tuple_data])
                 .unwrap();
 
-            let page = Page::from_data(PageId(i), page_data).unwrap();
+            let page = Page::from_data(i, page_data).unwrap();
             heap.page_file.write_page(&page).unwrap();
         }
 
@@ -1931,7 +1930,7 @@ mod tests {
     #[test]
     fn test_versioned_slot_with_prev_version() {
         let prev = TupleId {
-            page_id: PageId(5),
+            page_id: 5,
             slot: 10,
         };
 
@@ -2013,7 +2012,7 @@ mod tests {
                 xmin: test_txn(2),
                 xmax: Some(test_txn(3)),
                 prev_version: Some(TupleId {
-                    page_id: PageId(0),
+                    page_id: 0,
                     slot: 0,
                 }),
             },
@@ -2023,7 +2022,7 @@ mod tests {
                 xmin: test_txn(4),
                 xmax: Some(test_txn(5)),
                 prev_version: Some(TupleId {
-                    page_id: PageId(1),
+                    page_id: 1,
                     slot: 1,
                 }),
             },
@@ -2090,7 +2089,7 @@ mod tests {
         let tuple_id = heap.insert_tuple_versioned(&tuple, txn_id).unwrap();
 
         // Verify TupleId was returned
-        assert_eq!(tuple_id.page_id, PageId(0));
+        assert_eq!(tuple_id.page_id, 0);
         assert_eq!(tuple_id.slot, 0);
     }
 
@@ -2129,9 +2128,9 @@ mod tests {
         let tid3 = heap.insert_tuple_versioned(&tuple3, test_txn(3)).unwrap();
 
         // All should be on page 0 (small tuples)
-        assert_eq!(tid1.page_id, PageId(0));
-        assert_eq!(tid2.page_id, PageId(0));
-        assert_eq!(tid3.page_id, PageId(0));
+        assert_eq!(tid1.page_id, 0);
+        assert_eq!(tid2.page_id, 0);
+        assert_eq!(tid3.page_id, 0);
 
         // Different slots
         assert_eq!(tid1.slot, 0);
@@ -2156,7 +2155,7 @@ mod tests {
         let tuple_id = result.unwrap();
 
         // Verify we got a valid TupleId
-        assert!(tuple_id.page_id < PageId(1000)); // Reasonable page number
+        assert!(tuple_id.page_id < 1000); // Reasonable page number
         assert!(tuple_id.slot < 1000); // Reasonable slot number
     }
 
@@ -2196,8 +2195,8 @@ mod tests {
         let tid2 = heap.insert_tuple_versioned(&tuple, test_txn(2)).unwrap();
 
         // Should go to different pages
-        assert_eq!(tid1.page_id, PageId(0));
-        assert_eq!(tid2.page_id, PageId(1));
+        assert_eq!(tid1.page_id, 0);
+        assert_eq!(tid2.page_id, 1);
     }
 
     #[test]
@@ -2254,7 +2253,7 @@ mod tests {
                 .insert_tuple_versioned(&tuple, test_txn(i + 1))
                 .unwrap();
 
-            assert_eq!(tid.page_id, PageId(0));
+            assert_eq!(tid.page_id, 0);
             assert_eq!(tid.slot, i as u32);
         }
     }
@@ -2736,7 +2735,7 @@ mod tests {
         let mut heap = HeapFile::create(path, rel_type).unwrap();
 
         let bogus_id = TupleId {
-            page_id: PageId(999),
+            page_id: 999,
             slot: 0,
         };
         let updated = tuple! { id: 1i64, name: "Updated" };
@@ -2972,7 +2971,7 @@ mod tests {
         let mut heap = HeapFile::create(path, rel_type).unwrap();
 
         let bogus_id = TupleId {
-            page_id: PageId(999),
+            page_id: 999,
             slot: 0,
         };
 
@@ -3145,7 +3144,7 @@ mod tests {
         let mut page_data = vec![0u8; PAGE_SIZE - 8];
         page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
-        let page = Page::from_data(PageId(0), page_data).unwrap();
+        let page = Page::from_data(0, page_data).unwrap();
         heap.page_file.write_page(&page).unwrap();
 
         // Scan should fail
@@ -3236,7 +3235,7 @@ mod tests {
         let mut page_data = vec![0u8; PAGE_SIZE - 8];
         page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
-        let page = Page::from_data(PageId(0), page_data).unwrap();
+        let page = Page::from_data(0, page_data).unwrap();
         heap.page_file.write_page(&page).unwrap();
 
         // 2. Try to insert a new tuple
@@ -3296,7 +3295,7 @@ mod tests {
         // Copy slot directory after header
         page_data[5..5 + slot_dir.len()].copy_from_slice(&slot_dir);
 
-        let page = Page::from_data(PageId(0), page_data).unwrap();
+        let page = Page::from_data(0, page_data).unwrap();
         heap.page_file.write_page(&page).unwrap();
 
         // 2. Try to insert a new versioned tuple
@@ -3473,7 +3472,7 @@ mod tests {
         // Copy slot directory after header
         page_data[5..5 + slot_dir.len()].copy_from_slice(&slot_dir);
 
-        let page = Page::from_data(PageId(0), page_data).unwrap();
+        let page = Page::from_data(0, page_data).unwrap();
         heap.page_file.write_page(&page).unwrap();
 
         // 2. Run GC
@@ -3569,7 +3568,7 @@ mod tests {
         let mut page_data = vec![0u8; PAGE_SIZE - 8];
         page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
-        let page = Page::from_data(PageId(0), page_data).unwrap();
+        let page = Page::from_data(0, page_data).unwrap();
         heap.page_file.write_page(&page).unwrap();
 
         // Scan should fail cleanly
@@ -3616,9 +3615,9 @@ mod tests {
 
             // Create a page that mimics versioned format but is too short
             // PAGE_FORMAT_VERSION (1 byte) + 4 bytes length = 5 bytes needed
-            // We write 3 bytes: [PAGE_FORMAT_VERSION, PageId(0), PageId(0)]
+            // We write 3 bytes: [PAGE_FORMAT_VERSION, 0, 0]
             let data = vec![PAGE_FORMAT_VERSION, 0, 0];
-            let page = Page::from_data(PageId(0), data).unwrap();
+            let page = Page::from_data(0, data).unwrap();
 
             // Call private method directly to verify protection
             // (update_tuple_versioned calls this without is_versioned_page check)
@@ -3653,7 +3652,7 @@ mod tests {
                 heap.insert_tuple(&t).unwrap();
 
                 // Read page 0
-                let page = heap.page_file.read_page(PageId(0)).unwrap();
+                let page = heap.page_file.read_page(0).unwrap();
                 // Try to deserialize
                 let res = heap.deserialize_slotted_page(&page);
                 if res.is_err() {
@@ -3680,7 +3679,7 @@ mod tests {
                     }
                 }
 
-                if page.id() > PageId(0) {
+                if page.id() > 0 {
                     println!("Page split happened at insert {}", i);
                     break;
                 }
@@ -3734,7 +3733,7 @@ mod tests {
             // 2. Manually simulate deletion of B (slot 1) to force reuse
             // We do this by modifying the page directly since we don't have a public delete yet
             {
-                let page = heap.page_file.read_page(PageId(0)).unwrap();
+                let page = heap.page_file.read_page(0).unwrap();
                 let mut sp = heap.deserialize_slotted_page(&page).unwrap();
 
                 // Delete slot 1 (B)
@@ -3758,7 +3757,7 @@ mod tests {
                 let new_page_data = heap
                     .serialize_slotted_page_with_tuples(&sp, &existing_tuples)
                     .unwrap();
-                let new_page = Page::from_data(PageId(0), new_page_data).unwrap();
+                let new_page = Page::from_data(0, new_page_data).unwrap();
                 heap.page_file.write_page(&new_page).unwrap();
             }
 
@@ -3963,7 +3962,7 @@ mod tests {
         // Re-open and try to get tuple
         let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
         let result = heap.read_tuple(TupleId {
-            page_id: PageId(0),
+            page_id: 0,
             slot: 0,
         });
 
@@ -4023,7 +4022,7 @@ mod tests {
         // Re-open and try to get tuple
         let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
         let result = heap.read_tuple(TupleId {
-            page_id: PageId(0),
+            page_id: 0,
             slot: 0,
         });
 
@@ -4084,7 +4083,7 @@ mod tests {
         // Test
         let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
         let result = heap.read_tuple_versioned(TupleId {
-            page_id: PageId(0),
+            page_id: 0,
             slot: 0,
         });
 
@@ -4145,7 +4144,7 @@ mod tests {
         // Test
         let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
         let result = heap.read_tuple_versioned(TupleId {
-            page_id: PageId(0),
+            page_id: 0,
             slot: 0,
         });
 
