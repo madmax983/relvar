@@ -4583,16 +4583,15 @@ mod tests {
             .gc_remove_dead_versions(oldest_active, &committed)
             .unwrap();
         assert_eq!(removed2, 0);
-}
+    }
 
     #[test]
     fn test_sentry_find_page_for_insertion_error_propagation() {
         let temp_file = NamedTempFile::new().unwrap();
         let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
-        let result: Result<(), HeapError> = heap.find_page_for_insertion(|_, _| {
-            Err(HeapError::TupleTooLarge(10000))
-        });
+        let result: Result<(), HeapError> =
+            heap.find_page_for_insertion(|_, _| Err(HeapError::TupleTooLarge(10000)));
 
         assert!(matches!(result, Err(HeapError::TupleTooLarge(10000))));
     }
@@ -4600,7 +4599,7 @@ mod tests {
     #[test]
     fn test_sentry_extract_tuples_from_versioned_slots() {
         let temp_file = NamedTempFile::new().unwrap();
-        let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+        let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
         let tuple = tuple! { id: 1i64, name: "Alice" };
         let mut tuple_data: Vec<u8> = vec![];
@@ -4619,12 +4618,21 @@ mod tests {
         };
 
         let existing_tuples = vec![tuple_data.clone()];
-        HeapFile::repack_versioned_slots(&mut versioned_page.slots, &existing_tuples, PAGE_SIZE - 8).unwrap();
-        let page_data = heap.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples).unwrap();
+        HeapFile::repack_versioned_slots(
+            &mut versioned_page.slots,
+            &existing_tuples,
+            PAGE_SIZE - 8,
+        )
+        .unwrap();
+        let page_data = heap
+            .serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)
+            .unwrap();
         let page = Page::from_data(0, page_data).unwrap();
 
         let slots = vec![versioned_page.slots[0].clone().unwrap()];
-        let extracted = heap.extract_tuples_from_versioned_slots(&page, slots.iter()).unwrap();
+        let extracted = heap
+            .extract_tuples_from_versioned_slots(&page, slots.iter())
+            .unwrap();
 
         assert_eq!(extracted.len(), 1);
         assert_eq!(extracted[0], tuple);
