@@ -48,21 +48,19 @@ use thiserror::Error;
 /// // Attempting to use a String representation for an Int-backed type will fail
 /// let result = relvar_core::values::ScalarValue::select(&emp_id_type, ScalarValue::String("Not an Int".into()));
 ///
-/// assert!(matches!(result, Err(ScalarTypeError::TypeMismatch { .. })));
+/// assert!(matches!(result, Err(ScalarTypeError { .. })));
 /// ```
 #[derive(Debug, Error)]
-pub enum ScalarTypeError {
-    /// A value's type doesn't match the expected type.
-    ///
-    /// This typically occurs when using a selector with a value of the
-    /// wrong representation type.
-    #[error("Type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch {
-        /// The expected type name.
-        expected: String,
-        /// The actual type name of the provided value.
-        actual: String,
-    },
+/// A value's type doesn't match the expected type.
+///
+/// This typically occurs when using a selector with a value of the
+/// wrong representation type.
+#[error("Type mismatch: expected {expected}, got {actual}")]
+pub struct ScalarTypeError {
+    /// The expected type name.
+    pub expected: String,
+    /// The actual type name of the provided value.
+    pub actual: String,
 }
 
 /// Represents a scalar (atomic) type in the relational model.

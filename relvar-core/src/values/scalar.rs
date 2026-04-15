@@ -131,7 +131,7 @@ impl ScalarValue {
         match type_def {
             crate::types::ScalarType::UserDefined { representation, .. } => {
                 if !value.is_type(representation) {
-                    return Err(crate::types::scalar::ScalarTypeError::TypeMismatch {
+                    return Err(crate::types::scalar::ScalarTypeError {
                         expected: representation.name().to_string(),
                         actual: value.scalar_type().name().to_string(),
                     });
@@ -143,7 +143,7 @@ impl ScalarValue {
             }
             ty => {
                 if !value.is_type(ty) {
-                    return Err(crate::types::scalar::ScalarTypeError::TypeMismatch {
+                    return Err(crate::types::scalar::ScalarTypeError {
                         expected: ty.name().to_string(),
                         actual: value.scalar_type().name().to_string(),
                     });
