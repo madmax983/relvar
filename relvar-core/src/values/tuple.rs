@@ -194,6 +194,8 @@ impl Tuple {
         M: IntoIterator<Item = (String, ScalarValue)>,
     {
         let tuple_type: Arc<TupleType> = tuple_type.into();
+        // pre-allocate if the iterator provides a size hint
+        // However BTreeMap does not support with_capacity in std yet. So just create a new one.
         let mut values_map = BTreeMap::new();
 
         // Validate values during collection to avoid double iteration and allocations on invalid data
