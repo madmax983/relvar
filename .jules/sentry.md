@@ -91,3 +91,7 @@
 ## 2024-05-18 - Database Integrity Operations Coverage
 **Learning:** We needed full coverage for public APIs `get_key_constraints` and `set_type_constraints` in `database::integrity`.
 **Action:** Added `test_database_integrity_getters` and `test_database_integrity_type_and_check` to `sentry_database_integrity_coverage.rs` to comprehensively test getters/setters for constraints without destroying existing tests.
+
+## 2025-05-20 - Storage Heap Serialization Error Paths
+**Learning:** Certain `HeapError::Serialization` conditions (like tuple offset and length overflow limits or parsing errors via corrupted boundaries) inside `relvar-storage/src/storage/heap.rs` were completely missing test coverage, leading to untested internal safety guard limits on maximum allowed sizes.
+**Action:** Targeted internal methods `find_page_for_insertion` error paths, bounds limits like `check_versioned_tuple_size_limit`, and deserialization helper routines `extract_tuples_from_versioned_slots` with targeted safety constraint tests ensuring exact `HeapError` mappings.
