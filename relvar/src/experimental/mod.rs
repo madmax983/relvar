@@ -45,6 +45,7 @@ pub mod neural_network;
 pub mod physics;
 pub mod pivot;
 pub mod raytracer;
+pub mod rbac;
 pub mod recommend;
 pub mod search;
 pub mod spatial;

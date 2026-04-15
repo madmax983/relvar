@@ -78,3 +78,7 @@
 **Concept:** Modeled a basic Virtual Machine purely with relational algebra. Registers, Memory, and the Program are relations. Instruction evaluation and state progression (e.g., executing an ADD instruction) are performed via Relational Joins, Extensions, and Unions.
 **Fate:** TBD
 **Lesson:** TBD
+## Relational Role-Based Access Control (RBAC)
+**Concept:** Modeled a full RBAC system with role hierarchies using pure relational algebra. Uses transitive closure (`tclose`) on the role hierarchy to find all ancestor roles, `union` to combine direct roles with inherited roles, and `join` with permissions to resolve effective permissions.
+**Fate:** Merged
+**Lesson:** Relational algebra gracefully handles complex inheritance trees by combining the power of `tclose` (for evaluating recursion) and natural `join`s (for mapping user entitlements), providing a purely declarative approach to security resolving.
