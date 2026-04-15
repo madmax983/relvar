@@ -4629,7 +4629,7 @@ mod tests {
             .unwrap();
         let page = Page::from_data(0, page_data).unwrap();
 
-        let slots = vec![versioned_page.slots[0].clone().unwrap()];
+        let slots = [versioned_page.slots[0].clone().unwrap()];
         let extracted = heap
             .extract_tuples_from_versioned_slots(&page, slots.iter())
             .unwrap();
