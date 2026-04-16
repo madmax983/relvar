@@ -17,3 +17,7 @@
 **Bloat:** Single-variant enum `ScalarTypeError` with a single variant `TypeMismatch` acting as a unit error struct but containing fields, in `relvar-core/src/types/scalar.rs`.
 **Cut:** Converted to struct `pub struct ScalarTypeError;` with fields for expected and actual types for consistency and to reduce boilerplate and nested code matching, aligning with the KISS principle.
 **Saved:** Unnecessary enum matching for a single error condition.
+## [Reduction]
+**Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
+**Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
+**Saved:** Unnecessary enum matching, simplified error handling code significantly.
