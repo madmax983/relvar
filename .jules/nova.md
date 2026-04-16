@@ -82,3 +82,7 @@
 **Concept:** Modeled a full RBAC system with role hierarchies using pure relational algebra. Uses transitive closure (`tclose`) on the role hierarchy to find all ancestor roles, `union` to combine direct roles with inherited roles, and `join` with permissions to resolve effective permissions.
 **Fate:** Merged
 **Lesson:** Relational algebra gracefully handles complex inheritance trees by combining the power of `tclose` (for evaluating recursion) and natural `join`s (for mapping user entitlements), providing a purely declarative approach to security resolving.
+## Relational CYK Parser
+**Concept:** Modeled a CYK parser for Context-Free Grammars in Chomsky Normal Form purely with relational algebra. Uses relations for `Terminals`, `Non-Terminals`, and `Input`. The parse table is built iteratively via relational Joins and Extensions until reaching a fixpoint.
+**Fate:** TBD
+**Lesson:** Relational algebra easily maps well to dynamic programming problems like the CYK parsing algorithm where results from overlapping sub-problems can be joined and extended dynamically!
