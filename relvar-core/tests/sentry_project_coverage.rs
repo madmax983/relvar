@@ -139,3 +139,17 @@ fn should_project_with_ordering_less_owned() {
     let result = relation.project_into(&["a", "b"]);
     assert_eq!(result.degree(), 0);
 }
+
+#[test]
+fn should_project_with_ordering_greater_for_project_tuple_values() {
+    let heading = TupleType::new()
+        .with_attribute("z", ScalarType::Int)
+        .with_attribute("a", ScalarType::Int); // "a" comes before "z" lexicographically
+    let mut relation = Relation::new(RelationType::new(heading));
+
+    relation.insert(tuple! { z: 1i64, a: 2i64 }).unwrap();
+
+    let result = relation.project(&["z"]); // Heading of result will just have "z"
+    // "a" is less than "z", so `t_attr.cmp(h_attr)` where t_attr="a", h_attr="z" will be Less
+    assert_eq!(result.degree(), 1);
+}

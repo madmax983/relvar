@@ -268,4 +268,28 @@ mod tests {
         assert_eq!(txn1, txn2);
         assert_ne!(txn1, txn3);
     }
+    #[test]
+    fn test_transaction_id_generator_default() {
+        let generator = TransactionIdGenerator::default();
+        assert_eq!(generator.generate().value(), 1);
+    }
+
+    #[test]
+    fn test_lsn_display() {
+        let lsn = Lsn::new(42);
+        assert_eq!(format!("{}", lsn), "LSN(42)");
+    }
+
+    #[test]
+    fn test_transaction_id_display() {
+        let txn_id = TransactionId::new(42);
+        assert_eq!(format!("{}", txn_id), "TXN(42)");
+    }
+
+    #[test]
+    #[should_panic(expected = "TransactionId overflow")]
+    fn test_transaction_id_generator_overflow() {
+        let generator = TransactionIdGenerator::from_start(TransactionId::new(u64::MAX));
+        generator.generate();
+    }
 }
