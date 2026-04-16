@@ -28,11 +28,7 @@ fn test_check_constraint_properties() {
         right: ValueOrRef::Value(ScalarValue::Int(0)),
     };
 
-    let constraint = CheckConstraint::new(
-        "my_check",
-        "description here",
-        expr.clone(),
-    );
+    let constraint = CheckConstraint::new("my_check", "description here", expr.clone());
 
     assert_eq!(constraint.description(), "description here");
 
