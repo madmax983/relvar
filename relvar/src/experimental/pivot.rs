@@ -91,6 +91,35 @@ pub fn pivot(
 ) -> Result<Relation, DatabaseError> {
     let heading = relation.relation_type().heading();
 
+    let (group_attrs, new_columns) =
+        scan_columns_and_validate(relation, heading, on_attr, value_attr)?;
+
+    let value_type = heading.get_attribute_type(value_attr).unwrap();
+    let new_rel_type = construct_pivot_heading(
+        heading,
+        &group_attrs,
+        &new_columns,
+        value_type,
+        &default_value,
+    )?;
+
+    group_and_build_tuples(
+        relation,
+        on_attr,
+        value_attr,
+        &group_attrs,
+        &new_columns,
+        &default_value,
+        &new_rel_type,
+    )
+}
+
+fn scan_columns_and_validate(
+    relation: &Relation,
+    heading: &TupleType,
+    on_attr: &str,
+    value_attr: &str,
+) -> Result<(Vec<String>, BTreeSet<String>), DatabaseError> {
     if !heading.has_attribute(on_attr) {
         return Err(DatabaseError::AttributeNotFound(
             on_attr.to_string(),
@@ -128,14 +157,22 @@ pub fn pivot(
         }
     }
 
-    // Construct new heading
+    Ok((group_attrs, new_columns))
+}
+
+fn construct_pivot_heading(
+    heading: &TupleType,
+    group_attrs: &[String],
+    new_columns: &BTreeSet<String>,
+    value_type: &relvar_core::types::ScalarType,
+    default_value: &ScalarValue,
+) -> Result<RelationType, DatabaseError> {
     let mut new_heading = TupleType::new();
-    for attr in &group_attrs {
+    for attr in group_attrs {
         let ty = heading.get_attribute_type(attr).unwrap();
         new_heading = new_heading.with_attribute(attr, ty.clone());
     }
 
-    let value_type = heading.get_attribute_type(value_attr).unwrap();
     if !default_value.is_type(value_type) {
         return Err(DatabaseError::AlgebraError(format!(
             "Default value type ({:?}) mismatch with value attribute ({:?})",
@@ -144,11 +181,22 @@ pub fn pivot(
         )));
     }
 
-    for col in &new_columns {
+    for col in new_columns {
         new_heading = new_heading.with_attribute(col, value_type.clone());
     }
 
-    let new_rel_type = RelationType::new(new_heading);
+    Ok(RelationType::new(new_heading))
+}
+
+fn group_and_build_tuples(
+    relation: &Relation,
+    on_attr: &str,
+    value_attr: &str,
+    group_attrs: &[String],
+    new_columns: &BTreeSet<String>,
+    default_value: &ScalarValue,
+    new_rel_type: &RelationType,
+) -> Result<Relation, DatabaseError> {
     let mut result_relation = Relation::new(new_rel_type.clone());
 
     // Group data
@@ -160,7 +208,7 @@ pub fn pivot(
 
     for tuple in sorted_tuples {
         let mut group_key = Vec::with_capacity(group_attrs.len());
-        for attr in &group_attrs {
+        for attr in group_attrs {
             group_key.push(tuple.get(attr).unwrap().clone());
         }
 
@@ -180,8 +228,8 @@ pub fn pivot(
         for (i, attr) in group_attrs.iter().enumerate() {
             tuple_values.insert(attr.clone(), group_key[i].clone());
         }
-        for col in &new_columns {
-            let val = cell_map.get(col).unwrap_or(&default_value).clone();
+        for col in new_columns {
+            let val = cell_map.get(col).unwrap_or(default_value).clone();
             tuple_values.insert(col.clone(), val);
         }
         let tuple = Tuple::new(new_rel_type.heading().clone(), tuple_values)
