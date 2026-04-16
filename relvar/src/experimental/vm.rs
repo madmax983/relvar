@@ -19,12 +19,42 @@ use relvar_core::{
 };
 
 /// A Relational Virtual Machine.
+///
+/// This demonstrates representing computation via relational algebra operations,
+/// turning a CPU's state transitions into relational joins and extends.
+///
 /// # Examples
 ///
 /// ```
-/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
 /// use relvar::experimental::vm::RelationalVM;
-/// // Note: This is a placeholder example
+///
+/// // Set up a minimal VM environment:
+/// let reg_type = RelationType::new(TupleType::new()
+///     .with_attribute("reg_id", ScalarType::String)
+///     .with_attribute("value", ScalarType::Int));
+/// let mut registers = Relation::new(reg_type);
+/// registers.insert(tuple! { reg_id: "R1", value: 5i64 }).unwrap();
+///
+/// let mem_type = RelationType::new(TupleType::new()
+///     .with_attribute("address", ScalarType::Int)
+///     .with_attribute("value", ScalarType::Int));
+/// let memory = Relation::new(mem_type);
+///
+/// let prog_type = RelationType::new(TupleType::new()
+///     .with_attribute("pc", ScalarType::Int)
+///     .with_attribute("opcode", ScalarType::String)
+///     .with_attribute("arg1", ScalarType::String)
+///     .with_attribute("arg2", ScalarType::String)
+///     .with_attribute("arg3", ScalarType::String));
+/// let program = Relation::new(prog_type);
+///
+/// let head_type = RelationType::new(TupleType::new()
+///     .with_attribute("pc", ScalarType::Int));
+/// let mut head = Relation::new(head_type);
+/// head.insert(tuple! { pc: 0i64 }).unwrap();
+///
+/// let vm = RelationalVM::new(registers, memory, program, head);
 /// ```
 pub struct RelationalVM {
     /// The registers of the VM. Schema: (reg_id: String, value: Int)
@@ -39,6 +69,39 @@ pub struct RelationalVM {
 
 impl RelationalVM {
     /// Creates a new Relational VM.
+    ///
+    /// This exists to initialize the state relations that hold the VM's current configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::vm::RelationalVM;
+    ///
+    /// let reg_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("reg_id", ScalarType::String)
+    ///     .with_attribute("value", ScalarType::Int));
+    /// let registers = Relation::new(reg_type);
+    ///
+    /// let mem_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("address", ScalarType::Int)
+    ///     .with_attribute("value", ScalarType::Int));
+    /// let memory = Relation::new(mem_type);
+    ///
+    /// let prog_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("pc", ScalarType::Int)
+    ///     .with_attribute("opcode", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String)
+    ///     .with_attribute("arg3", ScalarType::String));
+    /// let program = Relation::new(prog_type);
+    ///
+    /// let head_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("pc", ScalarType::Int));
+    /// let head = Relation::new(head_type);
+    ///
+    /// let vm = RelationalVM::new(registers, memory, program, head);
+    /// ```
     pub fn new(registers: Relation, memory: Relation, program: Relation, head: Relation) -> Self {
         Self {
             registers,
@@ -49,7 +112,51 @@ impl RelationalVM {
     }
 
     /// Computes the next step of the VM.
+    ///
     /// Evaluates the machine step and yields `true` if it progressed, or `false` if it halted (no matching instruction).
+    /// This exists to demonstrate applying relational algebra (joins, restricts, and extends)
+    /// to update state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::vm::RelationalVM;
+    ///
+    /// let reg_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("reg_id", ScalarType::String)
+    ///     .with_attribute("value", ScalarType::Int));
+    /// let mut registers = Relation::new(reg_type);
+    /// registers.insert(tuple! { reg_id: "R1", value: 10i64 }).unwrap();
+    /// registers.insert(tuple! { reg_id: "R2", value: 20i64 }).unwrap();
+    /// registers.insert(tuple! { reg_id: "R3", value: 0i64 }).unwrap();
+    ///
+    /// let mem_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("address", ScalarType::Int)
+    ///     .with_attribute("value", ScalarType::Int));
+    /// let memory = Relation::new(mem_type);
+    ///
+    /// let prog_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("pc", ScalarType::Int)
+    ///     .with_attribute("opcode", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String)
+    ///     .with_attribute("arg3", ScalarType::String));
+    /// let mut program = Relation::new(prog_type);
+    /// // ADD instruction: R3 = R1 + R2
+    /// program.insert(tuple! { pc: 0i64, opcode: "ADD", arg1: "R3", arg2: "R1", arg3: "R2" }).unwrap();
+    ///
+    /// let head_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("pc", ScalarType::Int));
+    /// let mut head = Relation::new(head_type);
+    /// head.insert(tuple! { pc: 0i64 }).unwrap();
+    ///
+    /// let mut vm = RelationalVM::new(registers, memory, program, head);
+    ///
+    /// // Take one step
+    /// let advanced = vm.step().unwrap();
+    /// assert!(advanced);
+    /// ```
     pub fn step(&mut self) -> Result<bool, DatabaseError> {
         // Fetch current instruction
         let current_inst = self.head.join(&self.program)?;
@@ -125,6 +232,50 @@ impl RelationalVM {
     }
 
     /// Runs the machine until it halts (returns the number of steps taken).
+    ///
+    /// This exists to continuously evaluate the relational state machine until an end condition
+    /// is met (i.e. `step` returns `false` due to an unhandled or missing program instruction).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::vm::RelationalVM;
+    ///
+    /// let reg_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("reg_id", ScalarType::String)
+    ///     .with_attribute("value", ScalarType::Int));
+    /// let mut registers = Relation::new(reg_type);
+    /// registers.insert(tuple! { reg_id: "R1", value: 5i64 }).unwrap();
+    /// registers.insert(tuple! { reg_id: "R2", value: 7i64 }).unwrap();
+    /// registers.insert(tuple! { reg_id: "R3", value: 0i64 }).unwrap();
+    ///
+    /// let mem_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("address", ScalarType::Int)
+    ///     .with_attribute("value", ScalarType::Int));
+    /// let memory = Relation::new(mem_type);
+    ///
+    /// let prog_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("pc", ScalarType::Int)
+    ///     .with_attribute("opcode", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String)
+    ///     .with_attribute("arg3", ScalarType::String));
+    /// let mut program = Relation::new(prog_type);
+    /// // ADD instruction: R3 = R1 + R2
+    /// program.insert(tuple! { pc: 0i64, opcode: "ADD", arg1: "R3", arg2: "R1", arg3: "R2" }).unwrap();
+    ///
+    /// let head_type = RelationType::new(TupleType::new()
+    ///     .with_attribute("pc", ScalarType::Int));
+    /// let mut head = Relation::new(head_type);
+    /// head.insert(tuple! { pc: 0i64 }).unwrap();
+    ///
+    /// let mut vm = RelationalVM::new(registers, memory, program, head);
+    ///
+    /// // Run up to 10 steps. It will halt after 1 step since pc=1 has no instruction.
+    /// let steps = vm.run(10).unwrap();
+    /// assert_eq!(steps, 1);
+    /// ```
     pub fn run(&mut self, max_steps: usize) -> Result<usize, DatabaseError> {
         for step in 0..max_steps {
             if !self.step()? {
