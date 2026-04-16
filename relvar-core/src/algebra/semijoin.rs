@@ -183,6 +183,78 @@ impl Relation {
         self.semijoin(other)
     }
 
+    /// Computes the semijoin of this relation with another (A MATCHING B), consuming this relation.
+    ///
+    /// This is an optimized version of [`semijoin`](Self::semijoin) that avoids cloning
+    /// tuples by modifying the `Relation` in place.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::{Relation, ScalarValue};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading1 = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    /// let rel_type1 = RelationType::new(heading1);
+    ///
+    /// let heading2 = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("role", ScalarType::String);
+    /// let rel_type2 = RelationType::new(heading2);
+    ///
+    /// let mut employees = Relation::new(rel_type1);
+    /// employees.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+    /// employees.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
+    ///
+    /// let mut roles = Relation::new(rel_type2);
+    /// roles.insert(tuple! { id: 1i64, role: "Admin" }).unwrap();
+    ///
+    /// let result = employees.semijoin_into(&roles);
+    /// assert_eq!(result.cardinality(), 1); // Only emp 1 matches
+    /// ```
+    pub fn semijoin_into(self, other: &Relation) -> Self {
+        let common_attrs = common_attributes(&self, other);
+
+        // If no common attributes, we have a degenerate case (Cartesian product projection)
+        if common_attrs.is_empty() {
+            if !other.is_empty() {
+                // If B is not empty, A MATCHING B = A (vacuous match)
+                return self;
+            } else {
+                // If B is empty, A MATCHING B = {}
+                return Relation::new(self.relation_type().clone());
+            }
+        }
+
+        // Build HashSet of keys from other relation
+        // We use SemijoinKey to avoid allocating Vec per tuple
+        let mut other_keys: HashSet<SemijoinKey> = HashSet::with_capacity(other.cardinality());
+
+        for tuple in other.tuples() {
+            other_keys.insert(SemijoinKey {
+                tuple,
+                attributes: &common_attrs,
+            });
+        }
+
+        // Use restrict_into to filter in-place without cloning tuples
+        self.restrict_into(|tuple| {
+            let key = SemijoinKey {
+                tuple,
+                attributes: &common_attrs,
+            };
+            other_keys.contains(&key)
+        })
+    }
+
+    /// Alias for [`semijoin_into`](Self::semijoin_into) with Tutorial D syntax.
+    pub fn matching_into(self, other: &Relation) -> Self {
+        self.semijoin_into(other)
+    }
+
     /// Computes the semidifference of this relation with another (A NOT MATCHING B).
     ///
     /// Returns tuples from this relation that have NO matching tuple in
@@ -301,6 +373,78 @@ impl Relation {
     /// ```
     pub fn not_matching(&self, other: &Relation) -> Self {
         self.semidifference(other)
+    }
+
+    /// Computes the semidifference of this relation with another (A NOT MATCHING B),
+    /// consuming this relation.
+    ///
+    /// This is an optimized version of [`semidifference`](Self::semidifference) that
+    /// avoids cloning tuples by modifying the `Relation` in place.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::{Relation, ScalarValue};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading1 = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
+    /// let rel_type1 = RelationType::new(heading1);
+    ///
+    /// let heading2 = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int)
+    ///     .with_attribute("role", ScalarType::String);
+    /// let rel_type2 = RelationType::new(heading2);
+    ///
+    /// let mut employees = Relation::new(rel_type1);
+    /// employees.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+    /// employees.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
+    ///
+    /// let mut roles = Relation::new(rel_type2);
+    /// roles.insert(tuple! { id: 1i64, role: "Admin" }).unwrap();
+    ///
+    /// let result = employees.semidifference_into(&roles);
+    /// assert_eq!(result.cardinality(), 1); // Bob (id 2) has no role
+    /// ```
+    pub fn semidifference_into(self, other: &Relation) -> Self {
+        let common_attrs = common_attributes(&self, other);
+
+        // Degenerate case handling
+        if common_attrs.is_empty() {
+            if !other.is_empty() {
+                // If B is not empty, A MATCHING B = A, so A MINUS A = {}
+                return Relation::new(self.relation_type().clone());
+            } else {
+                // If B is empty, A MATCHING B = {}, so A MINUS {} = A
+                return self;
+            }
+        }
+
+        // Build HashSet of keys from other relation
+        let mut other_keys: HashSet<SemijoinKey> = HashSet::with_capacity(other.cardinality());
+
+        for tuple in other.tuples() {
+            other_keys.insert(SemijoinKey {
+                tuple,
+                attributes: &common_attrs,
+            });
+        }
+
+        // Use restrict_into to filter in-place without cloning tuples
+        self.restrict_into(|tuple| {
+            let key = SemijoinKey {
+                tuple,
+                attributes: &common_attrs,
+            };
+            !other_keys.contains(&key)
+        })
+    }
+
+    /// Alias for [`semidifference_into`](Self::semidifference_into) with Tutorial D syntax.
+    pub fn not_matching_into(self, other: &Relation) -> Self {
+        self.semidifference_into(other)
     }
 }
 
@@ -867,5 +1011,62 @@ mod tests {
         };
 
         assert_ne!(key1, key3);
+    }
+
+    #[test]
+    fn test_semijoin_into_filters_in_place() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+
+        let result = employees.semijoin_into(&departments);
+
+        assert_eq!(result.cardinality(), 1);
+        assert!(result.contains(&tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 }));
+    }
+
+    #[test]
+    fn test_semidifference_into_filters_in_place() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        employees
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+
+        let mut departments = Relation::new(RelationType::new(dept_heading()));
+        departments
+            .insert(tuple! { dept_id: 10i64, dept_name: "Engineering" })
+            .unwrap();
+
+        let result = employees.semidifference_into(&departments);
+
+        assert_eq!(result.cardinality(), 1);
+        assert!(result.contains(&tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }));
+    }
+
+    #[test]
+    fn test_not_matching_into_alias() {
+        let mut employees = Relation::new(RelationType::new(emp_heading()));
+        employees
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+
+        let departments = Relation::new(RelationType::new(dept_heading()));
+
+        let result = employees.not_matching_into(&departments);
+
+        // Alias should behave identically
+        assert_eq!(result.cardinality(), 1);
     }
 }
