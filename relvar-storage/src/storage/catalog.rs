@@ -95,7 +95,7 @@ pub struct RelationMetadata {
 /// The catalog can be saved to and loaded from a JSON file for persistence
 /// across database restarts.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```no_run
 /// use relvar_storage::storage::Catalog;
@@ -133,7 +133,7 @@ pub struct Catalog {
 impl Catalog {
     /// Creates a new empty catalog.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_storage::storage::Catalog;

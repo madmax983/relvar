@@ -32,7 +32,7 @@ use relvar_core::values::{Relation, ScalarValue};
 ///
 /// A new relation with the original attributes plus a `moving_avg` attribute.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar::{tuple, Relation, RelationType, TupleType, ScalarType};

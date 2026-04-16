@@ -67,7 +67,7 @@ pub struct ScalarValueError;
 /// hash map keys. Notably, floating-point values use bit equality, which
 /// means `NaN == NaN` (required for database set semantics).
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::values::ScalarValue;
@@ -124,6 +124,19 @@ impl ScalarValue {
     ///
     /// TTM: The selector takes a value of the representation type and produces
     /// a value of this user-defined type.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::ScalarType;
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let point_type = ScalarType::UserDefined {
+    ///     name: "Point".to_string(),
+    ///     representation: Box::new(ScalarType::String),
+    /// };
+    ///
+    /// let value = ScalarValue::select(&point_type, ScalarValue::String("1,2".to_string())).unwrap();
+    /// ```
     pub fn select(
         type_def: &crate::types::ScalarType,
         value: ScalarValue,
@@ -131,7 +144,7 @@ impl ScalarValue {
         match type_def {
             crate::types::ScalarType::UserDefined { representation, .. } => {
                 if !value.is_type(representation) {
-                    return Err(crate::types::scalar::ScalarTypeError::TypeMismatch {
+                    return Err(crate::types::scalar::ScalarTypeError {
                         expected: representation.name().to_string(),
                         actual: value.scalar_type().name().to_string(),
                     });
@@ -143,7 +156,7 @@ impl ScalarValue {
             }
             ty => {
                 if !value.is_type(ty) {
-                    return Err(crate::types::scalar::ScalarTypeError::TypeMismatch {
+                    return Err(crate::types::scalar::ScalarTypeError {
                         expected: ty.name().to_string(),
                         actual: value.scalar_type().name().to_string(),
                     });
@@ -158,7 +171,7 @@ impl ScalarValue {
     /// Every value in the relational model carries its type. This method
     /// allows introspection of the value's type at runtime.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::values::ScalarValue;
@@ -186,7 +199,7 @@ impl ScalarValue {
 
     /// Checks if this value is of the given type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::values::ScalarValue;
@@ -205,7 +218,7 @@ impl ScalarValue {
     /// TTM: The observer function extracts the representation from a
     /// user-defined type value.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::ScalarType;

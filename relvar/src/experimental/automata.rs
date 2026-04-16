@@ -21,7 +21,7 @@ use relvar_core::values::Relation;
 
 /// A Non-deterministic Finite Automaton (NFA) evaluated using relational algebra.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```text
 /// // Example
@@ -37,7 +37,7 @@ impl RelationalNfa {
     /// `states` must have schema `(state: String, is_start: Bool, is_accept: Bool)`
     /// `transitions` must have schema `(from_state: String, symbol: String, to_state: String)`
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -51,7 +51,7 @@ impl RelationalNfa {
 
     /// Evaluates whether the NFA accepts the given string.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example

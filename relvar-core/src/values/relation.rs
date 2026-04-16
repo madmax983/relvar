@@ -49,28 +49,11 @@ use thiserror::Error;
 /// use relvar_core::values::RelationError;
 ///
 /// // This error occurs when a tuple does not match a relation's heading.
-/// let error = RelationError::TypeMismatch;
+/// let error = RelationError;
 /// ```
 #[derive(Debug, Error)]
-pub enum RelationError {
-    /// A tuple doesn't conform to the relation's type (heading).
-    ///
-    /// This occurs when attempting to insert a tuple with a different
-    /// structure (different attribute names or types) than what the
-    /// relation expects. The tuple must have exactly the same attributes
-    /// with the same types as defined in the relation's heading.
-    #[error("Tuple does not conform to relation type")]
-    TypeMismatch,
-
-    /// A duplicate tuple was detected.
-    ///
-    /// This error is used in contexts where uniqueness is strictly enforced
-    /// and silent deduplication is not desired (e.g., bulk loading with strict validation).
-    /// Standard insert operations typically return `Ok(false)` for duplicates
-    /// rather than this error, adhering to set semantics.
-    #[error("Duplicate tuple")]
-    DuplicateTuple,
-}
+#[error("Tuple does not conform to relation type")]
+pub struct RelationError;
 
 /// A relation value consisting of a heading and a body.
 ///
@@ -92,7 +75,7 @@ pub enum RelationError {
 /// All tuples in a relation must conform to the relation's heading. Attempting
 /// to insert a tuple with a different structure results in an error.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -190,7 +173,7 @@ impl Relation {
     ///
     /// * `relation_type` - The type defining the relation's structure
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -255,10 +238,10 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// Returns [`RelationError::TypeMismatch`] if any tuple doesn't conform
+    /// Returns [`RelationError`] if any tuple doesn't conform
     /// to the relation type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -314,7 +297,7 @@ impl Relation {
             if Some(current_type_ptr) != last_checked_type_ptr {
                 // Slow path: full comparison
                 if current_type_ref != expected_heading {
-                    return Err(RelationError::TypeMismatch);
+                    return Err(RelationError);
                 }
                 // If match, update cache
                 last_checked_type_ptr = Some(current_type_ptr);
@@ -371,7 +354,7 @@ impl Relation {
 
     /// Retrieves the relation type (heading) defining this relation's structure.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -403,7 +386,7 @@ impl Relation {
 
     /// Calculates the cardinality (total number of tuples) currently held in this relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -440,7 +423,7 @@ impl Relation {
     ///
     /// This is determined by the relation type's heading.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -482,10 +465,10 @@ impl Relation {
     ///
     /// # Errors
     ///
-    /// Returns [`RelationError::TypeMismatch`] if the tuple doesn't conform
+    /// Returns [`RelationError`] if the tuple doesn't conform
     /// to the relation's type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -520,7 +503,7 @@ impl Relation {
     pub fn insert(&mut self, tuple: Tuple) -> Result<bool, RelationError> {
         // Verify tuple conforms to the relation type
         if tuple.tuple_type() != self.relation_type.heading() {
-            return Err(RelationError::TypeMismatch);
+            return Err(RelationError);
         }
 
         Ok(self.body.insert(tuple))
@@ -532,7 +515,7 @@ impl Relation {
     ///
     /// * `tuple` - The tuple to search for
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -571,7 +554,7 @@ impl Relation {
     /// Per TTM Proscription 3, tuples have no inherent ordering. The
     /// iteration order is not guaranteed to be consistent.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -609,7 +592,7 @@ impl Relation {
 
     /// Checks if the relation has no tuples.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -754,7 +737,7 @@ mod tests {
 
         let result = relation.insert(wrong_tuple);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RelationError::TypeMismatch));
+        assert!(matches!(result.unwrap_err(), RelationError));
     }
 
     #[test]
@@ -839,7 +822,7 @@ mod tests {
         let tuples = vec![valid_tuple.clone(), invalid_tuple.clone()];
         let rel = Relation::from_tuples(rel_type.clone(), tuples);
         assert!(rel.is_err());
-        assert!(matches!(rel.unwrap_err(), RelationError::TypeMismatch));
+        assert!(matches!(rel.unwrap_err(), RelationError));
 
         // Case 3: Invalid first
         // The first tuple fails immediately.

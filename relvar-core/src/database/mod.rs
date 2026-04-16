@@ -97,7 +97,7 @@ use self::virtual_relvar::VirtualRelvarDefinition;
 /// - **Constraint Management**: Enforce keys, foreign keys, and type constraints.
 /// - **Transaction Control**: Manage ACID transactions.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::database::Database;

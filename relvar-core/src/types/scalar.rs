@@ -48,21 +48,19 @@ use thiserror::Error;
 /// // Attempting to use a String representation for an Int-backed type will fail
 /// let result = relvar_core::values::ScalarValue::select(&emp_id_type, ScalarValue::String("Not an Int".into()));
 ///
-/// assert!(matches!(result, Err(ScalarTypeError::TypeMismatch { .. })));
+/// assert!(matches!(result, Err(ScalarTypeError { .. })));
 /// ```
 #[derive(Debug, Error)]
-pub enum ScalarTypeError {
-    /// A value's type doesn't match the expected type.
-    ///
-    /// This typically occurs when using a selector with a value of the
-    /// wrong representation type.
-    #[error("Type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch {
-        /// The expected type name.
-        expected: String,
-        /// The actual type name of the provided value.
-        actual: String,
-    },
+/// A value's type doesn't match the expected type.
+///
+/// This typically occurs when using a selector with a value of the
+/// wrong representation type.
+#[error("Type mismatch: expected {expected}, got {actual}")]
+pub struct ScalarTypeError {
+    /// The expected type name.
+    pub expected: String,
+    /// The actual type name of the provided value.
+    pub actual: String,
 }
 
 /// Represents a scalar (atomic) type in the relational model.
@@ -94,7 +92,7 @@ pub enum ScalarTypeError {
 /// Two user-defined types with the same representation but different names
 /// are considered distinct types.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::types::ScalarType;
@@ -117,7 +115,7 @@ pub enum ScalarType {
     ///
     /// Corresponds to Rust's `i64` type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::values::ScalarValue;
@@ -129,7 +127,7 @@ pub enum ScalarType {
     ///
     /// Corresponds to Rust's `f64` type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::values::ScalarValue;
@@ -141,7 +139,7 @@ pub enum ScalarType {
     ///
     /// Corresponds to Rust's `String` type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::values::ScalarValue;
@@ -153,7 +151,7 @@ pub enum ScalarType {
     ///
     /// Corresponds to Rust's `bool` type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::values::ScalarValue;
@@ -165,7 +163,7 @@ pub enum ScalarType {
     ///
     /// Corresponds to Rust's `Vec<u8>` type.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::values::ScalarValue;
@@ -178,7 +176,7 @@ pub enum ScalarType {
     /// Contains a nested relation, enabling hierarchical data modeling.
     /// The boxed `RelationType` specifies the heading of the nested relation.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{ScalarType, TupleType, RelationType};
@@ -209,7 +207,7 @@ pub enum ScalarType {
     /// User-defined types provide strong typing. A value of type `EmployeeId`
     /// is distinct from `DepartmentId`, even if both are represented by `Int`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::ScalarType;

@@ -30,7 +30,7 @@ pub struct InMemorySnapshot {
 /// All data is stored in memory with no persistence. When the engine
 /// is dropped, all data is lost.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::storage_engine::{StorageEngine, InMemoryEngine};
@@ -61,6 +61,13 @@ pub struct InMemoryEngine {
 
 impl InMemoryEngine {
     /// Create a new in-memory storage engine.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let engine = InMemoryEngine::new();
+    /// ```
     pub fn new() -> Self {
         Self {
             relations: HashMap::new(),

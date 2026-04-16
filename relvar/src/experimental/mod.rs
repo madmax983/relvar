@@ -25,6 +25,7 @@
 //! - **[`automata`](crate::experimental::automata)**: Relational Automata (NFA).
 //! - **[`enigma`](crate::experimental::enigma)**: Relational Enigma Machine.
 //! - **[`kmeans`](crate::experimental::kmeans)**: Relational K-Means Clustering.
+//! - **[`vm`](crate::experimental::vm)**: Relational Virtual Machine.
 
 pub mod automata;
 pub mod automl;
@@ -44,6 +45,7 @@ pub mod neural_network;
 pub mod physics;
 pub mod pivot;
 pub mod raytracer;
+pub mod rbac;
 pub mod recommend;
 pub mod search;
 pub mod spatial;
@@ -52,3 +54,4 @@ pub mod synth;
 pub mod timeseries;
 pub mod turing;
 pub mod vcs;
+pub mod vm;

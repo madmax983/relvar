@@ -66,7 +66,7 @@ impl Relation {
     /// Since attributes are stored in a `BTreeMap`, iteration order is determined by attribute name.
     /// The attribute that comes later alphabetically will overwrite the value of the earlier one.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -133,6 +133,21 @@ impl Relation {
     /// collection for the tuples' inner values, instead migrating them in-place
     /// from the old names to the new names while consuming the source relation.
     /// This reduces heap allocations and `.clone()` overhead.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("old_name", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let mut rel = Relation::new(rel_type);
+    /// rel.insert(tuple! { old_name: 1i64 }).unwrap();
+    ///
+    /// let renamed = rel.rename_into(&[("old_name", "new_name")]);
+    /// assert!(renamed.relation_type().tuple_type().has_attribute("new_name"));
+    /// ```
     pub fn rename_into(self, mappings: &[(&str, &str)]) -> Self {
         if mappings.is_empty() {
             return self;

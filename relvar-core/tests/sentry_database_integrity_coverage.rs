@@ -260,3 +260,78 @@ fn test_get_constraints() {
     let fkc = db.get_foreign_key_constraints("TEST_FK").unwrap();
     assert_eq!(fkc.foreign_keys().len(), 1);
 }
+
+#[test]
+fn test_database_integrity_getters() {
+    let mut db = Database::new(InMemoryEngine::new());
+
+    // Setup tables
+    let type1 = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    let type2 = RelationType::new(TupleType::new().with_attribute("ref_id", ScalarType::Int));
+    db.create_relvar("A", type1).unwrap();
+    db.create_relvar("B", type2).unwrap();
+
+    // Set up PK
+    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    db.set_key_constraints("A", KeyConstraints::new().with_primary_key(pk))
+        .unwrap();
+
+    // Set up FK
+    let fk = ForeignKey::new(
+        vec!["ref_id".to_string()],
+        "A".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("B", constraints).unwrap();
+
+    // Test getters
+    let current_fks = db.get_foreign_key_constraints("B").unwrap();
+    assert_eq!(current_fks.foreign_keys().len(), 1);
+
+    let current_pks = db.get_key_constraints("A").unwrap();
+    assert!(current_pks.primary_key().is_some());
+
+    // Test non-existent
+    assert!(db.get_key_constraints("NONEXISTENT").is_none());
+    assert!(db.get_foreign_key_constraints("NONEXISTENT").is_none());
+    assert!(db.get_foreign_key_constraints("A").is_none());
+}
+
+#[test]
+fn test_database_integrity_type_and_check() {
+    let mut db = Database::new(InMemoryEngine::new());
+
+    // Setup tables
+    let type1 = RelationType::new(
+        TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("age", ScalarType::Int),
+    );
+    db.create_relvar("PERSON", type1).unwrap();
+
+    // Check type constraints (note: there are no getters for these in db, but they exist on constraints)
+    // we just want coverage for the setters
+    let attr_constraints = AttributeConstraints::new("age".to_string(), ScalarType::Int)
+        .with_constraint(relvar_core::constraints::TypeConstraint::Range {
+            min: relvar_core::values::ScalarValue::Int(0),
+            max: relvar_core::values::ScalarValue::Int(150),
+        });
+    db.set_type_constraints("PERSON", "age", attr_constraints)
+        .unwrap();
+
+    let checks =
+        CheckConstraints::new().with_constraint(relvar_core::constraints::CheckConstraint::new(
+            "valid_age".to_string(),
+            "Age must be >= 18".to_string(),
+            relvar_core::constraints::ConstraintExpression::Cmp {
+                left: "age".to_string(),
+                op: relvar_core::constraints::CmpOp::Gt,
+                right: relvar_core::constraints::ValueOrRef::Value(
+                    relvar_core::values::ScalarValue::Int(17),
+                ),
+            },
+        ));
+    db.set_check_constraints("PERSON", checks).unwrap();
+}

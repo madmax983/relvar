@@ -48,7 +48,7 @@ use std::collections::BTreeMap;
 /// attributes (same names with same types). The order in which attributes
 /// were added does not affect equality.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::types::{TupleType, ScalarType};
@@ -77,7 +77,7 @@ impl TupleType {
     /// tuples with no attributes. Such tuples are called "0-tuples" or
     /// "nullary tuples".
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::TupleType;
@@ -112,7 +112,7 @@ impl TupleType {
     /// * `name` - The attribute name (must be unique within the tuple type)
     /// * `ty` - The scalar type of the attribute
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
@@ -151,7 +151,7 @@ impl TupleType {
     ///
     /// * `name` - The attribute name to look up
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
@@ -181,7 +181,7 @@ impl TupleType {
     ///
     /// * `name` - The attribute name to check
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
@@ -210,7 +210,7 @@ impl TupleType {
     /// Per TTM Proscription 4, the order of iteration is arbitrary and
     /// should not be relied upon. Attributes are identified by name only.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
@@ -264,7 +264,7 @@ impl TupleType {
     ///
     /// The degree is the count of distinct attributes in the heading.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
@@ -295,7 +295,7 @@ impl TupleType {
     /// This provides access to all attribute definitions as a map from
     /// names to types.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};

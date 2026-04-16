@@ -107,7 +107,7 @@ pub enum ForeignKeyError {
 ///   referenced by tuples in the referencing relation
 /// - **Update**: Updates must maintain the integrity of references
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use relvar_core::constraints::ForeignKey;
@@ -135,7 +135,7 @@ pub struct ForeignKey {
 impl ForeignKey {
     /// Create a new foreign key constraint
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -162,7 +162,7 @@ impl ForeignKey {
 
     /// Get the foreign key attributes
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -173,7 +173,7 @@ impl ForeignKey {
 
     /// Get the referenced relation name
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -184,7 +184,7 @@ impl ForeignKey {
 
     /// Get the referenced attributes
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -196,7 +196,7 @@ impl ForeignKey {
     /// Check if this foreign key is satisfied
     /// (all foreign key values exist in the referenced relation)
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -253,7 +253,7 @@ impl ForeignKey {
     /// Check if inserting a tuple would violate this foreign key
     /// Check if inserting a tuple would violate this foreign key
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -297,7 +297,7 @@ impl ForeignKey {
     /// Check if deleting a tuple from the referenced relation would violate this constraint
     /// Check if deleting a tuple from the referenced relation would violate this constraint
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -368,7 +368,7 @@ pub struct ForeignKeyConstraints {
 impl ForeignKeyConstraints {
     /// Create new empty foreign key constraints
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -381,7 +381,7 @@ impl ForeignKeyConstraints {
 
     /// Add a foreign key constraint
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -393,7 +393,7 @@ impl ForeignKeyConstraints {
 
     /// Get all foreign keys
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example

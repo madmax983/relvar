@@ -570,3 +570,8 @@ Build it right, make it fast, keep it simple.
 ## 2024-05-30 - Extract God Function in Enigma
 **Learning:** Enigma machine's `encrypt` function was over 120 lines long because of large inline closures and duplicated mapping logic.
 **Action:** Refactored by extracting the forward/backward rotor passes and the static mapping into private associated functions. The main `encrypt` function is now much cleaner and easier to read.
+## 2026-04-14 - Refactored God Functions in Graph algorithms\n**Learning:** The `bfs` and `pagerank` functions in `relvar/src/experimental/graph.rs` were extremely large and deeply nested, making the relational algebra logic hard to follow.\n**Action:** Extracted the core loop bodies and initialization steps into private helper functions. This flattens the main functions into readable iterations and clarifies the boundaries of the relational operations.
+
+## 2026-04-15 - Refactor pivot God Function
+**Learning:** The pivot function mixed validation, schema construction, and data grouping in one massive block.
+**Action:** Applied the Three-Phase Operator pattern to extract these distinct steps into helper functions.

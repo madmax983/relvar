@@ -16,3 +16,7 @@
 ## 2026-04-12 - CSV Injection Prevention
 **Threat:** The CSV exporter (`relvar/src/tools/exporter.rs`) blindly exported strings without validation. An attacker could craft a tuple with a `ScalarValue::String` starting with `=`, `+`, `-`, `@`, `\t`, `\r`, or `\n` (e.g. `=cmd|' /C calc'!A0`). When the resulting CSV is opened in spreadsheet software like Excel, the software may interpret this as a formula or DDE execution command, leading to Arbitrary Code Execution on the client's machine (Formula Injection / CSV Injection).
 **Defense:** Inside `format_scalar_csv`, updated `ScalarValue::String` serialization to detect if the first character matches any of the formula execution trigger characters. If a match is found, a single quote (`'`) is safely prepended to the string before standard CSV quoting. This forces spreadsheet engines to interpret the payload safely as a literal string instead of an executable formula.
+
+## 2024-05-18 - [Add bounds checks]
+**Threat:** Buffer overflows via int arithmetic
+**Defense:** Replace arithmetic operations with checked variants

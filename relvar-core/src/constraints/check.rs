@@ -79,7 +79,7 @@ pub struct CheckConstraint {
 impl CheckConstraint {
     /// Creates a new CHECK constraint from an expression.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use relvar_core::CheckConstraint;
@@ -117,7 +117,7 @@ impl CheckConstraint {
 
     /// Retrieves the identifier name of the constraint.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -128,7 +128,7 @@ impl CheckConstraint {
 
     /// Retrieves the human-readable description of the constraint.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -139,7 +139,7 @@ impl CheckConstraint {
 
     /// Accesses the underlying logical expression of the constraint.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -154,7 +154,7 @@ impl CheckConstraint {
     ///
     /// Returns `Err` if the constraint evaluation fails (e.g. type mismatch).
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -167,7 +167,7 @@ impl CheckConstraint {
 
     /// Retrieves a set containing all attribute names targeted by this constraint.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -189,7 +189,7 @@ pub struct CheckConstraints {
 impl CheckConstraints {
     /// Creates a new empty collection of CHECK constraints.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -202,7 +202,7 @@ impl CheckConstraints {
 
     /// Adds a constraint to the collection.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -220,7 +220,7 @@ impl CheckConstraints {
     ///
     /// Returns `Err` with the first violated constraint or evaluation error.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -239,7 +239,7 @@ impl CheckConstraints {
 
     /// Provides a slice containing all configured check constraints.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
@@ -250,7 +250,7 @@ impl CheckConstraints {
 
     /// Aggregates a unified set of all attribute names referenced across all constraints.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```text
     /// // Example
