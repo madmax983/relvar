@@ -575,3 +575,7 @@ Build it right, make it fast, keep it simple.
 ## 2026-04-15 - Refactor pivot God Function
 **Learning:** The pivot function mixed validation, schema construction, and data grouping in one massive block.
 **Action:** Applied the Three-Phase Operator pattern to extract these distinct steps into helper functions.
+
+## 2024-04-16 - Refactor automl `train` God Function
+**Learning:** `relvar/src/experimental/automl.rs` contained a "God Function" `train` which combined calculating class priors and conditional probabilities in a single long function.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting `calculate_class_priors` and `calculate_conditional_probabilities` into separate helper functions to improve readability without changing behavior.

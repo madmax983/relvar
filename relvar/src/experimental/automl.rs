@@ -119,7 +119,32 @@ impl NaiveBayesClassifier {
             .collect();
 
         // 1. Calculate Class Priors P(C)
-        // Group by target, Count(*)
+        let (priors, classes, class_counts_map) =
+            Self::calculate_class_priors(relation, target_attr)?;
+
+        // 2. Calculate Conditional Probabilities P(F=f | C)
+        let conditionals = Self::calculate_conditional_probabilities(
+            relation,
+            target_attr,
+            &feature_attrs,
+            &classes,
+            &class_counts_map,
+        )?;
+
+        Ok(NaiveBayesClassifier {
+            priors,
+            conditionals,
+            target_attr: target_attr.to_string(),
+            feature_attrs,
+            classes,
+        })
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn calculate_class_priors(
+        relation: &Relation,
+        target_attr: &str,
+    ) -> Result<(HashMap<String, f64>, Vec<String>, HashMap<String, f64>), DatabaseError> {
         let class_counts_rel = relation
             .summarize(&[target_attr], &[Aggregation::count("count")])
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
@@ -127,35 +152,37 @@ impl NaiveBayesClassifier {
         let total_count = relation.cardinality() as f64;
         let mut priors = HashMap::new();
         let mut classes = Vec::new();
-        let mut class_counts_map = HashMap::new(); // Store raw counts for conditional calc
+        let mut class_counts_map = HashMap::new();
 
         for tuple in class_counts_rel.tuples() {
             let class_val = tuple.get(target_attr).unwrap();
             let count = tuple.get_typed::<i64>("count").unwrap() as f64;
             let class_str = scalar_to_string(class_val);
 
-            // P(C) = count(C) / total
             priors.insert(class_str.clone(), (count / total_count).ln());
             classes.push(class_str.clone());
             class_counts_map.insert(class_str, count);
         }
 
-        // 2. Calculate Conditional Probabilities P(F=f | C)
-        // For each feature F: Group by (target, F), Count(*)
-        let mut conditionals = HashMap::new();
-        let epsilon = 1.0; // Laplace smoothing (add-one)
+        Ok((priors, classes, class_counts_map))
+    }
 
-        for feature in &feature_attrs {
-            // Count(F=f, C)
+    fn calculate_conditional_probabilities(
+        relation: &Relation,
+        target_attr: &str,
+        feature_attrs: &[String],
+        classes: &[String],
+        class_counts_map: &HashMap<String, f64>,
+    ) -> Result<HashMap<(String, String, String), f64>, DatabaseError> {
+        let mut conditionals = HashMap::new();
+        let epsilon = 1.0;
+
+        for feature in feature_attrs {
             let feat_counts_rel = relation
                 .summarize(&[target_attr, feature], &[Aggregation::count("count")])
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-            // We need to handle zero frequency (smoothing).
-            // But first, let's collect observed counts.
-            // Map: (Class, FeatVal) -> Count
             let mut observed_counts: HashMap<(String, String), f64> = HashMap::new();
-            let mut vocab: HashMap<String, std::collections::HashSet<String>> = HashMap::new(); // Class -> Set of Feature Values
 
             for tuple in feat_counts_rel.tuples() {
                 let class_val = tuple.get(target_attr).unwrap();
@@ -165,15 +192,9 @@ impl NaiveBayesClassifier {
                 let class_str = scalar_to_string(class_val);
                 let feat_str = scalar_to_string(feat_val);
 
-                observed_counts.insert((class_str.clone(), feat_str.clone()), count);
-                vocab.entry(class_str).or_default().insert(feat_str);
+                observed_counts.insert((class_str, feat_str), count);
             }
 
-            // Calculate probabilities with smoothing
-            // P(F=f | C) = (count(f, C) + 1) / (count(C) + |V|)
-            // where |V| is number of distinct values for feature F (vocabulary size)
-
-            // First, find global vocabulary size for this feature
             let mut global_vocab = std::collections::HashSet::new();
             for tuple in relation.tuples() {
                 let val = tuple.get(feature).unwrap();
@@ -181,10 +202,9 @@ impl NaiveBayesClassifier {
             }
             let vocab_size = global_vocab.len() as f64;
 
-            for class in &classes {
+            for class in classes {
                 let class_count = *class_counts_map.get(class).unwrap_or(&0.0);
 
-                // For every value in global vocabulary (even if count is 0 for this class)
                 for val in &global_vocab {
                     let count = *observed_counts
                         .get(&(class.clone(), val.clone()))
@@ -196,13 +216,7 @@ impl NaiveBayesClassifier {
             }
         }
 
-        Ok(NaiveBayesClassifier {
-            priors,
-            conditionals,
-            target_attr: target_attr.to_string(),
-            feature_attrs,
-            classes,
-        })
+        Ok(conditionals)
     }
 
     /// Predicts the class for a given tuple.
