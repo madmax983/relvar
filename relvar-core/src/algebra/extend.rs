@@ -147,6 +147,26 @@ impl Relation {
     ///
     /// This is an optimized version of `extend` that avoids O(N) tuple clones for the
     /// relation by consuming it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::{Relation, ScalarValue};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let mut rel = Relation::new(rel_type);
+    /// rel.insert(tuple! { id: 1i64 }).unwrap();
+    ///
+    /// // `extend_into` consumes `rel`, taking ownership of its tuples
+    /// // instead of cloning them.
+    /// let extended = rel.extend_into("double_id", ScalarType::Int, |t| {
+    ///     ScalarValue::Int(t.get_typed::<i64>("id").unwrap() * 2)
+    /// }).unwrap();
+    /// assert_eq!(extended.cardinality(), 1);
+    /// ```
     pub fn extend_into<F>(
         self,
         attr_name: &str,
