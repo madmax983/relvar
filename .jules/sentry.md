@@ -95,3 +95,10 @@
 ## 2025-05-20 - Storage Heap Serialization Error Paths
 **Learning:** Certain `HeapError::Serialization` conditions (like tuple offset and length overflow limits or parsing errors via corrupted boundaries) inside `relvar-storage/src/storage/heap.rs` were completely missing test coverage, leading to untested internal safety guard limits on maximum allowed sizes.
 **Action:** Targeted internal methods `find_page_for_insertion` error paths, bounds limits like `check_versioned_tuple_size_limit`, and deserialization helper routines `extract_tuples_from_versioned_slots` with targeted safety constraint tests ensuring exact `HeapError` mappings.
+## 2026-04-16 - Transaction ID Generation Panics
+**Learning:** `TransactionIdGenerator::generate` panics when `u64::MAX` is reached to prevent wrapping around and causing LSN collisions, but this panic path had no tests.
+**Action:** Wrote an explicit `#[should_panic]` test ensuring `u64::MAX` correctly triggers "TransactionId overflow" instead of wrapping around in `wal/lsn.rs`.
+
+## 2026-04-16 - Extend and Project Missing Branches
+**Learning:** `extend_into` error conditions (computation type mismatch) and empty iterator scenarios, as well as `project` greater-than ordering matches for lexicographical attributes were uncovered.
+**Action:** Wrote tests targeting `extend_into` specifically mirroring existing `extend` tests, and crafted carefully named attribute headings (`"z"`, `"a"`) for `project` to trigger the required merge-sort iteration states.
