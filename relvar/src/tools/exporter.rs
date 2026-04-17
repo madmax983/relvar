@@ -123,10 +123,11 @@ impl<'a> Ord for SortableTuple<'a> {
 /// assert_eq!(csv, "col1,col2\n1,\"foo\"\n");
 /// ```
 pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterError> {
-    let headers: Vec<&String> = relation
+    let headers: Vec<&str> = relation
         .relation_type()
         .heading()
         .attribute_names()
+        .map(|s| s.as_str())
         .collect();
     let mut output = String::new();
 
@@ -254,10 +255,11 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
 /// // +-------+-------+
 /// ```
 pub fn to_ascii_table(relation: &Relation) -> String {
-    let headers: Vec<&String> = relation
+    let headers: Vec<&str> = relation
         .relation_type()
         .heading()
         .attribute_names()
+        .map(|s| s.as_str())
         .collect();
     if headers.is_empty() {
         return String::from("(empty relation)");
@@ -270,72 +272,66 @@ pub fn to_ascii_table(relation: &Relation) -> String {
     // Calculate column widths
     let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
 
-    // Pass 1: Measure data widths and format rows
     let mut rows: Vec<Vec<String>> = Vec::with_capacity(tuples.len());
     for t in &tuples {
-        let mut row: Vec<String> = Vec::with_capacity(headers.len());
-        for (i, h) in headers.iter().enumerate() {
-            let s = if let Some(val) = t.0.get(h) {
-                format_scalar_table(val)
-            } else {
-                String::new()
-            };
-            if s.len() > widths[i] {
-                widths[i] = s.len();
-            }
-            row.push(s);
-        }
-        rows.push(row);
+        rows.push(format_tuple_row(t, &headers, &mut widths));
     }
 
     let mut output = String::new();
 
-    // Helper to draw separator line
-    let draw_sep = |out: &mut String, widths: &[usize]| {
-        out.push('+');
-        for w in widths {
-            out.push('-');
-            out.push_str(&"-".repeat(*w));
-            out.push('-');
-            out.push('+');
-        }
-        out.push('\n');
-    };
+    draw_table_separator(&mut output, &widths);
+    draw_table_row(&mut output, &headers, &widths);
+    draw_table_separator(&mut output, &widths);
 
-    // Top border
-    draw_sep(&mut output, &widths);
-
-    // Header row
-    output.push('|');
-    for (i, header) in headers.iter().enumerate() {
-        output.push(' ');
-        output.push_str(header);
-        output.push_str(&" ".repeat(widths[i] - header.len()));
-        output.push(' ');
-        output.push('|');
-    }
-    output.push('\n');
-
-    // Header separator
-    draw_sep(&mut output, &widths);
-
-    // Data rows
     for row in rows {
-        output.push('|');
-        for (i, cell) in row.iter().enumerate() {
-            output.push(' ');
-            output.push_str(cell);
-            output.push_str(&" ".repeat(widths[i] - cell.len()));
-            output.push(' ');
-            output.push('|');
-        }
-        output.push('\n');
+        draw_table_row(&mut output, &row, &widths);
     }
 
-    // Bottom border
-    draw_sep(&mut output, &widths);
+    draw_table_separator(&mut output, &widths);
 
     output
+}
+
+fn format_tuple_row(t: &SortableTuple, headers: &[&str], widths: &mut [usize]) -> Vec<String> {
+    let mut row: Vec<String> = Vec::with_capacity(headers.len());
+    for (i, h) in headers.iter().enumerate() {
+        let s = if let Some(val) = t.0.get(h) {
+            format_scalar_table(val)
+        } else {
+            String::new()
+        };
+
+        if s.len() > widths[i] {
+            widths[i] = s.len();
+        }
+
+        row.push(s);
+    }
+    row
+}
+
+fn draw_table_separator(out: &mut String, widths: &[usize]) {
+    out.push('+');
+    for w in widths {
+        out.push('-');
+        out.push_str(&"-".repeat(*w));
+        out.push('-');
+        out.push('+');
+    }
+    out.push('\n');
+}
+
+fn draw_table_row<T: AsRef<str>>(out: &mut String, row: &[T], widths: &[usize]) {
+    out.push('|');
+    for (i, cell) in row.iter().enumerate() {
+        let cell_str = cell.as_ref();
+        out.push(' ');
+        out.push_str(cell_str);
+        out.push_str(&" ".repeat(widths[i] - cell_str.len()));
+        out.push(' ');
+        out.push('|');
+    }
+    out.push('\n');
 }
 
 fn format_scalar_csv(val: &ScalarValue) -> String {
