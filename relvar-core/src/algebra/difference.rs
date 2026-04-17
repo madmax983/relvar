@@ -1,38 +1,3 @@
-//! Difference operator for set subtraction.
-//!
-//! The difference operator (also called "minus" or "except") returns tuples
-//! that are in the first relation but not in the second relation.
-//!
-//! # TTM Compliance
-//!
-//! - Relations must be type-compatible (identical headings)
-//! - Result contains tuples from first relation not in second
-//! - Set semantics are maintained
-//!
-//! # Example
-//!
-//! ```
-//! use relvar_core::types::{TupleType, RelationType, ScalarType};
-//! use relvar_core::values::Relation;
-//! use relvar_core::tuple;
-//!
-//! let heading = TupleType::new()
-//!     .with_attribute("emp_id", ScalarType::Int)
-//!     .with_attribute("name", ScalarType::String);
-//!
-//! let rel_type = RelationType::new(heading);
-//!
-//! let mut all_employees = Relation::new(rel_type.clone());
-//! all_employees.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
-//! all_employees.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
-//!
-//! let mut terminated = Relation::new(rel_type);
-//! terminated.insert(tuple! { emp_id: 2i64, name: "Bob" }).unwrap();
-//!
-//! let active = all_employees.difference(&terminated).unwrap();
-//! assert_eq!(active.cardinality(), 1);  // Only Alice remains
-//! ```
-
 use crate::values::Relation;
 use thiserror::Error;
 
@@ -55,7 +20,7 @@ impl Relation {
     ///
     /// # Returns
     ///
-    /// A new relation containing tuples that are in `self` but not in `other`.
+    /// A new relation containing tuples from `self` that are not in `other`.
     ///
     /// # Errors
     ///
@@ -65,15 +30,10 @@ impl Relation {
     /// # Behavior
     ///
     /// - Both relations must be type-compatible (identical headings)
-    /// - Tuples present in both relations are excluded from the result
-    /// - Order matters: A - B is different from B - A
+    /// - Only tuples present in `self` but not in `other` are included
+    /// - Difference with empty relation returns a copy of self
     /// - Difference with self returns empty relation
-    /// - Difference with empty relation returns the original relation
-    ///
-    /// # Complexity
-    ///
-    /// O(n * m) where n and m are the cardinalities of the two relations,
-    /// due to tuple membership testing.
+    /// - If no common tuples exist, returns a copy of self
     ///
     /// # Examples
     ///
@@ -85,7 +45,6 @@ impl Relation {
     /// let heading = TupleType::new()
     ///     .with_attribute("emp_id", ScalarType::Int)
     ///     .with_attribute("name", ScalarType::String);
-    ///
     /// let rel_type = RelationType::new(heading);
     ///
     /// let mut all = Relation::new(rel_type.clone());
@@ -119,11 +78,15 @@ impl Relation {
 
         // Filter tuples and create relation without redundant checks
         // Safety: source tuples are from a valid relation of the same type
+        let mut result_tuples = Vec::with_capacity(self.cardinality());
+        for tuple in self.tuples() {
+            if !other.contains(tuple) {
+                result_tuples.push(tuple.clone());
+            }
+        }
         Ok(Relation::from_tuples_unchecked(
             self.relation_type().clone(),
-            self.tuples()
-                .filter(|tuple| !other.contains(tuple))
-                .cloned(),
+            result_tuples,
         ))
     }
 
@@ -140,17 +103,18 @@ impl Relation {
     /// use relvar_core::tuple;
     ///
     /// let heading = TupleType::new()
-    ///     .with_attribute("id", ScalarType::Int);
-    ///
+    ///     .with_attribute("emp_id", ScalarType::Int)
+    ///     .with_attribute("name", ScalarType::String);
     /// let rel_type = RelationType::new(heading);
     ///
     /// let mut rel1 = Relation::new(rel_type.clone());
-    /// rel1.insert(tuple! { id: 1i64 }).unwrap();
+    /// rel1.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
     ///
-    /// let rel2 = Relation::new(rel_type);
+    /// let mut rel2 = Relation::new(rel_type);
+    /// rel2.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
     ///
     /// let result = rel1.minus(&rel2).unwrap();
-    /// assert_eq!(result.cardinality(), 1);
+    /// assert!(result.is_empty());
     /// ```
     pub fn minus(&self, other: &Relation) -> Result<Self, DifferenceError> {
         self.difference(other)
