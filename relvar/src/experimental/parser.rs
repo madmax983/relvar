@@ -66,6 +66,45 @@ impl CykParser {
     /// and returns the complete parse table.
     ///
     /// The input relation must have the schema: `(pos: Int, char: String)`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::parser::CykParser;
+    ///
+    /// // 1. Setup a simple grammar: S -> "a"
+    /// let term_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("lhs", ScalarType::String)
+    ///         .with_attribute("rhs", ScalarType::String)
+    /// );
+    /// let mut terminals = Relation::new(term_type);
+    /// terminals.insert(tuple! { lhs: "S", rhs: "a" }).unwrap();
+    ///
+    /// let non_term_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("lhs", ScalarType::String)
+    ///         .with_attribute("rhs1", ScalarType::String)
+    ///         .with_attribute("rhs2", ScalarType::String)
+    /// );
+    /// let non_terminals = Relation::new(non_term_type);
+    ///
+    /// let parser = CykParser::new(terminals, non_terminals);
+    ///
+    /// // 2. Create input relation for string "a"
+    /// let input_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("pos", ScalarType::Int)
+    ///         .with_attribute("char", ScalarType::String)
+    /// );
+    /// let mut input = Relation::new(input_type);
+    /// input.insert(tuple! { pos: 0i64, char: "a" }).unwrap();
+    ///
+    /// // 3. Parse and verify
+    /// let parse_table = parser.parse(&input).unwrap();
+    /// assert_eq!(parse_table.cardinality(), 1);
+    /// ```
     pub fn parse(&self, input: &Relation) -> Result<Relation, DatabaseError> {
         // Step 1: Initialize parse table with terminal matches (length = 1)
         let init = input
@@ -134,6 +173,28 @@ impl CykParser {
     }
 
     /// Checks if a string is accepted by the grammar given its start symbol and length.
+    /// It queries the `parse_table` produced by `parse` to see if there is an entry
+    /// spanning the entire input length starting from position 0 for the given `start_symbol`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::parser::CykParser;
+    ///
+    /// // Build a parse table entry representing successful parse of "S" from pos 0 length 1
+    /// let parse_table_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("start", ScalarType::Int)
+    ///         .with_attribute("length", ScalarType::Int)
+    ///         .with_attribute("non_terminal", ScalarType::String)
+    /// );
+    /// let mut parse_table = Relation::new(parse_table_type);
+    /// parse_table.insert(tuple! { start: 0i64, length: 1i64, non_terminal: "S" }).unwrap();
+    ///
+    /// let accepted = CykParser::is_accepted(&parse_table, "S", 1).unwrap();
+    /// assert!(accepted);
+    /// ```
     pub fn is_accepted(
         parse_table: &Relation,
         start_symbol: &str,
