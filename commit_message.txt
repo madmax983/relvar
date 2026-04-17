@@ -1,0 +1,6 @@
+🔒 Warden: Fix arithmetic overflows in HeapFile serialization
+
+🦠 Threat: In `relvar-storage/src/storage/heap.rs`, extracting and writing variable-length tuples when serializing pages relied on raw arithmetic (`offset + length`). If a page was corrupted or maliciously manipulated via file modifications, this could overflow a `usize`, circumventing bounds checks on the data buffer length or header overlaps.
+🛡️ Defense: Replaced the raw addition with `.checked_add()` inside the copy-loop to prevent bounds-check bypasses. Added validation asserting `end_offset <= data.len()` and that it does not overlap the `slot_dir`.
+💥 Severity: Moderate. Could result in panics from bounds checking (`usize` on 64-bit systems) or potential Out-of-Bounds arbitrary read/writes (buffer overreads/overwrites).
+🧪 Verification: Evaluated with existing test cases specifically covering page length and tuple overflow corruptions (`test_read_tuple_out_of_bounds`, `test_read_tuple_versioned_integer_overflow`, `test_heap_scan_offset_overflow`). Tested that they successfully detect corrupted pages and return `HeapError::Serialization` instead of panicking.

@@ -20,3 +20,7 @@
 ## 2024-05-18 - [Add bounds checks]
 **Threat:** Buffer overflows via int arithmetic
 **Defense:** Replace arithmetic operations with checked variants
+
+## 2026-04-18 - Storage Offset + Length overflow
+**Threat:** Maliciously or accidentally corrupted heap/slotted page structures could cause out of bound slice generation in `relvar-storage/src/storage/heap.rs` due to the lack of overflow checks on `offset + length` arithmetic when serializing pages.
+**Defense:** Added `checked_add` bounds verification when converting to `end_offset` in `serialize_slotted_page_with_tuples`.
