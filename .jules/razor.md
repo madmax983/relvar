@@ -21,3 +21,8 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+
+## [Reduction]
+**Bloat:** Unused Multi-Version Concurrency Control (MVCC) functions and tests (`read_tuple`, `read_tuple_versioned`, `update_tuple_versioned`, `delete_tuple_versioned`, `scan_visible`, `load_relation_for_txn`, `insert_tuple_in_txn`, `visibility.rs`) marked as "reserved for future implementation" and covered in `#[allow(dead_code)]`.
+**Cut:** Deleted all dead MVCC scaffolding methods and related tests from `relvar-storage/src/storage/heap.rs`, `relvar-storage/src/persistent_engine.rs`, and removed `relvar-storage/src/mvcc/visibility.rs` completely, conforming to the YAGNI (You Aren't Gonna Need It) principle.
+**Saved:** Hundreds of lines of speculative code and tests that overcomplicated the heap storage API with unused versioning abstractions.

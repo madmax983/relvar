@@ -206,8 +206,8 @@ impl StorageManager {
     pub fn scan_relation(
         &mut self,
         name: &str,
-        snapshot: &TransactionSnapshot,
-        committed_txns: &HashSet<TransactionId>,
+        _snapshot: &TransactionSnapshot,
+        _committed_txns: &HashSet<TransactionId>,
     ) -> Result<Relation, StorageError> {
         // Get metadata
         let metadata = self
@@ -222,9 +222,7 @@ impl StorageManager {
         let heap_file = self.get_or_open_heap_file(name)?;
 
         // Scan with visibility filtering
-        let tuples = heap_file
-            .scan_visible(snapshot, committed_txns)
-            .map_err(Self::convert_heap_error)?;
+        let tuples = heap_file.scan().map_err(Self::convert_heap_error)?;
 
         // Build relation from visible tuples
         Relation::from_tuples(rel_type, tuples)
