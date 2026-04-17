@@ -11,3 +11,6 @@
 ## 2024-05-24 - [Optimization] Added extend_into for in-place relation extension
 **Learning:** `Relation::extend` clones tuples unnecessarily when we could consume the original relation to extend it in place, avoiding redundant tuple allocation overhead.
 **Action:** Implemented `extend_into` alongside `extend` to take ownership of tuples. This is part of the `_into` family optimization.
+## 2025-04-16 - [Added semijoin_into and semidifference_into]
+**Learning:** For relational operations that act as filters (like `semijoin` and `semidifference`), passing the relation by ownership (`mut self`) allows applying the filter in-place using `restrict_into` and `HashSet::retain()`. This entirely bypasses iterating, mapping, and cloning `Tuple`s to collect them in a new `HashSet`, acting as a zero-cost abstraction when chaining operations.
+**Action:** Always provide and utilize `*_into` variants for filtering operators (`restrict_into`, `semijoin_into`, `semidifference_into`, `intersect_into`, `difference_into`) to safely bypass allocations.
