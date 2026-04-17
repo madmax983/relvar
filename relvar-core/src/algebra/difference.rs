@@ -78,15 +78,14 @@ impl Relation {
 
         // Filter tuples and create relation without redundant checks
         // Safety: source tuples are from a valid relation of the same type
-        let mut result_tuples = Vec::with_capacity(self.cardinality());
-        for tuple in self.tuples() {
-            if !other.contains(tuple) {
-                result_tuples.push(tuple.clone());
-            }
-        }
+        // Optimization: Pass the iterator directly to `from_tuples_unchecked` instead of
+        // collecting into an intermediate `Vec`. This avoids allocating a temporary buffer
+        // for the resulting tuples.
         Ok(Relation::from_tuples_unchecked(
             self.relation_type().clone(),
-            result_tuples,
+            self.tuples()
+                .filter(|tuple| !other.contains(tuple))
+                .cloned(),
         ))
     }
 
