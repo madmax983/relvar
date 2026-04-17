@@ -42,6 +42,8 @@ pub mod knowledge_graph;
 pub mod matrix;
 pub mod mock;
 pub mod neural_network;
+
+pub mod parser;
 pub mod physics;
 pub mod pivot;
 pub mod raytracer;
