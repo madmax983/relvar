@@ -579,3 +579,7 @@ Build it right, make it fast, keep it simple.
 ## 2024-04-16 - Refactor automl `train` God Function
 **Learning:** `relvar/src/experimental/automl.rs` contained a "God Function" `train` which combined calculating class priors and conditional probabilities in a single long function.
 **Action:** Applied the "Three-Phase Operator" pattern by extracting `calculate_class_priors` and `calculate_conditional_probabilities` into separate helper functions to improve readability without changing behavior.
+
+## 2026-05-15 - Exporter Ascii Table Extraction
+**Learning:** `relvar/src/tools/exporter.rs` contained a long function `to_ascii_table` that combined measuring column widths and formatting tuple rows, drawing borders, and processing the relational structure directly in line.
+**Action:** Extract specific formatting logic into `format_tuple_row`, `draw_table_separator`, and `draw_table_row` helpers. This simplifies `to_ascii_table` into primarily a coordinator that collects constraints, structures rows, and uses straightforward `draw_table_*` operations to output strings.
