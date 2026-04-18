@@ -87,7 +87,10 @@ impl GeneticAlgorithm {
 
         // Find max fitness for reporting
         let max_fitness_rel = evaluated
-            .summarize(&[], &[Aggregation::max("max_f", "fitness", ScalarType::Int)])
+            .summarize(
+                &[],
+                &[Aggregation::max("max_f", "fitness", ScalarType::Int)],
+            )
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         let max_f = max_fitness_rel
             .tuples()
