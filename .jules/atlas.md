@@ -12,3 +12,10 @@
 ## 2024-05-18 - Extraction of Massive Files
 **Tangle:** `relvar-storage/src/storage/heap.rs` and `relvar-storage/src/persistent_engine.rs` had become huge 'God Files' containing the struct definition, vast blocks of implementation code, and several thousand lines of inline tests each.
 **Blueprint:** Used the `#[cfg(test)] mod tests;` idiom to safely extract tests into separate files within module directories (`storage/heap/tests.rs` and `persistent_engine/tests.rs`), significantly reducing the size of the implementation source files without changing semantics.
+## 2024-05-18 - Module Encapsulation Cleanup
+**Tangle:** Broad visibility (`pub mod`) across many internal modules (`algebra`, `values`, `types`, etc.) leaked implementation details and complicated the dependency graph.
+**Blueprint:** Converted most top-level internal module definitions in `relvar-core`, `relvar-storage`, and `relvar` to `pub(crate) mod`. Re-exported necessary types via their respective `mod.rs` files, ensuring clean, intention-revealing public APIs while maintaining low coupling between internal components.
+
+## 2024-05-18 - Extraction of Massive Files
+**Tangle:** `relvar-storage/src/storage/heap/tests.rs` had become a huge 'God File' containing several thousand lines of inline tests.
+**Blueprint:** Safely extracted tests into separate files within the `storage/heap/tests/` directory (e.g. `insert.rs`, `update.rs`, `delete.rs`, etc.) using the `mod tests;` idiom, significantly reducing the size of the monolithic test source file without changing semantics.
