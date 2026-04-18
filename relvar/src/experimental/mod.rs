@@ -26,6 +26,7 @@
 //! - **[`enigma`](crate::experimental::enigma)**: Relational Enigma Machine.
 //! - **[`kmeans`](crate::experimental::kmeans)**: Relational K-Means Clustering.
 //! - **[`vm`](crate::experimental::vm)**: Relational Virtual Machine.
+//! - **[`markov`](crate::experimental::markov)**: Relational Markov Chain.
 
 pub mod automata;
 pub mod automl;
@@ -43,6 +44,7 @@ pub mod matrix;
 pub mod mock;
 pub mod neural_network;
 
+pub mod markov;
 pub mod parser;
 pub mod physics;
 pub mod pivot;

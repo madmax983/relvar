@@ -86,3 +86,7 @@
 **Concept:** Modeled a CYK parser for Context-Free Grammars in Chomsky Normal Form purely with relational algebra. Uses relations for `Terminals`, `Non-Terminals`, and `Input`. The parse table is built iteratively via relational Joins and Extensions until reaching a fixpoint.
 **Fate:** TBD
 **Lesson:** Relational algebra easily maps well to dynamic programming problems like the CYK parsing algorithm where results from overlapping sub-problems can be joined and extended dynamically!
+## Relational Markov Chain
+**Concept:** Modeled a Markov Chain using purely relational algebra (Join, Extend, Summarize). State distributions and transition matrices are purely relational.
+**Fate:** Merged
+**Lesson:** Stochastic processes can be elegantly mapped to relational algebra! By joining probability distributions with transition tables and extending with multiplied float probabilities, relational algebra acts as a pure matrix multiplication engine for vector distributions.
