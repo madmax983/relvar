@@ -6,6 +6,22 @@ use crate::values::relation::RelationError;
 use thiserror::Error;
 
 /// Errors that can occur during database operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::error::DatabaseError;
+///
+/// let err = DatabaseError::RelationAlreadyExists("USERS".to_string());
+/// assert_eq!(err.to_string(), "Relation USERS already exists");
+///
+/// match err {
+///     DatabaseError::RelationAlreadyExists(name) => {
+///         assert_eq!(name, "USERS");
+///     }
+///     _ => unreachable!(),
+/// }
+/// ```
 #[derive(Debug, Error)]
 pub enum DatabaseError {
     /// A storage error occurred.
