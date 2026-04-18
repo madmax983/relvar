@@ -90,3 +90,7 @@
 **Concept:** Modeled a Markov Chain using purely relational algebra (Join, Extend, Summarize). State distributions and transition matrices are purely relational.
 **Fate:** Merged
 **Lesson:** Stochastic processes can be elegantly mapped to relational algebra! By joining probability distributions with transition tables and extending with multiplied float probabilities, relational algebra acts as a pure matrix multiplication engine for vector distributions.
+## Relational Genetic Algorithm
+**Concept:** Modeled a Genetic Algorithm where the population is a relation. Fitness evaluation is computed using `Extend`, selection of the top N individuals is elegantly handled using a relational ranking pattern (via Theta-Join counting strictly better fitnesses, Summarize, and Restrict), and reproduction uses Join and Extend.
+**Fate:** Merged
+**Lesson:** Evolutionary algorithms map surprisingly well to declarative queries. By using a Theta-Join to compute a "rank", we can implement a pure relational Top-N filter without introducing any procedural loop sorting, allowing the entire algorithm step to be resolved natively as a database query evaluation.

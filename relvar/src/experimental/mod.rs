@@ -44,6 +44,7 @@ pub mod matrix;
 pub mod mock;
 pub mod neural_network;
 
+pub mod genetic_algorithm;
 pub mod markov;
 pub mod parser;
 pub mod physics;
