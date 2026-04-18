@@ -1,7 +1,10 @@
-//! Bounded Recursion Safety.
+//! General utility functions and common structures.
 //!
-//! This module provides a simple `DepthGuarded` wrapper to enforce maximum recursion
-//! limits (`MAX_TYPE_DEPTH`) on nested tree structures (like ASTs or nested Types).
+//! This module contains helper components that do not inherently belong to relational
+//! logic but are used across the codebase, such as memory bounds checking or recursion limits.
+//!
+//! This module also provides a simple `RecursionGuard` to enforce maximum recursion
+//! limits (`MAX_RECURSION_DEPTH`) on nested tree structures (like ASTs or nested Types).
 //! This prevents stack overflows, particularly against deeply nested payload attacks.
 use serde::Deserialize;
 use std::cell::Cell;
@@ -75,7 +78,7 @@ impl Drop for RecursionGuard {
 
 /// A custom deserialization function that encapsulates the recursion guard logic.
 ///
-/// It should be used with `#[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]`
+/// It should be used with `#[serde(deserialize_with = "crate::utils::deserialize_guarded")]`
 /// to enforce recursion limits during Serde deserialization without wrapping types in custom guard structs.
 /// # Examples
 ///
