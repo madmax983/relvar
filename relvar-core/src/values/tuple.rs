@@ -85,6 +85,18 @@ mod arc_serde {
     }
 }
 
+impl PartialOrd for Tuple {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Tuple {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.values.cmp(&other.values)
+    }
+}
+
 /// Errors that can occur when creating or modifying tuples.
 #[derive(Debug, Error)]
 pub enum TupleError {
