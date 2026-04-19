@@ -94,3 +94,7 @@
 **Concept:** Modeled a Genetic Algorithm where the population is a relation. Fitness evaluation is computed using `Extend`, selection of the top N individuals is elegantly handled using a relational ranking pattern (via Theta-Join counting strictly better fitnesses, Summarize, and Restrict), and reproduction uses Join and Extend.
 **Fate:** Merged
 **Lesson:** Evolutionary algorithms map surprisingly well to declarative queries. By using a Theta-Join to compute a "rank", we can implement a pure relational Top-N filter without introducing any procedural loop sorting, allowing the entire algorithm step to be resolved natively as a database query evaluation.
+## Relational Petri Net Simulator
+**Concept:** Implemented a Petri Net simulator purely using relational algebra (`PetriNet`). `places`, `transitions`, `input_arcs`, and `output_arcs` are modeled as relations. Enabled transitions are discovered via chained relation joins and restrictions. Firing computes token deltas via relational unions and aggregation, ensuring completely declarative state evolution.
+**Fate:** Merged
+**Lesson:** Relational algebra is a perfect match for token-based state machines! By using set differences and aggregations, we can elegantly find satisfied network flows and update distributed state concurrently without procedural traversal algorithms.
