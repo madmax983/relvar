@@ -5,3 +5,6 @@
 **Confusion:** The experimental `RelationalVM` was poorly documented with a placeholder example and missing doc-tests for `new`, `step`, and `run` methods. It was unclear how it uses relational algebra to model VM state transitions.
 **Clarification:** Added executable `/// # Examples` doc-tests for the struct and its methods, explicitly documenting how they initialize the VM and apply relational operators (join, restrict, extend, etc.) to perform state updates.
 ## 2026-04-16 - The "extend_into" Example\n**Confusion:** The `extend_into` method was missing an executable doc-test, making it unclear how it differed from `extend`.\n**Clarification:** Added a comprehensive executable doc-test for `extend_into` to demonstrate how it consumes the relation and takes ownership of its tuples.
+## 2025-04-18 - Missing Error Examples
+**Confusion:** The core error enums, such as `DatabaseError`, lacked executable doctests, making it unclear how to match against and properly format the various errors thrown by the relational engine.
+**Clarification:** Added an executable `/// # Examples` block to `DatabaseError` to clearly demonstrate matching variants and formatting the errors to strings.
