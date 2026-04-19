@@ -18,6 +18,103 @@ use relvar_core::algebra::Aggregation;
 use relvar_core::error::DatabaseError;
 use relvar_core::values::{Relation, ScalarValue};
 
+fn generate_safe_suffix(heading: &relvar_core::types::TupleType) -> String {
+    let mut prev_attr_suffix = "_prev".to_string();
+    let mut suffix_idx = 1;
+    loop {
+        let mut collision = false;
+        for (attr_name, _) in heading.attributes().iter() {
+            let candidate_name = format!("{}{}", attr_name, prev_attr_suffix);
+            if heading.has_attribute(&candidate_name) {
+                collision = true;
+                break;
+            }
+        }
+        if !collision {
+            break;
+        }
+        prev_attr_suffix = format!("_prev_{}", suffix_idx);
+        suffix_idx += 1;
+    }
+    prev_attr_suffix
+}
+
+fn prepare_self_join(relation: &Relation, prev_attr_suffix: &str) -> Relation {
+    let original_heading = relation.relation_type().heading();
+    let mut rename_map = Vec::new();
+
+    for (attr_name, _) in original_heading.attributes().iter() {
+        rename_map.push((
+            attr_name.as_str(),
+            format!("{}{}", attr_name, prev_attr_suffix),
+        ));
+    }
+
+    let rename_slice: Vec<(&str, &str)> =
+        rename_map.iter().map(|(k, v)| (*k, v.as_str())).collect();
+
+    relation.rename(&rename_slice)
+}
+
+fn perform_time_window_join(
+    relation: &Relation,
+    r_prev: &Relation,
+    time_attr: &str,
+    prev_attr_suffix: &str,
+    window_size: i64,
+    partition_by: &[&str],
+) -> Relation {
+    let effective_window_start_offset = window_size - 1;
+    let time_attr_prev = format!("{}{}", time_attr, prev_attr_suffix);
+
+    let p_by: Vec<String> = partition_by.iter().map(|s| s.to_string()).collect();
+    let p_by_prev: Vec<String> = partition_by
+        .iter()
+        .map(|s| format!("{}{}", s, prev_attr_suffix))
+        .collect();
+    let t_curr = time_attr.to_string();
+    let t_prev = time_attr_prev.clone();
+
+    relation.theta_join(r_prev, move |curr, prev| {
+        for (p_curr_name, p_prev_name) in p_by.iter().zip(p_by_prev.iter()) {
+            let val_curr = curr.get(p_curr_name);
+            let val_prev = prev.get(p_prev_name);
+            if val_curr != val_prev {
+                return false;
+            }
+        }
+
+        if let (Some(ScalarValue::Int(curr_time)), Some(ScalarValue::Int(prev_time))) =
+            (curr.get(&t_curr), prev.get(&t_prev))
+        {
+            let window_start = curr_time - effective_window_start_offset;
+            *prev_time >= window_start && *prev_time <= *curr_time
+        } else {
+            false
+        }
+    })
+}
+
+fn summarize_moving_average(
+    joined: &Relation,
+    original_heading: &relvar_core::types::TupleType,
+    value_attr: &str,
+    prev_attr_suffix: &str,
+) -> Result<Relation, DatabaseError> {
+    let group_by_attrs: Vec<&str> = original_heading
+        .attributes()
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
+
+    let value_attr_prev = format!("{}{}", value_attr, prev_attr_suffix);
+    let avg_agg = Aggregation::avg("moving_avg", &value_attr_prev);
+
+    joined
+        .summarize(&group_by_attrs, &[avg_agg])
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+}
+
 /// Computes a Simple Moving Average (SMA) over a time window.
 ///
 /// # Arguments
@@ -74,111 +171,18 @@ pub fn moving_average(
     window_size: i64,
     partition_by: &[&str],
 ) -> Result<Relation, DatabaseError> {
-    // 1. Prepare Self-Join
-    // We need to join the relation with itself to find "previous" rows within the window.
-    // To avoid attribute name collisions, we rename ALL attributes in the "previous" relation.
     let original_heading = relation.relation_type().heading();
-
-    // Dynamically generate a safe suffix that doesn't collide with existing attributes
-    let mut prev_attr_suffix = "_prev".to_string();
-    let mut suffix_idx = 1;
-    loop {
-        let mut collision = false;
-        for (attr_name, _) in original_heading.attributes().iter() {
-            let candidate_name = format!("{}{}", attr_name, prev_attr_suffix);
-            if original_heading.has_attribute(&candidate_name) {
-                collision = true;
-                break;
-            }
-        }
-        if !collision {
-            break;
-        }
-        prev_attr_suffix = format!("_prev_{}", suffix_idx);
-        suffix_idx += 1;
-    }
-
-    let mut rename_map = Vec::new();
-
-    // Iterate over attributes to build rename map
-    for (attr_name, _) in original_heading.attributes().iter() {
-        rename_map.push((
-            attr_name.as_str(),
-            format!("{}{}", attr_name, prev_attr_suffix),
-        ));
-    }
-
-    // Convert Vec<(&str, String)> to Vec<(&str, &str)> for rename API
-    // We need to keep the Strings alive, so we can't just map to &str references to temporary strings.
-    // But rename_map holds the Strings.
-    let rename_slice: Vec<(&str, &str)> =
-        rename_map.iter().map(|(k, v)| (*k, v.as_str())).collect();
-
-    let r_prev = relation.rename(&rename_slice);
-
-    // 2. Perform Theta Join
-    // condition:
-    //   1. Partition attributes match (if any)
-    //   2. time_prev >= time - window_size + 1 (inclusive window)
-    //   3. time_prev <= time
-    let effective_window_start_offset = window_size - 1;
-    let time_attr_prev = format!("{}{}", time_attr, prev_attr_suffix);
-
-    // We need to capture these strings for the closure
-    let p_by: Vec<String> = partition_by.iter().map(|s| s.to_string()).collect();
-    let p_by_prev: Vec<String> = partition_by
-        .iter()
-        .map(|s| format!("{}{}", s, prev_attr_suffix))
-        .collect();
-    let t_curr = time_attr.to_string();
-    let t_prev = time_attr_prev.clone();
-
-    // The Theta Join
-    // R_curr (left) joins R_prev (right)
-    let joined = relation.theta_join(&r_prev, move |curr, prev| {
-        // 1. Check partitions
-        for (p_curr_name, p_prev_name) in p_by.iter().zip(p_by_prev.iter()) {
-            let val_curr = curr.get(p_curr_name);
-            let val_prev = prev.get(p_prev_name);
-            if val_curr != val_prev {
-                return false;
-            }
-        }
-
-        // 2. Check Time Window
-        if let (Some(ScalarValue::Int(curr_time)), Some(ScalarValue::Int(prev_time))) =
-            (curr.get(&t_curr), prev.get(&t_prev))
-        {
-            let window_start = curr_time - effective_window_start_offset;
-            *prev_time >= window_start && *prev_time <= *curr_time
-        } else {
-            false // Should not happen if types are correct
-        }
-    });
-
-    // 3. Summarize (Group By)
-    // We group by ALL original attributes to preserve the row identity.
-    let group_by_attrs: Vec<&str> = original_heading
-        .attributes()
-        .keys() // Iterates over keys (attribute names)
-        .map(|k| k.as_str())
-        .collect();
-
-    let value_attr_prev = format!("{}{}", value_attr, prev_attr_suffix);
-
-    // Aggregation: Average of the *previous* values
-    let avg_agg = Aggregation::avg("moving_avg", &value_attr_prev);
-
-    // Perform the summarization
-    let summarized = joined
-        .summarize(&group_by_attrs, &[avg_agg])
-        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-    // 4. Clean up (Project)
-    // The summarized relation contains all group_by attributes + moving_avg.
-    // We return it as is.
-
-    Ok(summarized)
+    let prev_attr_suffix = generate_safe_suffix(original_heading);
+    let r_prev = prepare_self_join(relation, &prev_attr_suffix);
+    let joined = perform_time_window_join(
+        relation,
+        &r_prev,
+        time_attr,
+        &prev_attr_suffix,
+        window_size,
+        partition_by,
+    );
+    summarize_moving_average(&joined, original_heading, value_attr, &prev_attr_suffix)
 }
 
 #[cfg(test)]
