@@ -7,26 +7,23 @@
 use crate::error::DatabaseError;
 use crate::values::{Relation, Tuple};
 
+/// Computes the relation after applying a DELETE operation.
+///
+/// Optimization (Bolt): We use `restrict_into` to filter the existing `Relation` in place.
+/// This calls `HashSet::retain()` internally, keeping the allocated memory
+/// and avoiding the overhead of generating a new wrapper, re-hashing tuples,
+/// and collecting them into a new internal HashSet.
+/// Reduces memory allocations drastically for large DELETE operations.
 pub(crate) fn compute_relation_after_delete<F>(
     current_relation: Relation,
-    predicate: F,
+    mut predicate: F,
 ) -> Result<(Relation, usize), DatabaseError>
 where
-    F: Fn(&Tuple) -> bool,
+    F: FnMut(&Tuple) -> bool,
 {
     let initial_cardinality = current_relation.cardinality();
-    let relation_type = current_relation.relation_type().clone();
 
-    // Optimization: Pass the iterator directly to `from_tuples_unchecked`
-    // instead of collecting into an intermediate `Vec`. Since the source
-    // relation is valid, the filtered tuples are also guaranteed to be valid,
-    // allowing us to bypass redundant type checking.
-    let new_relation = Relation::from_tuples_unchecked(
-        relation_type,
-        current_relation
-            .into_iter()
-            .filter(|tuple| !predicate(tuple)),
-    );
+    let new_relation = current_relation.restrict_into(|tuple| !predicate(tuple));
 
     let delete_count = initial_cardinality - new_relation.cardinality();
 
