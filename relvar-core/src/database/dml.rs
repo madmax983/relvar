@@ -15,18 +15,12 @@ where
     F: Fn(&Tuple) -> bool,
 {
     let initial_cardinality = current_relation.cardinality();
-    let relation_type = current_relation.relation_type().clone();
 
-    // Optimization: Pass the iterator directly to `from_tuples_unchecked`
-    // instead of collecting into an intermediate `Vec`. Since the source
-    // relation is valid, the filtered tuples are also guaranteed to be valid,
-    // allowing us to bypass redundant type checking.
-    let new_relation = Relation::from_tuples_unchecked(
-        relation_type,
-        current_relation
-            .into_iter()
-            .filter(|tuple| !predicate(tuple)),
-    );
+    // Optimization: Use `restrict_into` to mutate the relation in-place.
+    // By keeping the tuples where `!predicate` is true, we delete the ones
+    // where `predicate` is true, without allocating a new `HashSet` or
+    // cloning the surviving tuples.
+    let new_relation = current_relation.restrict_into(|tuple| !predicate(tuple));
 
     let delete_count = initial_cardinality - new_relation.cardinality();
 
