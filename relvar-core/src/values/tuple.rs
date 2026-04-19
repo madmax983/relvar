@@ -86,6 +86,15 @@ mod arc_serde {
 }
 
 /// Errors that can occur when creating or modifying tuples.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::values::TupleError;
+///
+/// let err = TupleError::AttributeNotFound("age".to_string());
+/// assert_eq!(err.to_string(), "Attribute 'age' not found in tuple type");
+/// ```
 #[derive(Debug, Error)]
 pub enum TupleError {
     /// An attribute name was provided that doesn't exist in the tuple type.

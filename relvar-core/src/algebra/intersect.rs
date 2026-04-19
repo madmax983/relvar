@@ -38,6 +38,15 @@ use crate::values::Relation;
 use thiserror::Error;
 
 /// Errors that can occur during intersection operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::IntersectError;
+///
+/// let err = IntersectError;
+/// assert_eq!(err.to_string(), "Relations must have the same type (heading) for intersection");
+/// ```
 #[derive(Debug, Error)]
 #[error("Relations must have the same type (heading) for intersection")]
 pub struct IntersectError;

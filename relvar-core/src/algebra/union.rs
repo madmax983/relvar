@@ -37,6 +37,15 @@ use crate::values::Relation;
 use thiserror::Error;
 
 /// Errors that can occur during union operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::UnionError;
+///
+/// let err = UnionError;
+/// assert_eq!(err.to_string(), "Relations must have the same type (heading) for union");
+/// ```
 #[derive(Debug, Error)]
 #[error("Relations must have the same type (heading) for union")]
 pub struct UnionError;

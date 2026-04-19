@@ -65,3 +65,4 @@ pub use relation::RelationError;
 pub use scalar::ScalarValue;
 pub use tuple::Tuple;
 pub use tuple::TupleError;
+pub use scalar::ScalarValueError;

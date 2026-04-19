@@ -39,6 +39,15 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur during group operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::GroupError;
+///
+/// let err = GroupError::AttributeNotFound("project_id".to_string());
+/// assert_eq!(err.to_string(), "Grouping attribute 'project_id' does not exist in relation");
+/// ```
 #[derive(Debug, Error)]
 pub enum GroupError {
     /// An attribute specified for grouping does not exist in the relation.
@@ -63,6 +72,15 @@ pub enum GroupError {
 }
 
 /// Errors that can occur during ungroup operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::UngroupError;
+///
+/// let err = UngroupError::AttributeNotFound("projects".to_string());
+/// assert_eq!(err.to_string(), "Attribute 'projects' does not exist in relation");
+/// ```
 #[derive(Debug, Error)]
 pub enum UngroupError {
     /// The specified RVA attribute does not exist in the relation.

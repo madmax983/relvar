@@ -38,6 +38,15 @@ use crate::values::{Relation, ScalarValue, Tuple};
 use thiserror::Error;
 
 /// Errors that can occur during extend operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::ExtendError;
+///
+/// let err = ExtendError::AttributeExists("bonus".to_string());
+/// assert_eq!(err.to_string(), "Attribute 'bonus' already exists in relation");
+/// ```
 #[derive(Debug, Error)]
 pub enum ExtendError {
     /// The new attribute name conflicts with an existing attribute.

@@ -18,6 +18,15 @@ pub(crate) mod in_memory;
 pub use in_memory::InMemoryEngine;
 
 /// Errors that can occur during storage operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::storage_engine::StorageError;
+///
+/// let err = StorageError::RelationNotFound("users".to_string());
+/// assert_eq!(err.to_string(), "Relation users not found");
+/// ```
 #[derive(Debug, Error)]
 pub enum StorageError {
     /// The relation already exists.
@@ -38,6 +47,19 @@ pub enum StorageError {
 }
 
 /// Metadata about a stored relation.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::storage_engine::RelationMetadata;
+/// use relvar_core::types::{RelationType, TupleType};
+///
+/// let metadata = RelationMetadata {
+///     name: "users".to_string(),
+///     relation_type: RelationType::new(TupleType::new()),
+/// };
+/// assert_eq!(metadata.name, "users");
+/// ```
 #[derive(Debug, Clone)]
 pub struct RelationMetadata {
     /// The name of the relation.

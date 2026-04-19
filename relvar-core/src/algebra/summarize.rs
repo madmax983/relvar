@@ -45,6 +45,15 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur during summarize operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::SummarizeError;
+///
+/// let err = SummarizeError::GroupingAttributeNotFound("dept_id".to_string());
+/// assert_eq!(err.to_string(), "Grouping attribute 'dept_id' does not exist in relation");
+/// ```
 #[derive(Debug, Error)]
 pub enum SummarizeError {
     /// A specified grouping attribute does not exist in the relation.
@@ -71,6 +80,15 @@ pub enum SummarizeError {
 ///
 /// Each variant represents a different aggregate computation that can
 /// be performed over a group of tuples.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::AggregationFn;
+///
+/// let count = AggregationFn::Count;
+/// let sum = AggregationFn::Sum("salary".to_string());
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AggregationFn {
     /// Counts the number of tuples in the group.

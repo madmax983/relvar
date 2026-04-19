@@ -38,6 +38,15 @@ use thiserror::Error;
 /// The observer operation is only valid for user-defined types (POSSREP pattern).
 /// Built-in types like `Int`, `String`, etc., do not have observers because
 /// their representation is their value.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::values::ScalarValueError;
+///
+/// let err = ScalarValueError;
+/// assert_eq!(err.to_string(), "Cannot extract observer from built-in type");
+/// ```
 #[derive(Debug, Error)]
 #[error("Cannot extract observer from built-in type")]
 pub struct ScalarValueError;
