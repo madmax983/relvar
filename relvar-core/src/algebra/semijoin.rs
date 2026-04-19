@@ -250,7 +250,38 @@ impl Relation {
         })
     }
 
-    /// Alias for [`semijoin_into`](Self::semijoin_into) with Tutorial D syntax.
+    /// Alias for [`semijoin_into`](Self::semijoin_into) using the terminology from Date's Tutorial D.
+    /// This method is identical in behavior to `semijoin_into`. It filters the current relation
+    /// to retain only those tuples that have a matching tuple in the `other` relation over their
+    /// common attributes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
+    ///
+    /// let rel_type1 = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::Int)
+    ///         .with_attribute("name", ScalarType::String)
+    /// );
+    ///
+    /// let rel_type2 = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::Int)
+    ///         .with_attribute("role", ScalarType::String)
+    /// );
+    ///
+    /// let mut employees = Relation::new(rel_type1);
+    /// employees.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+    /// employees.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
+    ///
+    /// let mut roles = Relation::new(rel_type2);
+    /// roles.insert(tuple! { id: 1i64, role: "Admin" }).unwrap();
+    ///
+    /// let result = employees.matching_into(&roles);
+    /// assert_eq!(result.cardinality(), 1); // Only emp 1 matches
+    /// ```
     pub fn matching_into(self, other: &Relation) -> Self {
         self.semijoin_into(other)
     }
@@ -442,7 +473,38 @@ impl Relation {
         })
     }
 
-    /// Alias for [`semidifference_into`](Self::semidifference_into) with Tutorial D syntax.
+    /// Alias for [`semidifference_into`](Self::semidifference_into) using the terminology from Date's Tutorial D.
+    /// This method is identical in behavior to `semidifference_into`. It filters the current relation
+    /// to retain only those tuples that have NO matching tuple in the `other` relation over their
+    /// common attributes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
+    ///
+    /// let rel_type1 = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::Int)
+    ///         .with_attribute("name", ScalarType::String)
+    /// );
+    ///
+    /// let rel_type2 = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::Int)
+    ///         .with_attribute("role", ScalarType::String)
+    /// );
+    ///
+    /// let mut employees = Relation::new(rel_type1);
+    /// employees.insert(tuple! { id: 1i64, name: "Alice" }).unwrap();
+    /// employees.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
+    ///
+    /// let mut roles = Relation::new(rel_type2);
+    /// roles.insert(tuple! { id: 1i64, role: "Admin" }).unwrap();
+    ///
+    /// let result = employees.not_matching_into(&roles);
+    /// assert_eq!(result.cardinality(), 1); // Only emp 2 has no matching role
+    /// ```
     pub fn not_matching_into(self, other: &Relation) -> Self {
         self.semidifference_into(other)
     }

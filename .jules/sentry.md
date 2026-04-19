@@ -102,3 +102,6 @@
 ## 2026-04-16 - Extend and Project Missing Branches
 **Learning:** `extend_into` error conditions (computation type mismatch) and empty iterator scenarios, as well as `project` greater-than ordering matches for lexicographical attributes were uncovered.
 **Action:** Wrote tests targeting `extend_into` specifically mirroring existing `extend` tests, and crafted carefully named attribute headings (`"z"`, `"a"`) for `project` to trigger the required merge-sort iteration states.
+## 2024-04-18 - Missing Delta tests
+**Learning:** `relvar-core/src/algebra/delta.rs` and `relvar-core/src/algebra/divide.rs` have several edge cases untested. `divide.rs` coverage is low.
+**Action:** Write thorough tests for both to ensure robust edge case handling in `relvar-core`.
