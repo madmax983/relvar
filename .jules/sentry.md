@@ -102,3 +102,6 @@
 ## 2026-04-16 - Extend and Project Missing Branches
 **Learning:** `extend_into` error conditions (computation type mismatch) and empty iterator scenarios, as well as `project` greater-than ordering matches for lexicographical attributes were uncovered.
 **Action:** Wrote tests targeting `extend_into` specifically mirroring existing `extend` tests, and crafted carefully named attribute headings (`"z"`, `"a"`) for `project` to trigger the required merge-sort iteration states.
+## 2026-04-19 - Database DML Coverage Gaps
+**Learning:** Found several untested code paths regarding DML operations in `relvar-core/src/database/data.rs` specifically around constraint validations that don't trigger. Specifically, `validate_relation_constraints` missing `PrimaryKeyViolation` and `validate_referencing_foreign_keys` failing during a `delete`. Also `DatabaseError::TupleMismatch` missing tests during `update`.
+**Action:** When implementing database operations that rely heavily on the constraint manager, explicitly mock out conditions where database operations trigger deep, internal cascading validations that might not be easily triggered via surface-level usage.
