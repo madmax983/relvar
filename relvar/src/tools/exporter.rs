@@ -38,8 +38,10 @@
 //! assert!(csv.contains("1,\"Alice\""));
 //!
 //! // Export to JSON
-//! let json = exporter::to_json(&relation).unwrap();
-//! assert!(json.contains("\"name\": \"Alice\""));
+//! let mut json_buf = Vec::new();
+//! exporter::to_json(&relation, &mut json_buf).unwrap();
+//! let json_str = String::from_utf8(json_buf).unwrap();
+//! assert!(json_str.contains("\"name\": \"Alice\""));
 //!
 //! // Export to ASCII Table
 //! let table = exporter::to_ascii_table(&relation);
@@ -192,20 +194,27 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
 /// let mut relation = Relation::new(RelationType::new(heading));
 /// relation.insert(tuple! { id: 1i64 }).unwrap();
 ///
-/// let json = to_json(&relation).unwrap();
+/// let mut json = Vec::new();
+/// to_json(&relation, &mut json).unwrap();
+/// let json_str = String::from_utf8(json).unwrap();
 /// // [
 /// //   {
 /// //     "id": 1
 /// //   }
 /// // ]
-/// assert!(json.contains("\"id\": 1"));
+/// assert!(json_str.contains("\"id\": 1"));
 /// ```
-pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
+pub fn to_json<W: std::io::Write>(relation: &Relation, writer: W) -> Result<(), ExporterError> {
+    use serde::ser::SerializeSeq;
+    use serde::Serializer;
+
     // Sort tuples first
     let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
     tuples.sort();
 
-    let mut json_tuples = Vec::with_capacity(tuples.len());
+    let mut serializer = serde_json::Serializer::pretty(writer);
+    let mut seq = serializer.serialize_seq(Some(tuples.len())).map_err(ExporterError::JsonError)?;
+
     for tuple in tuples {
         let mut obj = serde_json::Map::new();
         // Tuple::values() returns &BTreeMap, so iteration is already sorted by key
@@ -213,10 +222,11 @@ pub fn to_json(relation: &Relation) -> Result<String, ExporterError> {
         for (key, val) in map {
             obj.insert(key.clone(), scalar_to_json(val));
         }
-        json_tuples.push(serde_json::Value::Object(obj));
+        seq.serialize_element(&serde_json::Value::Object(obj)).map_err(ExporterError::JsonError)?;
     }
+    seq.end().map_err(ExporterError::JsonError)?;
 
-    serde_json::to_string_pretty(&json_tuples).map_err(ExporterError::JsonError)
+    Ok(())
 }
 
 /// Exports the relation to a formatted ASCII table.
@@ -422,7 +432,9 @@ mod tests {
     fn test_to_json() {
         let relation = create_test_relation();
 
-        let json = to_json(&relation).unwrap();
+        let mut buf = Vec::new();
+        to_json(&relation, &mut buf).unwrap();
+        let json = String::from_utf8(buf).unwrap();
         let val: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         assert!(val.is_array());
@@ -492,7 +504,9 @@ mod tests {
         let tuple = Tuple::new(relation.relation_type().heading().clone(), values).unwrap();
         relation.insert(tuple).unwrap();
 
-        let json = to_json(&relation).unwrap();
+        let mut buf = Vec::new();
+        to_json(&relation, &mut buf).unwrap();
+        let json = String::from_utf8(buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         let obj = &parsed[0];
 

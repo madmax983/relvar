@@ -219,16 +219,17 @@ impl Catalog {
     /// assert!(path.exists());
     /// ```
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), CatalogError> {
-        let contents = serde_json::to_string_pretty(self)
-            .map_err(|e| CatalogError::Serialization(e.to_string()))?;
-
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .open(path)?;
 
-        file.write_all(contents.as_bytes())?;
+        let mut writer = std::io::BufWriter::new(&file);
+        serde_json::to_writer_pretty(&mut writer, self)
+            .map_err(|e| CatalogError::Serialization(e.to_string()))?;
+
+        writer.flush()?;
         file.sync_all()?;
 
         Ok(())
