@@ -97,6 +97,7 @@ pub use difference::DifferenceError;
 
 /// Relational division operator.
 pub(crate) mod divide;
+pub use divide::DivideError;
 
 /// Extend operator for adding computed attributes.
 pub(crate) mod extend;
