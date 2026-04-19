@@ -583,3 +583,7 @@ Build it right, make it fast, keep it simple.
 ## 2026-05-15 - Exporter Ascii Table Extraction
 **Learning:** `relvar/src/tools/exporter.rs` contained a long function `to_ascii_table` that combined measuring column widths and formatting tuple rows, drawing borders, and processing the relational structure directly in line.
 **Action:** Extract specific formatting logic into `format_tuple_row`, `draw_table_separator`, and `draw_table_row` helpers. This simplifies `to_ascii_table` into primarily a coordinator that collects constraints, structures rows, and uses straightforward `draw_table_*` operations to output strings.
+
+## 2024-05-30 - Extract God Function in Timeseries Moving Average
+**Learning:** `relvar/src/experimental/timeseries.rs` contained a "God Function" `moving_average` (113 lines) which combined preparing the previous relation with renaming, executing a window theta-join, and grouping and summarizing. This mix made it difficult to follow the distinct relational operations.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting `generate_non_colliding_suffix`, `prepare_previous_relation`, `perform_window_theta_join`, and `summarize_moving_average` into separate helper functions to improve clarity without changing logic.

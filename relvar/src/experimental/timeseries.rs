@@ -74,12 +74,24 @@ pub fn moving_average(
     window_size: i64,
     partition_by: &[&str],
 ) -> Result<Relation, DatabaseError> {
-    // 1. Prepare Self-Join
-    // We need to join the relation with itself to find "previous" rows within the window.
-    // To avoid attribute name collisions, we rename ALL attributes in the "previous" relation.
-    let original_heading = relation.relation_type().heading();
+    let prev_attr_suffix = generate_non_colliding_suffix(relation);
 
-    // Dynamically generate a safe suffix that doesn't collide with existing attributes
+    let (r_prev, prev_attr_suffix) = prepare_previous_relation(relation, prev_attr_suffix);
+
+    let joined = perform_window_theta_join(
+        relation,
+        &r_prev,
+        time_attr,
+        window_size,
+        partition_by,
+        &prev_attr_suffix,
+    );
+
+    summarize_moving_average(relation, &joined, value_attr, &prev_attr_suffix)
+}
+
+fn generate_non_colliding_suffix(relation: &Relation) -> String {
+    let original_heading = relation.relation_type().heading();
     let mut prev_attr_suffix = "_prev".to_string();
     let mut suffix_idx = 1;
     loop {
@@ -97,7 +109,11 @@ pub fn moving_average(
         prev_attr_suffix = format!("_prev_{}", suffix_idx);
         suffix_idx += 1;
     }
+    prev_attr_suffix
+}
 
+fn prepare_previous_relation(relation: &Relation, prev_attr_suffix: String) -> (Relation, String) {
+    let original_heading = relation.relation_type().heading();
     let mut rename_map = Vec::new();
 
     // Iterate over attributes to build rename map
@@ -108,23 +124,24 @@ pub fn moving_average(
         ));
     }
 
-    // Convert Vec<(&str, String)> to Vec<(&str, &str)> for rename API
-    // We need to keep the Strings alive, so we can't just map to &str references to temporary strings.
-    // But rename_map holds the Strings.
     let rename_slice: Vec<(&str, &str)> =
         rename_map.iter().map(|(k, v)| (*k, v.as_str())).collect();
 
     let r_prev = relation.rename(&rename_slice);
+    (r_prev, prev_attr_suffix)
+}
 
-    // 2. Perform Theta Join
-    // condition:
-    //   1. Partition attributes match (if any)
-    //   2. time_prev >= time - window_size + 1 (inclusive window)
-    //   3. time_prev <= time
+fn perform_window_theta_join(
+    relation: &Relation,
+    r_prev: &Relation,
+    time_attr: &str,
+    window_size: i64,
+    partition_by: &[&str],
+    prev_attr_suffix: &str,
+) -> Relation {
     let effective_window_start_offset = window_size - 1;
     let time_attr_prev = format!("{}{}", time_attr, prev_attr_suffix);
 
-    // We need to capture these strings for the closure
     let p_by: Vec<String> = partition_by.iter().map(|s| s.to_string()).collect();
     let p_by_prev: Vec<String> = partition_by
         .iter()
@@ -133,9 +150,7 @@ pub fn moving_average(
     let t_curr = time_attr.to_string();
     let t_prev = time_attr_prev.clone();
 
-    // The Theta Join
-    // R_curr (left) joins R_prev (right)
-    let joined = relation.theta_join(&r_prev, move |curr, prev| {
+    relation.theta_join(r_prev, move |curr, prev| {
         // 1. Check partitions
         for (p_curr_name, p_prev_name) in p_by.iter().zip(p_by_prev.iter()) {
             let val_curr = curr.get(p_curr_name);
@@ -152,33 +167,30 @@ pub fn moving_average(
             let window_start = curr_time - effective_window_start_offset;
             *prev_time >= window_start && *prev_time <= *curr_time
         } else {
-            false // Should not happen if types are correct
+            false
         }
-    });
+    })
+}
 
-    // 3. Summarize (Group By)
-    // We group by ALL original attributes to preserve the row identity.
+fn summarize_moving_average(
+    original_relation: &Relation,
+    joined: &Relation,
+    value_attr: &str,
+    prev_attr_suffix: &str,
+) -> Result<Relation, DatabaseError> {
+    let original_heading = original_relation.relation_type().heading();
     let group_by_attrs: Vec<&str> = original_heading
         .attributes()
-        .keys() // Iterates over keys (attribute names)
+        .keys()
         .map(|k| k.as_str())
         .collect();
 
     let value_attr_prev = format!("{}{}", value_attr, prev_attr_suffix);
-
-    // Aggregation: Average of the *previous* values
     let avg_agg = Aggregation::avg("moving_avg", &value_attr_prev);
 
-    // Perform the summarization
-    let summarized = joined
+    joined
         .summarize(&group_by_attrs, &[avg_agg])
-        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-    // 4. Clean up (Project)
-    // The summarized relation contains all group_by attributes + moving_avg.
-    // We return it as is.
-
-    Ok(summarized)
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
 }
 
 #[cfg(test)]
