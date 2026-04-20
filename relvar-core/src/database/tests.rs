@@ -1160,5 +1160,8 @@ fn test_get_foreign_key_constraints() {
     assert!(retrieved.is_some());
     let constraints = retrieved.unwrap();
     assert_eq!(constraints.foreign_keys().len(), 1);
-    assert_eq!(constraints.foreign_keys()[0].referenced_relation_name(), "PARENT");
+    assert_eq!(
+        constraints.foreign_keys()[0].referenced_relation_name(),
+        "PARENT"
+    );
 }
