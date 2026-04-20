@@ -21,3 +21,8 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+
+## [Reduction]
+**Bloat:** `SortableTuple` wrapper struct and its trait implementations in `relvar/src/tools/exporter.rs`, used only to sort `Tuple` instances for deterministic output.
+**Cut:** Deleted `SortableTuple`. Instead of adding global traits that conflict with structural equality, simply used an inline closure `tuples.sort_by(|a, b| a.values().cmp(b.values()))` when sorting is actually needed in the exporter.
+**Saved:** Unnecessary wrapper type, boilerplate trait implementations, and avoided hazardous global trait bounds on `Tuple`.
