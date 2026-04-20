@@ -58,9 +58,9 @@ use thiserror::Error;
 #[error("Type mismatch: expected {expected}, got {actual}")]
 pub struct ScalarTypeError {
     /// The expected type name.
-    pub expected: String,
+    pub(crate) expected: String,
     /// The actual type name of the provided value.
-    pub actual: String,
+    pub(crate) actual: String,
 }
 
 /// Represents a scalar (atomic) type in the relational model.

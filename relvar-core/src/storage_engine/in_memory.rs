@@ -22,7 +22,7 @@ struct StoredRelation {
 #[derive(Debug, Clone)]
 pub struct InMemorySnapshot {
     /// Saved relations, keyed by name.
-    pub saved_relations: HashMap<String, Relation>,
+    pub(crate) saved_relations: HashMap<String, Relation>,
 }
 
 /// Pure in-memory storage engine.

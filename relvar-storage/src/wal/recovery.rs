@@ -37,13 +37,13 @@ use std::io::{Read, Seek, SeekFrom};
 #[derive(Debug)]
 pub struct AnalysisResult {
     /// Transactions that committed.
-    pub committed: HashSet<TransactionId>,
+    pub(crate) committed: HashSet<TransactionId>,
     /// Transactions that aborted.
-    pub aborted: HashSet<TransactionId>,
+    pub(crate) aborted: HashSet<TransactionId>,
     /// All log records in order.
-    pub records: Vec<(Lsn, WalRecord)>,
+    pub(crate) records: Vec<(Lsn, WalRecord)>,
     /// Last checkpoint LSN (if any).
-    pub last_checkpoint_lsn: Option<Lsn>,
+    pub(crate) last_checkpoint_lsn: Option<Lsn>,
 }
 
 /// Performs the analysis pass on the WAL.
@@ -92,21 +92,21 @@ pub fn analyze(wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
 #[derive(Debug)]
 pub struct UncommittedInsert {
     /// Relation name.
-    pub relation_name: String,
+    pub(crate) relation_name: String,
     /// Serialized tuple data.
-    pub tuple_data: Vec<u8>,
+    pub(crate) tuple_data: Vec<u8>,
 }
 
 /// Result of recovery process.
 #[derive(Debug)]
 pub struct RecoveryResult {
     /// Set of committed transaction IDs (for MVCC visibility).
-    pub committed_txns: HashSet<TransactionId>,
+    pub(crate) committed_txns: HashSet<TransactionId>,
     /// List of uncommitted inserts that need to be undone.
-    pub uncommitted_inserts: Vec<UncommittedInsert>,
+    pub(crate) uncommitted_inserts: Vec<UncommittedInsert>,
     /// Maximum transaction ID seen in the WAL.
     /// Used to seed the transaction ID generator to avoid reusing IDs.
-    pub max_txn_id: TransactionId,
+    pub(crate) max_txn_id: TransactionId,
 }
 
 /// Performs recovery analysis and returns uncommitted operations.

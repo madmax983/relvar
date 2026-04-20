@@ -121,13 +121,13 @@ pub enum AggregationFn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Aggregation {
     /// The name for the computed result attribute.
-    pub result_name: String,
+    pub(crate) result_name: String,
 
     /// The scalar type of the result value.
-    pub result_type: ScalarType,
+    pub(crate) result_type: ScalarType,
 
     /// The aggregation function to apply.
-    pub function: AggregationFn,
+    pub(crate) function: AggregationFn,
 }
 
 impl Aggregation {

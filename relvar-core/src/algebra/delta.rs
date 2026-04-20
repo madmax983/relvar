@@ -47,9 +47,9 @@ use crate::values::Relation;
 #[allow(dead_code)]
 pub struct Delta {
     /// Tuples to be inserted.
-    pub inserted: Relation,
+    pub(crate) inserted: Relation,
     /// Tuples to be deleted.
-    pub deleted: Relation,
+    pub(crate) deleted: Relation,
 }
 
 #[allow(dead_code)]

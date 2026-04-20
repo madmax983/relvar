@@ -41,9 +41,9 @@ use std::collections::HashSet;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionMetadata {
     /// Transaction that created this version
-    pub xmin: TransactionId,
+    pub(crate) xmin: TransactionId,
     /// Transaction that deleted/updated this version (None = still visible)
-    pub xmax: Option<TransactionId>,
+    pub(crate) xmax: Option<TransactionId>,
 }
 
 /// Determines if a tuple version is visible to a transaction.

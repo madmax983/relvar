@@ -31,13 +31,13 @@ use relvar_core::{
 /// ```
 pub struct RelVcs {
     /// Blobs: (hash: String, content: String)
-    pub blobs: Relation,
+    pub(crate) blobs: Relation,
     /// Trees: (tree_hash: String, path: String, blob_hash: String)
-    pub trees: Relation,
+    pub(crate) trees: Relation,
     /// Commits: (commit_hash: String, parent_hash: String, tree_hash: String, message: String)
-    pub commits: Relation,
+    pub(crate) commits: Relation,
     /// Branches: (name: String, commit_hash: String)
-    pub branches: Relation,
+    pub(crate) branches: Relation,
 }
 
 impl RelVcs {

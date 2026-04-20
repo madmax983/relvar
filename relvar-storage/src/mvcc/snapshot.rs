@@ -40,11 +40,11 @@ use std::collections::HashSet;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionSnapshot {
     /// The transaction ID this snapshot belongs to
-    pub txn_id: TransactionId,
+    pub(crate) txn_id: TransactionId,
     /// LSN at the time this snapshot was taken
-    pub snapshot_lsn: Lsn,
+    pub(crate) snapshot_lsn: Lsn,
     /// Set of transactions that were active (uncommitted) when snapshot was taken
-    pub active_txns: HashSet<TransactionId>,
+    pub(crate) active_txns: HashSet<TransactionId>,
 }
 
 impl TransactionSnapshot {
