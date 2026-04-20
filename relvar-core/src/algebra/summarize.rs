@@ -520,18 +520,25 @@ impl Relation {
         result_heading_arc: &std::sync::Arc<TupleType>,
     ) -> Result<Vec<Tuple>, SummarizeError> {
         let mut result_tuples = Vec::with_capacity(groups.len());
+
+        let group_by_strings: Vec<String> = group_by.iter().map(|s| s.to_string()).collect();
+        let agg_names: Vec<String> = aggregations
+            .iter()
+            .map(|agg| agg.result_name.clone())
+            .collect();
+
         for (key, group_tuples) in groups {
             let mut values = std::collections::BTreeMap::new();
 
             // Add grouping attribute values
-            for (i, attr) in group_by.iter().enumerate() {
-                values.insert(attr.to_string(), (*key[i]).clone());
+            for (i, attr_str) in group_by_strings.iter().enumerate() {
+                values.insert(attr_str.clone(), (*key[i]).clone());
             }
 
             // Compute aggregations
-            for agg in aggregations {
+            for (i, agg) in aggregations.iter().enumerate() {
                 let agg_value = agg.compute(group_tuples)?;
-                values.insert(agg.result_name.clone(), agg_value);
+                values.insert(agg_names[i].clone(), agg_value);
             }
 
             // Using new_unchecked avoids O(N) validation per tuple where N is degree,
