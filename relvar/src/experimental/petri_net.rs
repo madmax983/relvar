@@ -14,6 +14,20 @@ use relvar_core::{
 /// - Firing a transition removes tokens from its input places and adds tokens to its output places.
 ///
 /// We model this using purely relational algebra.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::experimental::petri_net::PetriNet;
+///
+/// let mut net = PetriNet::new();
+/// net.add_place("p_start", 1);
+/// net.add_transition("t_run");
+/// net.add_input_arc("p_start", "t_run", 1);
+///
+/// // The transition is enabled because p_start has 1 token
+/// assert!(net.fire("t_run"));
+/// ```
 pub struct PetriNet {
     /// Schema: { place_id: String, tokens: Int }
     pub places: Relation,
@@ -27,6 +41,16 @@ pub struct PetriNet {
 
 impl PetriNet {
     /// Creates a new, empty Petri Net.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::petri_net::PetriNet;
+    ///
+    /// let net = PetriNet::new();
+    /// assert_eq!(net.places.cardinality(), 0);
+    /// assert_eq!(net.transitions.cardinality(), 0);
+    /// ```
     pub fn new() -> Self {
         let places_type = RelationType::new(
             TupleType::new()
@@ -51,6 +75,16 @@ impl PetriNet {
     }
 
     /// Adds a place with an initial token count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::petri_net::PetriNet;
+    ///
+    /// let mut net = PetriNet::new();
+    /// net.add_place("p1", 5);
+    /// assert_eq!(net.places.cardinality(), 1);
+    /// ```
     pub fn add_place(&mut self, id: &str, tokens: i64) {
         self.places
             .insert(tuple! { place_id: id.to_string(), tokens: tokens })
@@ -58,6 +92,16 @@ impl PetriNet {
     }
 
     /// Adds a transition.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::petri_net::PetriNet;
+    ///
+    /// let mut net = PetriNet::new();
+    /// net.add_transition("t1");
+    /// assert_eq!(net.transitions.cardinality(), 1);
+    /// ```
     pub fn add_transition(&mut self, id: &str) {
         self.transitions
             .insert(tuple! { transition_id: id.to_string() })
@@ -65,6 +109,18 @@ impl PetriNet {
     }
 
     /// Adds an input arc from a place to a transition.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::petri_net::PetriNet;
+    ///
+    /// let mut net = PetriNet::new();
+    /// net.add_place("p1", 1);
+    /// net.add_transition("t1");
+    /// net.add_input_arc("p1", "t1", 1);
+    /// assert_eq!(net.input_arcs.cardinality(), 1);
+    /// ```
     pub fn add_input_arc(&mut self, place_id: &str, transition_id: &str, weight: i64) {
         self.input_arcs
             .insert(tuple! { transition_id: transition_id.to_string(), place_id: place_id.to_string(), weight: weight })
@@ -72,6 +128,18 @@ impl PetriNet {
     }
 
     /// Adds an output arc from a transition to a place.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::petri_net::PetriNet;
+    ///
+    /// let mut net = PetriNet::new();
+    /// net.add_transition("t1");
+    /// net.add_place("p2", 0);
+    /// net.add_output_arc("t1", "p2", 1);
+    /// assert_eq!(net.output_arcs.cardinality(), 1);
+    /// ```
     pub fn add_output_arc(&mut self, transition_id: &str, place_id: &str, weight: i64) {
         self.output_arcs
             .insert(tuple! { transition_id: transition_id.to_string(), place_id: place_id.to_string(), weight: weight })
@@ -87,6 +155,22 @@ impl PetriNet {
     /// 2. Find "missing" requirements by checking where `tokens < weight`.
     /// 3. Project to `transition_id` to get disabled transitions.
     /// 4. Difference `transitions` - `disabled_transitions` = `enabled_transitions`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar_core::tuple;
+    ///
+    /// let mut net = PetriNet::new();
+    /// net.add_place("p1", 1);
+    /// net.add_transition("t1");
+    /// net.add_input_arc("p1", "t1", 1);
+    ///
+    /// let enabled = net.enabled_transitions();
+    /// assert_eq!(enabled.cardinality(), 1);
+    /// assert!(enabled.contains(&tuple! { transition_id: "t1".to_string() }));
+    /// ```
     pub fn enabled_transitions(&self) -> Relation {
         // Find requirements
         let requirements = self.input_arcs.join(&self.places).unwrap();
@@ -107,6 +191,26 @@ impl PetriNet {
 
     /// Fires a transition by its ID, updating the token counts in `places`.
     /// Returns true if it successfully fired, false if it wasn't enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar_core::tuple;
+    ///
+    /// let mut net = PetriNet::new();
+    /// net.add_place("p1", 1);
+    /// net.add_place("p2", 0);
+    /// net.add_transition("t1");
+    /// net.add_input_arc("p1", "t1", 1);
+    /// net.add_output_arc("t1", "p2", 1);
+    ///
+    /// // Fire successfully
+    /// assert!(net.fire("t1"));
+    ///
+    /// // Try to fire again (now p1 has 0 tokens, so t1 is not enabled)
+    /// assert!(!net.fire("t1"));
+    /// ```
     pub fn fire(&mut self, transition_id: &str) -> bool {
         // 1. Check if it's enabled
         let enabled = self.enabled_transitions();
