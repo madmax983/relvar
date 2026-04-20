@@ -98,3 +98,7 @@
 **Concept:** Implemented a Petri Net simulator purely using relational algebra (`PetriNet`). `places`, `transitions`, `input_arcs`, and `output_arcs` are modeled as relations. Enabled transitions are discovered via chained relation joins and restrictions. Firing computes token deltas via relational unions and aggregation, ensuring completely declarative state evolution.
 **Fate:** Merged
 **Lesson:** Relational algebra is a perfect match for token-based state machines! By using set differences and aggregations, we can elegantly find satisfied network flows and update distributed state concurrently without procedural traversal algorithms.
+## Cellular Automata
+**Concept:** Modeled Conway's Game of Life purely using relational algebra (Cross Join, Extend, Summarize, Difference, Union). The infinite grid is represented sparsely as a relation of alive cells' coordinates.
+**Fate:** Merged
+**Lesson:** Relational algebra gracefully handles cellular automata by turning neighbor counting into cross joins and aggregations, and rule evaluation into set operations like restrictions and differences.
