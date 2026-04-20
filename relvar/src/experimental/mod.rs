@@ -27,6 +27,7 @@
 //! - **[`kmeans`](crate::experimental::kmeans)**: Relational K-Means Clustering.
 //! - **[`vm`](crate::experimental::vm)**: Relational Virtual Machine.
 //! - **[`markov`](crate::experimental::markov)**: Relational Markov Chain.
+//! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
 
 pub mod automata;
 pub mod automl;
@@ -47,6 +48,8 @@ pub mod neural_network;
 pub mod genetic_algorithm;
 pub mod markov;
 pub mod parser;
+/// Relational Petri Net Simulator.
+pub mod petri_net;
 pub mod physics;
 pub mod pivot;
 pub mod raytracer;
