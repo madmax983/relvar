@@ -587,3 +587,7 @@ Build it right, make it fast, keep it simple.
 ## 2024-05-30 - Extract God Function in Timeseries Moving Average
 **Learning:** `relvar/src/experimental/timeseries.rs` contained a "God Function" `moving_average` (113 lines) which combined preparing the previous relation with renaming, executing a window theta-join, and grouping and summarizing. This mix made it difficult to follow the distinct relational operations.
 **Action:** Applied the "Three-Phase Operator" pattern by extracting `generate_non_colliding_suffix`, `prepare_previous_relation`, `perform_window_theta_join`, and `summarize_moving_average` into separate helper functions to improve clarity without changing logic.
+
+## 2026-04-20 - Refactored next_generation God Function in Genetic Algorithm
+**Learning:** The `next_generation` function in `relvar/src/experimental/genetic_algorithm.rs` was a classic God Function (146 lines) that conflated fitness evaluation, rank-based parent selection, and deterministic crossover reproduction into one continuous block. This violated the 'Three-Phase Operator' pattern and made the relational operations difficult to follow.
+**Action:** Extracted the logic into three cleanly typed private helper functions: `evaluate_fitness`, `select_parents`, and `reproduce`. Returning intermediate relations cleanly via `Result<(Relation, i64), DatabaseError>` flattens the main method and significantly increases code readability without sacrificing logic or safety.
