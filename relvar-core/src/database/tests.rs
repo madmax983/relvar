@@ -1134,3 +1134,31 @@ fn test_define_virtual_relvar_already_exists() {
         Err(DatabaseError::RelationAlreadyExists(_))
     ));
 }
+
+#[test]
+fn test_get_foreign_key_constraints() {
+    use crate::constraints::{ForeignKey, ForeignKeyConstraints};
+
+    let mut db = setup_parent_child_db();
+
+    // Verify initially None
+    assert!(db.get_foreign_key_constraints("CHILD").is_none());
+
+    // Add foreign key constraint
+    let fk = ForeignKey::new(
+        vec!["parent_id".to_string()],
+        "PARENT".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let fk_constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("CHILD", fk_constraints)
+        .unwrap();
+
+    // Verify constraint can be retrieved
+    let retrieved = db.get_foreign_key_constraints("CHILD");
+    assert!(retrieved.is_some());
+    let constraints = retrieved.unwrap();
+    assert_eq!(constraints.foreign_keys().len(), 1);
+    assert_eq!(constraints.foreign_keys()[0].referenced_relation_name(), "PARENT");
+}
