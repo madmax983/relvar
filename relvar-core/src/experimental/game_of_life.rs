@@ -8,6 +8,32 @@ use std::collections::HashMap;
 /// The grid is infinite, represented sparsely by the coordinates of alive cells.
 ///
 /// `alive_cells` must be a relation with exactly two attributes: `x` (Int) and `y` (Int).
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::experimental::game_of_life::next_generation;
+/// use relvar_core::types::{RelationType, ScalarType, TupleType};
+/// use relvar_core::values::{Relation, Tuple};
+/// use relvar_core::tuple;
+///
+/// // 1. Create a heading for our coordinate relation
+/// let heading = TupleType::new()
+///     .with_attribute("x", ScalarType::Int)
+///     .with_attribute("y", ScalarType::Int);
+///
+/// // 2. Create the initial relation representing a horizontal "Blinker"
+/// let mut blinker_h = Relation::new(RelationType::new(heading));
+/// blinker_h.insert(tuple!{x: 0i64, y: 0i64}).unwrap();
+/// blinker_h.insert(tuple!{x: 1i64, y: 0i64}).unwrap();
+/// blinker_h.insert(tuple!{x: 2i64, y: 0i64}).unwrap();
+///
+/// // 3. Compute the next generation purely via relational algebra
+/// let blinker_v = next_generation(&blinker_h).unwrap();
+///
+/// // The blinker has oscillated to a vertical position
+/// assert_eq!(blinker_v.cardinality(), 3);
+/// ```
 pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error::DatabaseError> {
     // 1. Offsets
     let off_heading = TupleType::new()
