@@ -8,3 +8,6 @@
 ## 2025-04-18 - Missing Error Examples
 **Confusion:** The core error enums, such as `DatabaseError`, lacked executable doctests, making it unclear how to match against and properly format the various errors thrown by the relational engine.
 **Clarification:** Added an executable `/// # Examples` block to `DatabaseError` to clearly demonstrate matching variants and formatting the errors to strings.
+## 2025-05-16 - The "PetriNet" Examples
+**Confusion:** The experimental `PetriNet` module had no executable doc-tests for the main struct or its methods (`new`, `add_place`, `add_transition`, `add_input_arc`, `add_output_arc`, `enabled_transitions`, and `fire`). This lack of examples made it confusing to understand how to initialize the Petri Net, configure places and transitions, or execute simulation steps (firing transitions).
+**Clarification:** Added executable `/// # Examples` doc-tests for `PetriNet` and all its methods, demonstrating how to construct a simple Petri Net and how transitions consume/produce tokens dynamically.
