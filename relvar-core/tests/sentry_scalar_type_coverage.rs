@@ -288,15 +288,22 @@ fn test_ord_relation_match_same_degree() {
 
 #[test]
 fn test_try_from_unchecked_depth_limit() {
-    // Generate a deep JSON structure manually
-    let mut json = r#"{"UserDefined":{"name":"End","representation":"Int"}}"#.to_string();
-    for i in 0..64 {
+    // Generate a deep JSON structure manually.
+    // serde_json 1.0.x has a recursion limit. So we use deep enough that hits it or our limit.
+    let mut json = r#"{"UserDefined":{"name":"End","representation":"Int"}}"#.to_string(); // depth 2
+    for i in 0..63 {
         json = format!(
             r#"{{"UserDefined":{{"name":"Layer{}","representation":{}}}}}"#,
             i, json
         );
     }
 
+    // Use deserializer without recursion limits if possible (in older versions, we parse as deep as allowed)
     let result: Result<ScalarType, _> = serde_json::from_str(&json);
+
     assert!(result.is_err());
+    let err_str = result.err().unwrap().to_string();
+    assert!(
+        err_str.contains("Type nesting too deep") || err_str.contains("recursion limit exceeded")
+    );
 }
