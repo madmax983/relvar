@@ -1134,3 +1134,37 @@ fn test_define_virtual_relvar_already_exists() {
         Err(DatabaseError::RelationAlreadyExists(_))
     ));
 }
+
+#[test]
+fn test_list_relvars() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+    // Initially empty
+    assert!(db.list_relvars().is_empty());
+
+    let rel_type = test_rel_type();
+
+    // Add base relvars
+    db.create_relvar("TABLE_A", rel_type.clone()).unwrap();
+    db.create_relvar("TABLE_B", rel_type.clone()).unwrap();
+
+    let mut relvars = db.list_relvars();
+    relvars.sort();
+    assert_eq!(relvars, vec!["TABLE_A", "TABLE_B"]);
+
+    // Add virtual relvar
+    db.define_virtual_relvar("VIEW_C", rel_type.clone(), |_| {
+        Ok(Relation::new(test_rel_type()))
+    })
+    .unwrap();
+
+    let mut relvars2 = db.list_relvars();
+    relvars2.sort();
+    assert_eq!(relvars2, vec!["TABLE_A", "TABLE_B", "VIEW_C"]);
+
+    // Drop one
+    db.drop_relvar("TABLE_A").unwrap();
+    let mut relvars3 = db.list_relvars();
+    relvars3.sort();
+    assert_eq!(relvars3, vec!["TABLE_B", "VIEW_C"]);
+}

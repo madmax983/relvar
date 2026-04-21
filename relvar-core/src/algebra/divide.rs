@@ -508,3 +508,91 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod tests_additional {
+    use super::*;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+
+    #[test]
+    fn test_divide_error_missing_attribute_internal() {
+        let dividend_heading = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+        let dividend = Relation::new(RelationType::new(dividend_heading));
+
+        let divisor_heading = TupleType::new().with_attribute("c", ScalarType::Int);
+        let divisor = Relation::new(RelationType::new(divisor_heading));
+
+        assert!(matches!(
+            dividend.divide(&divisor),
+            Err(DivideError::MissingAttribute(attr)) if attr == "c"
+        ));
+    }
+
+    #[test]
+    fn test_divide_error_type_mismatch_internal() {
+        let dividend_heading = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+        let dividend = Relation::new(RelationType::new(dividend_heading));
+
+        let divisor_heading = TupleType::new().with_attribute("b", ScalarType::String);
+        let divisor = Relation::new(RelationType::new(divisor_heading));
+
+        assert!(matches!(
+            dividend.divide(&divisor),
+            Err(DivideError::TypeMismatch(attr)) if attr == "b"
+        ));
+    }
+
+    #[test]
+    fn test_divide_error_empty_remainder_internal() {
+        let dividend_heading = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+        let dividend = Relation::new(RelationType::new(dividend_heading));
+
+        let divisor_heading = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+        let divisor = Relation::new(RelationType::new(divisor_heading));
+
+        assert!(matches!(
+            dividend.divide(&divisor),
+            Err(DivideError::EmptyRemainder)
+        ));
+    }
+
+    #[test]
+    fn test_divide_empty_dividend_internal() {
+        let dividend_heading = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+        let dividend = Relation::new(RelationType::new(dividend_heading));
+
+        let divisor_heading = TupleType::new().with_attribute("b", ScalarType::Int);
+        let mut divisor = Relation::new(RelationType::new(divisor_heading));
+        divisor.insert(tuple! {b: 1i64}).unwrap();
+
+        let result = dividend.divide(&divisor).unwrap();
+        assert_eq!(result.cardinality(), 0);
+    }
+
+    #[test]
+    fn test_divide_empty_divisor_internal() {
+        let dividend_heading = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+        let mut dividend = Relation::new(RelationType::new(dividend_heading));
+        dividend.insert(tuple! {a: 1i64, b: 2i64}).unwrap();
+        dividend.insert(tuple! {a: 2i64, b: 3i64}).unwrap();
+
+        let divisor_heading = TupleType::new().with_attribute("b", ScalarType::Int);
+        let divisor = Relation::new(RelationType::new(divisor_heading));
+
+        let result = dividend.divide(&divisor).unwrap();
+        assert_eq!(result.cardinality(), 2);
+    }
+}

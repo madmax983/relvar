@@ -105,3 +105,6 @@
 ## 2024-04-18 - Missing Delta tests
 **Learning:** `relvar-core/src/algebra/delta.rs` and `relvar-core/src/algebra/divide.rs` have several edge cases untested. `divide.rs` coverage is low.
 **Action:** Write thorough tests for both to ensure robust edge case handling in `relvar-core`.
+## 2024-04-18 - Missing Delta & Divide tests (Continued)
+**Learning:** `relvar-core/src/algebra/delta.rs` error paths and `relvar-core/src/algebra/divide.rs` were lacking test coverage for type mismatch and structural integrity edge cases.
+**Action:** Implemented thorough inner-module tests for both `delta.rs` and `divide.rs` error paths to ensure proper validation checks hit `DatabaseError::AlgebraError` and `DivideError` correctly.
