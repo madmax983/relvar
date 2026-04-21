@@ -72,6 +72,14 @@ impl GeneticAlgorithm {
         }
 
         // 1. Evaluate fitness
+        let (evaluated, max_f) = self.evaluate_fitness()?;
+        let parents = self.select_parents(&evaluated, elite_count)?;
+        let next_pop = self.reproduce(&parents)?;
+
+        Ok((next_pop, max_f))
+    }
+
+    fn evaluate_fitness(&self) -> Result<(Relation, i64), DatabaseError> {
         // fitness = -abs((gene_a + gene_b) - target_sum)
         let target = self.target_sum;
         let evaluated = self
@@ -99,7 +107,15 @@ impl GeneticAlgorithm {
             .get_typed::<i64>("max_f")
             .unwrap();
 
-        // 2. Selection: Top N using pure relational rank
+        Ok((evaluated, max_f))
+    }
+
+    fn select_parents(
+        &self,
+        evaluated: &Relation,
+        elite_count: usize,
+    ) -> Result<Relation, DatabaseError> {
+        // Selection: Top N using pure relational rank
         // We join `evaluated` with itself on `fitness < other_fitness` to count how many are better.
         let eval_p1 = evaluated.rename(&[
             ("id", "id1"),
@@ -152,7 +168,11 @@ impl GeneticAlgorithm {
             .join(&selected_ids)?
             .project(&["id", "gene_a", "gene_b"]);
 
-        // 3. Reproduction
+        Ok(parents)
+    }
+
+    fn reproduce(&self, parents: &Relation) -> Result<Relation, DatabaseError> {
+        // Reproduction
         // Cross join parents to create pairs
         let p1 = parents.rename(&[("id", "id1"), ("gene_a", "a1"), ("gene_b", "b1")]);
         let p2 = parents.rename(&[("id", "id2"), ("gene_a", "a2"), ("gene_b", "b2")]);
@@ -210,7 +230,7 @@ impl GeneticAlgorithm {
             .union(&offspring)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        Ok((next_pop, max_f))
+        Ok(next_pop)
     }
 }
 
