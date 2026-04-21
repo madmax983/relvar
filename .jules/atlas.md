@@ -12,3 +12,6 @@
 ## 2024-05-18 - Extraction of Massive Files
 **Tangle:** `relvar-storage/src/storage/heap.rs` and `relvar-storage/src/persistent_engine.rs` had become huge 'God Files' containing the struct definition, vast blocks of implementation code, and several thousand lines of inline tests each.
 **Blueprint:** Used the `#[cfg(test)] mod tests;` idiom to safely extract tests into separate files within module directories (`storage/heap/tests.rs` and `persistent_engine/tests.rs`), significantly reducing the size of the implementation source files without changing semantics.
+## 2024-05-19 - Sub-modularizing the Tests Blob
+**Tangle:** The `relvar-storage/src/storage/heap/tests.rs` file had grown back into a 3,000+ line Blob despite being extracted from the main source file, making it extremely difficult to navigate and maintain.
+**Blueprint:** Removed the `tests.rs` monolith and replaced it with a `tests/` directory structure containing specialized sub-modules (e.g., `insert.rs`, `scan.rs`, `update.rs`, `delete.rs`, `gc.rs`, `corruption.rs`, and `version.rs`) along with a `common.rs` file for shared helpers. This restores high cohesion to the testing structure.
