@@ -591,3 +591,6 @@ Build it right, make it fast, keep it simple.
 ## 2026-04-20 - Refactored next_generation God Function in Genetic Algorithm
 **Learning:** The `next_generation` function in `relvar/src/experimental/genetic_algorithm.rs` was a classic God Function (146 lines) that conflated fitness evaluation, rank-based parent selection, and deterministic crossover reproduction into one continuous block. This violated the 'Three-Phase Operator' pattern and made the relational operations difficult to follow.
 **Action:** Extracted the logic into three cleanly typed private helper functions: `evaluate_fitness`, `select_parents`, and `reproduce`. Returning intermediate relations cleanly via `Result<(Relation, i64), DatabaseError>` flattens the main method and significantly increases code readability without sacrificing logic or safety.
+## 2026-05-18 - Refactor God Function in Sudoku
+**Learning:** The Sudoku solver's main function was an overly long "God Function" that grouped multiple relational logic phases together: possibility generation, constraint filtering via joins, and finding determined values.
+**Action:** Applied the 'Three-Phase Operator' pattern, breaking out possibility calculation, invalid combinations removal, and determining valid cell outcomes into focused, descriptive helper functions.
