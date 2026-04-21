@@ -40,11 +40,14 @@ where
     let expected_type = relation_type.tuple_type().clone();
     let initial_cardinality = current_relation.cardinality();
 
-    let (tuples, update_count) = current_relation.into_iter().try_fold(
-        (Vec::with_capacity(initial_cardinality), 0),
+    let (body, update_count) = current_relation.into_iter().try_fold(
+        (
+            std::collections::HashSet::with_capacity(initial_cardinality),
+            0,
+        ),
         |(mut acc, count), tuple| {
             if !predicate(&tuple) {
-                acc.push(tuple);
+                acc.insert(tuple);
                 return Ok((acc, count));
             }
 
@@ -54,15 +57,15 @@ where
                 return Err(DatabaseError::TupleMismatch);
             }
 
-            acc.push(updated_tuple);
+            acc.insert(updated_tuple);
             Ok((acc, count + 1))
         },
     )?;
 
     // Optimization: The updated tuples are already validated via `conforms_to`
-    // inside the `try_fold` loop. We can safely use `from_tuples_unchecked`
-    // to build the new relation, avoiding a second O(N*M) validation pass.
-    let new_relation = Relation::from_tuples_unchecked(relation_type, tuples);
+    // inside the `try_fold` loop. By accumulating directly into a `HashSet`,
+    // we eliminate an intermediate `Vec` allocation entirely.
+    let new_relation = Relation::from_body_unchecked(relation_type, body);
 
     Ok((new_relation, update_count))
 }

@@ -20,6 +20,9 @@
 ## 2025-02-12 - [Difference Allocation Removal]
 **Learning:** We can eliminate unnecessary `Vec` allocations during set difference by mapping `.filter().cloned()` over an iterator directly into `Relation::from_tuples_unchecked`. This mirrors existing optimizations in `intersect` and `semijoin` while still being entirely safe and removing one intermediate heap allocation per operation. However, passing an unbounded or `.filter()` chained iterator causes internal `HashSet` reallocations unless handled cautiously, but it's typically better than double allocating (both a Vec and then a HashSet) when cardinalities are small or moderate.
 **Action:** Always scrutinize intermediate `Vec` collections. Use `replace_with_git_merge_diff` to convert intermediate vectors populated by `push()` within `for` loops into iterator pipelines directly feeding collection constructors.
+## 2026-05-19 - [Tuple Collection Vec Allocation Removal]
+**Learning:** When applying filters or mapping operations that yield a subset of tuples (e.g. `compute_relation_after_update`), accumulating elements into an intermediate `Vec` (even one pre-allocated with the original relation's maximum cardinality) creates an unnecessary heap allocation chain and over-allocates memory for highly selective queries.
+**Action:** Remove intermediate `Vec` accumulations. Instead, accumulate directly into a `HashSet` and use `Relation::from_body_unchecked(relation_type, body)` to construct the new relation.
 ## 2024-04-20 - Summarize string allocation optimization
 **Learning:** In relational algebra processing, computing summarizations grouping by attributes was slow because string `.clone()` or `.to_string()` were inside the nested inner loop, processing per group.
 **Action:** Pre-calculate `group_by_strings: Vec<String>` and `agg_names: Vec<String>` outside the inner loop to clone pre-computed strings instead of computing formatting allocations again.
