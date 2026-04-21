@@ -26,3 +26,6 @@
 ## 2024-04-20 - Summarize string allocation optimization
 **Learning:** In relational algebra processing, computing summarizations grouping by attributes was slow because string `.clone()` or `.to_string()` were inside the nested inner loop, processing per group.
 **Action:** Pre-calculate `group_by_strings: Vec<String>` and `agg_names: Vec<String>` outside the inner loop to clone pre-computed strings instead of computing formatting allocations again.
+## 2026-05-20 - [Join Operators Allocation Removal]
+**Learning:** In relational algebra processing operations like `join` and `theta_join`, combining tuples and collecting them into an intermediate `Vec` before passing them to `Relation::from_tuples_unchecked` results in redundant heap allocations and iteration overhead (as `from_tuples_unchecked` itself iterates the collection and performs `.insert()` into a `HashSet`).
+**Action:** When a method processes and returns a new set of valid tuples, accumulate them directly into a pre-allocated `HashSet` (`HashSet::with_capacity()`) and use `Relation::from_body_unchecked()` to construct the final relation structure immediately, thereby bypassing the intermediate `Vec` allocation entirely.
