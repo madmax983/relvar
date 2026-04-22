@@ -1,3 +1,8 @@
+//! General utility functions and common structures.
+//!
+//! This module contains helper components that do not inherently belong to relational
+//! logic but are used across the codebase, such as memory bounds checking or recursion limits.
+
 //! Bounded Recursion Safety.
 //!
 //! This module provides a simple `DepthGuarded` wrapper to enforce maximum recursion
@@ -75,7 +80,7 @@ impl Drop for RecursionGuard {
 
 /// A custom deserialization function that encapsulates the recursion guard logic.
 ///
-/// It should be used with `#[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]`
+/// It should be used with `#[serde(deserialize_with = "crate::utils::deserialize_guarded")]`
 /// to enforce recursion limits during Serde deserialization without wrapping types in custom guard structs.
 /// # Examples
 ///
