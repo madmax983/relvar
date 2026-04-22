@@ -48,6 +48,7 @@ pub mod mock;
 pub mod neural_network;
 
 pub mod genetic_algorithm;
+pub mod graph_neural_network;
 pub mod markov;
 pub mod parser;
 /// Relational Petri Net Simulator.
