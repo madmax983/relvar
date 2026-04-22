@@ -103,6 +103,83 @@ impl SudokuSolver {
         Ok(Self { cells, domain })
     }
 
+    fn compute_all_possibilities(&self) -> Result<Relation, DatabaseError> {
+        self.cells
+            .join(&self.domain)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
+
+    fn compute_invalid_possibilities(
+        &self,
+        all_possibilities: &Relation,
+        known: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        // Extract the used values in each row, col, and box from the known cells
+        // First, extend known with box_id by joining with cells
+        let known_with_box = known
+            .join(&self.cells)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        // To find invalid possibilities, we need to join possibilities with known cells
+        // on the constraints: same row, same col, or same box.
+
+        // 1. Invalid due to same row:
+        // rename known(col -> k_col, box_id -> k_box) to avoid collision, join on row, val
+        let mappings = vec![("col", "k_col"), ("box_id", "k_box")];
+        let known_row = known_with_box.rename(&mappings);
+        let invalid_row = all_possibilities
+            .join(&known_row)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        let invalid_row_proj = invalid_row.project(&["row", "col", "box_id", "val"]);
+
+        // 2. Invalid due to same col:
+        // rename known(row -> k_row, box_id -> k_box) to avoid collision, join on col, val
+        let mappings = vec![("row", "k_row"), ("box_id", "k_box")];
+        let known_col = known_with_box.rename(&mappings);
+        let invalid_col = all_possibilities
+            .join(&known_col)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        let invalid_col_proj = invalid_col.project(&["row", "col", "box_id", "val"]);
+
+        // 3. Invalid due to same box:
+        // rename known(row -> k_row, col -> k_col) to avoid collision, join on box_id, val
+        let mappings = vec![("row", "k_row"), ("col", "k_col")];
+        let known_box = known_with_box.rename(&mappings);
+        let invalid_box = all_possibilities
+            .join(&known_box)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        let invalid_box_proj = invalid_box.project(&["row", "col", "box_id", "val"]);
+
+        // Combine all invalid possibilities
+        let all_invalid1 = invalid_row_proj
+            .union(&invalid_col_proj)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        let all_invalid = all_invalid1
+            .union(&invalid_box_proj)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        Ok(all_invalid)
+    }
+
+    fn find_determined_cells(
+        &self,
+        unknown_possibilities: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        // Group by row, col and count possibilities
+        let counts = unknown_possibilities
+            .summarize(
+                &["row", "col", "box_id"],
+                &[Aggregation::count("num_possibilities")],
+            )
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        // Restrict to those with exactly 1 possibility
+        let determined_cells =
+            counts.restrict(|t| matches!(t.get("num_possibilities"), Some(ScalarValue::Int(1))));
+
+        Ok(determined_cells)
+    }
+
     /// Solves the puzzle given the relation of known values.
     /// The givens relation must have attributes `(row: Int, col: Int, val: Int)`.
     /// # Examples
@@ -117,54 +194,9 @@ impl SudokuSolver {
             let prev_count = known.cardinality();
 
             // Generate all possible cell-value combinations (81 * 9 = 729 tuples)
-            let all_possibilities = self
-                .cells
-                .join(&self.domain)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            let all_possibilities = self.compute_all_possibilities()?;
 
-            // Extract the used values in each row, col, and box from the known cells
-            // First, extend known with box_id by joining with cells
-            let known_with_box = known
-                .join(&self.cells)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // To find invalid possibilities, we need to join possibilities with known cells
-            // on the constraints: same row, same col, or same box.
-
-            // 1. Invalid due to same row:
-            // rename known(col -> k_col, box_id -> k_box) to avoid collision, join on row, val
-            let mappings = vec![("col", "k_col"), ("box_id", "k_box")];
-            let known_row = known_with_box.rename(&mappings);
-            let invalid_row = all_possibilities
-                .join(&known_row)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-            let invalid_row_proj = invalid_row.project(&["row", "col", "box_id", "val"]);
-
-            // 2. Invalid due to same col:
-            // rename known(row -> k_row, box_id -> k_box) to avoid collision, join on col, val
-            let mappings = vec![("row", "k_row"), ("box_id", "k_box")];
-            let known_col = known_with_box.rename(&mappings);
-            let invalid_col = all_possibilities
-                .join(&known_col)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-            let invalid_col_proj = invalid_col.project(&["row", "col", "box_id", "val"]);
-
-            // 3. Invalid due to same box:
-            // rename known(row -> k_row, col -> k_col) to avoid collision, join on box_id, val
-            let mappings = vec![("row", "k_row"), ("col", "k_col")];
-            let known_box = known_with_box.rename(&mappings);
-            let invalid_box = all_possibilities
-                .join(&known_box)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-            let invalid_box_proj = invalid_box.project(&["row", "col", "box_id", "val"]);
-
-            // Combine all invalid possibilities
-            let all_invalid1 = invalid_row_proj
-                .union(&invalid_col_proj)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-            let all_invalid = all_invalid1
-                .union(&invalid_box_proj)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            let all_invalid = self.compute_invalid_possibilities(&all_possibilities, &known)?;
 
             // Remove invalid possibilities from all possibilities
             let valid_possibilities = all_possibilities
@@ -182,17 +214,7 @@ impl SudokuSolver {
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
             // Now find cells that have exactly 1 valid possibility left
-            // Group by row, col and count possibilities
-            let counts = unknown_possibilities
-                .summarize(
-                    &["row", "col", "box_id"],
-                    &[Aggregation::count("num_possibilities")],
-                )
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // Restrict to those with exactly 1 possibility
-            let determined_cells = counts
-                .restrict(|t| matches!(t.get("num_possibilities"), Some(ScalarValue::Int(1))));
+            let determined_cells = self.find_determined_cells(&unknown_possibilities)?;
 
             // If we found no new determined cells, we are done (or stuck)
             if determined_cells.cardinality() == 0 {
