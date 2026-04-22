@@ -102,3 +102,8 @@
 **Concept:** Modeled Conway's Game of Life purely using relational algebra (Cross Join, Extend, Summarize, Difference, Union). The infinite grid is represented sparsely as a relation of alive cells' coordinates.
 **Fate:** Merged
 **Lesson:** Relational algebra gracefully handles cellular automata by turning neighbor counting into cross joins and aggregations, and rule evaluation into set operations like restrictions and differences.
+
+## Relational Graph Neural Network (GNN)
+**Concept:** Modeled a Graph Neural Network (Message Passing) purely with relational algebra. Edges, Features, and Weights are represented as relations. The message passing algorithm is computed via Joining edges and features, Aggregating neighbor features (Sum), and Joining/Extending with Weights to compute linear transformations.
+**Fate:** TBD
+**Lesson:** TBD

@@ -23,6 +23,7 @@
 //! - **[`vcs`](crate::experimental::vcs)**: Relational Version Control System (RelGit).
 //! - **[`circuit`](crate::experimental::circuit)**: Relational Logic Circuit Simulator.
 //! - **[`automata`](crate::experimental::automata)**: Relational Automata (NFA).
+//! - **[`gnn`](crate::experimental::gnn)**: Relational Graph Neural Network.
 //! - **[`enigma`](crate::experimental::enigma)**: Relational Enigma Machine.
 //! - **[`kmeans`](crate::experimental::kmeans)**: Relational K-Means Clustering.
 //! - **[`vm`](crate::experimental::vm)**: Relational Virtual Machine.
@@ -37,6 +38,7 @@ pub mod circuit;
 pub mod ecs;
 pub mod enigma;
 pub mod expert_system;
+pub mod gnn;
 pub mod graph;
 pub mod image;
 pub mod kmeans;
