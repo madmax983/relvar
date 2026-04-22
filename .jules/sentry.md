@@ -108,3 +108,6 @@
 ## 2024-04-18 - Missing Delta & Divide tests (Continued)
 **Learning:** `relvar-core/src/algebra/delta.rs` error paths and `relvar-core/src/algebra/divide.rs` were lacking test coverage for type mismatch and structural integrity edge cases.
 **Action:** Implemented thorough inner-module tests for both `delta.rs` and `divide.rs` error paths to ensure proper validation checks hit `DatabaseError::AlgebraError` and `DivideError` correctly.
+## 2026-04-16 - Extend and Project Missing Branches
+**Learning:** `extend_into` error conditions (computation type mismatch) and empty iterator scenarios, as well as `project` greater-than ordering matches for lexicographical attributes were uncovered. Group, Union, Intersect `_into` functions were also untested.
+**Action:** Wrote tests targeting `extend_into` specifically mirroring existing `extend` tests, and crafted carefully named attribute headings (`"z"`, `"a"`) for `project` to trigger the required merge-sort iteration states, as well as general testing for `_into` consuming variants and error paths for summaries on empty tables.
