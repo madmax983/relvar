@@ -26,3 +26,7 @@
 ## 2024-04-20 - Summarize string allocation optimization
 **Learning:** In relational algebra processing, computing summarizations grouping by attributes was slow because string `.clone()` or `.to_string()` were inside the nested inner loop, processing per group.
 **Action:** Pre-calculate `group_by_strings: Vec<String>` and `agg_names: Vec<String>` outside the inner loop to clone pre-computed strings instead of computing formatting allocations again.
+
+## 2025-05-19 - Removed unnecessary Vec allocations in Hash Join
+**Learning:** When probing and combining tuples during a hash join or theta join, collecting the resulting tuples into an intermediate `Vec<Tuple>` before calling `Relation::from_tuples_unchecked` results in unnecessary heap allocations. The tuples are subsequently inserted into a `HashSet` internally anyway.
+**Action:** Modified `probe_and_combine` and `compute_theta_join_tuples` to pre-allocate and insert directly into a `std::collections::HashSet<Tuple>`. Passed this `HashSet` to the optimized constructor `Relation::from_body_unchecked()`, entirely skipping the intermediate array allocation while preserving exactly the same guarantees and execution speed.

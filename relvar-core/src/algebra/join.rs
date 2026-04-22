@@ -116,9 +116,9 @@ impl Relation {
         let joined_tuples =
             perform_hash_join(build_rel, probe_rel, &common_attrs, &result_heading_arc)?;
 
-        // Optimization: Pass the iterator directly to `from_tuples_unchecked`.
+        // Optimization: Pass the HashSet directly to `from_body_unchecked`.
         // The joined tuples are guaranteed to conform to the result relation type.
-        Ok(Relation::from_tuples_unchecked(
+        Ok(Relation::from_body_unchecked(
             result_rel_type,
             joined_tuples,
         ))
@@ -255,9 +255,9 @@ impl Relation {
         // Perform theta join
         let joined_tuples = compute_theta_join_tuples(self, other, predicate, &result_heading_arc);
 
-        // Optimization: Pass the iterator directly to `from_tuples_unchecked`.
+        // Optimization: Pass the HashSet directly to `from_body_unchecked`.
         // The joined tuples are guaranteed to conform to the result relation type.
-        Relation::from_tuples_unchecked(result_rel_type, joined_tuples)
+        Relation::from_body_unchecked(result_rel_type, joined_tuples)
     }
 }
 
@@ -311,10 +311,10 @@ fn probe_and_combine_single<'a>(
     build_map: &HashMap<&'a ScalarValue, Vec<&'a Tuple>>,
     attr: &str,
     result_heading: &Arc<TupleType>,
-) -> Result<Vec<Tuple>, DatabaseError> {
+) -> Result<std::collections::HashSet<Tuple>, DatabaseError> {
     // Optimization: Pre-allocate capacity based on the larger relation.
     // This avoids resizing allocations in the hot loop.
-    let mut joined_tuples = Vec::with_capacity(probe_rel.cardinality());
+    let mut joined_tuples = std::collections::HashSet::with_capacity(probe_rel.cardinality());
 
     for probe_tuple in probe_rel.tuples() {
         let val = probe_tuple.get(attr).ok_or_else(|| {
@@ -323,7 +323,7 @@ fn probe_and_combine_single<'a>(
 
         if let Some(matching_tuples) = build_map.get(val) {
             for build_tuple in matching_tuples {
-                joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
+                joined_tuples.insert(combine_tuples(build_tuple, probe_tuple, result_heading)?);
             }
         }
     }
@@ -387,10 +387,10 @@ fn probe_and_combine<'t, 'a>(
     build_map: &HashMap<JoinKey<'t, 'a>, Vec<&'t Tuple>>,
     common_attrs: &'a [String],
     result_heading: &Arc<TupleType>,
-) -> Result<Vec<Tuple>, DatabaseError> {
+) -> Result<std::collections::HashSet<Tuple>, DatabaseError> {
     // Optimization: Pre-allocate capacity based on the larger relation.
     // This avoids resizing allocations in the hot loop.
-    let mut joined_tuples = Vec::with_capacity(probe_rel.cardinality());
+    let mut joined_tuples = std::collections::HashSet::with_capacity(probe_rel.cardinality());
 
     for probe_tuple in probe_rel.tuples() {
         let key = JoinKey {
@@ -400,7 +400,7 @@ fn probe_and_combine<'t, 'a>(
 
         if let Some(matching_tuples) = build_map.get(&key) {
             for build_tuple in matching_tuples {
-                joined_tuples.push(combine_tuples(build_tuple, probe_tuple, result_heading)?);
+                joined_tuples.insert(combine_tuples(build_tuple, probe_tuple, result_heading)?);
             }
         }
     }
@@ -426,7 +426,7 @@ fn perform_hash_join(
     probe_rel: &Relation,
     common_attrs: &[String],
     result_heading: &Arc<TupleType>,
-) -> Result<Vec<Tuple>, DatabaseError> {
+) -> Result<std::collections::HashSet<Tuple>, DatabaseError> {
     if common_attrs.len() == 1 {
         // Optimization for single-attribute joins
         let attr = &common_attrs[0];
@@ -445,14 +445,14 @@ fn compute_theta_join_tuples<F>(
     right: &Relation,
     predicate: F,
     result_heading: &Arc<TupleType>,
-) -> Vec<Tuple>
+) -> std::collections::HashSet<Tuple>
 where
     F: Fn(&Tuple, &Tuple) -> bool,
 {
     // Optimization: Use `std::cmp::max` to pre-allocate an initial capacity
     // to reduce vector re-allocations during the cross product.
     let capacity = std::cmp::max(left.cardinality(), right.cardinality());
-    let mut joined_tuples = Vec::with_capacity(capacity);
+    let mut joined_tuples = std::collections::HashSet::with_capacity(capacity);
 
     for tuple1 in left.tuples() {
         for tuple2 in right.tuples() {
@@ -461,7 +461,7 @@ where
             }
 
             if let Ok(combined_tuple) = combine_tuples(tuple1, tuple2, result_heading) {
-                joined_tuples.push(combined_tuple);
+                joined_tuples.insert(combined_tuple);
             }
         }
     }
