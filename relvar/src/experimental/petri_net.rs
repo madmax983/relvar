@@ -212,26 +212,26 @@ impl PetriNet {
     /// assert!(!net.fire("t1"));
     /// ```
     pub fn fire(&mut self, transition_id: &str) -> bool {
-        // 1. Check if it's enabled
         let enabled = self.enabled_transitions();
         let query_tuple = tuple! { transition_id: transition_id.to_string() };
         if !enabled.contains(&query_tuple) {
             return false;
         }
 
-        // 2. We are firing it. Compute deltas.
-        // We isolate the input arcs and output arcs for just this transition.
         let this_transition_rel =
             Relation::from_tuples(self.transitions.relation_type().clone(), vec![query_tuple])
                 .unwrap();
 
-        let consumed = self.input_arcs.join(&this_transition_rel).unwrap();
-        let produced = self.output_arcs.join(&this_transition_rel).unwrap();
+        let aggregated_deltas = self.compute_aggregated_deltas(&this_transition_rel);
+        self.apply_deltas_to_places(&aggregated_deltas);
 
-        // 3. We want to update `places`. We do this by calculating a new relation
-        // of deltas and joining it with `places`, then replacing `places`.
+        true
+    }
 
-        // First, extend the places with negative deltas for inputs and positive for outputs.
+    fn compute_aggregated_deltas(&self, transition_rel: &Relation) -> Relation {
+        let consumed = self.input_arcs.join(transition_rel).unwrap();
+        let produced = self.output_arcs.join(transition_rel).unwrap();
+
         let consumed_deltas = consumed
             .extend("delta", ScalarType::Int, |t| {
                 let weight = t.get_typed::<i64>("weight").unwrap();
@@ -250,20 +250,13 @@ impl PetriNet {
 
         let all_deltas = consumed_deltas.union(&produced_deltas).unwrap();
 
-        // We could have multiple deltas for a single place (e.g. it is both input and output).
-        // Summarize by place_id, summing the deltas.
-        let aggregated_deltas = all_deltas
+        all_deltas
             .summarize(&["place_id"], &[Aggregation::sum("net_delta", "delta")])
-            .unwrap();
+            .unwrap()
+    }
 
-        // 4. Calculate the new places relation.
-        // We outer-join-like behavior: we want all places, plus net_delta (or 0).
-        // Let's do this by extending places directly. We first rename `net_delta` to make it clean,
-        // but we need an actual left join. Since we don't have left join, we'll iterate.
-        // We'll join `places` and `aggregated_deltas` to get modified places,
-        // and take the anti-join for unmodified places.
-
-        let joined = self.places.join(&aggregated_deltas).unwrap();
+    fn apply_deltas_to_places(&mut self, aggregated_deltas: &Relation) {
+        let joined = self.places.join(aggregated_deltas).unwrap();
         let modified_places = joined
             .extend("new_tokens", ScalarType::Int, |t| {
                 let tokens = t.get_typed::<i64>("tokens").unwrap();
@@ -274,13 +267,10 @@ impl PetriNet {
             .project(&["place_id", "new_tokens"])
             .rename(&[("new_tokens", "tokens")]);
 
-        // Unmodified places
         let modified_place_ids = modified_places.project(&["place_id"]);
         let unmodified_places = self.places.semidifference(&modified_place_ids);
 
         self.places = modified_places.union(&unmodified_places).unwrap();
-
-        true
     }
 }
 
