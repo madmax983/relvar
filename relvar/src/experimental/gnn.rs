@@ -28,17 +28,61 @@ use relvar_core::{
 };
 
 /// A Relational Graph Neural Network.
+///
+/// The `GraphNeuralNetwork` structurally organizes message passing over a graph modeled as standard relations.
+/// It operates purely via relational algebra combinations: joins, summaries, and extends.
+///
 /// # Examples
 ///
 /// ```
-/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
 /// use relvar::experimental::gnn::GraphNeuralNetwork;
-/// // Note: This is a placeholder example
+///
+/// // 1. Features: Node 1 has a value of 1.0, Node 3 has a value of 2.0.
+/// let mut features = Relation::new(RelationType::new(
+///     TupleType::new()
+///         .with_attribute("node_id", ScalarType::Int)
+///         .with_attribute("in_idx", ScalarType::Int)
+///         .with_attribute("value", ScalarType::Float)
+/// ));
+/// features.insert(tuple! { node_id: 1i64, in_idx: 0i64, value: 1.0 }).unwrap();
+/// features.insert(tuple! { node_id: 3i64, in_idx: 0i64, value: 2.0 }).unwrap();
+///
+/// // 2. Edges: Both Node 1 and Node 3 point to Node 2.
+/// let mut edges = Relation::new(RelationType::new(
+///     TupleType::new()
+///         .with_attribute("src", ScalarType::Int)
+///         .with_attribute("dst", ScalarType::Int)
+/// ));
+/// edges.insert(tuple! { src: 1i64, dst: 2i64 }).unwrap();
+/// edges.insert(tuple! { src: 3i64, dst: 2i64 }).unwrap();
+///
+/// // 3. Weights: Transformation weight from in_idx 0 to out_idx 0 is 0.5.
+/// let mut weights = Relation::new(RelationType::new(
+///     TupleType::new()
+///         .with_attribute("in_idx", ScalarType::Int)
+///         .with_attribute("out_idx", ScalarType::Int)
+///         .with_attribute("weight", ScalarType::Float)
+/// ));
+/// weights.insert(tuple! { in_idx: 0i64, out_idx: 0i64, weight: 0.5 }).unwrap();
+///
+/// // Perform the forward pass.
+/// let output = GraphNeuralNetwork::forward(&features, &edges, &weights).unwrap();
+///
+/// // Node 2 receives aggregated sum (1.0 + 2.0) = 3.0.
+/// // Applied weight (3.0 * 0.5) = 1.5.
+/// assert_eq!(output.cardinality(), 1);
+/// assert!(output.contains(&tuple! { node_id: 2i64, in_idx: 0i64, value: 1.5 }));
 /// ```
 pub struct GraphNeuralNetwork;
 
 impl GraphNeuralNetwork {
     /// Computes a single forward pass of the GNN.
+    ///
+    /// This applies a relational interpretation of Message Passing:
+    /// 1. Joins the feature vectors with edge relationships.
+    /// 2. Summarizes the values across incoming edges (aggregation).
+    /// 3. Computes the linear transformation using a join with layer weights.
     ///
     /// # Arguments
     /// * `features` - Relation with schema `(node_id: Int, in_idx: Int, value: Float)`
@@ -48,6 +92,32 @@ impl GraphNeuralNetwork {
     /// # Returns
     /// * A new Relation with schema `(node_id: Int, in_idx: Int, value: Float)` representing
     ///   the computed output features.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
+    /// use relvar::experimental::gnn::GraphNeuralNetwork;
+    ///
+    /// // Minimal example for a single node passing a value along an edge.
+    /// let mut features = Relation::new(RelationType::new(TupleType::new()
+    ///     .with_attribute("node_id", ScalarType::Int).with_attribute("in_idx", ScalarType::Int).with_attribute("value", ScalarType::Float)));
+    /// features.insert(tuple! { node_id: 10i64, in_idx: 0i64, value: 5.0 }).unwrap();
+    ///
+    /// let mut edges = Relation::new(RelationType::new(TupleType::new()
+    ///     .with_attribute("src", ScalarType::Int).with_attribute("dst", ScalarType::Int)));
+    /// edges.insert(tuple! { src: 10i64, dst: 20i64 }).unwrap();
+    ///
+    /// let mut weights = Relation::new(RelationType::new(TupleType::new()
+    ///     .with_attribute("in_idx", ScalarType::Int).with_attribute("out_idx", ScalarType::Int).with_attribute("weight", ScalarType::Float)));
+    /// weights.insert(tuple! { in_idx: 0i64, out_idx: 0i64, weight: 2.0 }).unwrap();
+    ///
+    /// // Compute the forward step.
+    /// let output = GraphNeuralNetwork::forward(&features, &edges, &weights).unwrap();
+    ///
+    /// // Node 20 aggregated value 5.0 * weight 2.0 = 10.0
+    /// assert!(output.contains(&tuple! { node_id: 20i64, in_idx: 0i64, value: 10.0 }));
+    /// ```
     pub fn forward(
         features: &Relation,
         edges: &Relation,
