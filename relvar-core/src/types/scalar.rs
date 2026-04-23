@@ -401,25 +401,19 @@ impl ScalarType {
         b: &crate::types::RelationType,
     ) -> std::cmp::Ordering {
         use std::cmp::Ordering;
-        let a_attrs: Vec<_> = a
-            .heading()
-            .attribute_names()
-            .map(|n| (n, a.heading().get_attribute_type(n).unwrap()))
-            .collect();
-        let b_attrs: Vec<_> = b
-            .heading()
-            .attribute_names()
-            .map(|n| (n, b.heading().get_attribute_type(n).unwrap()))
-            .collect();
 
-        match a_attrs.len().cmp(&b_attrs.len()) {
+        let a_heading = a.heading();
+        let b_heading = b.heading();
+
+        match a_heading.degree().cmp(&b_heading.degree()) {
             Ordering::Equal => {
-                let mut a_sorted = a_attrs;
-                let mut b_sorted = b_attrs;
-                a_sorted.sort_by_key(|(name, _)| *name);
-                b_sorted.sort_by_key(|(name, _)| *name);
-
-                for ((a_name, a_ty), (b_name, b_ty)) in a_sorted.iter().zip(b_sorted.iter()) {
+                // Since `TupleType::attributes()` returns a BTreeMap, we can iterate
+                // over attributes directly in sorted order without allocating a Vec or sorting.
+                for ((a_name, a_ty), (b_name, b_ty)) in a_heading
+                    .attributes()
+                    .iter()
+                    .zip(b_heading.attributes().iter())
+                {
                     match a_name.cmp(b_name) {
                         Ordering::Equal => match a_ty.cmp(b_ty) {
                             Ordering::Equal => continue,
