@@ -107,3 +107,7 @@
 **Concept:** Modeled a Graph Neural Network (Message Passing) purely with relational algebra. Edges, Features, and Weights are represented as relations. The message passing algorithm is computed via Joining edges and features, Aggregating neighbor features (Sum), and Joining/Extending with Weights to compute linear transformations.
 **Fate:** TBD
 **Lesson:** TBD
+## Relational Graph Neural Network (GNN)
+**Concept:** Modeled a Graph Neural Network (Message Passing) purely with relational algebra. Edges, Features, and Weights are represented as relations. The message passing algorithm is computed via Joining edges and features, Aggregating neighbor features (Sum), and Joining/Extending with Weights to compute linear transformations.
+**Fate:** Merged
+**Lesson:** Relational joins act as sparse matrix multiplications. Message passing algorithms gracefully compile down into relational joins followed by aggregate functions, turning a database engine into a capable inference engine for graph data!
