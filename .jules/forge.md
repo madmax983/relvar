@@ -594,3 +594,6 @@ Build it right, make it fast, keep it simple.
 ## 2026-05-18 - Refactor God Function in Sudoku
 **Learning:** The Sudoku solver's main function was an overly long "God Function" that grouped multiple relational logic phases together: possibility generation, constraint filtering via joins, and finding determined values.
 **Action:** Applied the 'Three-Phase Operator' pattern, breaking out possibility calculation, invalid combinations removal, and determining valid cell outcomes into focused, descriptive helper functions.
+## 2023-10-24 - Extract Fire Steps in PetriNet
+**Learning:** The `fire` method in `PetriNet` is an overly long 'God Function' (71 lines) that mixes multiple distinct relational operations—checking enablement, calculating deltas for consumed/produced tokens, calculating net deltas, and updating places—into one massive block.
+**Action:** Refactor `fire` using the 'Three-Phase Operator' pattern (or similar). Extract the logic into cleanly named private helper functions (e.g., `compute_deltas`, `update_places`) to flatten the execution flow and improve readability.
