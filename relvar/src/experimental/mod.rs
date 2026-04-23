@@ -47,6 +47,7 @@ pub mod matrix;
 pub mod mock;
 pub mod neural_network;
 
+pub mod dom;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;
 pub mod markov;
