@@ -39,7 +39,8 @@ impl RelationalDom {
     /// then projecting the `node_id`.
     pub fn query_class(&self, class_name: &str) -> Result<Relation, DatabaseError> {
         let class_name_str = class_name.to_string();
-        let res = self.attributes
+        let res = self
+            .attributes
             .restrict(move |t| {
                 let name = t.get_typed::<String>("attr_name").unwrap();
                 let val = t.get_typed::<String>("attr_value").unwrap();
