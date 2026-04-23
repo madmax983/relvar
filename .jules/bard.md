@@ -11,3 +11,6 @@
 ## 2025-05-16 - The "PetriNet" Examples
 **Confusion:** The experimental `PetriNet` module had no executable doc-tests for the main struct or its methods (`new`, `add_place`, `add_transition`, `add_input_arc`, `add_output_arc`, `enabled_transitions`, and `fire`). This lack of examples made it confusing to understand how to initialize the Petri Net, configure places and transitions, or execute simulation steps (firing transitions).
 **Clarification:** Added executable `/// # Examples` doc-tests for `PetriNet` and all its methods, demonstrating how to construct a simple Petri Net and how transitions consume/produce tokens dynamically.
+## 2026-04-22 - The "GraphNeuralNetwork" Examples
+**Confusion:** The experimental `GraphNeuralNetwork` had no executable doc-tests for the main struct or its `forward` method. This lack of examples made it confusing to understand how to initialize the features, edges, and weights relations and how to execute the forward pass.
+**Clarification:** Added executable `/// # Examples` doc-tests for `GraphNeuralNetwork` and its `forward` method, demonstrating how to construct the necessary relations and perform a forward pass.
