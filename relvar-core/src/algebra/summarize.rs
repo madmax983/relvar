@@ -308,7 +308,7 @@ impl Aggregation {
         tuples: &[&Tuple],
     ) -> Result<ScalarValue, SummarizeError> {
         if self.result_type == ScalarType::Float {
-            let mut sum = 0.0;
+            let mut sum = 0.0_f64;
             for tuple in tuples {
                 let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
                     SummarizeError::AggregationError(format!(
@@ -317,6 +317,11 @@ impl Aggregation {
                     ))
                 })?;
                 sum += value;
+            }
+            if !sum.is_finite() {
+                return Err(SummarizeError::AggregationError(
+                    "Float overflow in SUM".to_string(),
+                ));
             }
             Ok(ScalarValue::Float(sum))
         } else {
@@ -387,7 +392,7 @@ impl Aggregation {
         attr_name: &str,
         tuples: &[&Tuple],
     ) -> Result<ScalarValue, SummarizeError> {
-        let mut sum = 0.0;
+        let mut sum = 0.0_f64;
         for tuple in tuples {
             let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
                 SummarizeError::AggregationError(format!(
@@ -396,6 +401,11 @@ impl Aggregation {
                 ))
             })?;
             sum += value;
+        }
+        if !sum.is_finite() {
+            return Err(SummarizeError::AggregationError(
+                "Float overflow in AVG".to_string(),
+            ));
         }
         let avg = sum / tuples.len() as f64;
         Ok(ScalarValue::Float(avg))
