@@ -5,10 +5,7 @@
 //! Complex CSS queries (e.g., descendant selectors) are evaluated declaratively
 //! using transitive closure (`tclose`) and joins.
 
-use relvar_core::{
-    error::DatabaseError,
-    values::Relation,
-};
+use relvar_core::{error::DatabaseError, values::Relation};
 
 /// A Relational Document Object Model (DOM).
 /// # Examples
