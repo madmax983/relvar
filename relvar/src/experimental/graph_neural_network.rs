@@ -29,7 +29,23 @@ use relvar_core::{algebra::Aggregation, error::DatabaseError, values::Relation};
 /// use relvar_core::types::{RelationType, ScalarType, TupleType};
 /// use relvar_core::values::Relation;
 /// use relvar::experimental::graph_neural_network::RelationalGNN;
-/// // Note: This is a placeholder example
+///
+/// let features_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("node_id", ScalarType::Int)
+///         .with_attribute("feature_idx", ScalarType::Int)
+///         .with_attribute("value", ScalarType::Float),
+/// );
+/// let edges_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("source_id", ScalarType::Int)
+///         .with_attribute("target_id", ScalarType::Int),
+/// );
+///
+/// let features = Relation::new(features_type);
+/// let edges = Relation::new(edges_type);
+///
+/// let gnn = RelationalGNN::new(features, edges);
 /// ```
 pub struct RelationalGNN {
     /// Schema: (node_id: Int, feature_idx: Int, value: Float)
@@ -40,6 +56,31 @@ pub struct RelationalGNN {
 
 impl RelationalGNN {
     /// Creates a new Relational GNN representation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{RelationType, ScalarType, TupleType};
+    /// use relvar_core::values::Relation;
+    /// use relvar::experimental::graph_neural_network::RelationalGNN;
+    ///
+    /// let features_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("node_id", ScalarType::Int)
+    ///         .with_attribute("feature_idx", ScalarType::Int)
+    ///         .with_attribute("value", ScalarType::Float),
+    /// );
+    /// let edges_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("source_id", ScalarType::Int)
+    ///         .with_attribute("target_id", ScalarType::Int),
+    /// );
+    ///
+    /// let features = Relation::new(features_type);
+    /// let edges = Relation::new(edges_type);
+    ///
+    /// let gnn = RelationalGNN::new(features, edges);
+    /// ```
     pub fn new(node_features: Relation, edges: Relation) -> Self {
         Self {
             node_features,
@@ -51,6 +92,41 @@ impl RelationalGNN {
     ///
     /// Returns a new relation of updated node features.
     /// Schema: (node_id: Int, feature_idx: Int, value: Float)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    /// use relvar_core::types::{RelationType, ScalarType, TupleType};
+    /// use relvar_core::values::Relation;
+    /// use relvar::experimental::graph_neural_network::RelationalGNN;
+    ///
+    /// let features_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("node_id", ScalarType::Int)
+    ///         .with_attribute("feature_idx", ScalarType::Int)
+    ///         .with_attribute("value", ScalarType::Float),
+    /// );
+    /// let edges_type = RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("source_id", ScalarType::Int)
+    ///         .with_attribute("target_id", ScalarType::Int),
+    /// );
+    ///
+    /// let mut features = Relation::new(features_type);
+    /// let mut edges = Relation::new(edges_type);
+    ///
+    /// // Node 1 has a value of 5.0
+    /// features.insert(tuple! { node_id: 1i64, feature_idx: 0i64, value: 5.0f64 }).unwrap();
+    /// // Edge from Node 1 to Node 2
+    /// edges.insert(tuple! { source_id: 1i64, target_id: 2i64 }).unwrap();
+    ///
+    /// let gnn = RelationalGNN::new(features, edges);
+    /// let aggregated = gnn.aggregate_messages().unwrap();
+    ///
+    /// assert_eq!(aggregated.tuples().count(), 1);
+    /// // Node 2 receives the value 5.0 from Node 1
+    /// ```
     pub fn aggregate_messages(&self) -> Result<Relation, DatabaseError> {
         // 1. Rename node_features to match edges source_id
         let features_renamed = self.node_features.rename(&[("node_id", "source_id")]);
