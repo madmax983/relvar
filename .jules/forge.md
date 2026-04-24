@@ -597,3 +597,11 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-24 - Extract Fire Steps in PetriNet
 **Learning:** The `fire` method in `PetriNet` is an overly long 'God Function' (71 lines) that mixes multiple distinct relational operations—checking enablement, calculating deltas for consumed/produced tokens, calculating net deltas, and updating places—into one massive block.
 **Action:** Refactor `fire` using the 'Three-Phase Operator' pattern (or similar). Extract the logic into cleanly named private helper functions (e.g., `compute_deltas`, `update_places`) to flatten the execution flow and improve readability.
+
+## 2024-05-30 - Extract God Function in Turing Machine Step
+**Learning:** `relvar/src/experimental/turing.rs` contained a "God Function" `step` (74 lines) which combined reading current configuration, updating the tape, and updating the head. This violated the 'Three-Phase Operator' pattern and made the logic harder to follow.
+**Action:** Applied the 'Three-Phase Operator' pattern by extracting `get_current_configuration`, `update_tape`, and `update_head` into separate helper functions to improve clarity without changing logic.
+
+## 2024-05-30 - Extract God Function in VCS Diff
+**Learning:** The `diff` method in `relvar/src/experimental/vcs.rs` was a "God Function" (87 lines) that mixed retrieving tree relations and calculating added/removed/modified files.
+**Action:** Extracted the logic into private helper functions: `get_tree_for_commit`, `compute_added_files`, `compute_removed_files`, and `compute_modified_files`. This flattens the main method and significantly increases code readability without sacrificing logic or safety.

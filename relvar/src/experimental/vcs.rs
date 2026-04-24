@@ -144,58 +144,80 @@ impl RelVcs {
         commit_a_hash: &str,
         commit_b_hash: &str,
     ) -> Result<Relation, DatabaseError> {
-        // 1. Get Tree A
-        let commit_a = self
-            .commits
-            .restrict(|t| t.get_typed::<String>("commit_hash").unwrap() == commit_a_hash);
-        if commit_a.cardinality() == 0 {
-            return Err(DatabaseError::AlgebraError(format!(
-                "Commit A '{}' not found",
-                commit_a_hash
-            )));
-        }
-        let tree_a = commit_a
-            .join(&self.trees)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["path", "blob_hash"]);
+        let tree_a = self.get_tree_for_commit(commit_a_hash)?;
+        let tree_b = self.get_tree_for_commit(commit_b_hash)?;
 
-        // 2. Get Tree B
-        let commit_b = self
-            .commits
-            .restrict(|t| t.get_typed::<String>("commit_hash").unwrap() == commit_b_hash);
-        if commit_b.cardinality() == 0 {
-            return Err(DatabaseError::AlgebraError(format!(
-                "Commit B '{}' not found",
-                commit_b_hash
-            )));
-        }
-        let tree_b = commit_b
-            .join(&self.trees)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["path", "blob_hash"]);
-
-        // 3. Find Added Files (In B but not in A by path)
         let paths_a = tree_a.project(&["path"]);
         let paths_b = tree_b.project(&["path"]);
-        let added_paths = paths_b
-            .difference(&paths_a)
+
+        let added = self.compute_added_files(&paths_a, &paths_b)?;
+        let removed = self.compute_removed_files(&paths_a, &paths_b)?;
+        let modified = self.compute_modified_files(&tree_a, &tree_b)?;
+
+        // 6. Union all differences
+        let diff1 = added
+            .union(&removed)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-        let added = added_paths
+        let full_diff = diff1
+            .union(&modified)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        Ok(full_diff)
+    }
+
+    fn get_tree_for_commit(&self, commit_hash: &str) -> Result<Relation, DatabaseError> {
+        let commit = self
+            .commits
+            .restrict(|t| t.get_typed::<String>("commit_hash").unwrap() == commit_hash);
+        if commit.cardinality() == 0 {
+            return Err(DatabaseError::AlgebraError(format!(
+                "Commit '{}' not found",
+                commit_hash
+            )));
+        }
+        Ok(commit
+            .join(&self.trees)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .project(&["path", "blob_hash"]))
+    }
+
+    fn compute_added_files(
+        &self,
+        paths_a: &Relation,
+        paths_b: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        // 3. Find Added Files (In B but not in A by path)
+        let added_paths = paths_b
+            .difference(paths_a)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        added_paths
             .extend("status", ScalarType::String, |_| {
                 ScalarValue::String("added".to_string())
             })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
+    fn compute_removed_files(
+        &self,
+        paths_a: &Relation,
+        paths_b: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 4. Find Removed Files (In A but not in B by path)
         let removed_paths = paths_a
-            .difference(&paths_b)
+            .difference(paths_b)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-        let removed = removed_paths
+        removed_paths
             .extend("status", ScalarType::String, |_| {
                 ScalarValue::String("removed".to_string())
             })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
+    fn compute_modified_files(
+        &self,
+        tree_a: &Relation,
+        tree_b: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 5. Find Modified Files (In both, but blob_hash differs)
         let tree_a_renamed = tree_a.rename(&[("blob_hash", "blob_hash_a")]);
         let tree_b_renamed = tree_b.rename(&[("blob_hash", "blob_hash_b")]);
@@ -210,21 +232,11 @@ impl RelVcs {
         });
 
         let modified_paths = modified_files.project(&["path"]);
-        let modified = modified_paths
+        modified_paths
             .extend("status", ScalarType::String, |_| {
                 ScalarValue::String("modified".to_string())
             })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        // 6. Union all differences
-        let diff1 = added
-            .union(&removed)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-        let full_diff = diff1
-            .union(&modified)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        Ok(full_diff)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 }
 

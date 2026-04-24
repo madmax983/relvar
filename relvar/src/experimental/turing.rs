@@ -70,6 +70,24 @@ impl TuringMachine {
     /// // Note: This is a placeholder example
     /// ```
     pub fn step(&mut self) -> Result<bool, DatabaseError> {
+        let current_config = self.get_current_configuration()?;
+
+        // 2. Find the transition to apply by joining with `transitions`.
+        // Result heading: (current_state, read_symbol, pos, next_state, write_symbol, move_dir)
+        let matched_transition = current_config.join(&self.transitions)?;
+
+        if matched_transition.cardinality() == 0 {
+            // No matching transition found; machine halts.
+            return Ok(false);
+        }
+
+        self.update_tape(&matched_transition)?;
+        self.update_head(&matched_transition)?;
+
+        Ok(true)
+    }
+
+    fn get_current_configuration(&self) -> Result<Relation, DatabaseError> {
         // 1. Read the symbol under the head.
         // We join `head` (state, pos) with `tape` (pos, symbol).
         // If the pos is not on the tape, it's a blank symbol.
@@ -90,19 +108,12 @@ impl TuringMachine {
 
         // At this point, `current_symbol_rel` has heading (state, pos, symbol) with exactly 1 tuple.
         // Rename `state` -> `current_state` and `symbol` -> `read_symbol` to match `transitions`.
-        let current_config = current_symbol_rel
+        Ok(current_symbol_rel
             .rename(&[("state", "current_state")])
-            .rename(&[("symbol", "read_symbol")]);
+            .rename(&[("symbol", "read_symbol")]))
+    }
 
-        // 2. Find the transition to apply by joining with `transitions`.
-        // Result heading: (current_state, read_symbol, pos, next_state, write_symbol, move_dir)
-        let matched_transition = current_config.join(&self.transitions)?;
-
-        if matched_transition.cardinality() == 0 {
-            // No matching transition found; machine halts.
-            return Ok(false);
-        }
-
+    fn update_tape(&mut self, matched_transition: &Relation) -> Result<(), DatabaseError> {
         // 3. Update the tape.
         // We need to write `write_symbol` at `pos`.
         // First, extract the new symbol to write.
@@ -125,6 +136,10 @@ impl TuringMachine {
             .union(&cell_to_write)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
+        Ok(())
+    }
+
+    fn update_head(&mut self, matched_transition: &Relation) -> Result<(), DatabaseError> {
         // 4. Update the head position and state.
         // Head needs (state, pos).
         // The new pos = old pos + move_dir.
@@ -140,8 +155,7 @@ impl TuringMachine {
             .rename(&[("new_pos", "pos")]);
 
         self.head = new_head;
-
-        Ok(true)
+        Ok(())
     }
 
     /// Runs the machine until it halts (returns the number of steps taken).
