@@ -11,9 +11,26 @@ use relvar_core::{error::DatabaseError, values::Relation};
 /// # Examples
 ///
 /// ```
-/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar_core::{Relation, RelationType, ScalarType, TupleType};
 /// use relvar::experimental::dom::RelationalDom;
-/// // Note: This is a placeholder example
+///
+/// let node_type = TupleType::new()
+///     .with_attribute("node_id", ScalarType::Int)
+///     .with_attribute("tag", ScalarType::String);
+/// let nodes = Relation::new(RelationType::new(node_type));
+///
+/// let edge_type = TupleType::new()
+///     .with_attribute("parent_id", ScalarType::Int)
+///     .with_attribute("child_id", ScalarType::Int);
+/// let edges = Relation::new(RelationType::new(edge_type));
+///
+/// let attr_type = TupleType::new()
+///     .with_attribute("node_id", ScalarType::Int)
+///     .with_attribute("attr_name", ScalarType::String)
+///     .with_attribute("attr_value", ScalarType::String);
+/// let attributes = Relation::new(RelationType::new(attr_type));
+///
+/// let dom = RelationalDom::new(nodes, edges, attributes);
 /// ```
 pub struct RelationalDom {
     /// The DOM nodes. Schema: (node_id: Int, tag: String)
@@ -26,6 +43,31 @@ pub struct RelationalDom {
 
 impl RelationalDom {
     /// Creates a new Relational DOM.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::experimental::dom::RelationalDom;
+    ///
+    /// let node_type = TupleType::new()
+    ///     .with_attribute("node_id", ScalarType::Int)
+    ///     .with_attribute("tag", ScalarType::String);
+    /// let nodes = Relation::new(RelationType::new(node_type));
+    ///
+    /// let edge_type = TupleType::new()
+    ///     .with_attribute("parent_id", ScalarType::Int)
+    ///     .with_attribute("child_id", ScalarType::Int);
+    /// let edges = Relation::new(RelationType::new(edge_type));
+    ///
+    /// let attr_type = TupleType::new()
+    ///     .with_attribute("node_id", ScalarType::Int)
+    ///     .with_attribute("attr_name", ScalarType::String)
+    ///     .with_attribute("attr_value", ScalarType::String);
+    /// let attributes = Relation::new(RelationType::new(attr_type));
+    ///
+    /// let dom = RelationalDom::new(nodes, edges, attributes);
+    /// ```
     pub fn new(nodes: Relation, edges: Relation, attributes: Relation) -> Self {
         Self {
             nodes,
@@ -37,6 +79,36 @@ impl RelationalDom {
     /// Finds all nodes with a specific class name.
     /// Evaluated by restricting the attributes relation to `class` and the target value,
     /// then projecting the `node_id`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{Relation, RelationType, ScalarType, TupleType, tuple};
+    /// use relvar::experimental::dom::RelationalDom;
+    ///
+    /// let node_type = TupleType::new()
+    ///     .with_attribute("node_id", ScalarType::Int)
+    ///     .with_attribute("tag", ScalarType::String);
+    /// let mut nodes = Relation::new(RelationType::new(node_type));
+    /// nodes.insert(tuple! { node_id: 1i64, tag: "div" }).unwrap();
+    ///
+    /// let edge_type = TupleType::new()
+    ///     .with_attribute("parent_id", ScalarType::Int)
+    ///     .with_attribute("child_id", ScalarType::Int);
+    /// let edges = Relation::new(RelationType::new(edge_type));
+    ///
+    /// let attr_type = TupleType::new()
+    ///     .with_attribute("node_id", ScalarType::Int)
+    ///     .with_attribute("attr_name", ScalarType::String)
+    ///     .with_attribute("attr_value", ScalarType::String);
+    /// let mut attributes = Relation::new(RelationType::new(attr_type));
+    /// attributes.insert(tuple! { node_id: 1i64, attr_name: "class", attr_value: "container" }).unwrap();
+    ///
+    /// let dom = RelationalDom::new(nodes, edges, attributes);
+    ///
+    /// let result = dom.query_class("container").unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
     pub fn query_class(&self, class_name: &str) -> Result<Relation, DatabaseError> {
         let class_name_str = class_name.to_string();
         let res = self
@@ -54,6 +126,42 @@ impl RelationalDom {
     /// Given a relation of ancestor node IDs, this uses transitive closure (`tclose`)
     /// on the edges relation to find all reachable descendants, and then intersects
     /// that with the target descendant nodes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::{Relation, RelationType, ScalarType, TupleType, tuple};
+    /// use relvar::experimental::dom::RelationalDom;
+    ///
+    /// let node_type = TupleType::new()
+    ///     .with_attribute("node_id", ScalarType::Int)
+    ///     .with_attribute("tag", ScalarType::String);
+    /// let mut nodes = Relation::new(RelationType::new(node_type));
+    /// nodes.insert(tuple! { node_id: 1i64, tag: "div" }).unwrap();
+    /// nodes.insert(tuple! { node_id: 2i64, tag: "p" }).unwrap();
+    ///
+    /// let edge_type = TupleType::new()
+    ///     .with_attribute("parent_id", ScalarType::Int)
+    ///     .with_attribute("child_id", ScalarType::Int);
+    /// let mut edges = Relation::new(RelationType::new(edge_type));
+    /// edges.insert(tuple! { parent_id: 1i64, child_id: 2i64 }).unwrap();
+    ///
+    /// let attr_type = TupleType::new()
+    ///     .with_attribute("node_id", ScalarType::Int)
+    ///     .with_attribute("attr_name", ScalarType::String)
+    ///     .with_attribute("attr_value", ScalarType::String);
+    /// let mut attributes = Relation::new(RelationType::new(attr_type));
+    /// attributes.insert(tuple! { node_id: 1i64, attr_name: "class", attr_value: "container" }).unwrap();
+    /// attributes.insert(tuple! { node_id: 2i64, attr_name: "class", attr_value: "text" }).unwrap();
+    ///
+    /// let dom = RelationalDom::new(nodes, edges, attributes);
+    ///
+    /// let ancestors = dom.query_class("container").unwrap();
+    /// let targets = dom.query_class("text").unwrap();
+    ///
+    /// let result = dom.query_descendant(&ancestors, &targets).unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
     pub fn query_descendant(
         &self,
         ancestor_nodes: &Relation,

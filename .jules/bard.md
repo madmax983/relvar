@@ -17,3 +17,6 @@
 ## 2025-04-23 - Documenting Graph Neural Network
 **Confusion:** The experimental `GraphNeuralNetwork` had a placeholder example and missing doc-tests for the main struct and its methods, making it confusing to understand how to initialize the features, edges, and execute the message aggregation pass.
 **Clarification:** Added executable `/// # Examples` doc-tests for `RelationalGNN` and its methods, demonstrating how to construct the necessary relations and perform a forward pass.
+## 2025-04-24 - The "RelationalDom" Examples
+**Confusion:** The experimental `RelationalDom` had a placeholder example for the struct and lacked executable doc-tests for its methods (`new`, `query_class`, and `query_descendant`), making it difficult to understand how to construct the nodes, edges, and attributes relations or perform CSS-like queries.
+**Clarification:** Replaced the placeholder and added comprehensive executable `/// # Examples` doc-tests for `RelationalDom` and all its methods to clearly demonstrate how to model a DOM and evaluate descendant selectors declaratively.
