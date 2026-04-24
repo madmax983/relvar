@@ -605,3 +605,7 @@ Build it right, make it fast, keep it simple.
 ## 2024-05-30 - Extract God Function in VCS Diff
 **Learning:** The `diff` method in `relvar/src/experimental/vcs.rs` was a "God Function" (87 lines) that mixed retrieving tree relations and calculating added/removed/modified files.
 **Action:** Extracted the logic into private helper functions: `get_tree_for_commit`, `compute_added_files`, `compute_removed_files`, and `compute_modified_files`. This flattens the main method and significantly increases code readability without sacrificing logic or safety.
+
+## 2026-05-19 - Extract God Function in Logic Circuit Simulator
+**Learning:** `relvar/src/experimental/circuit.rs` contained a "God Function" `tick` (79 lines) which combined evaluating binary gates, evaluating unary gates, and combining their outputs into the next state.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting `evaluate_binary_gates`, `evaluate_unary_gates`, and `combine_outputs` into separate helper functions to improve readability and code organization without changing behavior.

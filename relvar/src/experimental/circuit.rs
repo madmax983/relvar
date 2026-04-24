@@ -73,10 +73,12 @@ impl LogicSimulator {
         current_wires: &Relation,
         inputs: &Relation,
     ) -> Result<Relation, DatabaseError> {
-        // 1. Evaluate Binary Gates
-        // binary_gates: (gate, gate_type, in1, in2, out)
-        // current_wires: (wire, val)
+        let eval_binary = self.evaluate_binary_gates(current_wires)?;
+        let eval_unary = self.evaluate_unary_gates(current_wires)?;
+        self.combine_outputs(&eval_binary, &eval_unary, inputs)
+    }
 
+    fn evaluate_binary_gates(&self, current_wires: &Relation) -> Result<Relation, DatabaseError> {
         let w1 = current_wires.rename(&[("wire", "in1"), ("val", "val1")]);
         let w2 = current_wires.rename(&[("wire", "in2"), ("val", "val2")]);
 
@@ -104,9 +106,10 @@ impl LogicSimulator {
             .project(&["out", "out_val"])
             .rename(&[("out", "wire"), ("out_val", "val")]);
 
-        // 2. Evaluate Unary Gates
-        // unary_gates: (gate, gate_type, in_wire, out)
+        Ok(eval_binary)
+    }
 
+    fn evaluate_unary_gates(&self, current_wires: &Relation) -> Result<Relation, DatabaseError> {
         let w_in = current_wires.rename(&[("wire", "in_wire"), ("val", "val_in")]);
         let joined_unary = self.unary_gates.join(&w_in)?;
 
@@ -126,16 +129,19 @@ impl LogicSimulator {
             .project(&["out", "out_val"])
             .rename(&[("out", "wire"), ("out_val", "val")]);
 
-        // 3. Combine evaluated gates with inputs
-        // Inputs override or persist their driven values.
+        Ok(eval_unary)
+    }
+
+    fn combine_outputs(
+        &self,
+        eval_binary: &Relation,
+        eval_unary: &Relation,
+        inputs: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         let gates_out = eval_binary
-            .union(&eval_unary)
+            .union(eval_unary)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // In case an input wire also appears in gates_out (e.g. feedback loop, though normally inputs are purely external),
-        // we might get conflicting tuples if the values differ. Usually external inputs just persist.
-        // We do a difference to remove any gate output that tries to drive an input wire,
-        // so inputs take precedence.
         let input_wire_names = inputs.project(&["wire"]);
         let gates_out_safe = gates_out
             .difference(&gates_out.join(&input_wire_names)?)
