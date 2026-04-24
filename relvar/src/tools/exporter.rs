@@ -50,7 +50,6 @@
 
 use relvar_core::values::{Relation, ScalarValue, Tuple};
 use serde::ser::{SerializeSeq, Serializer};
-use std::cmp::Ordering;
 use thiserror::Error;
 
 /// Errors that can occur during export.
@@ -69,28 +68,6 @@ pub enum ExporterError {
     /// formatting error
     #[error("Formatting error: {0}")]
     FmtError(#[from] std::fmt::Error),
-}
-
-/// A wrapper around a tuple to allow sorting.
-///
-/// Tuples in Relvar are unordered sets, but for deterministic export
-/// we need a consistent ordering.
-#[derive(Debug, PartialEq, Eq)]
-struct SortableTuple<'a>(&'a Tuple);
-
-impl<'a> PartialOrd for SortableTuple<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<'a> Ord for SortableTuple<'a> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        // Tuples are compared by their values.
-        // Since Tuple stores values in a BTreeMap, iterating values()
-        // yields them in key-sorted order, which is perfect for deterministic comparison.
-        self.0.values().cmp(other.0.values())
-    }
 }
 
 /// Exports the relation to a CSV string.
@@ -144,8 +121,8 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
     output.push('\n');
 
     // Sort tuples
-    let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
-    tuples.sort();
+    let mut tuples: Vec<&Tuple> = relation.tuples().collect();
+    tuples.sort_by(|a, b| a.values().cmp(b.values()));
 
     // Write rows
     for tuple in tuples {
@@ -153,7 +130,7 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
             if i > 0 {
                 output.push(delimiter);
             }
-            if let Some(val) = tuple.0.get(header) {
+            if let Some(val) = tuple.get(header) {
                 output.push_str(&format_scalar_csv(val));
             }
         }
@@ -207,8 +184,8 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
 /// ```
 pub fn to_json<W: std::io::Write>(relation: &Relation, writer: W) -> Result<(), ExporterError> {
     // Sort tuples first
-    let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
-    tuples.sort();
+    let mut tuples: Vec<&Tuple> = relation.tuples().collect();
+    tuples.sort_by(|a, b| a.values().cmp(b.values()));
 
     let mut serializer = serde_json::Serializer::pretty(writer);
     let mut seq = serializer.serialize_seq(Some(tuples.len()))?;
@@ -216,7 +193,7 @@ pub fn to_json<W: std::io::Write>(relation: &Relation, writer: W) -> Result<(), 
     for tuple in tuples {
         let mut obj = serde_json::Map::new();
         // Tuple::values() returns &BTreeMap, so iteration is already sorted by key
-        let map = tuple.0.values();
+        let map = tuple.values();
         for (key, val) in map {
             obj.insert(key.clone(), scalar_to_json(val));
         }
@@ -274,8 +251,8 @@ pub fn to_ascii_table(relation: &Relation) -> String {
     }
 
     // Sort tuples
-    let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
-    tuples.sort();
+    let mut tuples: Vec<&Tuple> = relation.tuples().collect();
+    tuples.sort_by(|a, b| a.values().cmp(b.values()));
 
     // Calculate column widths
     let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
@@ -300,10 +277,10 @@ pub fn to_ascii_table(relation: &Relation) -> String {
     output
 }
 
-fn format_tuple_row(t: &SortableTuple, headers: &[&str], widths: &mut [usize]) -> Vec<String> {
+fn format_tuple_row(t: &Tuple, headers: &[&str], widths: &mut [usize]) -> Vec<String> {
     let mut row: Vec<String> = Vec::with_capacity(headers.len());
     for (i, h) in headers.iter().enumerate() {
-        let s = if let Some(val) = t.0.get(h) {
+        let s = if let Some(val) = t.get(h) {
             format_scalar_table(val)
         } else {
             String::new()
