@@ -115,3 +115,8 @@
 **Concept:** Modeled a Document Object Model (DOM) where nodes, parent-child edges, and attributes are pure relations. CSS Selectors (like descendant selectors) are evaluated declaratively using transitive closure (`tclose`) on the edges relation, joining with the attributes relation.
 **Fate:** TBD
 **Lesson:** TBD
+
+## Relational PageRank Algorithm
+**Concept:** Modeled the PageRank algorithm using purely relational algebra. Evaluates PageRank iterations on an edge relation via chained Natural Joins, Renames, Extensions, and Aggregations to iteratively distribute rank score without a looping procedural graph traversal.
+**Fate:** Merged
+**Lesson:** Relational algebra maps exceptionally well to eigenvector centrality problems like PageRank! By expressing out-degree calculation as a summarization and rank distribution as a joined extension, graph analysis compiles neatly down into relational engine queries.
