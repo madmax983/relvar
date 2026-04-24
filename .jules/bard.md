@@ -14,3 +14,6 @@
 ## 2026-04-22 - The "GraphNeuralNetwork" Examples
 **Confusion:** The experimental `GraphNeuralNetwork` had no executable doc-tests for the main struct or its `forward` method. This lack of examples made it confusing to understand how to initialize the features, edges, and weights relations and how to execute the forward pass.
 **Clarification:** Added executable `/// # Examples` doc-tests for `GraphNeuralNetwork` and its `forward` method, demonstrating how to construct the necessary relations and perform a forward pass.
+## 2025-04-23 - Documenting Graph Neural Network
+**Confusion:** The experimental `GraphNeuralNetwork` had a placeholder example and missing doc-tests for the main struct and its methods, making it confusing to understand how to initialize the features, edges, and execute the message aggregation pass.
+**Clarification:** Added executable `/// # Examples` doc-tests for `RelationalGNN` and its methods, demonstrating how to construct the necessary relations and perform a forward pass.
