@@ -462,4 +462,50 @@ mod tests {
 
         assert!(found_50 && found_60);
     }
+
+    #[test]
+    fn test_extend_into_fails_if_attribute_exists() {
+        let heading = TupleType::new()
+            .with_attribute("emp_id".to_string(), ScalarType::Int)
+            .with_attribute("name".to_string(), ScalarType::String);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+
+        let result = relation.extend_into("name", ScalarType::String, |t| {
+            t.get("name").unwrap().clone()
+        });
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ExtendError::AttributeExists(_)
+        ));
+    }
+
+    #[test]
+    fn test_extend_into_type_mismatch_fails() {
+        let heading = TupleType::new().with_attribute("emp_id".to_string(), ScalarType::Int);
+
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+
+        relation.insert(tuple! { emp_id: 1i64 }).unwrap();
+
+        let result = relation.extend_into("name_length", ScalarType::String, |_| {
+            crate::values::ScalarValue::Int(10)
+        });
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ExtendError::TupleCreation(msg) => {
+                assert!(msg.contains("Type mismatch"));
+            }
+            _ => panic!("Expected TupleCreation error"),
+        }
+    }
 }

@@ -1270,4 +1270,53 @@ mod overflow_tests {
         let tuple = result.tuples().next().unwrap();
         assert_eq!(tuple.get_typed::<f64>("avg_price").unwrap(), 15.0);
     }
+
+    #[test]
+    fn test_summarize_grouping_attribute_not_found() {
+        use crate::Relation;
+        use crate::algebra::{Aggregation, AggregationFn};
+        use crate::types::{RelationType, ScalarType, TupleType};
+        let relation = Relation::new(RelationType::new(
+            TupleType::new().with_attribute("qty".to_string(), ScalarType::Int),
+        ));
+
+        let result = relation.summarize(
+            &["missing_attr"],
+            &[Aggregation {
+                result_name: "total_qty".to_string(),
+                result_type: ScalarType::Int,
+                function: AggregationFn::Sum("qty".to_string()),
+            }],
+        );
+        assert!(result.is_err());
+        assert!(
+            matches!(result.unwrap_err(), SummarizeError::GroupingAttributeNotFound(attr) if attr == "missing_attr")
+        );
+    }
+
+    #[test]
+    fn test_summarize_min_max_empty() {
+        use crate::Relation;
+        use crate::algebra::{Aggregation, AggregationFn};
+        use crate::types::{RelationType, ScalarType, TupleType};
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("part_id".to_string(), ScalarType::Int)
+                .with_attribute("qty".to_string(), ScalarType::Int),
+        );
+        let relation = Relation::new(rel_type);
+
+        let result = relation.summarize(
+            &["part_id"],
+            &[Aggregation {
+                result_name: "min_qty".to_string(),
+                result_type: ScalarType::Int,
+                function: AggregationFn::Min("qty".to_string()),
+            }],
+        );
+
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().tuples().count(), 0);
+    }
 }

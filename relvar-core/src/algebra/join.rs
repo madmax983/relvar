@@ -843,4 +843,90 @@ mod tests {
         let result2 = large.join(&small).unwrap();
         assert_eq!(result2.cardinality(), 1);
     }
+
+    #[test]
+    fn test_join_build_map_missing_attr() {
+        use crate::DatabaseError;
+        let heading = TupleType::new().with_attribute("x".to_string(), ScalarType::Int);
+        let rel_type = RelationType::new(heading.clone());
+        let mut relation = Relation::new(rel_type);
+        relation.insert(crate::tuple! { x: 1i64 }).unwrap();
+
+        let result = super::build_join_map_single(&relation, "y");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::AttributeNotFound(attr, rel) if attr == "y" && rel == "build relation"
+        ));
+    }
+
+    #[test]
+    fn test_probe_and_combine_missing_attr() {
+        use crate::DatabaseError;
+        let heading = TupleType::new().with_attribute("x".to_string(), ScalarType::Int);
+        let rel_type = RelationType::new(heading.clone());
+        let mut relation = Relation::new(rel_type);
+        relation.insert(crate::tuple! { x: 1i64 }).unwrap();
+
+        let build_map = std::collections::HashMap::new();
+        let result = super::probe_and_combine_single(
+            &relation,
+            &build_map,
+            "y",
+            &std::sync::Arc::new(heading),
+        );
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DatabaseError::AttributeNotFound(attr, rel) if attr == "y" && rel == "probe relation"
+        ));
+    }
+
+    #[test]
+    fn test_join_key_eq_diff_values() {
+        let h = TupleType::new()
+            .with_attribute("x".to_string(), ScalarType::Int)
+            .with_attribute("y".to_string(), ScalarType::Int);
+        let rel_type = RelationType::new(h);
+
+        let mut r = Relation::new(rel_type);
+        r.insert(crate::tuple! { x: 1i64, y: 2i64 }).unwrap();
+        r.insert(crate::tuple! { x: 1i64, y: 3i64 }).unwrap();
+
+        let tuples: Vec<_> = r.tuples().collect();
+        let attrs = vec!["x".to_string(), "y".to_string()];
+
+        let key1 = super::JoinKey {
+            tuple: tuples[0],
+            attributes: &attrs,
+        };
+
+        let key2 = super::JoinKey {
+            tuple: tuples[1],
+            attributes: &attrs,
+        };
+
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn test_compute_theta_join_tuples_predicate_returns_false() {
+        let h1 = TupleType::new().with_attribute("x".to_string(), ScalarType::Int);
+        let mut r1 = Relation::new(RelationType::new(h1.clone()));
+        r1.insert(crate::tuple! { x: 1i64 }).unwrap();
+        let h2 = TupleType::new().with_attribute("y".to_string(), ScalarType::Int);
+        let mut r2 = Relation::new(RelationType::new(h2.clone()));
+        r2.insert(crate::tuple! { y: 2i64 }).unwrap();
+
+        let mut res_heading = h1.clone();
+        res_heading = res_heading.with_attribute("y".to_string(), ScalarType::Int);
+
+        let res = super::compute_theta_join_tuples(
+            &r1,
+            &r2,
+            |_, _| false,
+            &std::sync::Arc::new(res_heading),
+        );
+        assert_eq!(res.len(), 0);
+    }
 }

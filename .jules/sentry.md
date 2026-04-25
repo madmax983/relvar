@@ -111,3 +111,12 @@
 ## 2026-04-16 - Extend and Project Missing Branches
 **Learning:** `extend_into` error conditions (computation type mismatch) and empty iterator scenarios, as well as `project` greater-than ordering matches for lexicographical attributes were uncovered. Group, Union, Intersect `_into` functions were also untested.
 **Action:** Wrote tests targeting `extend_into` specifically mirroring existing `extend` tests, and crafted carefully named attribute headings (`"z"`, `"a"`) for `project` to trigger the required merge-sort iteration states, as well as general testing for `_into` consuming variants and error paths for summaries on empty tables.
+## 2026-03-30 - Sentry: Coverage Improvements for relational algebra
+
+**Learning:** There were many gaps in relational algebra operations in `relvar-core`, specifically around missing attributes on hash join build/probe, type mismatches in extend/summarize functions, and extremum empty logic.
+**Action:** Targeted testing for these edge cases proved very effective. Adding inline test suites within the specific algebra source files handles the specific Error paths smoothly.
+## 2024-11-20 - Testing Robustness Using Automated Scripting
+
+**Learning:** When generating coverage tests dynamically via python scripts that perform regex or naive search-and-replace, the codebase becomes incredibly prone to duplicate tests or misaligned nested scopes (especially since Rust `mod tests {` may appear multiple times or scripts may be executed iteratively without cleanup). Also, `f64::MAX + f64::MAX` triggers `!sum.is_finite()` but tests that expect `Result::Err` often fail if the enum match uses a completely incorrect struct or variant due to missing imports.
+
+**Action:** Always maintain an idempotent testing state (`git restore`) between failed scripts, inject fully qualified paths (`crate::types::Relation`) within dynamic scripts to avoid hunting for use declarations, and explicitly verify error bounds (e.g., using `i64::MAX` instead of `f64::MAX` to guarantee predictable integer overflow on constrained checks) when testing internal library logic.

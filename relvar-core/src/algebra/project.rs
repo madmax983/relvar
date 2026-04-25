@@ -403,4 +403,59 @@ mod tests {
         assert_eq!(result.cardinality(), 0);
         assert!(result.is_empty());
     }
+
+    #[test]
+    fn test_project_missing_attributes_ignored() {
+        let heading = TupleType::new()
+            .with_attribute("x".to_string(), ScalarType::Int)
+            .with_attribute("y".to_string(), ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+        relation.insert(crate::tuple! { x: 1i64, y: 2i64 }).unwrap();
+
+        let result = relation.project(&["x", "missing_attr"]);
+        assert_eq!(result.degree(), 1);
+        let attr = result
+            .relation_type()
+            .heading()
+            .attributes()
+            .keys()
+            .next()
+            .unwrap();
+        assert_eq!(attr, "x");
+    }
+
+    #[test]
+    fn test_project_into_missing_attributes_ignored() {
+        let heading = TupleType::new()
+            .with_attribute("x".to_string(), ScalarType::Int)
+            .with_attribute("y".to_string(), ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let mut relation = Relation::new(rel_type);
+        relation.insert(crate::tuple! { x: 1i64, y: 2i64 }).unwrap();
+
+        let result = relation.project_into(&["y", "missing_attr"]);
+        assert_eq!(result.degree(), 1);
+        let attr = result
+            .relation_type()
+            .heading()
+            .attributes()
+            .keys()
+            .next()
+            .unwrap();
+        assert_eq!(attr, "y");
+    }
+
+    #[test]
+    fn test_project_empty_relation_still_projects_heading() {
+        let heading = TupleType::new()
+            .with_attribute("x".to_string(), ScalarType::Int)
+            .with_attribute("y".to_string(), ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let relation = Relation::new(rel_type);
+
+        let result = relation.project(&["x"]);
+        assert_eq!(result.degree(), 1);
+        assert_eq!(result.cardinality(), 0);
+    }
 }

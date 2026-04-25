@@ -293,4 +293,42 @@ mod tests {
         assert!(result.contains(&bob));
         assert!(result.contains(&charlie));
     }
+
+    #[test]
+    fn test_intersect_into_type_mismatch() {
+        let h1 = TupleType::new().with_attribute("x".to_string(), ScalarType::Int);
+        let h2 = TupleType::new().with_attribute("y".to_string(), ScalarType::Int);
+
+        let r1 = Relation::new(RelationType::new(h1));
+        let r2 = Relation::new(RelationType::new(h2));
+
+        let res = r1.intersect_into(&r2);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_intersect_into_success() {
+        let h = TupleType::new().with_attribute("x".to_string(), ScalarType::Int);
+        let mut r1 = Relation::new(RelationType::new(h.clone()));
+        r1.insert(crate::tuple! { x: 1i64 }).unwrap();
+        r1.insert(crate::tuple! { x: 2i64 }).unwrap();
+
+        let mut r2 = Relation::new(RelationType::new(h));
+        r2.insert(crate::tuple! { x: 2i64 }).unwrap();
+        r2.insert(crate::tuple! { x: 3i64 }).unwrap();
+
+        let res = r1.intersect_into(&r2);
+        assert!(res.is_ok());
+        let res_rel = res.unwrap();
+        assert_eq!(res_rel.tuples().count(), 1);
+        assert_eq!(
+            res_rel
+                .tuples()
+                .next()
+                .unwrap()
+                .get_typed::<i64>("x")
+                .unwrap(),
+            2i64
+        );
+    }
 }

@@ -285,4 +285,30 @@ mod tests {
         assert!(result.contains(&bob));
         assert!(result.contains(&charlie));
     }
+
+    #[test]
+    fn test_union_into_type_mismatch() {
+        let h1 = TupleType::new().with_attribute("x".to_string(), ScalarType::Int);
+        let h2 = TupleType::new().with_attribute("y".to_string(), ScalarType::Int);
+
+        let r1 = Relation::new(RelationType::new(h1));
+        let r2 = Relation::new(RelationType::new(h2));
+
+        let res = r1.union_into(&r2);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_union_into_success() {
+        let h = TupleType::new().with_attribute("x".to_string(), ScalarType::Int);
+        let mut r1 = Relation::new(RelationType::new(h.clone()));
+        r1.insert(crate::tuple! { x: 1i64 }).unwrap();
+
+        let mut r2 = Relation::new(RelationType::new(h));
+        r2.insert(crate::tuple! { x: 2i64 }).unwrap();
+
+        let res = r1.union_into(&r2);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().tuples().count(), 2);
+    }
 }
