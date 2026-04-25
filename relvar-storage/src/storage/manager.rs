@@ -199,7 +199,12 @@ impl StorageManager {
             self.heap_files.insert(name.to_string(), heap_file);
         }
 
-        Ok(self.heap_files.get_mut(name).unwrap())
+        self.heap_files.get_mut(name).ok_or_else(|| {
+            StorageError::Other(format!(
+                "Failed to retrieve heap file for relation '{}'",
+                name
+            ))
+        })
     }
 
     /// Scan a relation with visibility filtering (MVCC).
