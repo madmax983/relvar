@@ -605,3 +605,7 @@ Build it right, make it fast, keep it simple.
 ## 2024-05-30 - Extract God Function in VCS Diff
 **Learning:** The `diff` method in `relvar/src/experimental/vcs.rs` was a "God Function" (87 lines) that mixed retrieving tree relations and calculating added/removed/modified files.
 **Action:** Extracted the logic into private helper functions: `get_tree_for_commit`, `compute_added_files`, `compute_removed_files`, and `compute_modified_files`. This flattens the main method and significantly increases code readability without sacrificing logic or safety.
+
+## 2026-04-25 - Extract God Function in visualizer
+**Learning:** `relvar/src/tools/visualizer.rs` contained a long function `to_dot` that combined extracting relations, processing primary key constraints and sorting attributes for nodes, and formatting HTML labels, as well as checking and formatting foreign keys into dot strings all in line. This made the function overly complex.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting node logic into `generate_nodes` and edge logic into `generate_edges`. The main `to_dot` is now simplified to initializing the `digraph` string and coordinating the sub-generators.

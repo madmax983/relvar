@@ -104,14 +104,18 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
 
         let relvars = self.db.list_relvars();
 
-        // 1. Generate nodes (Tables)
-        for name in &relvars {
-            // Note: We use get_relvar_type() to get the relation structure.
-            // This avoids loading the full relation data.
+        self.generate_nodes(&mut dot, &relvars);
+        self.generate_edges(&mut dot, &relvars);
+
+        dot.push_str("}\n");
+        dot
+    }
+
+    fn generate_nodes(&self, dot: &mut String, relvars: &[String]) {
+        for name in relvars {
             if let Ok(relation_type) = self.db.get_relvar_type(name) {
                 let tuple_type = relation_type.tuple_type();
 
-                // Determine primary key attributes
                 let pk_attrs = if let Some(key_constraints) = self.db.get_key_constraints(name) {
                     if let Some(pk) = key_constraints.primary_key() {
                         pk.attributes().to_vec()
@@ -134,7 +138,6 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                     table_title
                 ));
 
-                // Sort attributes for consistent output
                 let mut attributes: Vec<_> = tuple_type.attributes().iter().collect();
                 attributes.sort_by(|a, b| a.0.cmp(b.0));
 
@@ -148,8 +151,6 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                         safe_attr_name
                     };
 
-                    // Note: scalar_type implements Debug, which might contain special chars.
-                    // Ideally we'd escape that too, strictly speaking.
                     let safe_type = escape_html(&format!("{:?}", scalar_type));
 
                     dot.push_str(&format!(
@@ -160,9 +161,10 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                 dot.push_str("    </table>>];\n\n");
             }
         }
+    }
 
-        // 2. Generate edges (Foreign Keys)
-        for name in &relvars {
+    fn generate_edges(&self, dot: &mut String, relvars: &[String]) {
+        for name in relvars {
             if let Some(fk_constraints) = self.db.get_foreign_key_constraints(name) {
                 for fk in fk_constraints.foreign_keys() {
                     let ref_table = fk.referenced_relation_name();
@@ -179,9 +181,6 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                 }
             }
         }
-
-        dot.push_str("}\n");
-        dot
     }
 }
 
