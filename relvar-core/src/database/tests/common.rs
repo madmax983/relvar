@@ -3,6 +3,15 @@ use crate::storage_engine::InMemoryEngine;
 use crate::types::RelationType;
 use crate::types::{ScalarType, TupleType};
 
+/// Helper function to create a basic test relation type.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::database::tests::common::test_rel_type;
+/// let rel_type = test_rel_type();
+/// assert_eq!(rel_type.degree(), 2);
+/// ```
 pub fn test_rel_type() -> RelationType {
     RelationType::new(
         TupleType::new()
@@ -11,6 +20,16 @@ pub fn test_rel_type() -> RelationType {
     )
 }
 
+/// Helper function to setup a parent-child database for testing.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::database::tests::common::setup_parent_child_db;
+/// let db = setup_parent_child_db();
+/// assert!(db.relvar_exists("PARENT"));
+/// assert!(db.relvar_exists("CHILD"));
+/// ```
 pub fn setup_parent_child_db() -> Database<InMemoryEngine> {
     use crate::constraints::{KeyConstraints, PrimaryKey};
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
