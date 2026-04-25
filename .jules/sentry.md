@@ -111,3 +111,6 @@
 ## 2026-04-16 - Extend and Project Missing Branches
 **Learning:** `extend_into` error conditions (computation type mismatch) and empty iterator scenarios, as well as `project` greater-than ordering matches for lexicographical attributes were uncovered. Group, Union, Intersect `_into` functions were also untested.
 **Action:** Wrote tests targeting `extend_into` specifically mirroring existing `extend` tests, and crafted carefully named attribute headings (`"z"`, `"a"`) for `project` to trigger the required merge-sort iteration states, as well as general testing for `_into` consuming variants and error paths for summaries on empty tables.
+## 2026-04-18 - Missing DML Validation and Algebra Into Branch Tests
+**Learning:** `Database::update` error paths during `validate_referencing_foreign_keys` validation and various `_into` algebra operations (`extend_into`, `union_into`, `intersect_into`) error paths and basic branch execution handling were entirely missing test coverage. Also `Database::list_relvars` was entirely unexercised.
+**Action:** When working on APIs containing DML operations like `update` and `delete`, ensure the error paths for constraints propagation to children referential relations are thoroughly tested. Always ensure the `_into` fast-path consuming operations mirror standard coverage.

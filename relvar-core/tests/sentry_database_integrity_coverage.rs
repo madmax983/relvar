@@ -335,3 +335,28 @@ fn test_database_integrity_type_and_check() {
         ));
     db.set_check_constraints("PERSON", checks).unwrap();
 }
+
+// Data.rs Integrity get/set testing coverage uncovered lines: 142, 143, 144, 178, 179, 180, 181, 223
+
+#[test]
+fn test_database_integrity_setters_coverage() {
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("TEST", rel_type.clone()).unwrap();
+
+    let fk_constraints = relvar_core::constraints::ForeignKeyConstraints::new();
+    db.set_foreign_key_constraints("TEST", fk_constraints)
+        .unwrap();
+
+    let attr_constraints =
+        relvar_core::constraints::AttributeConstraints::new("id".to_string(), ScalarType::Int);
+    db.set_type_constraints("TEST", "id", attr_constraints)
+        .unwrap();
+
+    let check_constraints = relvar_core::constraints::CheckConstraints::new();
+    db.set_check_constraints("TEST", check_constraints).unwrap();
+}

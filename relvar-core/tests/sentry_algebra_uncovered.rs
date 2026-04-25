@@ -191,3 +191,99 @@ fn test_summarize_avg_error() {
     let res = empty_rel.summarize(&["group_id"], &[agg2]).unwrap();
     assert_eq!(res.cardinality(), 0);
 }
+
+// Intersect coverage test
+
+#[test]
+fn test_intersect_larger_self() {
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::Relation;
+
+    let rel_type = RelationType::new(TupleType::new().with_attribute("x", ScalarType::Int));
+
+    let mut rel1 = Relation::new(rel_type.clone());
+    rel1.insert(tuple! { x: 1i64 }).unwrap();
+    rel1.insert(tuple! { x: 2i64 }).unwrap();
+    rel1.insert(tuple! { x: 3i64 }).unwrap();
+
+    let mut rel2 = Relation::new(rel_type.clone());
+    rel2.insert(tuple! { x: 2i64 }).unwrap();
+
+    // rel1 is larger than rel2
+    let result = rel1.intersect(&rel2).unwrap();
+    assert_eq!(result.cardinality(), 1);
+}
+
+#[test]
+fn test_union_into_larger_self() {
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::Relation;
+
+    let rel_type = RelationType::new(TupleType::new().with_attribute("x", ScalarType::Int));
+
+    let mut rel1 = Relation::new(rel_type.clone());
+    rel1.insert(tuple! { x: 1i64 }).unwrap();
+    rel1.insert(tuple! { x: 2i64 }).unwrap();
+    rel1.insert(tuple! { x: 3i64 }).unwrap();
+
+    let mut rel2 = Relation::new(rel_type.clone());
+    rel2.insert(tuple! { x: 2i64 }).unwrap();
+    rel2.insert(tuple! { x: 4i64 }).unwrap();
+
+    // rel1 is larger than rel2
+    let result = rel1.union_into(&rel2).unwrap();
+    assert_eq!(result.cardinality(), 4);
+}
+
+#[test]
+fn test_intersect_into_larger_self_uncovered() {
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::Relation;
+
+    let rel_type = RelationType::new(TupleType::new().with_attribute("x", ScalarType::Int));
+
+    let mut rel1 = Relation::new(rel_type.clone());
+    rel1.insert(tuple! { x: 1i64 }).unwrap();
+    rel1.insert(tuple! { x: 2i64 }).unwrap();
+    rel1.insert(tuple! { x: 3i64 }).unwrap();
+
+    let mut rel2 = Relation::new(rel_type.clone());
+    rel2.insert(tuple! { x: 2i64 }).unwrap();
+
+    // rel1 is larger than rel2, testing intersect_into where self is larger
+    let result = rel1.intersect_into(&rel2).unwrap();
+    assert_eq!(result.cardinality(), 1);
+}
+
+#[test]
+fn test_intersect_into_type_mismatch() {
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::Relation;
+
+    let type1 = TupleType::new().with_attribute("x", ScalarType::Int);
+    let rel1 = Relation::new(RelationType::new(type1));
+
+    let type2 = TupleType::new().with_attribute("x", ScalarType::String);
+    let rel2 = Relation::new(RelationType::new(type2));
+
+    let result = rel1.intersect_into(&rel2);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_union_into_type_mismatch() {
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::Relation;
+
+    let type1 = TupleType::new().with_attribute("x", ScalarType::Int);
+    let rel1 = Relation::new(RelationType::new(type1));
+
+    let type2 = TupleType::new().with_attribute("x", ScalarType::String);
+    let rel2 = Relation::new(RelationType::new(type2));
+
+    let result = rel1.union_into(&rel2);
+    assert!(result.is_err());
+}
