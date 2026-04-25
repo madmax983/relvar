@@ -142,16 +142,9 @@ impl Relation {
 
         // Filter candidates: keep only those where ALL divisor tuples
         // have a matching extended tuple in the dividend
-        let result_tuples =
-            filter_matching_candidates(&candidates, divisor, self, dividend_heading);
+        let result = filter_matching_candidates(candidates, divisor, self, dividend_heading);
 
-        // Return result relation
-        use crate::types::RelationType;
-        let result_type = RelationType::new(candidates.relation_type().heading().clone());
-
-        // Optimization: The result tuples are a subset of candidate tuples,
-        // which were already constructed to conform to result_type (the projection heading).
-        Ok(Relation::from_tuples_unchecked(result_type, result_tuples))
+        Ok(result)
     }
 }
 
@@ -206,43 +199,45 @@ fn project_onto_attrs(relation: &Relation, attrs: &[String]) -> Relation {
 
 /// Filter candidate tuples, keeping only those where ALL divisor tuples
 /// can be found when extended with the candidate.
+///
+/// **Optimization Details**: This function consumes the `candidates` relation
+/// and uses `.restrict_into(...)` to filter the set of tuples in-place.
+/// Because `candidates` was constructed as an intermediate projection just prior
+/// to this step, owning it allows us to utilize the internal `HashSet::retain()`
+/// mechanism. This acts as a zero-cost abstraction, completely bypassing
+/// the intermediate `.collect::<Vec<_>>()` heap allocation that would otherwise
+/// occur during the filtering pipeline.
 fn filter_matching_candidates(
-    candidates: &Relation,
+    candidates: Relation,
     divisor: &Relation,
     dividend: &Relation,
     dividend_heading: &crate::types::TupleType,
-) -> Vec<crate::values::Tuple> {
+) -> Relation {
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
     // Clone dividend_heading once outside the loop to avoid repeated clones
     let dividend_heading_arc = Arc::new(dividend_heading.clone());
 
-    candidates
-        .tuples()
-        .filter(|candidate| {
-            // Check if ALL divisor tuples match when extended with this candidate
-            divisor.tuples().all(|divisor_tuple| {
-                // Extend candidate with divisor tuple using iterator-based approach
-                let extended_values: BTreeMap<_, _> = candidate
-                    .values()
-                    .iter()
-                    .chain(divisor_tuple.values())
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
+    candidates.restrict_into(|candidate| {
+        // Check if ALL divisor tuples match when extended with this candidate
+        divisor.tuples().all(|divisor_tuple| {
+            // Extend candidate with divisor tuple using iterator-based approach
+            let extended_values: BTreeMap<_, _> = candidate
+                .values()
+                .iter()
+                .chain(divisor_tuple.values())
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
 
-                // Create extended tuple
-                let extended_tuple = crate::values::Tuple::new_unchecked(
-                    dividend_heading_arc.clone(),
-                    extended_values,
-                );
+            // Create extended tuple
+            let extended_tuple =
+                crate::values::Tuple::new_unchecked(dividend_heading_arc.clone(), extended_values);
 
-                // Check if this extended tuple exists in the dividend
-                dividend.contains(&extended_tuple)
-            })
+            // Check if this extended tuple exists in the dividend
+            dividend.contains(&extended_tuple)
         })
-        .cloned()
-        .collect()
+    })
 }
 
 #[cfg(test)]
