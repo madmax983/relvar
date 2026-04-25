@@ -115,3 +115,8 @@
 **Concept:** Modeled a Document Object Model (DOM) where nodes, parent-child edges, and attributes are pure relations. CSS Selectors (like descendant selectors) are evaluated declaratively using transitive closure (`tclose`) on the edges relation, joining with the attributes relation.
 **Fate:** TBD
 **Lesson:** TBD
+
+## Relational Turing Machine
+**Concept:** Modeled a Turing Machine purely using relational algebra (Join, Difference, Union, Extend, Project). The tape, machine states, and transition rules are all represented as relations. A single evaluation step updates the tape, moves the read/write head, and changes the machine state without any procedural loops, proving that relational algebra is Turing-complete!
+**Fate:** Merged
+**Lesson:** Any state machine with sequential memory read/write can be gracefully modeled as a relational step function!
