@@ -8,4 +8,4 @@
 
 ## 2026-04-24 - [Unsafe unwrap in StorageManager]
 **Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
-**Defense:** Replaced `.unwrap()` with `.ok_or_else(|| StorageError::Other(...))` to ensure safe, graceful error propagation rather than crashing the system.
+**Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
