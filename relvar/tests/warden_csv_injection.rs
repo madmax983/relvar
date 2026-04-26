@@ -32,7 +32,9 @@ fn test_csv_injection() {
         .insert(tuple! { id: 7i64, name: "\nSUM(1,1)" })
         .unwrap();
 
-    let csv = exporter::to_csv(&relation, ',').unwrap();
+    let mut buf = Vec::new();
+    exporter::to_csv(&relation, ',', &mut buf).unwrap();
+    let csv = String::from_utf8(buf).unwrap();
     println!("{}", csv);
     assert!(!csv.contains("\"=cmd"));
 }

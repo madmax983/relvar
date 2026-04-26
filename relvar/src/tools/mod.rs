@@ -30,7 +30,9 @@
 //! let relation = importer::from_json(json_data.as_bytes(), rel_type).unwrap();
 //!
 //! // 3. Export to CSV
-//! let csv = exporter::to_csv(&relation, ',').unwrap();
+//! let mut buf = Vec::new();
+//! exporter::to_csv(&relation, ',', &mut buf).unwrap();
+//! let csv = String::from_utf8(buf).unwrap();
 //! assert!(csv.contains("id,name"));
 //! assert!(csv.contains("1,\"Alice\""));
 //! ```

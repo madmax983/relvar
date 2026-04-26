@@ -33,7 +33,9 @@
 //! relation.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
 //!
 //! // Export to CSV
-//! let csv = exporter::to_csv(&relation, ',').unwrap();
+//! let mut csv_buf = Vec::new();
+//! exporter::to_csv(&relation, ',', &mut csv_buf).unwrap();
+//! let csv = String::from_utf8(csv_buf).unwrap();
 //! assert!(csv.contains("id,name"));
 //! assert!(csv.contains("1,\"Alice\""));
 //!
@@ -44,13 +46,16 @@
 //! assert!(json_str.contains("\"name\": \"Alice\""));
 //!
 //! // Export to ASCII Table
-//! let table = exporter::to_ascii_table(&relation);
+//! let mut table_buf = Vec::new();
+//! exporter::to_ascii_table(&relation, &mut table_buf).unwrap();
+//! let table = String::from_utf8(table_buf).unwrap();
 //! println!("{}", table);
 //! ```
 
 use relvar_core::values::{Relation, ScalarValue, Tuple};
 use serde::ser::{SerializeSeq, Serializer};
 use std::cmp::Ordering;
+use std::io::Write;
 use thiserror::Error;
 
 /// Errors that can occur during export.
@@ -69,6 +74,9 @@ pub enum ExporterError {
     /// formatting error
     #[error("Formatting error: {0}")]
     FmtError(#[from] std::fmt::Error),
+    /// IO error
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
 }
 
 /// A wrapper around a tuple to allow sorting.
@@ -122,26 +130,31 @@ impl<'a> Ord for SortableTuple<'a> {
 /// let mut relation = Relation::new(RelationType::new(heading));
 /// relation.insert(tuple! { col1: 1i64, col2: "foo" }).unwrap();
 ///
-/// let csv = to_csv(&relation, ',').unwrap();
+/// let mut buf = Vec::new();
+/// to_csv(&relation, ',', &mut buf).unwrap();
+/// let csv = String::from_utf8(buf).unwrap();
 /// assert_eq!(csv, "col1,col2\n1,\"foo\"\n");
 /// ```
-pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterError> {
+pub fn to_csv<W: Write>(
+    relation: &Relation,
+    delimiter: char,
+    mut writer: W,
+) -> Result<(), ExporterError> {
     let headers: Vec<&str> = relation
         .relation_type()
         .heading()
         .attribute_names()
         .map(|s| s.as_str())
         .collect();
-    let mut output = String::new();
 
     // Write headers
     for (i, header) in headers.iter().enumerate() {
         if i > 0 {
-            output.push(delimiter);
+            write!(writer, "{}", delimiter)?;
         }
-        output.push_str(header);
+        write!(writer, "{}", header)?;
     }
-    output.push('\n');
+    writeln!(writer)?;
 
     // Sort tuples
     let mut tuples: Vec<SortableTuple> = relation.tuples().map(SortableTuple).collect();
@@ -151,16 +164,16 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
     for tuple in tuples {
         for (i, header) in headers.iter().enumerate() {
             if i > 0 {
-                output.push(delimiter);
+                write!(writer, "{}", delimiter)?;
             }
             if let Some(val) = tuple.0.get(header) {
-                output.push_str(&format_scalar_csv(val));
+                write!(writer, "{}", format_scalar_csv(val))?;
             }
         }
-        output.push('\n');
+        writeln!(writer)?;
     }
 
-    Ok(output)
+    Ok(())
 }
 
 /// Exports the relation to a JSON string.
@@ -254,7 +267,9 @@ pub fn to_json<W: std::io::Write>(relation: &Relation, writer: W) -> Result<(), 
 /// let mut relation = Relation::new(RelationType::new(heading));
 /// relation.insert(tuple! { name: "Alice", score: 100i64 }).unwrap();
 ///
-/// let table = to_ascii_table(&relation);
+/// let mut buf = Vec::new();
+/// to_ascii_table(&relation, &mut buf).unwrap();
+/// let table = String::from_utf8(buf).unwrap();
 /// println!("{}", table);
 /// // +-------+-------+
 /// // | name  | score |
@@ -262,7 +277,7 @@ pub fn to_json<W: std::io::Write>(relation: &Relation, writer: W) -> Result<(), 
 /// // | Alice | 100   |
 /// // +-------+-------+
 /// ```
-pub fn to_ascii_table(relation: &Relation) -> String {
+pub fn to_ascii_table<W: Write>(relation: &Relation, mut writer: W) -> Result<(), ExporterError> {
     let headers: Vec<&str> = relation
         .relation_type()
         .heading()
@@ -270,7 +285,8 @@ pub fn to_ascii_table(relation: &Relation) -> String {
         .map(|s| s.as_str())
         .collect();
     if headers.is_empty() {
-        return String::from("(empty relation)");
+        write!(writer, "(empty relation)")?;
+        return Ok(());
     }
 
     // Sort tuples
@@ -285,19 +301,17 @@ pub fn to_ascii_table(relation: &Relation) -> String {
         rows.push(format_tuple_row(t, &headers, &mut widths));
     }
 
-    let mut output = String::new();
-
-    draw_table_separator(&mut output, &widths);
-    draw_table_row(&mut output, &headers, &widths);
-    draw_table_separator(&mut output, &widths);
+    draw_table_separator(&mut writer, &widths)?;
+    draw_table_row(&mut writer, &headers, &widths)?;
+    draw_table_separator(&mut writer, &widths)?;
 
     for row in rows {
-        draw_table_row(&mut output, &row, &widths);
+        draw_table_row(&mut writer, &row, &widths)?;
     }
 
-    draw_table_separator(&mut output, &widths);
+    draw_table_separator(&mut writer, &widths)?;
 
-    output
+    Ok(())
 }
 
 fn format_tuple_row(t: &SortableTuple, headers: &[&str], widths: &mut [usize]) -> Vec<String> {
@@ -318,28 +332,34 @@ fn format_tuple_row(t: &SortableTuple, headers: &[&str], widths: &mut [usize]) -
     row
 }
 
-fn draw_table_separator(out: &mut String, widths: &[usize]) {
-    out.push('+');
+fn draw_table_separator<W: Write>(out: &mut W, widths: &[usize]) -> Result<(), std::io::Error> {
+    write!(out, "+")?;
     for w in widths {
-        out.push('-');
-        out.push_str(&"-".repeat(*w));
-        out.push('-');
-        out.push('+');
+        write!(out, "-")?;
+        write!(out, "{}", "-".repeat(*w))?;
+        write!(out, "-")?;
+        write!(out, "+")?;
     }
-    out.push('\n');
+    writeln!(out)?;
+    Ok(())
 }
 
-fn draw_table_row<T: AsRef<str>>(out: &mut String, row: &[T], widths: &[usize]) {
-    out.push('|');
+fn draw_table_row<W: Write, T: AsRef<str>>(
+    out: &mut W,
+    row: &[T],
+    widths: &[usize],
+) -> Result<(), std::io::Error> {
+    write!(out, "|")?;
     for (i, cell) in row.iter().enumerate() {
         let cell_str = cell.as_ref();
-        out.push(' ');
-        out.push_str(cell_str);
-        out.push_str(&" ".repeat(widths[i] - cell_str.len()));
-        out.push(' ');
-        out.push('|');
+        write!(out, " ")?;
+        write!(out, "{}", cell_str)?;
+        write!(out, "{}", " ".repeat(widths[i] - cell_str.len()))?;
+        write!(out, " ")?;
+        write!(out, "|")?;
     }
-    out.push('\n');
+    writeln!(out)?;
+    Ok(())
 }
 
 fn format_scalar_csv(val: &ScalarValue) -> String {
@@ -414,7 +434,9 @@ mod tests {
     fn test_to_csv() {
         let relation = create_test_relation();
 
-        let csv = to_csv(&relation, ',').unwrap();
+        let mut buf = Vec::new();
+        to_csv(&relation, ',', &mut buf).unwrap();
+        let csv = String::from_utf8(buf).unwrap();
 
         // Expected output (sorted by tuple content)
         // Note: The order of columns in CSV depends on the iteration order of attribute_names()
@@ -443,7 +465,9 @@ mod tests {
     fn test_to_ascii_table() {
         let relation = create_test_relation();
 
-        let table = to_ascii_table(&relation);
+        let mut buf = Vec::new();
+        to_ascii_table(&relation, &mut buf).unwrap();
+        let table = String::from_utf8(buf).unwrap();
 
         // Bob comes first (false < true)
         // active | id | name
