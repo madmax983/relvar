@@ -3,38 +3,9 @@ use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use std::collections::HashMap;
 
-/// Evaluates one generation of Conway's Game of Life purely using relational algebra.
-///
-/// The grid is infinite, represented sparsely by the coordinates of alive cells.
-///
-/// `alive_cells` must be a relation with exactly two attributes: `x` (Int) and `y` (Int).
-///
-/// # Examples
-///
-/// ```
-/// use relvar_core::experimental::game_of_life::next_generation;
-/// use relvar_core::types::{RelationType, ScalarType, TupleType};
-/// use relvar_core::values::{Relation, Tuple};
-/// use relvar_core::tuple;
-///
-/// // 1. Create a heading for our coordinate relation
-/// let heading = TupleType::new()
-///     .with_attribute("x", ScalarType::Int)
-///     .with_attribute("y", ScalarType::Int);
-///
-/// // 2. Create the initial relation representing a horizontal "Blinker"
-/// let mut blinker_h = Relation::new(RelationType::new(heading));
-/// blinker_h.insert(tuple!{x: 0i64, y: 0i64}).unwrap();
-/// blinker_h.insert(tuple!{x: 1i64, y: 0i64}).unwrap();
-/// blinker_h.insert(tuple!{x: 2i64, y: 0i64}).unwrap();
-///
-/// // 3. Compute the next generation purely via relational algebra
-/// let blinker_v = next_generation(&blinker_h).unwrap();
-///
-/// // The blinker has oscillated to a vertical position
-/// assert_eq!(blinker_v.cardinality(), 3);
-/// ```
-pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error::DatabaseError> {
+fn generate_neighbor_coordinates(
+    alive_cells: &Relation,
+) -> Result<Relation, crate::error::DatabaseError> {
     // 1. Offsets
     let off_heading = TupleType::new()
         .with_attribute("dx", ScalarType::Int)
@@ -74,8 +45,10 @@ pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error:
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     // 4. Project to (nx, ny) to count properly
-    let connections = ext2.project(&["x", "y", "nx", "ny"]);
+    Ok(ext2.project(&["x", "y", "nx", "ny"]))
+}
 
+fn count_neighbors(connections: &Relation) -> Result<Relation, crate::error::DatabaseError> {
     // 5. Summarize to count neighbors per cell
     let counts = connections
         .summarize(
@@ -89,10 +62,15 @@ pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error:
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     // 6. Rename back to (x, y)
-    let counts_renamed = counts.rename(&[("nx", "x"), ("ny", "y")]);
+    Ok(counts.rename(&[("nx", "x"), ("ny", "y")]))
+}
 
+fn apply_rules(
+    alive_cells: &Relation,
+    counts_renamed: &Relation,
+) -> Result<Relation, crate::error::DatabaseError> {
     // 7. Rule 1: Stays Alive (alive cells with 2 or 3 neighbors)
-    let alive_with_neighbors = alive_cells.join(&counts_renamed)?;
+    let alive_with_neighbors = alive_cells.join(counts_renamed)?;
     let stays_alive = alive_with_neighbors
         .restrict(|t: &Tuple| {
             let count = t.get_typed::<i64>("n_count").unwrap();
@@ -115,6 +93,43 @@ pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error:
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     Ok(next_gen)
+}
+
+/// Evaluates one generation of Conway's Game of Life purely using relational algebra.
+///
+/// The grid is infinite, represented sparsely by the coordinates of alive cells.
+///
+/// `alive_cells` must be a relation with exactly two attributes: `x` (Int) and `y` (Int).
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::experimental::game_of_life::next_generation;
+/// use relvar_core::types::{RelationType, ScalarType, TupleType};
+/// use relvar_core::values::{Relation, Tuple};
+/// use relvar_core::tuple;
+///
+/// // 1. Create a heading for our coordinate relation
+/// let heading = TupleType::new()
+///     .with_attribute("x", ScalarType::Int)
+///     .with_attribute("y", ScalarType::Int);
+///
+/// // 2. Create the initial relation representing a horizontal "Blinker"
+/// let mut blinker_h = Relation::new(RelationType::new(heading));
+/// blinker_h.insert(tuple!{x: 0i64, y: 0i64}).unwrap();
+/// blinker_h.insert(tuple!{x: 1i64, y: 0i64}).unwrap();
+/// blinker_h.insert(tuple!{x: 2i64, y: 0i64}).unwrap();
+///
+/// // 3. Compute the next generation purely via relational algebra
+/// let blinker_v = next_generation(&blinker_h).unwrap();
+///
+/// // The blinker has oscillated to a vertical position
+/// assert_eq!(blinker_v.cardinality(), 3);
+/// ```
+pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error::DatabaseError> {
+    let connections = generate_neighbor_coordinates(alive_cells)?;
+    let counts_renamed = count_neighbors(&connections)?;
+    apply_rules(alive_cells, &counts_renamed)
 }
 
 #[cfg(test)]

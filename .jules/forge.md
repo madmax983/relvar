@@ -605,3 +605,7 @@ Build it right, make it fast, keep it simple.
 ## 2024-05-30 - Extract God Function in VCS Diff
 **Learning:** The `diff` method in `relvar/src/experimental/vcs.rs` was a "God Function" (87 lines) that mixed retrieving tree relations and calculating added/removed/modified files.
 **Action:** Extracted the logic into private helper functions: `get_tree_for_commit`, `compute_added_files`, `compute_removed_files`, and `compute_modified_files`. This flattens the main method and significantly increases code readability without sacrificing logic or safety.
+
+## 2026-05-19 - Refactored next_generation God Function in Game of Life
+**Learning:** The `next_generation` function in `relvar-core/src/experimental/game_of_life.rs` was an overly long God Function (82 lines). It conflated generating neighbor coordinate offsets/joins, summarizing/counting those neighbors, and applying the survival/birth rules, making the logic dense and difficult to read.
+**Action:** Applied the 'Three-Phase Operator' pattern, extracting this logic into cleanly typed private helper functions: `generate_neighbor_coordinates`, `count_neighbors`, and `apply_rules`. Returning the intermediate relations cleanly flattens the main method and significantly improves readability without sacrificing the relational logic.
