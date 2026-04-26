@@ -531,24 +531,18 @@ impl Relation {
     ) -> Result<Vec<Tuple>, SummarizeError> {
         let mut result_tuples = Vec::with_capacity(groups.len());
 
-        let group_by_strings: Vec<String> = group_by.iter().map(|s| s.to_string()).collect();
-        let agg_names: Vec<String> = aggregations
-            .iter()
-            .map(|agg| agg.result_name.clone())
-            .collect();
-
         for (key, group_tuples) in groups {
             let mut values = std::collections::BTreeMap::new();
 
             // Add grouping attribute values
-            for (i, attr_str) in group_by_strings.iter().enumerate() {
-                values.insert(attr_str.clone(), (*key[i]).clone());
+            for (i, &attr_str) in group_by.iter().enumerate() {
+                values.insert(attr_str.to_string(), (*key[i]).clone());
             }
 
             // Compute aggregations
-            for (i, agg) in aggregations.iter().enumerate() {
+            for agg in aggregations.iter() {
                 let agg_value = agg.compute(group_tuples)?;
-                values.insert(agg_names[i].clone(), agg_value);
+                values.insert(agg.result_name.clone(), agg_value);
             }
 
             // Using new_unchecked avoids O(N) validation per tuple where N is degree,
@@ -605,8 +599,7 @@ impl Relation {
         if group_by.is_empty() {
             // No grouping - all tuples in one group
             let mut map = HashMap::new();
-            let all_tuples: Vec<&Tuple> = self.tuples().collect();
-            map.insert(Vec::new(), all_tuples);
+            map.insert(Vec::new(), self.tuples().collect());
             map
         } else {
             // Group by specified attributes
