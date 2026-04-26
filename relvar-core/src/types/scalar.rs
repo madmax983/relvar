@@ -326,15 +326,12 @@ impl std::hash::Hash for ScalarType {
 
         // Then hash the data based on variant
         match self {
-            ScalarType::Int => {}
-            ScalarType::Float => {}
-            ScalarType::String => {}
-            ScalarType::Bool => {}
-            ScalarType::Bytes => {}
-            ScalarType::Relation(rel_type) => {
-                // Hash the relation type's heading
-                rel_type.heading().hash(state);
-            }
+            ScalarType::Int
+            | ScalarType::Float
+            | ScalarType::String
+            | ScalarType::Bool
+            | ScalarType::Bytes => {}
+            ScalarType::Relation(rel_type) => rel_type.heading().hash(state),
             ScalarType::UserDefined {
                 name,
                 representation,
@@ -751,5 +748,55 @@ impl TryFrom<ScalarTypeUnchecked> for ScalarType {
             ));
         }
         Ok(ty)
+    }
+}
+
+#[cfg(test)]
+mod tests_additional_scalar {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "Type nesting too deep: 65 (limit: 64)")]
+    fn test_user_defined_depth_limit() {
+        let mut ty = ScalarType::Int;
+        for _ in 0..(crate::types::MAX_TYPE_DEPTH + 1) {
+            ty = ScalarType::user_defined("Nested", ty);
+        }
+    }
+
+    #[test]
+    fn test_scalar_type_hash_all_branches() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hash;
+
+        let mut hasher = DefaultHasher::new();
+
+        ScalarType::Int.hash(&mut hasher);
+        ScalarType::Float.hash(&mut hasher);
+        ScalarType::String.hash(&mut hasher);
+        ScalarType::Bool.hash(&mut hasher);
+        ScalarType::Bytes.hash(&mut hasher);
+
+        let u1 = ScalarType::user_defined("Custom1", ScalarType::Int);
+        u1.hash(&mut hasher);
+
+        let heading = crate::types::TupleType::new().with_attribute("a", ScalarType::Int);
+        let rel_type = ScalarType::Relation(Box::new(crate::types::RelationType::new(heading)));
+        rel_type.hash(&mut hasher);
+    }
+
+    #[test]
+    fn test_try_from_unchecked_depth_limit() {
+        let mut unchecked_ty = crate::types::scalar::ScalarTypeUnchecked::Int;
+        for _ in 0..(crate::types::MAX_TYPE_DEPTH + 1) {
+            unchecked_ty = crate::types::scalar::ScalarTypeUnchecked::UserDefined {
+                name: "Nested".to_string(),
+                representation: Box::new(unchecked_ty),
+            };
+        }
+
+        let result = ScalarType::try_from(unchecked_ty);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Type nesting too deep:"));
     }
 }

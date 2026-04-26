@@ -1,8 +1,6 @@
-use relvar_core::types::{RelationType, ScalarType, TupleType};
+content = """use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::ScalarValue;
 use std::cmp::Ordering;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hash;
 
 #[test]
 fn test_type_mismatch_error_display() {
@@ -77,7 +75,7 @@ fn test_scalar_type_ord_unreachable_branch() {
 }
 
 #[test]
-#[should_panic(expected = "Type nesting too deep")]
+#[should_panic(expected = "Type nesting too deep: 65 (limit: 64)")]
 fn test_scalar_type_depth_limit_user_defined() {
     let mut ty = ScalarType::Int;
     for _i in 0..65 {
@@ -86,7 +84,7 @@ fn test_scalar_type_depth_limit_user_defined() {
 }
 
 #[test]
-#[should_panic(expected = "Type nesting too deep")]
+#[should_panic(expected = "Type nesting too deep: 65 (limit: 64)")]
 fn test_relation_type_depth_limit() {
     let mut ty = ScalarType::Int;
     for _i in 0..64 {
@@ -96,7 +94,7 @@ fn test_relation_type_depth_limit() {
 }
 
 #[test]
-#[should_panic(expected = "Type nesting too deep")]
+#[should_panic(expected = "Type nesting too deep: 65 (limit: 64)")]
 fn test_tuple_type_depth_limit() {
     let mut ty = ScalarType::Int;
     for _i in 0..64 {
@@ -178,12 +176,12 @@ fn test_user_defined_cmp_same_name_different_rep() {
 
 #[test]
 fn test_scalar_type_deserialize_unreachable() {
-    let json = "\"Not A Type\"";
+    let json = "\\\"Not A Type\\\"";
     let _ = serde_json::from_str::<ScalarType>(json);
 }
 
 #[test]
-#[should_panic(expected = "Type nesting too deep")]
+#[should_panic(expected = "Type nesting too deep: 65 (limit: 64)")]
 fn test_user_defined_depth_limit_hit() {
     let mut ty = ScalarType::Int;
     for i in 0..64 {
@@ -193,6 +191,9 @@ fn test_user_defined_depth_limit_hit() {
 
 #[test]
 fn test_scalar_type_hash_all_branches() {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hash;
+
     let mut hasher = DefaultHasher::new();
 
     ScalarType::Int.hash(&mut hasher);
@@ -200,13 +201,6 @@ fn test_scalar_type_hash_all_branches() {
     ScalarType::String.hash(&mut hasher);
     ScalarType::Bool.hash(&mut hasher);
     ScalarType::Bytes.hash(&mut hasher);
-
-    let u1 = ScalarType::user_defined("Custom", ScalarType::Int);
-    u1.hash(&mut hasher);
-
-    let heading = TupleType::new().with_attribute("a", ScalarType::Int);
-    let rel_type = ScalarType::Relation(Box::new(RelationType::new(heading)));
-    rel_type.hash(&mut hasher);
 }
 
 #[test]
@@ -240,6 +234,21 @@ fn test_try_from_unchecked_relation() {
 
     let decoded: Result<ScalarType, _> = serde_json::from_str(&json);
     assert!(decoded.is_ok());
+}
+
+#[test]
+fn test_scalar_type_hash_all_branches2() {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hash;
+
+    let mut hasher = DefaultHasher::new();
+
+    let heading = TupleType::new().with_attribute("a", ScalarType::Int);
+    let rel_type = ScalarType::Relation(Box::new(RelationType::new(heading)));
+    rel_type.hash(&mut hasher);
+
+    let user_type = ScalarType::user_defined("Custom", ScalarType::Int);
+    user_type.hash(&mut hasher);
 }
 
 #[test]
@@ -278,10 +287,14 @@ fn test_try_from_unchecked_depth_limit() {
 }
 
 #[test]
-#[should_panic(expected = "Type nesting too deep")]
+#[should_panic(expected = "Type nesting too deep: 65 (limit: 64)")]
 fn test_user_defined_depth_limit_hit2() {
     let mut ty = ScalarType::Int;
     for _ in 0..65 {
         ty = ScalarType::user_defined("Nested", ty);
     }
 }
+"""
+
+with open("relvar-core/tests/sentry_scalar_type_coverage.rs", "w") as f:
+    f.write(content)
