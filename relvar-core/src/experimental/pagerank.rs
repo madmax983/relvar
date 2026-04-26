@@ -9,6 +9,34 @@ use crate::values::{Relation, ScalarValue};
 /// `ranks` must have attributes: `node` (Int), `rank` (Float).
 /// `damping_factor` is the probability of following a link (typically 0.85).
 /// `num_nodes` is the total number of nodes in the network.
+///
+/// # Examples
+/// ```
+/// use relvar_core::tuple;
+/// use relvar_core::types::{RelationType, ScalarType, TupleType};
+/// use relvar_core::values::Relation;
+/// use relvar_core::experimental::pagerank::pagerank_iteration;
+///
+/// let edge_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("source", ScalarType::Int)
+///         .with_attribute("target", ScalarType::Int)
+/// );
+/// let mut edges = Relation::new(edge_type);
+/// edges.insert(tuple! { source: 1i64, target: 2i64 }).unwrap();
+///
+/// let rank_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("node", ScalarType::Int)
+///         .with_attribute("rank", ScalarType::Float)
+/// );
+/// let mut ranks = Relation::new(rank_type);
+/// ranks.insert(tuple! { node: 1i64, rank: 1.0 }).unwrap();
+/// ranks.insert(tuple! { node: 2i64, rank: 0.0 }).unwrap();
+///
+/// let next_ranks = pagerank_iteration(edges, ranks, 0.85, 2).unwrap();
+/// assert_eq!(next_ranks.cardinality(), 1); // Only nodes receiving links get updated
+/// ```
 pub fn pagerank_iteration(
     edges: Relation,
     ranks: Relation,

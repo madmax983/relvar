@@ -20,3 +20,6 @@
 ## 2025-04-24 - The "RelationalDom" Examples
 **Confusion:** The experimental `RelationalDom` had a placeholder example for the struct and lacked executable doc-tests for its methods (`new`, `query_class`, and `query_descendant`), making it difficult to understand how to construct the nodes, edges, and attributes relations or perform CSS-like queries.
 **Clarification:** Replaced the placeholder and added comprehensive executable `/// # Examples` doc-tests for `RelationalDom` and all its methods to clearly demonstrate how to model a DOM and evaluate descendant selectors declaratively.
+## 2025-05-18 - Documenting Internal Tests
+**Confusion:** Added doc-tests to internal test modules (`relvar-core/src/database/tests/common.rs`) causing test failures when external paths could not be resolved by `cargo test --doc` due to `cfg(test)` access restrictions. The `find_undoc.py` script flagged these missing docs incorrectly.
+**Clarification:** Excluded internal test directories from `find_undoc.py` and reverted doctests in `common.rs` to ensure documentation is strictly for public-facing, user-accessible APIs, keeping doctests verifiable and avoiding failing `cargo test --doc`.

@@ -25,9 +25,14 @@ def check_file(filepath):
 for root, _, files in os.walk('relvar-core/src'):
     for file in files:
         if file.endswith('.rs'):
-            check_file(os.path.join(root, file))
+
+            if 'tests/' not in os.path.join(root, file).replace('\\', '/'):
+                check_file(os.path.join(root, file))
+
 
 for root, _, files in os.walk('relvar/src'):
     for file in files:
         if file.endswith('.rs'):
-            check_file(os.path.join(root, file))
+
+            if 'tests/' not in os.path.join(root, file).replace('\\', '/'):
+                check_file(os.path.join(root, file))
