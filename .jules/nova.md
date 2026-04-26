@@ -115,3 +115,7 @@
 **Concept:** Modeled a Document Object Model (DOM) where nodes, parent-child edges, and attributes are pure relations. CSS Selectors (like descendant selectors) are evaluated declaratively using transitive closure (`tclose`) on the edges relation, joining with the attributes relation.
 **Fate:** TBD
 **Lesson:** TBD
+## Relational Tetris Engine
+**Concept:** Modeled the game of Tetris purely using relational algebra. The game board and falling pieces are relations. Game mechanics like collision detection, piece locking, and line clearing are evaluated declaratively using Joins, Semidifferences, and Summarizations.
+**Fate:** TBD
+**Lesson:** TBD
