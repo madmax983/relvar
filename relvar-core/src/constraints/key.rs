@@ -62,8 +62,7 @@
 //! let violation = constraints.would_violate_on_insert(&relation, &duplicate).unwrap();
 //!
 //! // Violation detected - returns the violated key attributes
-//! assert!(violation.is_some());
-//! assert_eq!(violation.unwrap(), vec!["emp_id"]);
+//! assert!(violation);
 //! ```
 
 use crate::values::{Relation, Tuple};
@@ -389,22 +388,22 @@ impl KeyConstraints {
         &self,
         relation: &Relation,
         new_tuple: &Tuple,
-    ) -> Result<Option<Vec<String>>, KeyConstraintError> {
+    ) -> Result<bool, KeyConstraintError> {
         // Check primary key
         if let Some(pk) = &self.primary_key
             && pk.would_violate(relation, new_tuple)?
         {
-            return Ok(Some(pk.attributes().to_vec()));
+            return Ok(true);
         }
 
         // Check candidate keys
         for ck in &self.candidate_keys {
             if ck.would_violate(relation, new_tuple)? {
-                return Ok(Some(ck.attributes().to_vec()));
+                return Ok(true);
             }
         }
 
-        Ok(None)
+        Ok(false)
     }
 }
 
@@ -547,8 +546,7 @@ mod tests {
             .would_violate_on_insert(&relation, &new_tuple)
             .unwrap();
 
-        assert!(violation.is_some());
-        assert_eq!(violation.unwrap(), vec!["emp_id"]);
+        assert!(violation);
     }
 
     #[test]
@@ -580,7 +578,7 @@ mod tests {
         let violation = constraints
             .would_violate_on_insert(&relation, &new_tuple)
             .unwrap();
-        assert!(violation.is_some());
+        assert!(violation);
     }
 
     #[test]
