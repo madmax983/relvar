@@ -186,20 +186,22 @@ impl StorageManager {
 
     /// Get or open a heap file for a relation.
     fn get_or_open_heap_file(&mut self, name: &str) -> Result<&mut HeapFile, StorageError> {
-        if !self.heap_files.contains_key(name) {
-            let metadata = self
-                .catalog
-                .get_relation(name)
-                .map_err(Self::convert_catalog_error)?;
+        use std::collections::hash_map::Entry;
+        match self.heap_files.entry(name.to_string()) {
+            Entry::Occupied(entry) => Ok(entry.into_mut()),
+            Entry::Vacant(entry) => {
+                let metadata = self
+                    .catalog
+                    .get_relation(name)
+                    .map_err(Self::convert_catalog_error)?;
 
-            let heap_file =
-                HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
-                    .map_err(Self::convert_heap_error)?;
+                let heap_file =
+                    HeapFile::open(&metadata.heap_file_path, metadata.relation_type.clone())
+                        .map_err(Self::convert_heap_error)?;
 
-            self.heap_files.insert(name.to_string(), heap_file);
+                Ok(entry.insert(heap_file))
+            }
         }
-
-        Ok(self.heap_files.get_mut(name).unwrap())
     }
 
     /// Scan a relation with visibility filtering (MVCC).
