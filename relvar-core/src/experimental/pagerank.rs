@@ -43,6 +43,12 @@ pub fn pagerank_iteration(
     damping_factor: f64,
     num_nodes: usize,
 ) -> Result<Relation, DatabaseError> {
+    let contributions = calculate_contributions(&edges, &ranks)?;
+    let new_ranks_summed = distribute_and_aggregate_ranks(&edges, &contributions)?;
+    apply_damping_factor(&new_ranks_summed, damping_factor, num_nodes)
+}
+
+fn calculate_contributions(edges: &Relation, ranks: &Relation) -> Result<Relation, DatabaseError> {
     // 1. Calculate outgoing edge count for each node
     // Relation with attributes: source (Int), out_degree (Int)
     let out_degrees = edges
@@ -61,7 +67,7 @@ pub fn pagerank_iteration(
     // 3. Calculate rank contribution
     // Contribution = rank / out_degree
     // Relation with attributes: node (Int), rank (Float), out_degree (Int), contribution (Float)
-    let contributions = node_info
+    node_info
         .extend("contribution", ScalarType::Float, |t| {
             let rank = t.get_typed::<f64>("rank").unwrap_or(0.0);
             let out_degree = t.get_typed::<i64>("out_degree").unwrap_or(1);
@@ -73,8 +79,13 @@ pub fn pagerank_iteration(
             };
             ScalarValue::Float(rank / out_degree_float)
         })
-        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+}
 
+fn distribute_and_aggregate_ranks(
+    edges: &Relation,
+    contributions: &Relation,
+) -> Result<Relation, DatabaseError> {
     // 4. Join edges with contributions to distribute rank
     // edges: source, target
     // contributions: node, rank, out_degree, contribution
@@ -83,19 +94,25 @@ pub fn pagerank_iteration(
     // Join on "node"
     // Result attributes: node (source), target, rank, out_degree, contribution
     let distributed = edges_renamed
-        .join(&contributions)
+        .join(contributions)
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
     // 5. Aggregate received rank per target node
     // Group by target, sum contributions
     // Relation with attributes: target (Int), sum_contribution (Float)
-    let new_ranks_summed = distributed
+    distributed
         .summarize(
             &["target"],
             &[Aggregation::sum_float("sum_contribution", "contribution")],
         )
-        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+}
 
+fn apply_damping_factor(
+    new_ranks_summed: &Relation,
+    damping_factor: f64,
+    num_nodes: usize,
+) -> Result<Relation, DatabaseError> {
     // Rename target back to node
     let new_ranks_renamed = new_ranks_summed.rename(&[("target", "node")]);
 
@@ -110,8 +127,7 @@ pub fn pagerank_iteration(
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
     // Project out the temporary sum_contribution to return only (node, rank)
-    let result = final_ranks.project(&["node", "rank"]);
-    Ok(result)
+    Ok(final_ranks.project(&["node", "rank"]))
 }
 
 #[cfg(test)]

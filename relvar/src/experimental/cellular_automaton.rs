@@ -62,7 +62,12 @@ impl CellularAutomaton {
     /// // Note: This is a placeholder example
     /// ```
     pub fn next_generation(&self) -> Result<Relation, DatabaseError> {
-        // 1. Create neighbor offsets relation: (dx, dy)
+        let offsets = Self::generate_offsets()?;
+        let counts_xy = Self::calculate_neighbor_counts(&self.cells, &offsets)?;
+        Self::apply_rules(&self.cells, &counts_xy)
+    }
+
+    fn generate_offsets() -> Result<Relation, DatabaseError> {
         let offset_heading = TupleType::new()
             .with_attribute("dx".to_string(), ScalarType::Int)
             .with_attribute("dy".to_string(), ScalarType::Int);
@@ -78,10 +83,16 @@ impl CellularAutomaton {
                 }
             }
         }
+        Ok(offsets)
+    }
 
+    fn calculate_neighbor_counts(
+        cells: &Relation,
+        offsets: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 2. Cartesian product of cells and offsets
         // Since they share no common attributes, a natural join acts as a cartesian product.
-        let cartesian = self.cells.join(&offsets)?;
+        let cartesian = cells.join(offsets)?;
 
         // 3. Compute neighbor coordinates: nx = x + dx, ny = y + dy
         let neighbors = cartesian
@@ -106,14 +117,16 @@ impl CellularAutomaton {
 
         // Rename back to x, y
         let rename_map = vec![("nx", "x"), ("ny", "y")];
-        let counts_xy = neighbor_counts.rename(&rename_map);
+        Ok(neighbor_counts.rename(&rename_map))
+    }
 
+    fn apply_rules(cells: &Relation, counts_xy: &Relation) -> Result<Relation, DatabaseError> {
         // 5. Apply Game of Life rules
 
         // Find surviving cells: alive cells with 2 or 3 neighbors
-        // Join with self.cells effectively acts as an intersection/filter for "is alive"
+        // Join with cells effectively acts as an intersection/filter for "is alive"
         let surviving = counts_xy
-            .join(&self.cells)?
+            .join(cells)?
             .restrict(|t| {
                 let count = t.get_typed::<i64>("n_count").unwrap();
                 count == 2 || count == 3
@@ -127,15 +140,13 @@ impl CellularAutomaton {
 
         // Dead cells are cells with exactly 3 neighbors minus the currently alive cells
         let births = exactly_three
-            .difference(&self.cells)
+            .difference(cells)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Union surviving and births
-        let next_gen = surviving
+        surviving
             .union(&births)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        Ok(next_gen)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 }
 
