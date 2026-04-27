@@ -360,3 +360,211 @@ fn test_database_integrity_setters_coverage() {
     let check_constraints = relvar_core::constraints::CheckConstraints::new();
     db.set_check_constraints("TEST", check_constraints).unwrap();
 }
+
+#[test]
+fn test_database_set_key_constraints_coverage() {
+    use relvar_core::constraints::{KeyConstraints, PrimaryKey};
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("TEST", rel_type).unwrap();
+
+    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let constraints = KeyConstraints::new().with_primary_key(pk);
+
+    db.set_key_constraints("TEST", constraints).unwrap();
+}
+
+#[test]
+fn test_database_set_foreign_key_constraints_coverage() {
+    use relvar_core::constraints::{ForeignKey, ForeignKeyConstraints};
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let dept_type = RelationType::new(TupleType::new().with_attribute("dept_id", ScalarType::Int));
+    db.create_relvar("DEPT", dept_type).unwrap();
+
+    let emp_type = RelationType::new(TupleType::new().with_attribute("dept_id", ScalarType::Int));
+    db.create_relvar("EMP", emp_type).unwrap();
+
+    let fk = ForeignKey::new(
+        vec!["dept_id".to_string()],
+        "DEPT".to_string(),
+        vec!["dept_id".to_string()],
+    )
+    .unwrap();
+    let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+
+    db.set_foreign_key_constraints("EMP", constraints).unwrap();
+}
+
+#[test]
+fn test_database_set_type_constraints_coverage() {
+    use relvar_core::constraints::{AttributeConstraints, TypeConstraint};
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::ScalarValue;
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("count", ScalarType::Int));
+    db.create_relvar("TEST", rel_type).unwrap();
+
+    let attr_constraints = AttributeConstraints::new("count".to_string(), ScalarType::Int)
+        .with_constraint(TypeConstraint::Range {
+            min: ScalarValue::Int(1),
+            max: ScalarValue::Int(i64::MAX),
+        });
+
+    db.set_type_constraints("TEST", "count", attr_constraints)
+        .unwrap();
+}
+
+#[test]
+fn test_database_set_check_constraints_coverage() {
+    use relvar_core::constraints::{
+        CheckConstraint, CheckConstraints, CmpOp, ConstraintExpression, ValueOrRef,
+    };
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::ScalarValue;
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("age", ScalarType::Int));
+    db.create_relvar("PEOPLE", rel_type).unwrap();
+
+    let constraints = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        "valid_age",
+        "Age must be non-negative",
+        ConstraintExpression::Cmp {
+            left: "age".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Value(ScalarValue::Int(-1)),
+        },
+    ));
+
+    db.set_check_constraints("PEOPLE", constraints).unwrap();
+}
+
+#[test]
+fn test_database_set_constraints_nonexistent_relation() {
+    use relvar_core::constraints::{KeyConstraints, PrimaryKey};
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let constraints = KeyConstraints::new().with_primary_key(pk);
+
+    assert!(db.set_key_constraints("TEST", constraints).is_err());
+}
+
+#[test]
+fn test_database_set_type_constraints_attribute_not_found() {
+    use relvar_core::constraints::{AttributeConstraints, TypeConstraint};
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::ScalarValue;
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("TEST", rel_type).unwrap();
+
+    let attr_constraints = AttributeConstraints::new("count".to_string(), ScalarType::Int)
+        .with_constraint(TypeConstraint::Range {
+            min: ScalarValue::Int(1),
+            max: ScalarValue::Int(10),
+        });
+
+    assert!(
+        db.set_type_constraints("TEST", "count", attr_constraints)
+            .is_err()
+    );
+}
+
+#[test]
+fn test_constraint_manager_foreign_key_violation_error_path() {
+    use relvar_core::constraints::{ForeignKey, ForeignKeyConstraints};
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let dept_type = RelationType::new(TupleType::new().with_attribute("dept_id", ScalarType::Int));
+    db.create_relvar("DEPT", dept_type).unwrap();
+    db.insert("DEPT", tuple! { dept_id: 1i64 }).unwrap();
+
+    let emp_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("dept_id", ScalarType::Int)
+            .with_attribute("id", ScalarType::Int),
+    );
+    db.create_relvar("EMP", emp_type).unwrap();
+    db.insert("EMP", tuple! { id: 10i64, dept_id: 1i64 })
+        .unwrap();
+
+    let fk = ForeignKey::new(
+        vec!["dept_id".to_string()],
+        "DEPT".to_string(),
+        vec!["missing_in_dept".to_string()],
+    )
+    .unwrap();
+    let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+
+    assert!(db.set_foreign_key_constraints("EMP", constraints).is_err());
+}
+
+#[test]
+fn test_constraint_manager_validate_referencing_fks_error() {
+    use relvar_core::constraints::{ForeignKey, ForeignKeyConstraints};
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let dept_type = RelationType::new(TupleType::new().with_attribute("dept_id", ScalarType::Int));
+    db.create_relvar("DEPT", dept_type).unwrap();
+    db.insert("DEPT", tuple! { dept_id: 1i64 }).unwrap();
+
+    let emp_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("dept_id", ScalarType::Int)
+            .with_attribute("id", ScalarType::Int),
+    );
+    db.create_relvar("EMP", emp_type).unwrap();
+
+    let fk = ForeignKey::new(
+        vec!["dept_id".to_string()],
+        "DEPT".to_string(),
+        vec!["dept_id".to_string()],
+    )
+    .unwrap();
+    let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("EMP", constraints).unwrap();
+
+    db.insert("EMP", tuple! { id: 10i64, dept_id: 1i64 })
+        .unwrap();
+
+    let res = db.delete("DEPT", |_| true);
+    assert!(res.is_err());
+    if let Err(e) = res {
+        let err_str = e.to_string();
+        assert!(
+            err_str.contains("EMP"),
+            "Should contain referencing relation name"
+        );
+    }
+}
