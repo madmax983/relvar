@@ -29,10 +29,13 @@
 //! - **[`vm`](crate::experimental::vm)**: Relational Virtual Machine.
 //! - **[`markov`](crate::experimental::markov)**: Relational Markov Chain.
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
+//!
+//! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
 
 pub mod automata;
 pub mod automl;
 pub mod blockchain;
+pub mod build_system;
 pub mod cellular_automaton;
 pub mod circuit;
 pub mod ecs;

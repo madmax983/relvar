@@ -120,3 +120,7 @@
 **Concept:** Modeled the PageRank algorithm using purely relational algebra. Evaluates PageRank iterations on an edge relation via chained Natural Joins, Renames, Extensions, and Aggregations to iteratively distribute rank score without a looping procedural graph traversal.
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to eigenvector centrality problems like PageRank! By expressing out-degree calculation as a summarization and rank distribution as a joined extension, graph analysis compiles neatly down into relational engine queries.
+## Relational Build System
+**Concept:** Modeled a Build System (like Make/Ninja) using pure relational algebra. Dependencies are an edges relation, and file timestamps are a relation. Stale targets are resolved by finding files older than their dependencies via transitive closure (`tclose`), relational joins, and aggregations.
+**Fate:** TBD
+**Lesson:** TBD
