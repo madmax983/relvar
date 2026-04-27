@@ -540,9 +540,7 @@ mod tests {
             .unwrap();
 
         let new_tuple = tuple! { emp_id: 1i64, name: "Bob", dept_id: 20i64 };
-        let violation = constraints
-            .would_violate(&relation, &new_tuple)
-            .unwrap();
+        let violation = constraints.would_violate(&relation, &new_tuple).unwrap();
 
         assert!(violation);
     }
@@ -573,9 +571,7 @@ mod tests {
 
         // Try to insert with duplicate email
         let new_tuple = tuple! { emp_id: 3i64, email: "alice@example.com", name: "Alice2" };
-        let violation = constraints
-            .would_violate(&relation, &new_tuple)
-            .unwrap();
+        let violation = constraints.would_violate(&relation, &new_tuple).unwrap();
         assert!(violation);
     }
 
