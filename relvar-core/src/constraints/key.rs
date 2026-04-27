@@ -59,11 +59,10 @@
 //!
 //! // Check if inserting a duplicate would violate the constraint
 //! let duplicate = tuple! { emp_id: 1i64, name: "Charlie" };  // emp_id=1 already exists!
-//! let violation = constraints.would_violate_on_insert(&relation, &duplicate).unwrap();
+//! let violation = constraints.would_violate(&relation, &duplicate).unwrap();
 //!
-//! // Violation detected - returns the violated key attributes
-//! assert!(violation.is_some());
-//! assert_eq!(violation.unwrap(), vec!["emp_id"]);
+//! // Violation detected - returns true
+//! assert!(violation);
 //! ```
 
 use crate::values::{Relation, Tuple};
@@ -385,26 +384,24 @@ impl KeyConstraints {
     /// ```text
     /// // Example
     /// ```
-    pub fn would_violate_on_insert(
+    pub fn would_violate(
         &self,
         relation: &Relation,
         new_tuple: &Tuple,
-    ) -> Result<Option<Vec<String>>, KeyConstraintError> {
-        // Check primary key
+    ) -> Result<bool, KeyConstraintError> {
         if let Some(pk) = &self.primary_key
             && pk.would_violate(relation, new_tuple)?
         {
-            return Ok(Some(pk.attributes().to_vec()));
+            return Ok(true);
         }
 
-        // Check candidate keys
         for ck in &self.candidate_keys {
             if ck.would_violate(relation, new_tuple)? {
-                return Ok(Some(ck.attributes().to_vec()));
+                return Ok(true);
             }
         }
 
-        Ok(None)
+        Ok(false)
     }
 }
 
@@ -485,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn test_would_violate_on_insert() {
+    fn test_would_violate() {
         let mut relation = create_employee_relation();
         relation
             .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
@@ -544,11 +541,10 @@ mod tests {
 
         let new_tuple = tuple! { emp_id: 1i64, name: "Bob", dept_id: 20i64 };
         let violation = constraints
-            .would_violate_on_insert(&relation, &new_tuple)
+            .would_violate(&relation, &new_tuple)
             .unwrap();
 
-        assert!(violation.is_some());
-        assert_eq!(violation.unwrap(), vec!["emp_id"]);
+        assert!(violation);
     }
 
     #[test]
@@ -578,9 +574,9 @@ mod tests {
         // Try to insert with duplicate email
         let new_tuple = tuple! { emp_id: 3i64, email: "alice@example.com", name: "Alice2" };
         let violation = constraints
-            .would_violate_on_insert(&relation, &new_tuple)
+            .would_violate(&relation, &new_tuple)
             .unwrap();
-        assert!(violation.is_some());
+        assert!(violation);
     }
 
     #[test]
