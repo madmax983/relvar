@@ -407,3 +407,78 @@ fn test_database_delete_parent_violates_child_foreign_key() {
         ))
     ));
 }
+
+#[test]
+fn test_database_delete_and_update_coverage() {
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    db.create_relvar("USERS", RelationType::new(heading))
+        .unwrap();
+    db.insert("USERS", tuple! { id: 1i64 }).unwrap();
+    db.insert("USERS", tuple! { id: 2i64 }).unwrap();
+
+    let deleted_count = db
+        .delete("USERS", |t| t.get_typed::<i64>("id").unwrap() == 1)
+        .unwrap();
+    assert_eq!(deleted_count, 1);
+
+    let updated_count = db
+        .update(
+            "USERS",
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |t| {
+                let mut new_t = t.clone();
+                let _ = new_t.set("id".to_string(), relvar_core::values::ScalarValue::Int(3));
+                new_t
+            },
+        )
+        .unwrap();
+    assert_eq!(updated_count, 1);
+}
+
+#[test]
+fn test_database_insert_type_constraint_violation_detail() {
+    use relvar_core::constraints::{AttributeConstraints, TypeConstraint};
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::values::ScalarValue;
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let heading = TupleType::new().with_attribute("count", ScalarType::Int);
+    db.create_relvar("TEST", RelationType::new(heading))
+        .unwrap();
+
+    let attr_constraints = AttributeConstraints::new("count".to_string(), ScalarType::Int)
+        .with_constraint(TypeConstraint::Range {
+            min: ScalarValue::Int(1),
+            max: ScalarValue::Int(10),
+        });
+    db.set_type_constraints("TEST", "count", attr_constraints)
+        .unwrap();
+
+    let attr_constraints_bad = AttributeConstraints::new("count".to_string(), ScalarType::Int)
+        .with_constraint(TypeConstraint::Range {
+            min: ScalarValue::String("1".to_string()),
+            max: ScalarValue::Int(10),
+        });
+
+    let mut db_bad = Database::new(InMemoryEngine::new());
+    db_bad
+        .create_relvar(
+            "TEST_BAD",
+            RelationType::new(TupleType::new().with_attribute("count", ScalarType::Int)),
+        )
+        .unwrap();
+    db_bad
+        .set_type_constraints("TEST_BAD", "count", attr_constraints_bad)
+        .unwrap();
+
+    assert!(db_bad.insert("TEST_BAD", tuple! { count: 5i64 }).is_err());
+}

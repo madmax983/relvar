@@ -124,3 +124,49 @@ fn test_drop_virtual_relvar_not_found() {
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::RelationNotFound(_))));
 }
+
+#[test]
+fn test_database_list_relvars() {
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("TABLE_1", rel_type.clone()).unwrap();
+
+    db.define_virtual_relvar("VIEW_1", rel_type, |_db_exec| {
+        Ok(relvar_core::values::Relation::new(
+            relvar_core::types::RelationType::new(relvar_core::types::TupleType::new()),
+        ))
+    })
+    .unwrap();
+
+    let mut relvars = db.list_relvars();
+    relvars.sort();
+    assert_eq!(relvars, vec!["TABLE_1", "VIEW_1"]);
+}
+
+#[test]
+fn test_database_define_virtual_relvar_already_exists() {
+    use relvar_core::DatabaseError;
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("TABLE_1", rel_type.clone()).unwrap();
+
+    let err = db
+        .define_virtual_relvar("TABLE_1", rel_type, |_db_exec| {
+            Ok(relvar_core::values::Relation::new(
+                relvar_core::types::RelationType::new(relvar_core::types::TupleType::new()),
+            ))
+        })
+        .unwrap_err();
+
+    assert!(matches!(err, DatabaseError::RelationAlreadyExists(_)));
+}
