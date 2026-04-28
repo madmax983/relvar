@@ -114,3 +114,6 @@
 ## 2026-04-18 - Missing DML Validation and Algebra Into Branch Tests
 **Learning:** `Database::update` error paths during `validate_referencing_foreign_keys` validation and various `_into` algebra operations (`extend_into`, `union_into`, `intersect_into`) error paths and basic branch execution handling were entirely missing test coverage. Also `Database::list_relvars` was entirely unexercised.
 **Action:** When working on APIs containing DML operations like `update` and `delete`, ensure the error paths for constraints propagation to children referential relations are thoroughly tested. Always ensure the `_into` fast-path consuming operations mirror standard coverage.
+## 2026-04-28 - CSV and JSON Importer Error Coverage
+**Learning:** Found several untested code paths regarding the failure branches of `from_csv` and `from_json` functions in `relvar/src/tools/importer.rs`. Specifically, the `JsonError`, `LimitExceeded`, and `TypeError`/`FormatError` mappings for invalid imports were entirely unexercised.
+**Action:** When implementing importer utilities that handle unvalidated external data, ensure comprehensive tests are written that trigger serialization limits and strict type checking failures to guarantee safe conversion to `Relation` objects.
