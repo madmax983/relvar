@@ -609,3 +609,7 @@ Build it right, make it fast, keep it simple.
 ## 2026-05-19 - Extract God Function in Logic Circuit Simulator
 **Learning:** `relvar/src/experimental/circuit.rs` contained a "God Function" `tick` (79 lines) which combined evaluating binary gates, evaluating unary gates, and combining their outputs into the next state.
 **Action:** Applied the "Three-Phase Operator" pattern by extracting `evaluate_binary_gates`, `evaluate_unary_gates`, and `combine_outputs` into separate helper functions to improve readability and code organization without changing behavior.
+
+## 2024-06-25 - Extract God Function in Game of Life and PageRank
+**Learning:** `relvar-core/src/experimental/game_of_life.rs`, `relvar/src/experimental/cellular_automaton.rs`, and `relvar-core/src/experimental/pagerank.rs` contained "God Functions" (`next_generation` and `pagerank_iteration`) over 70 lines long.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting their logical phases into separate helper functions (`generate_offsets`, `calculate_neighbor_counts`, `apply_rules` for Game of Life; `calculate_contributions`, `distribute_and_aggregate_ranks`, `apply_damping_factor` for PageRank) to improve readability without changing behavior.

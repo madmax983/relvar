@@ -35,7 +35,12 @@ use std::collections::HashMap;
 /// assert_eq!(blinker_v.cardinality(), 3);
 /// ```
 pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error::DatabaseError> {
-    // 1. Offsets
+    let offsets = generate_offsets();
+    let counts_renamed = calculate_neighbor_counts(alive_cells, &offsets)?;
+    apply_rules(alive_cells, &counts_renamed)
+}
+
+fn generate_offsets() -> Relation {
     let off_heading = TupleType::new()
         .with_attribute("dx", ScalarType::Int)
         .with_attribute("dy", ScalarType::Int);
@@ -52,9 +57,15 @@ pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error:
             offsets.insert(tuple).unwrap();
         }
     }
+    offsets
+}
 
+fn calculate_neighbor_counts(
+    alive_cells: &Relation,
+    offsets: &Relation,
+) -> Result<Relation, crate::error::DatabaseError> {
     // 2. Cross Join to generate all neighbors
-    let cross = alive_cells.join(&offsets)?;
+    let cross = alive_cells.join(offsets)?;
 
     // 3. Extend to compute actual neighbor coordinates (nx, ny)
     let ext1 = cross
@@ -89,10 +100,15 @@ pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error:
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     // 6. Rename back to (x, y)
-    let counts_renamed = counts.rename(&[("nx", "x"), ("ny", "y")]);
+    Ok(counts.rename(&[("nx", "x"), ("ny", "y")]))
+}
 
+fn apply_rules(
+    alive_cells: &Relation,
+    counts_renamed: &Relation,
+) -> Result<Relation, crate::error::DatabaseError> {
     // 7. Rule 1: Stays Alive (alive cells with 2 or 3 neighbors)
-    let alive_with_neighbors = alive_cells.join(&counts_renamed)?;
+    let alive_with_neighbors = alive_cells.join(counts_renamed)?;
     let stays_alive = alive_with_neighbors
         .restrict(|t: &Tuple| {
             let count = t.get_typed::<i64>("n_count").unwrap();
@@ -110,11 +126,9 @@ pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error:
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     // 9. Union for next generation
-    let next_gen = stays_alive
+    stays_alive
         .union(&born)
-        .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
-
-    Ok(next_gen)
+        .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))
 }
 
 #[cfg(test)]
