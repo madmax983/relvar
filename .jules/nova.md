@@ -124,3 +124,7 @@
 **Concept:** Modeled a Build System (like Make/Ninja) using pure relational algebra. Dependencies are an edges relation, and file timestamps are a relation. Stale targets are resolved by finding files older than their dependencies via transitive closure (`tclose`), relational joins, and aggregations.
 **Fate:** TBD
 **Lesson:** TBD
+## Relational Mark-and-Sweep Garbage Collector
+**Concept:** Modeled a Mark-and-Sweep Garbage Collector using purely relational algebra. The heap objects, pointers, and root set are represented as relations. The reachable set is computed declaratively using transitive closure (`tclose`) and joins, while the sweeping phase determines garbage objects via set difference.
+**Fate:** Merged
+**Lesson:** Relational algebra gracefully handles graph reachability algorithms! By using `tclose` to resolve arbitrary depth pointers and set differences to identify unreachable objects, memory management concepts compile down into pure database queries.

@@ -41,6 +41,7 @@ pub mod circuit;
 pub mod ecs;
 pub mod enigma;
 pub mod expert_system;
+pub mod gc;
 pub mod gnn;
 pub mod graph;
 pub mod image;
