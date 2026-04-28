@@ -21,6 +21,3 @@
 ## 2024-05-19 - Sub-modularizing the Database Tests Blob
 **Tangle:** The `relvar-core/src/database/tests.rs` file had grown into a 1,170 line Blob containing 45 inline tests. The God File mixed schema operations, DML, transaction boundaries, and virtual relvar tests.
 **Blueprint:** Removed the `tests.rs` monolith and extracted its contents into a specialized sub-module structure under a new `relvar-core/src/database/tests/` directory. Created explicit sub-modules for `schema.rs`, `data.rs`, `integrity.rs`, `transaction.rs`, and `virtual_relvar.rs`, matching the core database domain responsibilities, along with a `common.rs` for shared helpers.
-## 2024-05-19 - Sub-modularizing the Scan Tests Blob
-**Tangle:** The `relvar-storage/src/storage/heap/tests/scan.rs` file had grown into a 1,229 line Blob despite being extracted from the main tests module, containing an amalgamation of visibility, corruption, security, and overflow tests, making it a "God File".
-**Blueprint:** Extracted the file into smaller, more cohesive sub-modules: `scan_visible.rs`, `scan_corruptions.rs`, `scan_security.rs`, `scan_offset_overflow.rs`, and the remaining basic tests into `scan.rs`. Updated `relvar-storage/src/storage/heap/tests/mod.rs` to expose the new modules, resolving the structural bloat.
