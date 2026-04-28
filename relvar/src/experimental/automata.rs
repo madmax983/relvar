@@ -57,15 +57,24 @@ impl RelationalNfa {
     /// // Example
     /// ```
     pub fn accepts(&self, input: &str) -> Result<bool, DatabaseError> {
-        // 1. Epsilon transitions have symbol == ""
+        let epsilon_closure = self.compute_epsilon_closure()?;
+        let mut active_states = self.get_initial_active_states()?;
+        active_states = Self::apply_epsilon_closure(&active_states, &epsilon_closure)?;
+
+        if let Some(states) = self.process_input_string(input, active_states, &epsilon_closure)? {
+            self.check_accepting_states(&states)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn compute_epsilon_closure(&self) -> Result<Relation, DatabaseError> {
         let epsilon_transitions = self
             .transitions
             .clone()
             .restrict(|t| t.get_typed::<String>("symbol").unwrap() == "")
             .project(&["from_state", "to_state"]);
 
-        // Identity transitions: (state -> state)
-        // We Cartesian product all_states with itself and restrict equality.
         let all_states = self.states.project(&["state"]);
         let from_states = all_states.rename(&[("state", "from_state")]);
         let to_states = all_states.rename(&[("state", "to_state")]);
@@ -83,26 +92,34 @@ impl RelationalNfa {
                 .union(&tclosed)
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         }
+        Ok(epsilon_closure)
+    }
 
-        // 2. Initial active states
-        let mut active_states = self
+    fn get_initial_active_states(&self) -> Result<Relation, DatabaseError> {
+        Ok(self
             .states
             .clone()
             .restrict(|t| t.get_typed::<bool>("is_start").unwrap_or(false))
-            .project(&["state"]);
+            .project(&["state"]))
+    }
 
-        let apply_epsilon_closure =
-            |active: &Relation, e_close: &Relation| -> Result<Relation, DatabaseError> {
-                let renamed_active = active.rename(&[("state", "from_state")]);
-                let joined = renamed_active.join(e_close)?;
-                Ok(joined
-                    .project(&["to_state"])
-                    .rename(&[("to_state", "state")]))
-            };
+    fn apply_epsilon_closure(
+        active: &Relation,
+        e_close: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        let renamed_active = active.rename(&[("state", "from_state")]);
+        let joined = renamed_active.join(e_close)?;
+        Ok(joined
+            .project(&["to_state"])
+            .rename(&[("to_state", "state")]))
+    }
 
-        active_states = apply_epsilon_closure(&active_states, &epsilon_closure)?;
-
-        // 3. Process string iteratively using purely relational extensions
+    fn process_input_string(
+        &self,
+        input: &str,
+        mut active_states: Relation,
+        epsilon_closure: &Relation,
+    ) -> Result<Option<Relation>, DatabaseError> {
         for c in input.chars() {
             let symbol_str = c.to_string();
 
@@ -117,14 +134,16 @@ impl RelationalNfa {
                 .project(&["to_state"])
                 .rename(&[("to_state", "state")]);
 
-            active_states = apply_epsilon_closure(&active_states, &epsilon_closure)?;
+            active_states = Self::apply_epsilon_closure(&active_states, epsilon_closure)?;
 
             if active_states.cardinality() == 0 {
-                return Ok(false);
+                return Ok(None);
             }
         }
+        Ok(Some(active_states))
+    }
 
-        // 4. Check accepting states
+    fn check_accepting_states(&self, active_states: &Relation) -> Result<bool, DatabaseError> {
         let accept_states = self
             .states
             .clone()
