@@ -1,7 +1,5 @@
-1. **Explore `sentry_database_dml_coverage`:** Added tests to hit error branches in `delete` and `update` logic (specifically `validate_referencing_foreign_keys`).
-2. **Explore `sentry_database_integrity_coverage`:** Added test to hit unexercised logic regarding getter and setter functions of Database integrity layer (`get_key_constraints` missing, type constraints, etc).
-3. **Explore `sentry_schema_list_relvars_coverage`:** Added tests for schema operations uncovered lines (`list_relvars` missing).
-4. **Explore `sentry_extend_coverage`:** Added tests to fully cover `extend_into` branch handling and missing mapping branches.
-5. **Explore `sentry_correctness_algebra`:** Added tests covering remaining intersect and union branches missing logic blocks.
-6. Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.
-7. Submit the PR for '🛡️ Sentry: [test coverage improvement]'
+1. **Analyze existing dependencies**: Look through `relvar-core` and see that `pub mod`s were previously leaking encapsulation and creating a flat public API with circular loops, which violates boundary encapsulation rules. I will fix the remaining modules to `pub(crate)` to correctly enforce boundaries.
+2. **Remove the God File `relvar-storage/src/storage/heap/tests/scan.rs`**: This file is 1200+ lines. It should be split into smaller test files, such as `scan_visible.rs`, `scan_corruptions.rs`, `scan_security.rs` inside `relvar-storage/src/storage/heap/tests/` to prevent "The Blob" smell.
+3. **Write changes to journal**: Document this extraction in `.jules/atlas.md`
+4. **Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.**
+5. **Submit**: After running verification, submit the changes as a PR for Atlas.
