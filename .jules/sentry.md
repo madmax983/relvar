@@ -117,3 +117,7 @@
 ## 2026-04-28 - CSV and JSON Importer Error Coverage
 **Learning:** Found several untested code paths regarding the failure branches of `from_csv` and `from_json` functions in `relvar/src/tools/importer.rs`. Specifically, the `JsonError`, `LimitExceeded`, and `TypeError`/`FormatError` mappings for invalid imports were entirely unexercised.
 **Action:** When implementing importer utilities that handle unvalidated external data, ensure comprehensive tests are written that trigger serialization limits and strict type checking failures to guarantee safe conversion to `Relation` objects.
+## 2024-05-01 - Test Coverage Improvements for Core Scalar/Tuple Logic
+
+**Learning:** It is crucial to append tests to exactly correct lines to avoid collision with multiple `mod tests {` or similar. Directly applying `sed` replacements or `patch` is safer than raw appending (`cat >>`). `TryFrom` conversions must carefully type-check expected fields, such as `unwrap_err().expected` being correctly matched.
+**Action:** Use `replace_with_git_merge_diff` inside existing modules when working with `cfg(test)` items instead of using raw `cat >>` appended blocks, to prevent compilation errors and redundant definitions.
