@@ -44,7 +44,29 @@ pub struct BuildSystem {
 }
 
 impl BuildSystem {
-    /// Creates a new BuildSystem.
+    /// Creates a new BuildSystem by initializing the dependency graph and file states.
+    ///
+    /// The `files` relation should track file modification timestamps, while the
+    /// `dependencies` relation forms a directed graph between build targets and their sources.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
+    /// use relvar::experimental::build_system::BuildSystem;
+    ///
+    /// let file_type = TupleType::new()
+    ///     .with_attribute("file", ScalarType::String)
+    ///     .with_attribute("modified_at", ScalarType::Int);
+    /// let files = Relation::new(RelationType::new(file_type));
+    ///
+    /// let dep_type = TupleType::new()
+    ///     .with_attribute("target", ScalarType::String)
+    ///     .with_attribute("source", ScalarType::String);
+    /// let deps = Relation::new(RelationType::new(dep_type));
+    ///
+    /// let build_sys = BuildSystem::new(files, deps);
+    /// ```
     pub fn new(files: Relation, dependencies: Relation) -> Self {
         Self {
             files,
@@ -53,9 +75,39 @@ impl BuildSystem {
     }
 
     /// Computes the set of targets that need to be rebuilt.
-    /// A target is stale if any of its transitive dependencies are newer than it.
     ///
-    /// Returns a relation with a single attribute `target` containing the stale files.
+    /// This mimics a `make` utility's core logic using relational algebra. It first
+    /// finds all direct and indirect dependencies by calculating the transitive
+    /// closure of the graph. It then joins these edges against the file states
+    /// and flags any targets where a transitive source is newer than the target itself.
+    ///
+    /// Returns a [`Relation`] with a single attribute `target` containing the stale files,
+    /// or a [`DatabaseError`] if the algebraic operations fail.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
+    /// use relvar::experimental::build_system::BuildSystem;
+    ///
+    /// let file_type = TupleType::new()
+    ///     .with_attribute("file", ScalarType::String)
+    ///     .with_attribute("modified_at", ScalarType::Int);
+    /// let mut files = Relation::new(RelationType::new(file_type));
+    /// files.insert(tuple! { file: "main.c", modified_at: 100i64 }).unwrap();
+    /// files.insert(tuple! { file: "main.o", modified_at: 50i64 }).unwrap();
+    ///
+    /// let dep_type = TupleType::new()
+    ///     .with_attribute("target", ScalarType::String)
+    ///     .with_attribute("source", ScalarType::String);
+    /// let mut deps = Relation::new(RelationType::new(dep_type));
+    /// deps.insert(tuple! { target: "main.o", source: "main.c" }).unwrap();
+    ///
+    /// let build_sys = BuildSystem::new(files, deps);
+    /// let stale = build_sys.compute_stale_targets().unwrap();
+    ///
+    /// assert_eq!(stale.cardinality(), 1);
+    /// ```
     pub fn compute_stale_targets(&self) -> Result<Relation, DatabaseError> {
         // 1. Get the transitive closure of dependencies
         // tclose("target", "source") gives all direct and indirect dependencies.
