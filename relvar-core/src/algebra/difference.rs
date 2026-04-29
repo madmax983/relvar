@@ -1,3 +1,7 @@
+//! Difference Operator implementation.
+//!
+//! This module provides the set difference operator for relational algebra.
+
 use crate::values::Relation;
 use thiserror::Error;
 

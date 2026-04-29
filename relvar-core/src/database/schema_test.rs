@@ -1,1 +1,1 @@
-// Dummy file to fix tarpaulin coverage metric issues
+//! Dummy file to fix tarpaulin coverage metric issues
