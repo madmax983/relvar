@@ -474,7 +474,7 @@ impl Relation {
     ///
     /// # Performance
     ///
-    /// Pre-allocates the `result_tuples` vector using `Vec::with_capacity(groups.len())`.
+    /// Pre-allocates the `result_tuples` set using `HashSet::with_capacity(groups.len())`.
     /// Because the exact number of output tuples is known after grouping the input,
     /// this prevents dynamic heap reallocations when constructing the resulting relation.
     /// # Examples
@@ -516,7 +516,7 @@ impl Relation {
         // Optimization: Pass the iterator directly to `from_tuples_unchecked`
         // instead of collecting into an intermediate `Vec`. The tuples are
         // guaranteed to be valid since they were constructed with `result_heading_arc`.
-        Ok(Relation::from_tuples_unchecked(
+        Ok(Relation::from_body_unchecked(
             result_rel_type,
             result_tuples,
         ))
@@ -528,8 +528,8 @@ impl Relation {
         aggregations: &[Aggregation],
         groups: &HashMap<Vec<&ScalarValue>, Vec<&Tuple>>,
         result_heading_arc: &std::sync::Arc<TupleType>,
-    ) -> Result<Vec<Tuple>, SummarizeError> {
-        let mut result_tuples = Vec::with_capacity(groups.len());
+    ) -> Result<std::collections::HashSet<Tuple>, SummarizeError> {
+        let mut result_tuples = std::collections::HashSet::with_capacity(groups.len());
 
         for (key, group_tuples) in groups {
             let mut values = std::collections::BTreeMap::new();
@@ -548,7 +548,7 @@ impl Relation {
             // Using new_unchecked avoids O(N) validation per tuple where N is degree,
             // since we've already validated the grouping and aggregation attributes
             let tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
-            result_tuples.push(tuple);
+            result_tuples.insert(tuple);
         }
         Ok(result_tuples)
     }
