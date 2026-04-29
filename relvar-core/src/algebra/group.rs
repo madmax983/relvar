@@ -139,7 +139,7 @@ impl Relation {
 
         // Optimization: the tuples returned by `compute_grouped_tuples` are
         // guaranteed to be valid since they were constructed with `result_heading`.
-        Ok(Relation::from_tuples_unchecked(
+        Ok(Relation::from_body_unchecked(
             RelationType::new(result_heading),
             result_tuples,
         ))
@@ -181,7 +181,7 @@ impl Relation {
 
         // Optimization: the tuples returned by `compute_ungrouped_tuples` are
         // guaranteed to be valid since they were constructed with `result_heading`.
-        Ok(Relation::from_tuples_unchecked(
+        Ok(Relation::from_body_unchecked(
             RelationType::new(result_heading),
             result_tuples,
         ))
@@ -321,14 +321,14 @@ fn compute_grouped_tuples(
     result_heading: &TupleType,
     rva_heading: &TupleType,
     rva_name: &str,
-) -> Result<Vec<Tuple>, GroupError> {
+) -> Result<std::collections::HashSet<Tuple>, GroupError> {
     let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
     let groups = group_tuples(relation, grouping_attrs, attrs_to_group, rva_heading_arc);
 
     // Build result tuples
-    let mut result_tuples = Vec::with_capacity(groups.len());
+    let mut result_tuples = std::collections::HashSet::with_capacity(groups.len());
     let rva_relation_type = RelationType::new(rva_heading.clone());
     for (key, rva_tuples) in groups {
         let mut values = std::collections::BTreeMap::new();
@@ -345,7 +345,7 @@ fn compute_grouped_tuples(
         values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
 
         let tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
-        result_tuples.push(tuple);
+        result_tuples.insert(tuple);
     }
 
     Ok(result_tuples)
@@ -412,7 +412,7 @@ fn compute_ungrouped_tuples(
     rva_name: &str,
     result_heading: &TupleType,
     rva_relation_type: &RelationType,
-) -> Result<Vec<Tuple>, UngroupError> {
+) -> Result<std::collections::HashSet<Tuple>, UngroupError> {
     // Perform an initial pass to sum the cardinality of the target RVAs
     // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
     let mut total_capacity = 0;
@@ -422,7 +422,7 @@ fn compute_ungrouped_tuples(
             _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
         }
     }
-    let mut result_tuples = Vec::with_capacity(total_capacity);
+    let mut result_tuples = std::collections::HashSet::with_capacity(total_capacity);
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
     for tuple in relation.tuples() {
@@ -453,7 +453,7 @@ fn compute_ungrouped_tuples(
 
             // Re-use the cloned heading_arc
             let result_tuple = Tuple::new_unchecked(heading_arc.clone(), values);
-            result_tuples.push(result_tuple);
+            result_tuples.insert(result_tuple);
         }
     }
 

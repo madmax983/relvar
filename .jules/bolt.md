@@ -32,3 +32,12 @@
 ## 2025-05-19 - [Divide Filter Intermediate Vec Removal]
 **Learning:** In the `divide` operator's internal helper `filter_matching_candidates`, passing the `candidates` parameter by reference (`&Relation`), filtering its tuples via iteration, and collecting them into a `Vec<Tuple>` creates an intermediate heap allocation. Later, this `Vec` is passed into `Relation::from_tuples_unchecked`. Since `candidates` is an intermediate relation constructed just before this filtering step (as a projection of the dividend onto the remainder attributes), we own it.
 **Action:** By modifying `filter_matching_candidates` to take `candidates: Relation` by value and using `candidates.restrict_into(|candidate| { ... })`, we can apply the set filtering in-place using `HashSet::retain`. This safely bypasses creating the intermediate `Vec` entirely and reduces heap allocations to zero during the filter phase.
+## 2025-05-21 - [Summarize Operator Allocation Removal]
+**Learning:** In the `summarize` operator, the intermediate results were collected into a `Vec<Tuple>` and then passed into `Relation::from_tuples_unchecked`, which then iterated through the `Vec` to populate a `HashSet`.
+**Action:** Changed the internal accumulator `compute_summarized_tuples` to directly return `HashSet<Tuple>`, pre-allocated with the correct capacity, and used `Relation::from_body_unchecked` to bypass the intermediate `Vec` allocation entirely.
+## 2025-05-21 - [Group Operator Allocation Removal]
+**Learning:** In the `group` operator, the intermediate results were collected into a `Vec<Tuple>` and then passed into `Relation::from_tuples_unchecked`, which iterated through the `Vec` to populate a `HashSet`.
+**Action:** Changed the internal accumulator `compute_grouped_tuples` to directly return `HashSet<Tuple>`, pre-allocated with the correct capacity, and used `Relation::from_body_unchecked` to bypass the intermediate `Vec` allocation entirely.
+## 2025-05-21 - [Ungroup Operator Allocation Removal]
+**Learning:** In the `ungroup` operator, the intermediate results were collected into a `Vec<Tuple>` and then passed into `Relation::from_tuples_unchecked`, which iterated through the `Vec` to populate a `HashSet`.
+**Action:** Changed the internal accumulator `compute_ungrouped_tuples` to directly return `HashSet<Tuple>`, pre-allocated with the correct capacity, and used `Relation::from_body_unchecked` to bypass the intermediate `Vec` allocation entirely.
