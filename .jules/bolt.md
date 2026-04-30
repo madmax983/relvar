@@ -41,3 +41,6 @@
 ## 2025-05-21 - [Ungroup Operator Allocation Removal]
 **Learning:** In the `ungroup` operator, the intermediate results were collected into a `Vec<Tuple>` and then passed into `Relation::from_tuples_unchecked`, which iterated through the `Vec` to populate a `HashSet`.
 **Action:** Changed the internal accumulator `compute_ungrouped_tuples` to directly return `HashSet<Tuple>`, pre-allocated with the correct capacity, and used `Relation::from_body_unchecked` to bypass the intermediate `Vec` allocation entirely.
+## 2024-05-22 - [Group Operator Allocation Removal]
+**Learning:** In the `group` operator, intermediate RVA results were being collected into a `Vec<Tuple>` and then passed to `Relation::from_tuples_unchecked`, which creates a redundant heap allocation since we know we are building a set.
+**Action:** Modified `group_tuples` to directly accumulate tuples into a `HashSet<Tuple>`, and used `Relation::from_body_unchecked` to bypass the intermediate `Vec` allocation entirely, eliminating a redundant allocation.

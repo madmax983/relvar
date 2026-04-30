@@ -279,8 +279,9 @@ fn group_tuples<'a>(
     grouping_attrs: &[String],
     attrs_to_group: &[&str],
     rva_heading_arc: std::sync::Arc<TupleType>,
-) -> HashMap<Vec<&'a ScalarValue>, Vec<Tuple>> {
-    let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<Tuple>> = HashMap::new();
+) -> HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>> {
+    let mut groups: HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>> =
+        HashMap::new();
 
     // Pre-allocate attribute name strings
     let attr_names: Vec<String> = attrs_to_group.iter().map(|a| a.to_string()).collect();
@@ -305,9 +306,13 @@ fn group_tuples<'a>(
         let rva_tuple = Tuple::new_unchecked(rva_heading_arc.clone(), rva_values);
 
         if let Some(group) = groups.get_mut(key_buffer.as_slice()) {
-            group.push(rva_tuple);
+            group.insert(rva_tuple);
         } else {
-            groups.insert(key_buffer.clone(), vec![rva_tuple]);
+            groups.insert(key_buffer.clone(), {
+                let mut s = std::collections::HashSet::new();
+                s.insert(rva_tuple);
+                s
+            });
         }
     }
 
@@ -341,7 +346,7 @@ fn compute_grouped_tuples(
         // Create RVA relation
         // Optimization: the tuples returned by the grouping step are guaranteed to be valid
         // since they were constructed with `rva_heading_arc`.
-        let rva_relation = Relation::from_tuples_unchecked(rva_relation_type.clone(), rva_tuples);
+        let rva_relation = Relation::from_body_unchecked(rva_relation_type.clone(), rva_tuples);
         values.insert(rva_name.to_string(), ScalarValue::Relation(rva_relation));
 
         let tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
