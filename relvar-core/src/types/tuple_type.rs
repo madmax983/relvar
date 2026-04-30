@@ -452,6 +452,18 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Type nesting too deep")]
+    fn should_panic_when_with_attribute_exceeds_max_depth() {
+        let mut ty = ScalarType::Int;
+        for _ in 0..crate::types::MAX_TYPE_DEPTH {
+            ty = ScalarType::user_defined("Nested", ty);
+        }
+
+        let tuple_type = TupleType::new();
+        let _ = tuple_type.with_attribute("deep_attr", ty);
+    }
+
+    #[test]
     fn test_empty_tuple_type() {
         let empty = TupleType::new();
         assert_eq!(empty.degree(), 0);

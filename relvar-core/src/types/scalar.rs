@@ -753,3 +753,47 @@ impl TryFrom<ScalarTypeUnchecked> for ScalarType {
         Ok(ty)
     }
 }
+
+#[cfg(test)]
+mod additional_scalar_tests_final {
+    use crate::types::scalar::ScalarTypeUnchecked;
+    use crate::types::{RelationType, ScalarType, TupleType};
+
+    #[test]
+    fn should_return_error_when_depth_exceeds_max_in_try_from_unchecked() {
+        // Create a deeply nested representation
+        let mut deeply_nested = ScalarTypeUnchecked::Int;
+        for _ in 0..(crate::types::MAX_TYPE_DEPTH + 1) {
+            deeply_nested = ScalarTypeUnchecked::UserDefined {
+                name: "Nested".to_string(),
+                representation: Box::new(deeply_nested),
+            };
+        }
+
+        let result = ScalarType::try_from(deeply_nested);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Type nesting too deep"));
+    }
+
+    #[test]
+    fn should_hash_all_scalar_types() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let types = vec![
+            ScalarType::Int,
+            ScalarType::Float,
+            ScalarType::String,
+            ScalarType::Bool,
+            ScalarType::Bytes,
+            ScalarType::Relation(Box::new(RelationType::new(TupleType::new()))),
+            ScalarType::user_defined("Custom", ScalarType::Int),
+        ];
+
+        for t in types {
+            let mut hasher = DefaultHasher::new();
+            t.hash(&mut hasher);
+            let _ = hasher.finish();
+        }
+    }
+}

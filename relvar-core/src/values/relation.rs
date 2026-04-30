@@ -772,6 +772,17 @@ mod tests {
     }
 
     #[test]
+    fn should_create_relation_with_capacity() {
+        let rel_type = RelationType::new(TupleType::new());
+        let capacity = 100;
+        let relation = Relation::with_capacity(rel_type, capacity);
+
+        assert!(relation.is_empty());
+        assert_eq!(relation.degree(), 0);
+        assert!(relation.body.capacity() >= capacity);
+    }
+
+    #[test]
     fn test_empty_relation() {
         let heading = emp_type();
         let rel_type = RelationType::new(heading);
