@@ -70,59 +70,21 @@ impl ExpertSystem {
             return Ok(current_facts);
         }
 
-        // Pre-compute the total number of conditions per rule
-        let total_conditions = self
-            .rule_conditions
-            .summarize(&["rule_id"], &[Aggregation::count("total_conds")])
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        let total_conditions = self.compute_total_conditions()?;
 
         loop {
-            // Rename 'fact' to 'condition' to join with rule_conditions
-            let facts_as_conds = current_facts.rename(&[("fact", "condition")]);
-
-            // Which conditions are satisfied?
-            let satisfied_conditions = self.rule_conditions.join(&facts_as_conds)?;
-
-            // If no conditions are satisfied at all, we can't trigger anything new
-            if satisfied_conditions.cardinality() == 0 {
-                break;
-            }
-
-            // Count satisfied conditions per rule
-            let satisfied_counts = satisfied_conditions
-                .summarize(&["rule_id"], &[Aggregation::count("satisfied_conds")])
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // Join totals with satisfied counts
-            let rule_stats = total_conditions.join(&satisfied_counts)?;
-
-            // Filter rules where satisfied_conds == total_conds
-            let triggered_rules = rule_stats
-                .restrict(|t| {
-                    let total = t.get_typed::<i64>("total_conds").unwrap_or(0);
-                    let satisfied = t.get_typed::<i64>("satisfied_conds").unwrap_or(0);
-                    total == satisfied
-                })
-                .project(&["rule_id"]);
+            let triggered_rules = self.find_triggered_rules(&current_facts, &total_conditions)?;
 
             if triggered_rules.cardinality() == 0 {
                 break;
             }
 
-            // Get conclusions for triggered rules
-            let new_conclusions = triggered_rules.join(&self.rule_conclusions)?;
+            let new_facts = self.derive_new_facts(&triggered_rules)?;
 
-            // Project and rename to match facts schema
-            let new_facts = new_conclusions
-                .project(&["conclusion"])
-                .rename(&[("conclusion", "fact")]);
-
-            // Union with current facts
             let next_facts = current_facts
                 .union(&new_facts)
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-            // Check for fixpoint (no new facts added)
             let diff = next_facts
                 .difference(&current_facts)
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
@@ -135,6 +97,47 @@ impl ExpertSystem {
         }
 
         Ok(current_facts)
+    }
+
+    fn compute_total_conditions(&self) -> Result<Relation, DatabaseError> {
+        self.rule_conditions
+            .summarize(&["rule_id"], &[Aggregation::count("total_conds")])
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
+
+    fn find_triggered_rules(
+        &self,
+        current_facts: &Relation,
+        total_conditions: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        let facts_as_conds = current_facts.rename(&[("fact", "condition")]);
+        let satisfied_conditions = self.rule_conditions.join(&facts_as_conds)?;
+
+        if satisfied_conditions.cardinality() == 0 {
+            return Ok(satisfied_conditions.project(&["rule_id"]));
+        }
+
+        let satisfied_counts = satisfied_conditions
+            .summarize(&["rule_id"], &[Aggregation::count("satisfied_conds")])
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        let rule_stats = total_conditions.join(&satisfied_counts)?;
+
+        Ok(rule_stats
+            .restrict(|t| {
+                let total = t.get_typed::<i64>("total_conds").unwrap_or(0);
+                let satisfied = t.get_typed::<i64>("satisfied_conds").unwrap_or(0);
+                total == satisfied
+            })
+            .project(&["rule_id"]))
+    }
+
+    fn derive_new_facts(&self, triggered_rules: &Relation) -> Result<Relation, DatabaseError> {
+        let new_conclusions = triggered_rules.join(&self.rule_conclusions)?;
+
+        Ok(new_conclusions
+            .project(&["conclusion"])
+            .rename(&[("conclusion", "fact")]))
     }
 }
 
