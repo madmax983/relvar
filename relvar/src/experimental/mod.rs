@@ -35,6 +35,7 @@
 pub mod automata;
 pub mod automl;
 pub mod blockchain;
+pub mod boids;
 pub mod build_system;
 pub mod cellular_automaton;
 pub mod circuit;

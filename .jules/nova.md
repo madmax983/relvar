@@ -128,3 +128,7 @@
 **Concept:** Modeled a Mark-and-Sweep Garbage Collector using purely relational algebra. Represents `roots`, `heap`, and `references` as relations. The Mark phase computes reachability via `tclose`, `join`, and `union`. The Sweep phase identifies garbage via `difference`.
 **Fate:** TBD
 **Lesson:** Relational algebra gracefully handles complex algorithms like Garbage Collection! By leveraging transitive closure to compute reachable sets and difference to identify unreferenced memory, we can declaratively specify Mark-and-Sweep.
+## Relational Boids
+**Concept:** Modeled a Boids flocking simulation (Craig Reynolds' algorithm) using purely relational algebra. Boids are a relation of (id, x, y, vx, vy). Separation, Alignment, and Cohesion are calculated via relational joins, distance filtering (Restrictions), aggregations (Summarize for averages), and velocity updates (Extensions).
+**Fate:** Merged
+**Lesson:** Complex emergent swarm behaviors compile down elegantly to standard database queries. Relational algebra can be used as an intuitive rules engine for spatial interactions.
