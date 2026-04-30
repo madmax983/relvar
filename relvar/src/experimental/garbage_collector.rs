@@ -17,6 +17,39 @@
 use relvar_core::{error::DatabaseError, values::Relation};
 
 /// A Relational Garbage Collector.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::tuple;
+/// use relvar_core::types::{RelationType, ScalarType, TupleType};
+/// use relvar_core::values::Relation;
+/// use relvar::experimental::garbage_collector::GarbageCollector;
+///
+/// let root_type = TupleType::new().with_attribute("address", ScalarType::Int);
+/// let mut roots = Relation::new(RelationType::new(root_type));
+/// roots.insert(tuple! { address: 1i64 }).unwrap();
+///
+/// let heap_type = TupleType::new()
+///     .with_attribute("address", ScalarType::Int)
+///     .with_attribute("size", ScalarType::Int);
+/// let mut heap = Relation::new(RelationType::new(heap_type));
+/// heap.insert(tuple! { address: 1i64, size: 10i64 }).unwrap();
+/// heap.insert(tuple! { address: 2i64, size: 20i64 }).unwrap();
+/// heap.insert(tuple! { address: 3i64, size: 30i64 }).unwrap();
+///
+/// let ref_type = TupleType::new()
+///     .with_attribute("from_addr", ScalarType::Int)
+///     .with_attribute("to_addr", ScalarType::Int);
+/// let mut references = Relation::new(RelationType::new(ref_type));
+/// references.insert(tuple! { from_addr: 1i64, to_addr: 2i64 }).unwrap();
+///
+/// // Object 3 is not reachable from the root.
+/// let gc = GarbageCollector::new(roots, heap, references);
+/// let garbage = gc.mark_and_sweep().unwrap();
+///
+/// assert_eq!(garbage.cardinality(), 1);
+/// ```
 pub struct GarbageCollector {
     /// Root pointers. Schema: `(address: Int)`
     pub roots: Relation,
@@ -28,6 +61,26 @@ pub struct GarbageCollector {
 
 impl GarbageCollector {
     /// Creates a new GarbageCollector.
+    ///
+    /// The Garbage Collector algorithm requires three primary relations to operate:
+    /// the starting roots, the current heap, and the references between objects.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, ScalarType, RelationType};
+    /// use relvar_core::values::Relation;
+    /// use relvar::experimental::garbage_collector::GarbageCollector;
+    ///
+    /// // Example setup (assuming `roots`, `heap`, and `references` relations are defined)
+    /// # let root_type = TupleType::new().with_attribute("address", ScalarType::Int);
+    /// # let roots = Relation::new(RelationType::new(root_type));
+    /// # let heap_type = TupleType::new().with_attribute("address", ScalarType::Int).with_attribute("size", ScalarType::Int);
+    /// # let heap = Relation::new(RelationType::new(heap_type));
+    /// # let ref_type = TupleType::new().with_attribute("from_addr", ScalarType::Int).with_attribute("to_addr", ScalarType::Int);
+    /// # let references = Relation::new(RelationType::new(ref_type));
+    /// let gc = GarbageCollector::new(roots, heap, references);
+    /// ```
     pub fn new(roots: Relation, heap: Relation, references: Relation) -> Self {
         Self {
             roots,
@@ -38,6 +91,37 @@ impl GarbageCollector {
 
     /// Performs the Mark-and-Sweep algorithm.
     /// Returns a relation of garbage objects with schema `(address: Int, size: Int)`.
+    ///
+    /// This method computes the transitive closure of references starting from the roots
+    /// to determine reachability. It then performs a relational difference against the entire
+    /// heap to isolate disconnected components.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::tuple;
+    /// use relvar_core::types::{TupleType, ScalarType, RelationType};
+    /// use relvar_core::values::Relation;
+    /// use relvar::experimental::garbage_collector::GarbageCollector;
+    ///
+    /// // See the struct-level documentation for full setup.
+    /// # let root_type = TupleType::new().with_attribute("address", ScalarType::Int);
+    /// # let mut roots = Relation::new(RelationType::new(root_type));
+    /// # roots.insert(tuple! { address: 1i64 }).unwrap();
+    /// # let heap_type = TupleType::new().with_attribute("address", ScalarType::Int).with_attribute("size", ScalarType::Int);
+    /// # let mut heap = Relation::new(RelationType::new(heap_type));
+    /// # heap.insert(tuple! { address: 1i64, size: 10i64 }).unwrap();
+    /// # heap.insert(tuple! { address: 2i64, size: 20i64 }).unwrap();
+    /// # heap.insert(tuple! { address: 3i64, size: 30i64 }).unwrap();
+    /// # let ref_type = TupleType::new().with_attribute("from_addr", ScalarType::Int).with_attribute("to_addr", ScalarType::Int);
+    /// # let mut references = Relation::new(RelationType::new(ref_type));
+    /// # references.insert(tuple! { from_addr: 1i64, to_addr: 2i64 }).unwrap();
+    /// let gc = GarbageCollector::new(roots, heap, references);
+    ///
+    /// // Executes the algorithm and returns objects disconnected from the root.
+    /// let garbage = gc.mark_and_sweep().unwrap();
+    /// assert_eq!(garbage.cardinality(), 1); // Object 3 is unreachable
+    /// ```
     pub fn mark_and_sweep(&self) -> Result<Relation, DatabaseError> {
         // 1. Find all paths using transitive closure
         let closure = self.references.tclose("from_addr", "to_addr")?;
