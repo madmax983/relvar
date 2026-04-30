@@ -173,62 +173,70 @@ impl RelationalVM {
             .restrict(|t: &Tuple| t.get_typed::<String>("opcode").unwrap() == "ADD");
 
         if add_inst.cardinality() > 0 {
-            // Join arg2 with registers to get src1 value
-            let src1_join = add_inst
-                .rename(&[("arg2", "reg_id")])
-                .join(&self.registers)?
-                .rename(&[("value", "src1_val")])
-                .rename(&[("reg_id", "arg2")]);
-
-            // Join arg3 with registers to get src2 value
-            let src2_join = src1_join
-                .rename(&[("arg3", "reg_id")])
-                .join(&self.registers)?
-                .rename(&[("value", "src2_val")])
-                .rename(&[("reg_id", "arg3")]);
-
-            // Calculate the new value
-            let evaluated = src2_join
-                .extend("new_val", ScalarType::Int, |t: &Tuple| {
-                    let s1 = t.get_typed::<i64>("src1_val").unwrap();
-                    let s2 = t.get_typed::<i64>("src2_val").unwrap();
-                    ScalarValue::Int(s1 + s2)
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // Extract the new register update
-            let new_reg_update = evaluated
-                .project(&["arg1", "new_val"])
-                .rename(&[("arg1", "reg_id"), ("new_val", "value")]);
-
-            // Filter out the old register value
-            let old_reg = evaluated
-                .project(&["arg1"])
-                .rename(&[("arg1", "reg_id")])
-                .join(&self.registers)?;
-
-            self.registers = self
-                .registers
-                .difference(&old_reg)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-                .union(&new_reg_update)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // Increment PC
-            self.head = self
-                .head
-                .extend("new_pc", ScalarType::Int, |t: &Tuple| {
-                    let pc = t.get_typed::<i64>("pc").unwrap();
-                    ScalarValue::Int(pc + 1)
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-                .project(&["new_pc"])
-                .rename(&[("new_pc", "pc")]);
-
+            self.execute_add_instruction(&add_inst)?;
+            self.increment_pc()?;
             return Ok(true);
         }
 
         Ok(false)
+    }
+
+    fn execute_add_instruction(&mut self, add_inst: &Relation) -> Result<(), DatabaseError> {
+        // Join arg2 with registers to get src1 value
+        let src1_join = add_inst
+            .rename(&[("arg2", "reg_id")])
+            .join(&self.registers)?
+            .rename(&[("value", "src1_val")])
+            .rename(&[("reg_id", "arg2")]);
+
+        // Join arg3 with registers to get src2 value
+        let src2_join = src1_join
+            .rename(&[("arg3", "reg_id")])
+            .join(&self.registers)?
+            .rename(&[("value", "src2_val")])
+            .rename(&[("reg_id", "arg3")]);
+
+        // Calculate the new value
+        let evaluated = src2_join
+            .extend("new_val", ScalarType::Int, |t: &Tuple| {
+                let s1 = t.get_typed::<i64>("src1_val").unwrap();
+                let s2 = t.get_typed::<i64>("src2_val").unwrap();
+                ScalarValue::Int(s1 + s2)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        // Extract the new register update
+        let new_reg_update = evaluated
+            .project(&["arg1", "new_val"])
+            .rename(&[("arg1", "reg_id"), ("new_val", "value")]);
+
+        // Filter out the old register value
+        let old_reg = evaluated
+            .project(&["arg1"])
+            .rename(&[("arg1", "reg_id")])
+            .join(&self.registers)?;
+
+        self.registers = self
+            .registers
+            .difference(&old_reg)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .union(&new_reg_update)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    fn increment_pc(&mut self) -> Result<(), DatabaseError> {
+        self.head = self
+            .head
+            .extend("new_pc", ScalarType::Int, |t: &Tuple| {
+                let pc = t.get_typed::<i64>("pc").unwrap();
+                ScalarValue::Int(pc + 1)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .project(&["new_pc"])
+            .rename(&[("new_pc", "pc")]);
+        Ok(())
     }
 
     /// Runs the machine until it halts (returns the number of steps taken).

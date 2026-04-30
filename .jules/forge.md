@@ -616,3 +616,7 @@ Build it right, make it fast, keep it simple.
 ## 2026-05-19 - Refactor God Function in Automata Accepts
 **Learning:** `relvar/src/experimental/automata.rs` contained a "God Function" `accepts` (78 lines) which combined computing epsilon closures, finding initial active states, processing the input string iteratively, and checking against accepting states. This mixed relational operations with procedural logic, hurting readability.
 **Action:** Applied the "Three-Phase Operator" pattern by extracting `compute_epsilon_closure`, `get_initial_active_states`, `apply_epsilon_closure`, `process_input_string`, and `check_accepting_states` into separate helper functions to drastically improve readability without changing behavior.
+
+## 2024-05-18 - Refactoring God Functions
+**Learning:** The `step` function in relational computations often becomes a "God Function" combining instruction fetching, decoding, execution, and state updates, leading to a pyramid of doom and poor readability.
+**Action:** Extract specific instruction execution (e.g., `execute_add_instruction`) and common state updates (e.g., `increment_pc`) into private helper functions to flatten the main loop.
