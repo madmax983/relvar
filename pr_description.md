@@ -1,11 +1,7 @@
-🚮 Smell
-The `SudokuSolver::solve` function was an overly long "God Function" (>100 lines) that mixed multiple distinct relational operations—calculating all possibilities, finding invalid outcomes via constraints, and determining cells—into one massive block.
+🦠 Threat: Calling `.unwrap()` on `RwLock` operations around the storage manager introduces a potential panic point if the lock becomes poisoned (e.g., if another thread panics while holding the lock). This could lead to a cascading failure causing an unexpected Denial of Service (DoS) and compromising data safety.
 
-✨ Solution
-Refactored `SudokuSolver::solve` using the "Three-Phase Operator" pattern. Extracted the logic into three cleanly named private helper functions: `compute_all_possibilities`, `compute_invalid_possibilities`, and `find_determined_cells`.
+🛡️ Defense: Replaced all `self.storage_manager.read().unwrap()` and `self.storage_manager.write().unwrap()` calls in `PersistentEngine` with `.unwrap_or_else(|e| e.into_inner())` or handled them carefully by propagating errors where appropriate (for `relation_exists` and `list_relations`, logging and recovering safely). This ensures the lock is safely recovered.
 
-🧼 Benefit
-Significantly flattens the execution flow, reducing cognitive load and making it much easier to comprehend how the algorithm navigates relational algebra to solve the grid.
+💥 Severity: Medium - A single thread panicking while holding the storage lock could take down the entire Persistent Engine due to subsequent unhandled poisoning.
 
-🛡️ Verification
-`cargo test`, `cargo clippy`, and `cargo fmt` complete with no errors. No behavior changed.
+🧪 Verification: Ran the full test suite (`cargo test`) to ensure no regressions. Also verified that `PersistentEngine` functions correctly recover and no warnings exist.

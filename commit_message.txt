@@ -1,0 +1,6 @@
+🔒 Warden: Fix RwLock poison panics in PersistentEngine
+
+Replaced instances of `.unwrap()` on `RwLock` operations with
+`.unwrap_or_else(|e| e.into_inner())` to properly handle and
+recover from poisoned lock states in the storage engine,
+preventing cascading application crashes.
