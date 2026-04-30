@@ -1,3 +1,4 @@
+//! Dummy file to fix tarpaulin coverage metric issues
 #[test]
 fn test_open_invalid_magic_header() {
     let temp = NamedTempFile::new().unwrap();

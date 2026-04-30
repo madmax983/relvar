@@ -1,3 +1,7 @@
+//! Relational Petri Net Simulator.
+//!
+//! This module implements a Petri Net simulation using purely relational algebra.
+
 use relvar_core::{
     algebra::Aggregation,
     tuple,

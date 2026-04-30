@@ -1,3 +1,7 @@
+//! WAL Iterator implementation.
+//!
+//! This module provides an iterator over WAL records parsed from a raw byte buffer.
+
 use crate::wal::record::WalRecord;
 use crate::wal::{Lsn, WalError};
 use std::convert::TryFrom;

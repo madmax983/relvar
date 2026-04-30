@@ -1,3 +1,7 @@
+//! Conway's Game of Life in Relational Algebra.
+//!
+//! This module implements Conway's Game of Life purely using relational algebra primitives.
+
 use crate::algebra::{Aggregation, AggregationFn};
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};

@@ -1,3 +1,7 @@
+//! PageRank Algorithm in Relational Algebra.
+//!
+//! This module implements the PageRank algorithm using solely relational operators.
+
 use crate::algebra::Aggregation;
 use crate::error::DatabaseError;
 use crate::types::ScalarType;
