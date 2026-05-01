@@ -91,3 +91,33 @@ impl<'a> Iterator for WalRecordIter<'a> {
         Some(Ok((lsn, record_len_u64, record_bytes)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_iter_short_buffer() {
+        let buffer = vec![1, 2, 3];
+        let mut iter = WalRecordIter::new(&buffer);
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_iter_record_too_large() {
+        let mut buffer = Vec::new();
+        // LSN
+        buffer.extend_from_slice(&1u64.to_le_bytes());
+        // Length (much larger than remaining buffer)
+        buffer.extend_from_slice(&1000u64.to_le_bytes());
+        // Data (short)
+        buffer.extend_from_slice(&[1, 2, 3]);
+
+        let mut iter = WalRecordIter::new(&buffer);
+        let result = iter.next().unwrap();
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(e, WalError::Corrupted(_, _)));
+        }
+    }
+}
