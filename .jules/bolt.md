@@ -44,3 +44,7 @@
 ## 2024-05-22 - [Group Operator Allocation Removal]
 **Learning:** In the `group` operator, intermediate RVA results were being collected into a `Vec<Tuple>` and then passed to `Relation::from_tuples_unchecked`, which creates a redundant heap allocation since we know we are building a set.
 **Action:** Modified `group_tuples` to directly accumulate tuples into a `HashSet<Tuple>`, and used `Relation::from_body_unchecked` to bypass the intermediate `Vec` allocation entirely, eliminating a redundant allocation.
+
+## 2026-05-01 - Avoided Arc clone in DML loop
+**Learning:** `Arc<TupleType>::clone()` incurs reference counting overhead and potential allocation overhead, taking around 14ms per 10k tuple creations as shown in `tuple_creation` bench.
+**Action:** Always borrow reference from wrapper container types instead of cloning Arc explicitly if the borrow lifetime spans the whole needed lifetime block, like `tuple.conforms_to(relation_type.tuple_type())` instead of `.clone()`ing `expected_type`.
