@@ -106,59 +106,13 @@ impl CykParser {
     /// assert_eq!(parse_table.cardinality(), 1);
     /// ```
     pub fn parse(&self, input: &Relation) -> Result<Relation, DatabaseError> {
-        // Step 1: Initialize parse table with terminal matches (length = 1)
-        let init = input
-            .clone()
-            .rename(&[("char", "rhs")])
-            .join(&self.terminals)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["pos", "lhs"])
-            .rename(&[("pos", "start"), ("lhs", "non_terminal")]);
+        let mut parse_table = self.initialize_parse_table(input)?;
 
-        let mut parse_table = init
-            .extend("length", ScalarType::Int, |_: &Tuple| ScalarValue::Int(1))
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        // Step 2: Iteratively build larger parsed chunks until fixpoint
         let mut new_entries_added = true;
-
         while new_entries_added {
             let prev_count = parse_table.cardinality();
 
-            let left = parse_table
-                .clone()
-                .rename(&[("non_terminal", "rhs1"), ("length", "len1")]);
-
-            let left_with_end = left
-                .extend("start2", ScalarType::Int, |t: &Tuple| {
-                    let start = t.get_typed::<i64>("start").unwrap();
-                    let len = t.get_typed::<i64>("len1").unwrap();
-                    ScalarValue::Int(start + len)
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            let right = parse_table.clone().rename(&[
-                ("start", "start2"),
-                ("non_terminal", "rhs2"),
-                ("length", "len2"),
-            ]);
-
-            let pairs = left_with_end
-                .join(&right)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-            let matches = pairs
-                .join(&self.non_terminals)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            let new_entries = matches
-                .extend("length", ScalarType::Int, |t: &Tuple| {
-                    let len1 = t.get_typed::<i64>("len1").unwrap();
-                    let len2 = t.get_typed::<i64>("len2").unwrap();
-                    ScalarValue::Int(len1 + len2)
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-                .project(&["start", "length", "lhs"])
-                .rename(&[("lhs", "non_terminal")]);
+            let new_entries = self.compute_new_entries(&parse_table)?;
 
             parse_table = parse_table
                 .union(&new_entries)
@@ -170,6 +124,59 @@ impl CykParser {
         }
 
         Ok(parse_table)
+    }
+
+    fn initialize_parse_table(&self, input: &Relation) -> Result<Relation, DatabaseError> {
+        let init = input
+            .clone()
+            .rename(&[("char", "rhs")])
+            .join(&self.terminals)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .project(&["pos", "lhs"])
+            .rename(&[("pos", "start"), ("lhs", "non_terminal")]);
+
+        init.extend("length", ScalarType::Int, |_: &Tuple| ScalarValue::Int(1))
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
+
+    fn compute_new_entries(&self, parse_table: &Relation) -> Result<Relation, DatabaseError> {
+        let left = parse_table
+            .clone()
+            .rename(&[("non_terminal", "rhs1"), ("length", "len1")]);
+
+        let left_with_end = left
+            .extend("start2", ScalarType::Int, |t: &Tuple| {
+                let start = t.get_typed::<i64>("start").unwrap();
+                let len = t.get_typed::<i64>("len1").unwrap();
+                ScalarValue::Int(start + len)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        let right = parse_table.clone().rename(&[
+            ("start", "start2"),
+            ("non_terminal", "rhs2"),
+            ("length", "len2"),
+        ]);
+
+        let pairs = left_with_end
+            .join(&right)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        let matches = pairs
+            .join(&self.non_terminals)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        let new_entries = matches
+            .extend("length", ScalarType::Int, |t: &Tuple| {
+                let len1 = t.get_typed::<i64>("len1").unwrap();
+                let len2 = t.get_typed::<i64>("len2").unwrap();
+                ScalarValue::Int(len1 + len2)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .project(&["start", "length", "lhs"])
+            .rename(&[("lhs", "non_terminal")]);
+
+        Ok(new_entries)
     }
 
     /// Checks if a string is accepted by the grammar given its start symbol and length.
