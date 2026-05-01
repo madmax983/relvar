@@ -620,3 +620,7 @@ Build it right, make it fast, keep it simple.
 ## 2024-05-18 - Refactoring God Functions
 **Learning:** The `step` function in relational computations often becomes a "God Function" combining instruction fetching, decoding, execution, and state updates, leading to a pyramid of doom and poor readability.
 **Action:** Extract specific instruction execution (e.g., `execute_add_instruction`) and common state updates (e.g., `increment_pc`) into private helper functions to flatten the main loop.
+
+## 2025-05-15 - Refactored God Function in Relational Logic
+**Learning:** Found a god function `infer` in `relvar/src/experimental/expert_system.rs` executing a massive loop. This is a common anti-pattern where relational logic execution is all piled into one large loop without clean conceptual boundaries. This makes the code difficult to read.
+**Action:** Applied the 'Three-Phase Operator' pattern by extracting the massive chunk of looping logic into clear, domain-specific sub-phases (`compute_total_conditions`, `find_triggered_rules`, and `derive_new_facts`). This dramatically improved readability and clarity. Will continue extracting logic into smaller, properly typed helper functions.
