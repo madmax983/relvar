@@ -621,4 +621,72 @@ mod tests {
             Err(e) => panic!("Expected WalError::Corrupted, got {:?}", e),
         }
     }
+
+    #[test]
+    fn test_wal_manager_max_file_size_scan() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+
+        {
+            let mut file = std::fs::File::create(&path).unwrap();
+            file.write_all(WAL_MAGIC).unwrap();
+            let large_data = vec![0u8; MAX_WAL_SIZE as usize + 10];
+            file.write_all(&large_data).unwrap();
+        }
+
+        let result = WalManager::open(&path);
+        assert!(matches!(
+            result,
+            Err(WalError::Io(e)) if e.to_string().contains("WAL file too large")
+        ));
+    }
+
+    #[test]
+    fn test_wal_manager_max_file_size_scan_method() {
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+
+        let mut manager = WalManager::create(&path).unwrap();
+
+        {
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap();
+            let large_data = vec![0u8; MAX_WAL_SIZE as usize + 10];
+            file.write_all(&large_data).unwrap();
+        }
+
+        let result = manager.scan();
+        assert!(matches!(
+            result,
+            Err(WalError::Io(e)) if e.to_string().contains("WAL file too large")
+        ));
+    }
+
+    #[test]
+    fn test_wal_manager_max_file_size_scan_for_last_lsn() {
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+
+        {
+            let mut file = std::fs::File::create(&path).unwrap();
+            file.write_all(WAL_MAGIC).unwrap();
+            let large_data = vec![0u8; MAX_WAL_SIZE as usize + 10];
+            file.write_all(&large_data).unwrap();
+        }
+
+        let mut file = std::fs::File::open(&path).unwrap();
+        let result = WalManager::scan_for_last_lsn(&mut file);
+        assert!(matches!(
+            result,
+            Err(WalError::Io(e)) if e.to_string().contains("WAL file too large")
+        ));
+    }
 }

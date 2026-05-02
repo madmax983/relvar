@@ -60,3 +60,17 @@ fn test_sentry_check_versioned_tuple_size_limit_overflow() {
         Err(HeapError::Serialization(msg)) if msg.contains("Header size + tuple data length overflow")
     ));
 }
+
+#[test]
+fn test_verify_versioned_page_size_slot_dir_too_large() {
+    let slot_dir = vec![0; (u32::MAX as usize) + 1];
+    let header_size = 100;
+    let usable_size = usize::MAX;
+
+    let result = HeapFile::verify_versioned_page_size(&slot_dir, header_size, usable_size);
+
+    assert!(matches!(
+        result,
+        Err(HeapError::Serialization(msg)) if msg.contains("Slot directory too large to be represented by u32 length prefix")
+    ));
+}

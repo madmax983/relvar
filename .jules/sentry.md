@@ -121,3 +121,6 @@
 
 **Learning:** It is crucial to append tests to exactly correct lines to avoid collision with multiple `mod tests {` or similar. Directly applying `sed` replacements or `patch` is safer than raw appending (`cat >>`). `TryFrom` conversions must carefully type-check expected fields, such as `unwrap_err().expected` being correctly matched.
 **Action:** Use `replace_with_git_merge_diff` inside existing modules when working with `cfg(test)` items instead of using raw `cat >>` appended blocks, to prevent compilation errors and redundant definitions.
+## 2025-05-24 - WAL Manager File Size Scan Tests
+**Learning:** `WalManager::open` and `scan()` use the file size to enforce `MAX_WAL_SIZE` in `relvar-storage/src/wal/manager.rs`, avoiding bounded memory overflow but error mappings to `WalError::Io` indicating "WAL file too large" lacked any test coverage.
+**Action:** Wrote tests constructing oversized dummy WAL log files simulating > `MAX_WAL_SIZE` bounds and verified the returned `WalError::Io` error matching limits.

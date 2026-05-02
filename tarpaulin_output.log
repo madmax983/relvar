@@ -1,0 +1,1547 @@
+[2m2026-05-02T18:03:59.454222Z[0m [32m INFO[0m [2mcargo_tarpaulin::config[0m[2m:[0m Creating config
+[2m2026-05-02T18:03:59.650516Z[0m [32m INFO[0m [2mcargo_tarpaulin[0m[2m:[0m Running Tarpaulin
+[2m2026-05-02T18:03:59.650565Z[0m [32m INFO[0m [2mcargo_tarpaulin[0m[2m:[0m Building project
+[2m2026-05-02T18:03:59.651709Z[0m [32m INFO[0m [2mcargo_tarpaulin::cargo[0m[2m:[0m Cleaning project
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.44
+   Compiling unicode-ident v1.0.22
+   Compiling libc v0.2.180
+   Compiling cfg-if v1.0.4
+   Compiling serde_core v1.0.228
+   Compiling getrandom v0.3.4
+   Compiling zerocopy v0.8.33
+   Compiling syn v2.0.114
+   Compiling serde v1.0.228
+   Compiling zmij v1.0.16
+   Compiling thiserror v2.0.18
+   Compiling crossbeam-utils v0.8.21
+   Compiling serde_json v1.0.149
+   Compiling itoa v1.0.17
+   Compiling memchr v2.7.6
+   Compiling autocfg v1.5.0
+   Compiling num-traits v0.2.19
+   Compiling rustix v1.1.3
+   Compiling crossbeam-epoch v0.9.18
+   Compiling rand_core v0.9.5
+   Compiling once_cell v1.21.3
+   Compiling linux-raw-sys v0.11.0
+   Compiling bitflags v2.10.0
+   Compiling regex-syntax v0.8.8
+   Compiling rayon-core v1.13.0
+   Compiling either v1.15.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling fastrand v2.3.0
+   Compiling ciborium-io v0.2.2
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.33
+   Compiling thiserror-impl v2.0.18
+   Compiling plotters-backend v0.3.7
+   Compiling clap_lex v0.7.7
+   Compiling anstyle v1.0.13
+   Compiling clap_builder v4.5.54
+   Compiling cobs v0.3.0
+   Compiling plotters-svg v0.3.7
+   Compiling tempfile v3.24.0
+   Compiling regex-automata v0.4.13
+   Compiling half v2.7.1
+   Compiling ciborium-ll v0.2.2
+   Compiling postcard v1.1.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling itertools v0.10.5
+   Compiling wait-timeout v0.2.1
+   Compiling same-file v1.0.6
+   Compiling cast v0.3.0
+   Compiling quick-error v1.2.3
+   Compiling bit-vec v0.8.0
+   Compiling fnv v1.0.7
+   Compiling rusty-fork v0.3.1
+   Compiling criterion-plot v0.5.0
+   Compiling bit-set v0.8.0
+   Compiling walkdir v2.5.0
+   Compiling rayon v1.11.0
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium v0.2.2
+   Compiling regex v1.12.2
+   Compiling tinytemplate v1.2.1
+   Compiling relvar-core v0.1.0 (/app/relvar-core)
+   Compiling clap v4.5.54
+   Compiling plotters v0.3.7
+   Compiling rand_xorshift v0.4.0
+   Compiling rand v0.9.3
+   Compiling is-terminal v0.4.17
+   Compiling oorandom v11.1.5
+   Compiling unarray v0.1.4
+   Compiling anes v0.1.6
+   Compiling proptest v1.11.0
+   Compiling criterion v0.5.1
+   Compiling rand_core v0.10.0
+   Compiling getrandom v0.4.2
+   Compiling cpufeatures v0.3.0
+   Compiling chacha20 v0.10.0
+   Compiling rand v0.10.1
+   Compiling relvar-storage v0.1.0 (/app/relvar-storage)
+   Compiling relvar v0.1.0 (/app/relvar)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 53.51s
+[2m2026-05-02T18:04:56.055142Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:04:56.055205Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_stack_overflow-32a55beb0fd53995
+
+running 4 tests
+test test_deeply_nested_drop_should_not_overflow ... ok
+test test_deeply_nested_hash_should_not_overflow ... ok
+test test_deeply_nested_ord_should_not_overflow ... ok
+test test_deeply_nested_eq_should_not_overflow ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s
+
+[2m2026-05-02T18:04:57.283138Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:04:57.283197Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_query_coverage-7bc19da939700bfe
+
+running 4 tests
+test test_query_project_coverage ... ok
+test test_query_rename_coverage ... ok
+test test_query_summarize_coverage ... ok
+test test_query_join_coverage ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+[2m2026-05-02T18:04:57.943160Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:04:57.943221Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_scalar_value_mismatch-c3750222f922a2cf
+
+running 1 test
+test test_scalar_value_mismatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+[2m2026-05-02T18:04:58.643092Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:04:58.643147Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_query_restrict_error-18c19f782b7f1aad
+
+running 1 test
+test test_query_restrict_propagates_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+[2m2026-05-02T18:04:59.243080Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:04:59.243139Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_extend_coverage-f1867ec4eb60e620
+
+running 8 tests
+test test_extend_into_empty ... ok
+test test_extend_into_attribute_exists ... ok
+test test_extend_into_type_mismatch ... ok
+test test_extend_into_success ... ok
+test tests::test_extend_empty_relation ... ok
+test tests::test_extend_computation_type_mismatch ... ok
+test tests_extend_into::test_extend_into_empty_relation ... ok
+test tests_extend_into::test_extend_into_computation_type_mismatch ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+[2m2026-05-02T18:04:59.875098Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:04:59.875151Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_timeseries_collision-69ee018d085e74d0
+
+running 1 test
+test test_moving_average_attribute_collision ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+[2m2026-05-02T18:05:01.043091Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:01.043152Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_scalar_value_recursion-f5d893d0d0ad3d2a
+
+running 2 tests
+test test_stack_overflow_nested_user_defined_postcard ... ok
+test test_stack_overflow_nested_user_defined_json ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+[2m2026-05-02T18:05:01.839084Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:01.839142Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_json_import-0a9c4e3ee0575e82
+
+running 3 tests
+test test_recursion_limit ... ok
+test test_large_bytes_import ... ok
+test test_large_string_import ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.42s
+
+[2m2026-05-02T18:05:08.387093Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:08.387149Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_import_limits-b7a4b3923660dd54
+
+running 4 tests
+test test_csv_line_length_limit_no_newline ... ok
+test test_csv_line_length_limit ... ok
+test test_csv_import_limit_rows ... ok
+test test_json_import_limit_rows ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.82s
+
+[2m2026-05-02T18:05:14.399085Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:14.399144Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/query_builder-024265cc2d4c85e1
+
+running 3 tests
+test test_query_builder_e2e ... ok
+test test_query_join_summarize ... ok
+test test_query_rename_aggregations ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+[2m2026-05-02T18:05:15.879126Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:15.879180Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_csv_dos-c348a6bdb76b3019
+
+running 1 test
+test test_exploit_csv_duplicate_row_limit ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.73s
+
+[2m2026-05-02T18:05:18.795083Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:18.795140Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_csv_global_dos-814045993f4d308e
+
+running 1 test
+test test_exploit_csv_global_dos ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.62s
+
+[2m2026-05-02T18:05:21.611106Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:21.611161Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_nested_limit-42329af026cde2cb
+
+running 1 test
+test test_exploit_nested_relation_limit ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.25s
+
+[2m2026-05-02T18:05:28.267212Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:28.267304Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_csv_injection-a6b65609c3fab9f7
+
+running 1 test
+test test_csv_injection ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+[2m2026-05-02T18:05:29.823081Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:29.823139Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/visualizer_security-06d032463ffacd34
+
+running 2 tests
+test test_html_injection_attribute_name ... ok
+test test_dot_injection_relvar_name ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+[2m2026-05-02T18:05:31.143113Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:31.143203Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_image_dos-7a30125311b03ce7
+
+running 2 tests
+test test_image_load_dos ... ok
+test test_image_save_dos ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+[2m2026-05-02T18:05:32.475113Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:32.475171Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_tclose_coverage-ccd468037989b1dc
+
+running 2 tests
+test tests::test_tclose_missing_to_attr ... ok
+test tests::test_tclose_missing_from_attr ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+[2m2026-05-02T18:05:33.139095Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:33.139149Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_database_schema_coverage-1e2336948022742d
+
+running 10 tests
+test test_database_define_virtual_relvar_already_exists ... ok
+test test_create_relvar_already_exists ... ok
+test test_create_relvar_already_exists_virtual ... ok
+test test_database_list_relvars ... ok
+test test_define_virtual_relvar_already_exists_base ... ok
+test test_define_virtual_relvar_already_exists_virtual ... ok
+test test_drop_virtual_relvar_not_found ... ok
+test test_drop_relvar_not_found ... ok
+test test_get_relvar_type_virtual ... ok
+test test_get_relvar_type_not_found ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+[2m2026-05-02T18:05:33.847082Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:33.847132Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_importer_coverage-b2c10e31288e197f
+
+running 7 tests
+test test_sentry_importer_empty_csv ... ok
+test test_sentry_csv_global_limit ... ok
+test test_sentry_importer_empty_lines_csv ... ok
+test test_sentry_csv_parse_types ... ok
+test test_sentry_json_seq ... ok
+test test_sentry_importer_json_errors ... ok
+test test_sentry_json_string_limit ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+[2m2026-05-02T18:05:35.975120Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:35.975181Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_correctness_algebra-70588baf029d83c2
+
+running 6 tests
+test test_join_missing_probe_attribute ... ok
+test test_difference_into_type_mismatch ... ok
+test test_like_unicode_normalization_behavior ... ok
+test test_rename_swap_atomic ... ok
+test test_ungroup_empty_rva_removes_parent_tuple ... ok
+test test_ungroup_attribute_collision_behavior ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+[2m2026-05-02T18:05:36.719153Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:36.719212Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_semijoin_coverage-c0b0d00f8053383e
+
+running 3 tests
+test test_semijoin_keys_eq_direct ... ok
+test test_semijoin_hash_collision ... ok
+test test_semijoin_keys_eq ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+[2m2026-05-02T18:05:37.483126Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:37.483183Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_database_update_fk_coverage-9fb3c00fc6707ee6
+
+running 1 test
+test test_database_update_validates_referencing_foreign_keys ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+[2m2026-05-02T18:05:38.311105Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:38.311162Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_check_constraint_validation-75fa7390bd9b2c9b
+
+running 1 test
+test tests::test_check_constraint_invalid_attribute_empty_relation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+[2m2026-05-02T18:05:39.071125Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:39.071183Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_algebra_error_coverage-42440c700f10f2f8
+
+running 15 tests
+test test_delta_between_type_mismatch ... ok
+test test_delta_new_type_mismatch ... ok
+test test_delta_apply_type_mismatch ... ok
+test test_delta_compose_type_mismatch ... ok
+test test_difference_type_mismatch ... ok
+test test_difference_into_type_mismatch ... ok
+test test_divide_error_type_mismatch ... ok
+test test_divide_error_missing_attribute ... ok
+test test_divide_empty_remainder_error ... ok
+test test_intersect_into_type_mismatch ... ok
+test test_minus_into_type_mismatch ... ok
+test test_extend_type_mismatch ... ok
+test test_extend_into_type_mismatch ... ok
+test test_minus_type_mismatch ... ok
+test test_divide_empty_dividend ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+[2m2026-05-02T18:05:39.887093Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:39.887154Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_scalar_value_coverage-a195f0e6c1e90c99
+
+running 5 tests
+test test_scalar_value_observer_not_user_defined ... ok
+test test_scalar_value_hash_coverage ... ok
+test test_scalar_value_select_type_mismatch ... ok
+test test_scalar_value_float_cmp ... ok
+test test_scalar_value_hash_user_defined ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+[2m2026-05-02T18:05:40.615100Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:40.615158Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_algebra_uncovered-a94a79917f0cdc85
+
+running 14 tests
+test test_extend_into_attribute_exists ... ok
+test test_intersect_into ... ok
+test test_intersect_into_larger_self_uncovered ... ok
+test test_intersect_into_type_mismatch ... ok
+test test_group_ungroup_error_paths ... ok
+test test_extend_into_computation_mismatch ... ok
+test test_intersect_larger_self ... ok
+test test_join_error_paths ... ok
+test test_union_into ... ok
+test test_project_ordering ... ok
+test test_rename_into ... ok
+test test_union_into_larger_self ... ok
+test test_union_into_type_mismatch ... ok
+test test_summarize_avg_error ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+[2m2026-05-02T18:05:41.499117Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:41.499175Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_group_coverage-819816aec7c6365a
+
+running 4 tests
+test tests::test_ungroup_missing_attribute ... ok
+test tests::test_ungroup_not_a_relation ... ok
+test tests::test_group_conflict_with_grouping_attribute ... ok
+test tests::test_ungroup_conflict_with_existing_attribute ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+[2m2026-05-02T18:05:42.303097Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:42.303155Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_like-a7b56a8e28843e07
+
+running 1 test
+test test_like_dos_allocation_regression ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.60s
+
+[2m2026-05-02T18:05:44.639131Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:44.639228Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_scalar_type_hash_coverage-6567ba589feb3ebe
+
+running 1 test
+test test_scalar_type_hash_coverage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[2m2026-05-02T18:05:45.387091Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:45.387182Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_scalar_type_coverage-60d9ef4e867daaa3
+
+running 21 tests
+test test_relation_type_depth_limit - should panic ... ok
+test test_relation_type_ord_different_lengths ... ok
+test test_relation_type_ord_same_length_different_names ... ok
+test test_relation_type_ord_mismatched_attrs ... ok
+test test_ord_relation_match_same_degree ... ok
+test test_relation_type_ord_same_length_same_names_different_types ... ok
+test test_scalar_type_deserialize_unreachable ... ok
+test test_scalar_type_depth_limit_user_defined - should panic ... ok
+test test_scalar_type_hash_all_branches ... ok
+test test_scalar_type_ord_unreachable_branch ... ok
+test test_scalar_type_depth ... ok
+test test_scalar_type_hash_all_branches2 ... ok
+test test_scalar_type_name ... ok
+test test_try_from_unchecked_relation ... ok
+test test_try_from_unchecked_depth_limit ... ok
+test test_tuple_type_depth_limit - should panic ... ok
+test test_try_from_unchecked_user_defined ... ok
+test test_user_defined_depth_limit_hit - should panic ... ok
+test test_user_defined_cmp_same_name_different_rep ... ok
+test test_type_mismatch_error_display ... ok
+test test_user_defined_selector_type_mismatch ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+[2m2026-05-02T18:05:46.363128Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:46.363188Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_sum_float_overflow-babed7fb6da1cab1
+
+running 2 tests
+test test_avg_float_overflow ... ok
+test test_sum_float_overflow ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+[2m2026-05-02T18:05:47.175130Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:47.175210Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_scalar_value_inconsistency-a7ef71042e2ac081
+
+running 1 test
+test test_scalar_value_inconsistency ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[2m2026-05-02T18:05:48.087126Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:48.087184Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_database_transaction_coverage-850e68794dc2a607
+
+running 2 tests
+test test_transaction_errors ... ok
+test test_virtual_relvar_evaluation_error ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+[2m2026-05-02T18:05:48.883110Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:48.883168Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_scalar_type_coverage-3abe807d01146511
+
+running 1 test
+test test_scalar_type_deserialization_coverage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+[2m2026-05-02T18:05:49.807097Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:49.807156Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_tuple_type_coverage-9d17a66324a0abf9
+
+running 2 tests
+test tests::test_tuple_type_default ... ok
+test tests::test_tuple_type_with_attribute_nesting_too_deep - should panic ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[2m2026-05-02T18:05:50.595081Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:50.595140Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/relvar-f98390a6cb472246
+
+running 95 tests
+test experimental::automata::tests::test_nfa_ac ... ok
+test experimental::automata::tests::test_nfa_abc ... ok
+test experimental::automata::tests::test_nfa_ab ... ok
+test experimental::automata::tests::test_nfa_a ... ok
+test experimental::automata::tests::test_nfa_star ... ok
+test experimental::automata::tests::test_nfa_reject ... ok
+test experimental::automata::tests::test_nfa_union ... ok
+test experimental::automl::tests::test_train_error_handling ... ok
+test experimental::blockchain::tests::test_double_spend_negative_balance ... ok
+test experimental::blockchain::tests::test_valid_blockchain ... ok
+test experimental::blockchain::tests::test_invalid_hash_link ... ok
+test experimental::automl::tests::test_play_golf_dataset ... ok
+test experimental::build_system::tests::test_build_system_transitive_dependency ... ok
+test experimental::automl::tests::test_predict_unseen_values ... ok
+test experimental::build_system::tests::test_build_system_up_to_date ... ok
+test experimental::build_system::tests::test_build_system_stale_direct_dependency ... ok
+test experimental::dom::tests::test_query_class ... ok
+test experimental::dom::tests::test_query_descendant ... ok
+test experimental::circuit::tests::test_oscillator ... ok
+test experimental::circuit::tests::test_full_adder ... ok
+test experimental::cellular_automaton::tests::test_blinker ... ok
+test experimental::expert_system::tests::test_chained_inference ... ok
+test experimental::expert_system::tests::test_socrates_mortal ... ok
+test experimental::expert_system::tests::test_multiple_conditions ... ok
+test experimental::garbage_collector::tests::test_mark_and_sweep ... ok
+test experimental::gnn::tests::test_gnn_forward ... ok
+test experimental::ecs::tests::test_ecs_physics_system ... ok
+test experimental::enigma::tests::test_enigma_encryption_and_decryption ... ok
+test experimental::graph_neural_network::tests::test_gnn_message_passing ... ok
+test experimental::graph::tests::test_bfs_simple_chain ... ok
+test experimental::image::tests::test_load_save_identity ... ok
+test experimental::graph::tests::test_pagerank_small ... ok
+test experimental::genetic_algorithm::tests::test_genetic_algorithm ... ok
+test experimental::image::tests::test_shift ... ok
+test experimental::image::tests::test_box_blur ... ok
+test experimental::knowledge_graph::tests::test_knowledge_graph_empty_query ... ok
+test experimental::knowledge_graph::tests::test_knowledge_graph_basic_query ... ok
+test experimental::kmeans::tests::test_kmeans_clustering ... ok
+test experimental::markov::tests::test_markov_chain_weather ... ok
+test experimental::matrix::tests::test_matrix_multiplication ... ok
+test experimental::mock::tests::test_determinism ... ok
+test experimental::mock::tests::test_generate_mock_relation ... ok
+test experimental::matrix::tests::test_matrix_addition ... ok
+test experimental::mock::tests::test_generate_all_types ... ok
+test experimental::parser::tests::test_cyk_parser_complex ... ok
+test experimental::parser::tests::test_cyk_parser ... ok
+test experimental::neural_network::tests::test_feedforward_network ... ok
+test experimental::petri_net::tests::test_petri_net_basic_flow ... ok
+test experimental::pivot::tests::test_pivot_conflict ... ok
+test experimental::pivot::tests::test_pivot_basic ... ok
+test experimental::petri_net::tests::test_petri_net_multiple_inputs ... ok
+test experimental::pivot::tests::test_pivot_errors ... ok
+test experimental::raytracer::tests::test_raytracer_z_buffer ... ok
+test experimental::raytracer::tests::test_raytracer_empty_scene ... ok
+test experimental::raytracer::tests::test_raytracer_with_sphere ... ok
+test experimental::rbac::tests::test_rbac_inheritance ... ok
+test experimental::search::tests::test_tokenizer ... ok
+test experimental::physics::tests::test_two_body_gravity ... ok
+test experimental::spatial::tests::test_point_creation_and_type ... ok
+test experimental::search::tests::test_full_text_search ... ok
+test experimental::spatial::tests::test_distance ... ok
+test experimental::spatial::tests::test_within ... ok
+test experimental::spatial::tests::test_type_safety ... ok
+test experimental::synth::tests::test_synth_sine_wave ... ok
+test experimental::synth::tests::test_synth_mixing ... ok
+test experimental::timeseries::tests::test_moving_average_partitioned ... ok
+test experimental::timeseries::tests::test_moving_average_simple ... ok
+test experimental::timeseries::tests::test_moving_average_window_larger_than_history ... ok
+test experimental::turing::tests::test_busy_beaver_2_state ... ok
+test experimental::recommend::tests::test_recommend_collaborative_filtering ... ok
+test tools::exporter::tests::test_json_export_all_types ... ok
+test experimental::vcs::tests::test_vcs_checkout_and_diff ... ok
+test tools::exporter::tests::test_to_ascii_table ... ok
+test tools::exporter::tests::test_to_json ... ok
+test experimental::vm::tests::test_vm_addition ... ok
+test tools::exporter::tests::test_to_csv ... ok
+test tools::importer::tests::test_csv_error_header_missing ... ok
+test tools::importer::tests::test_csv_error_field_count ... ok
+test tools::importer::tests::test_csv_nested_relation_error ... ok
+test tools::importer::tests::test_csv_error_type_mismatch ... ok
+test tools::importer::tests::test_from_csv_simple ... ok
+test tools::importer::tests::test_csv_bytes_and_user_defined ... ok
+test experimental::sudoku::tests::test_sudoku_solver ... ok
+test tools::importer::tests::test_json_error_item_not_object ... ok
+test tools::importer::tests::test_json_error_missing_value ... ok
+test tools::importer::tests::test_json_error_root_not_array ... ok
+test tools::importer::tests::test_json_error_type_mismatch ... ok
+test tools::importer::tests::test_from_json_simple ... ok
+test tools::importer::tests::test_json_bytes_handling ... ok
+test tools::importer::tests::test_from_json_nested ... ok
+test tools::importer::tests::test_parse_csv_line ... ok
+test tools::visualizer::tests::test_escaping_helpers ... ok
+test tools::importer::tests::test_json_nested_relation ... ok
+test tools::visualizer::tests::test_visualizer_dot_output ... ok
+test tools::importer::tests::test_json_limit_exceeded ... ok
+
+test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.08s
+
+[2m2026-05-02T18:05:56.447153Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:56.447210Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_check_constraint_coverage-56fe4ca307737764
+
+running 2 tests
+test test_check_constraint_properties ... ok
+test test_check_constraints_properties ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[2m2026-05-02T18:05:57.259116Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:57.259172Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_like_memory-0666c77cafc1b67a
+
+running 2 tests
+test test_like_unicode_chars_iterator ... ok
+test test_like_large_input_correctness ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+[2m2026-05-02T18:05:58.167098Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:58.167165Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_serde_stack_overflow-e3aeb910d929e283
+
+running 1 test
+test test_serde_depth_check ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[2m2026-05-02T18:05:59.131101Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:59.131157Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_relation_type_coverage-b8e600ecc7e8a31f
+
+running 1 test
+test tests::test_relation_type_new_nesting_too_deep - should panic ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[2m2026-05-02T18:05:59.967115Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:05:59.967177Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_database_integrity_coverage-0ea33b06351c038d
+
+running 24 tests
+test test_database_integrity_setters_coverage ... ok
+test test_constraint_manager_foreign_key_violation_error_path ... ok
+test test_database_integrity_getters ... ok
+test test_database_set_check_constraints_coverage ... ok
+test test_database_integrity_type_and_check ... ok
+test test_database_set_check_constraints_nonexistent_fails ... ok
+test test_database_set_constraints_nonexistent_relation ... ok
+test test_database_set_check_constraints_success ... ok
+test test_database_set_check_constraints_fails ... ok
+test test_database_set_foreign_key_constraints_coverage ... ok
+test test_database_set_foreign_key_constraints_nonexistent_fails ... ok
+test test_database_set_foreign_key_constraints_fails ... ok
+test test_database_set_key_constraints_coverage ... ok
+test test_constraint_manager_validate_referencing_fks_error ... ok
+test test_database_set_foreign_key_constraints_success ... ok
+test test_database_set_key_constraints_nonexistent_fails ... ok
+test test_database_set_key_constraints_success ... ok
+test test_database_set_key_constraints_fails ... ok
+test test_database_set_type_constraints_attribute_not_found ... ok
+test test_database_set_type_constraints_coverage ... ok
+test test_database_set_type_constraints_nonexistent_fails ... ok
+test test_database_set_type_constraints_success ... ok
+test test_database_set_type_constraints_fails ... ok
+test test_get_constraints ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+[2m2026-05-02T18:06:01.055094Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:01.055153Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_database_dml_coverage-c5c1ae13dcfa9306
+
+running 3 tests
+test test_database_update_tuple_mismatch ... ok
+test test_database_data_delete_validation_uncovered ... ok
+test test_database_data_update_validation_uncovered ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+[2m2026-05-02T18:06:02.035089Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:02.035149Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_scalar_value_deserialization-96fc17e6e86c063e
+
+running 1 test
+test test_scalar_value_deserialization_stack_overflow ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+[2m2026-05-02T18:06:03.171079Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:03.171164Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_database_data_coverage-eb55dd11b39b0f4e
+
+running 15 tests
+test test_database_delete_foreign_key_violation ... ok
+test test_database_delete_parent_violates_child_foreign_key ... ok
+test test_database_insert_check_constraint_violation ... ok
+test test_database_delete_and_update_coverage ... ok
+test test_database_insert_foreign_key_violation ... ok
+test test_database_insert_type_constraint_violation ... ok
+test test_database_insert_type_constraint_violation_detail ... ok
+test test_database_insert_duplicate_primary_key ... ok
+test test_database_update_bulk_validation_fails_check_constraint ... ok
+test test_database_update_check_constraint_violation ... ok
+test test_database_update_foreign_key_violation ... ok
+test test_database_update_key_constraint_violation ... ok
+test test_database_update_parent_violates_child_foreign_key ... ok
+test test_database_update_referencing_foreign_keys_violation ... ok
+test test_database_update_type_constraint_violation ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+[2m2026-05-02T18:06:04.371117Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:04.371179Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/warden_exploit_scalar_type_recursion-0d79d776f63b19e4
+
+running 2 tests
+test test_stack_overflow_nested_scalar_type_postcard ... ok
+test test_stack_overflow_nested_scalar_type_json ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+[2m2026-05-02T18:06:05.431086Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:05.431182Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_delta_coverage-590ef735d8cd2c9a
+
+running 1 test
+test should_return_error_when_type_mismatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[2m2026-05-02T18:06:06.315120Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:06.315182Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_project_coverage-fd317dc0411235d4
+
+running 7 tests
+test should_project_into_all_attributes ... ok
+test should_project_with_ordering_greater_for_project_tuple_values ... ok
+test should_project_with_ordering_less ... ok
+test should_project_with_ordering_greater_coverage ... ok
+test should_project_with_ordering_greater ... ok
+test should_project_with_ordering_greater_coverage_more ... ok
+test should_project_with_ordering_less_owned ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+[2m2026-05-02T18:06:07.311125Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:07.311193Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/sentry_correctness-f7834990d25d05be
+
+running 4 tests
+test test_scalar_float_transitivity ... ok
+test test_scalar_float_ord_consistency ... ok
+test test_constraint_deep_nesting ... ok
+test test_constraint_in_type_inconsistency ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+[2m2026-05-02T18:06:09.543107Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:09.543166Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/relvar_core-8e14300d57bddc52
+
+running 396 tests
+test algebra::delta::additional_delta_tests::test_delta_between_type_mismatch_internal ... ok
+test algebra::delta::additional_delta_tests::test_delta_new_type_mismatch_internal ... ok
+test algebra::delta::additional_delta_tests::test_delta_apply_type_mismatch_internal ... ok
+test algebra::delta::additional_delta_tests::test_delta_compose_type_mismatch_internal ... ok
+test algebra::delta::tests::test_delta_apply_type_mismatch ... ok
+test algebra::delta::tests::test_delta_between_empty ... ok
+test algebra::delta::tests::test_delta_between_type_mismatch ... ok
+test algebra::delta::tests::test_delta_compose_type_mismatch ... ok
+test algebra::delta::tests::test_delta_new_type_mismatch ... ok
+test algebra::delta::tests::test_invert ... ok
+test algebra::delta::tests::test_delta_simple ... ok
+test algebra::difference::tests::test_difference_all_removed ... ok
+test algebra::delta::tests::test_compose_overlapping ... ok
+test algebra::difference::tests::test_difference_no_common_tuples ... ok
+test algebra::difference::tests::test_difference_type_mismatch ... ok
+test algebra::delta::tests::test_compose ... ok
+test algebra::difference::tests::test_difference_with_empty_relation ... ok
+test algebra::difference::tests::test_minus_alias ... ok
+test algebra::difference::tests::test_minus_into_alias ... ok
+test algebra::difference::tests::test_difference_into_returns_tuples_in_first_but_not_second ... ok
+test algebra::difference::tests::test_difference_returns_tuples_in_first_but_not_second ... ok
+test algebra::divide::tests::test_divide_empty_dividend ... ok
+test algebra::divide::tests::test_divide_error_empty_remainder ... ok
+test algebra::divide::tests::test_divide_error_missing_attribute ... ok
+test algebra::divide::tests::test_divide_error_type_mismatch ... ok
+test algebra::divide::tests::test_divide_empty_divisor ... ok
+test algebra::divide::tests_additional::test_divide_empty_dividend_internal ... ok
+test algebra::divide::tests::test_divide_all_match ... ok
+test algebra::divide::tests_additional::test_divide_error_empty_remainder_internal ... ok
+test algebra::divide::tests_additional::test_divide_error_missing_attribute_internal ... ok
+test algebra::divide::tests_additional::test_divide_error_type_mismatch_internal ... ok
+test algebra::divide::tests::test_divide_basic ... ok
+test algebra::divide::tests::test_divide_no_matches ... ok
+test algebra::divide::tests_additional::test_divide_empty_divisor_internal ... ok
+test algebra::extend::tests::test_extend_fails_if_attribute_exists ... ok
+test algebra::extend::tests::test_extend_on_empty_relation ... ok
+test algebra::extend::tests::test_extend_type_mismatch_fails ... ok
+test algebra::extend::tests::test_extend_adds_computed_attribute ... ok
+test algebra::extend::tests::test_extend_into_adds_computed_attribute ... ok
+test algebra::group::tests::test_group_attribute_not_found ... ok
+test algebra::group::tests::test_group_all_attributes_fails ... ok
+test algebra::extend::tests::test_extend_with_string_concatenation ... ok
+test algebra::group::tests::test_group_empty_relation ... ok
+test algebra::group::tests::test_group_single_attribute ... ok
+test algebra::group::tests::test_group_creates_rva ... ok
+test algebra::group::tests::test_ungroup_attribute_not_found ... ok
+test algebra::group::tests::test_ungroup_not_relation_valued ... ok
+test algebra::group::tests::test_multiple_grouping_keys ... ok
+test algebra::group::tests::test_ungroup_flattens_rva ... ok
+test algebra::group::tests::test_group_then_ungroup_is_identity ... ok
+test algebra::intersect::tests::test_intersect_identical_relations ... ok
+test algebra::intersect::tests::test_intersect_type_mismatch ... ok
+test algebra::intersect::tests::test_intersect_with_empty_relation ... ok
+test algebra::intersect::tests::test_intersect_no_common_tuples ... ok
+test algebra::join::tests::test_join_no_matches ... ok
+test algebra::intersect::tests::test_intersect_into_returns_common_tuples ... ok
+test algebra::intersect::tests::test_intersect_returns_common_tuples ... ok
+test algebra::join::tests::test_join_swap_optimization ... ok
+test algebra::join::tests::test_join_with_empty_relation ... ok
+test algebra::join::tests::test_self_join ... ok
+test algebra::join::tests::test_natural_join_no_common_attributes_cartesian_product ... ok
+test algebra::join::tests::test_theta_join ... ok
+test algebra::join::tests::test_natural_join_on_common_attributes ... ok
+test algebra::join::tests::test_theta_join_attribute_collision_resolution ... ok
+test algebra::project::tests::test_project_empty_attributes_on_empty_relation_creates_table_dum ... ok
+test algebra::project::tests::test_project_empty_relation ... ok
+test algebra::join::tests::test_theta_join_colliding_attributes_different_types ... ok
+test algebra::project::tests::test_project_all_attributes ... ok
+test algebra::project::tests::test_project_empty_attributes_creates_table_dee ... ok
+test algebra::project::tests::test_project_removes_duplicates ... ok
+test algebra::project::tests::test_project_single_attribute ... ok
+test algebra::project::tests::test_project_selects_attributes ... ok
+test algebra::rename::tests::test_rename_empty_mappings ... ok
+test algebra::rename::tests::test_rename_collision_overwrites_values ... ok
+test algebra::rename::tests::test_rename_changes_attribute_name ... ok
+test algebra::rename::tests::test_rename_on_empty_relation ... ok
+test algebra::rename::tests::test_rename_preserves_type ... ok
+test algebra::rename::tests::test_rename_into ... ok
+test algebra::rename::tests::test_rename_multiple_attributes ... ok
+test algebra::restrict::tests::test_restrict_on_empty_relation ... ok
+test algebra::restrict::tests::test_restrict_all_match ... ok
+test algebra::restrict::tests::test_restrict_no_matches ... ok
+test algebra::semijoin::tests::test_not_matching_into_alias ... ok
+test algebra::semijoin::tests::test_not_matching_alias ... ok
+test algebra::semijoin::tests::test_semidifference_both_empty ... ok
+test algebra::semijoin::tests::test_semidifference_empty_other ... ok
+test algebra::semijoin::tests::test_matching_alias ... ok
+test algebra::semijoin::tests::test_semidifference_all_match ... ok
+test algebra::restrict::tests::test_restrict_filters_tuples ... ok
+test algebra::semijoin::tests::test_semidifference_empty_self ... ok
+test algebra::semijoin::tests::test_semidifference_no_common_attributes_other_empty ... ok
+test algebra::semijoin::tests::test_semidifference_no_common_attributes_other_non_empty ... ok
+test algebra::semijoin::tests::test_semidifference_no_matches ... ok
+test algebra::semijoin::tests::test_semidifference_equals_self_minus_semijoin ... ok
+test algebra::semijoin::tests::test_semidifference_into_filters_in_place ... ok
+test algebra::semijoin::tests::test_semidifference_preserves_heading ... ok
+test algebra::semijoin::tests::test_semidifference_multiple_common_attributes ... ok
+test algebra::semijoin::tests::test_semijoin_both_empty ... ok
+test algebra::semijoin::tests::test_semidifference_same_heading_equals_difference ... ok
+test algebra::semijoin::tests::test_semijoin_empty_self ... ok
+test algebra::semijoin::tests::test_semijoin_empty_other ... ok
+test algebra::semijoin::tests::test_semijoin_all_match ... ok
+test algebra::semijoin::tests::test_semidifference_returns_non_matching_tuples ... ok
+test algebra::semijoin::tests::test_semijoin_key_missing_attributes ... ok
+test algebra::semijoin::tests::test_semijoin_no_common_attributes_other_empty ... ok
+test algebra::semijoin::tests::test_semijoin_equals_join_project ... ok
+test algebra::semijoin::tests::test_semijoin_into_filters_in_place ... ok
+test algebra::semijoin::tests::test_semijoin_no_common_attributes_other_non_empty ... ok
+test algebra::semijoin::tests::test_semijoin_no_matches ... ok
+test algebra::semijoin::tests::test_semijoin_preserves_heading ... ok
+test algebra::semijoin::tests::test_semijoin_multiple_common_attributes ... ok
+test algebra::semijoin::tests::test_semijoin_same_heading_equals_intersect ... ok
+test algebra::semijoin::tests::test_semijoin_union_semidifference_equals_self ... ok
+test algebra::semijoin::tests::test_semijoin_returns_matching_tuples ... ok
+test algebra::summarize::overflow_tests::test_sum_float ... ok
+test algebra::summarize::overflow_tests::test_avg_handles_large_sums ... ok
+test algebra::summarize::overflow_tests::test_avg_float ... ok
+test algebra::summarize::tests::test_avg_empty_tuples ... ok
+test algebra::summarize::tests::test_max_on_empty_set ... ok
+test algebra::summarize::tests::test_avg_attribute_not_found ... ok
+test algebra::summarize::overflow_tests::test_sum_overflow_returns_error ... ok
+test algebra::summarize::tests::test_max_attribute_not_found ... ok
+test algebra::summarize::tests::test_min_on_empty_set ... ok
+test algebra::summarize::tests::test_min_attribute_not_found ... ok
+test algebra::summarize::tests::test_sum_attribute_not_found ... ok
+test algebra::summarize::tests::test_min_max_with_strings ... ok
+test algebra::summarize::tests::test_min_with_multiple_tuples ... ok
+test algebra::summarize::tests::test_max_with_multiple_tuples ... ok
+test algebra::summarize::tests::test_summarize_grouping_attribute_not_found ... ok
+test algebra::summarize::tests::test_summarize_empty_relation ... ok
+test algebra::summarize::tests::test_summarize_avg ... ok
+test algebra::summarize::tests::test_summarize_result_attribute_exists ... ok
+test algebra::summarize::tests::test_summarize_count ... ok
+test algebra::summarize::tests::test_summarize_min_max ... ok
+test algebra::summarize::tests::test_summarize_sum ... ok
+test algebra::summarize::tests::test_summarize_multiple_grouping_attributes ... ok
+test algebra::tclose::tests::test_tclose_invalid_degree ... ok
+test algebra::tclose::tests::test_tclose_disconnected ... ok
+test algebra::summarize::tests::test_summarize_with_grouping ... ok
+test algebra::tclose::tests::test_tclose_type_mismatch ... ok
+test algebra::tclose::tests::test_tclose_simple_chain ... ok
+test algebra::tclose::tests::test_tclose_cycle ... ok
+test algebra::union::tests::test_union_identical_relations ... ok
+test algebra::union::tests::test_union_requires_type_compatible_relations ... ok
+test algebra::union::tests::test_union_of_disjoint_relations ... ok
+test constraints::check::tests::test_check_constraint_creation ... ok
+test algebra::union::tests::test_union_with_empty_relation ... ok
+test constraints::check::tests::test_check_constraints_all_satisfied ... ok
+test constraints::check::tests::test_check_constraint_satisfied ... ok
+test constraints::check::tests::test_check_constraints_violation_returns_error ... ok
+test constraints::check::tests::test_serialization ... ok
+test algebra::union::tests::test_union_into_removes_duplicates ... ok
+test algebra::union::tests::test_union_removes_duplicates ... ok
+test constraints::expression::like_tests::test_like_exact_match ... ok
+test constraints::expression::like_tests::test_like_type_mismatch ... ok
+test constraints::expression::like_tests::test_like_edge_cases ... ok
+test constraints::expression::like_tests::test_like_mixed_wildcards ... ok
+test constraints::expression::like_tests::test_like_unicode ... ok
+test constraints::expression::like_tests::test_like_wildcard_percent ... ok
+test constraints::expression::like_tests::test_like_wildcard_underscore ... ok
+test constraints::expression::tests::test_attr_comparison_eq ... ok
+test constraints::expression::tests::test_attr_comparison_ge ... ok
+test constraints::expression::tests::test_attr_comparison_lt ... ok
+test constraints::expression::tests::test_constraint_expression_and ... ok
+test constraints::expression::tests::test_constraint_expression_eq ... ok
+test constraints::expression::tests::test_constraint_expression_ge ... ok
+test constraints::expression::tests::test_between_inclusive_replacement ... ok
+test constraints::expression::tests::test_constraint_expression_gt ... ok
+test constraints::expression::tests::test_constraint_expression_le ... ok
+test constraints::expression::tests::test_constraint_expression_ne ... ok
+test constraints::expression::tests::test_expression_serialization_attr_cmp ... ok
+test constraints::expression::tests::test_constraint_expression_lt ... ok
+test constraints::expression::tests::test_constraint_expression_not ... ok
+test constraints::expression::tests::test_expression_serialization_simple ... ok
+test constraints::expression::tests::test_expression_serialization_complex ... ok
+test constraints::expression::tests::test_constraint_expression_or ... ok
+test constraints::expression::tests::test_in_with_integers ... ok
+test constraints::expression::tests::test_referenced_attributes ... ok
+test constraints::expression::tests::test_type_mismatch_attr_to_attr ... ok
+test constraints::expression::tests::test_type_mismatch_in_comparison ... ok
+test constraints::foreign_key::tests::test_attribute_count_mismatch ... ok
+test constraints::expression::tests::test_type_mismatch_in_lt ... ok
+test constraints::foreign_key::tests::test_empty_foreign_key_rejected ... ok
+test constraints::expression::tests::test_in_set_membership ... ok
+test constraints::foreign_key::tests::test_foreign_key_creation ... ok
+test constraints::foreign_key::tests::test_foreign_key_constraints_collection ... ok
+test constraints::foreign_key::tests::test_foreign_key_float_strictness ... ok
+test constraints::foreign_key::tests::test_foreign_key_type_mismatch_int_float ... ok
+test constraints::foreign_key::tests::test_composite_foreign_key ... ok
+test constraints::foreign_key::tests::test_invalid_foreign_key_attributes ... ok
+test constraints::foreign_key::tests::test_invalid_referenced_attributes ... ok
+test constraints::foreign_key::tests::test_foreign_key_satisfied ... ok
+test constraints::foreign_key::tests::test_foreign_key_type_mismatch_int_string ... ok
+test constraints::foreign_key::tests::test_foreign_key_violated ... ok
+test constraints::foreign_key::tests::test_would_violate_on_delete_missing_attribute_error ... ok
+test constraints::key::tests::test_candidate_key_creation ... ok
+test constraints::foreign_key::tests::test_would_violate_on_delete ... ok
+test constraints::key::tests::test_empty_key_rejected ... ok
+test constraints::foreign_key::tests::test_would_violate_on_insert_missing_attribute_error ... ok
+test constraints::key::tests::test_invalid_key_attributes ... ok
+test constraints::key::tests::test_extract_key_value_missing_attribute ... ok
+test constraints::foreign_key::tests::test_would_violate_on_insert ... ok
+test constraints::key::tests::test_composite_key ... ok
+test constraints::key::tests::test_key_constraints_with_primary_key ... ok
+test constraints::key::tests::test_key_uniqueness_satisfied ... ok
+test constraints::key::tests::test_key_constraints_violation_detection ... ok
+test constraints::key::tests::test_key_uniqueness_violated ... ok
+test constraints::key::tests::test_primary_key ... ok
+test constraints::key::tests::test_multiple_candidate_keys ... ok
+test constraints::key::tests::test_would_violate_on_insert ... ok
+test constraints::manager::tests::should_return_correct_constraints_when_queried_and_removed ... ok
+test constraints::manager::tests::should_return_error_when_bulk_key_constraints_violated ... ok
+test constraints::manager::tests::should_return_error_when_candidate_key_violated_in_single_tuple ... ok
+test constraints::manager::tests::should_allow_tuple_type_validation_without_constraints ... ok
+test constraints::manager::tests::should_return_error_when_key_constraints_violated_in_single_tuple ... ok
+test constraints::manager::tests::should_return_error_when_setting_check_constraints_on_nonexistent_relation ... ok
+test constraints::manager::tests::should_return_error_when_setting_foreign_keys_on_nonexistent_relation ... ok
+test constraints::manager::tests::should_return_error_when_setting_check_constraints_on_nonexistent_attribute ... ok
+test constraints::manager::tests::should_return_error_when_check_constraint_violates_existing_data ... ok
+test constraints::manager::tests::should_set_foreign_keys_when_data_is_valid ... ok
+test constraints::manager::tests::should_return_error_when_setting_foreign_keys_violates_existing_data ... ok
+test constraints::manager::tests::should_validate_referencing_foreign_keys_on_delete ... ok
+test constraints::prepared::tests::test_cmp_operations ... ok
+test constraints::manager::tests::should_validate_foreign_keys_for_single_tuple ... ok
+test constraints::manager::tests::should_return_error_when_type_constraint_violated ... ok
+test constraints::prepared::tests::test_like_type_mismatch ... ok
+test constraints::prepared::tests::test_in_optimization ... ok
+test constraints::prepared::tests::test_like_optimization ... ok
+test constraints::type_constraint::tests::test_attribute_constraints ... ok
+test constraints::type_constraint::tests::test_attribute_constraints_multiple_failures ... ok
+test constraints::type_constraint::tests::test_attribute_constraints_type_mismatch ... ok
+test constraints::manager::tests::should_validate_tuple_content_constraints ... ok
+test constraints::type_constraint::tests::test_enum_constraint ... ok
+test constraints::type_constraint::tests::test_enum_empty ... ok
+test constraints::type_constraint::tests::test_enum_constraint_with_different_types ... ok
+test constraints::type_constraint::tests::test_non_negative_int_replacement ... ok
+test constraints::type_constraint::tests::test_positive_int_replacement ... ok
+test constraints::type_constraint::tests::test_multiple_constraints_all_must_pass ... ok
+test constraints::type_constraint::tests::test_range_constraint_int ... ok
+test constraints::type_constraint::tests::test_range_constraint_min_equals_max ... ok
+test constraints::type_constraint::tests::test_range_constraint_string ... ok
+test constraints::type_constraint::tests::test_range_constraint_type_mismatch ... ok
+test constraints::type_constraint::tests::test_string_length_constraint ... ok
+test constraints::type_constraint::tests::test_string_length_empty_string ... ok
+test constraints::type_constraint::tests::test_string_length_min_equals_max ... ok
+test constraints::type_constraint::tests::test_string_length_zero_min ... ok
+test constraints::type_constraint::tests::test_range_constraint_float ... ok
+test constraints::prepared::tests::test_recursive_preparation ... ok
+test constraints::prepared::tests::test_logical_operations ... ok
+test database::tests::data::test_delete_no_matches_returns_zero ... ok
+test database::tests::data::test_delete ... ok
+test database::tests::data::test_delete_returns_count ... ok
+test database::tests::data::test_update ... ok
+test database::tests::integrity::test_candidate_key_constraint ... ok
+test database::tests::integrity::test_foreign_key_constraint ... ok
+test database::tests::integrity::test_delete_with_foreign_key_constraint ... ok
+test database::tests::data::test_update_returns_count ... ok
+test database::tests::integrity::test_delete_referenced_parent_success ... ok
+test database::tests::integrity::test_set_check_constraint_validates_existing_data ... ok
+test database::tests::integrity::test_insert_enforces_check_constraints ... ok
+test database::tests::integrity::test_set_check_constraints ... ok
+test database::tests::integrity::test_primary_key_constraint ... ok
+test database::tests::integrity::test_insert_satisfies_check_constraints ... ok
+test database::tests::integrity::test_set_foreign_key_constraints_with_existing_valid_data ... ok
+test database::tests::integrity::test_set_foreign_key_constraints_with_existing_invalid_data ... ok
+test database::tests::integrity::test_set_type_constraints ... ok
+test database::tests::integrity::test_type_constraint_positive_int ... ok
+test database::tests::integrity::test_type_constraint_range ... ok
+test database::tests::schema::test_create_and_query_relvar ... ok
+test database::tests::schema::test_drop_relvar ... ok
+test database::tests::schema::test_error_duplicate_relvar ... ok
+test database::tests::integrity::test_update_constraint_violation_in_loop ... ok
+test database::tests::schema::test_error_relvar_not_found ... ok
+test database::tests::schema::test_list_relvars ... ok
+test database::tests::schema::test_get_relvar_type ... ok
+test database::tests::transaction::test_commit_without_transaction ... ok
+test database::tests::integrity::test_update_with_candidate_key_violation ... ok
+test database::tests::transaction::test_rollback_without_transaction ... ok
+test database::tests::transaction::test_transaction_errors ... ok
+test database::tests::transaction::test_begin_nested_transaction_fails ... ok
+test database::tests::integrity::test_update_with_primary_key_violation ... ok
+test database::tests::virtual_relvar::test_cannot_delete_from_virtual_relvar ... ok
+test database::tests::virtual_relvar::test_cannot_drop_base_relvar_when_virtual_depends_on_it ... ok
+test database::tests::transaction::test_transaction_commit ... ok
+test database::tests::virtual_relvar::test_cannot_insert_into_virtual_relvar ... ok
+test database::tests::virtual_relvar::test_cannot_update_virtual_relvar ... ok
+test database::tests::virtual_relvar::test_define_virtual_relvar_already_exists ... ok
+test database::tests::virtual_relvar::test_drop_nonexistent_virtual_relvar ... ok
+test database::tests::transaction::test_transactions ... ok
+test database::tests::virtual_relvar::test_virtual_relvar_error_propagation ... ok
+test database::tests::virtual_relvar::test_virtual_relvar_immutability_enforcement ... ok
+test database::tests::virtual_relvar::test_drop_virtual_relvar ... ok
+test database::tests::transaction::test_transaction_rollback_with_constraints ... ok
+test database::tests::virtual_relvar::test_virtual_relvar ... ok
+test query::tests::test_join ... ok
+test query::tests::test_explain ... ok
+test query::tests::test_rename ... ok
+test query::tests::test_scan ... ok
+test query::tests::test_summarize ... ok
+test query::tests::test_query_error_propagation ... ok
+test storage_engine::in_memory::tests::test_create_relation ... ok
+test storage_engine::in_memory::tests::test_get_metadata ... ok
+test storage_engine::in_memory::tests::test_drop_relation ... ok
+test storage_engine::in_memory::tests::test_list_relations ... ok
+test query::tests::test_restrict ... ok
+test storage_engine::in_memory::tests::test_insert_and_load ... ok
+test types::relation_type::tests::test_empty_relation_type ... ok
+test types::relation_type::tests::test_relation_type_equality ... ok
+test types::relation_type::tests::test_relation_type_is_a_tuple_type ... ok
+test storage_engine::in_memory::tests::test_store_relation ... ok
+test types::scalar::additional_scalar_tests_final::should_hash_all_scalar_types ... ok
+test types::scalar::tests::test_built_in_types_exist ... ok
+test query::tests::test_project ... ok
+test storage_engine::in_memory::tests::test_transaction_rollback ... ok
+test types::scalar::tests::test_scalar_type_ord_mixed_variants ... ok
+test types::scalar::tests::test_scalar_type_can_be_sorted ... ok
+test types::scalar::tests::test_scalar_type_ord_basic_types ... ok
+test types::scalar::additional_scalar_tests_final::should_return_error_when_depth_exceeds_max_in_try_from_unchecked ... ok
+test types::scalar::tests::test_scalar_type_ord_transitivity ... ok
+test types::scalar::tests::test_scalar_type_ord_relation_types_different_degrees ... ok
+test types::scalar::tests::test_scalar_type_ord_user_defined_by_representation ... ok
+test types::scalar::tests::test_scalar_type_partial_ord_consistency ... ok
+test types::scalar::tests::test_scalar_types_can_be_compared_for_equality ... ok
+test types::scalar::tests::test_scalar_types_can_be_hashed ... ok
+test types::scalar::tests::test_scalar_types_implement_clone ... ok
+test types::scalar::tests::test_scalar_type_ord_user_defined_by_name ... ok
+test types::scalar::tests::test_scalar_type_ord_reflexivity ... ok
+test types::tuple_type::tests::test_attribute_names_iterator ... ok
+test types::scalar::tests::test_type_names_are_unique_identifiers ... ok
+test types::tuple_type::tests::test_attribute_names_must_be_unique ... ok
+test types::tuple_type::tests::test_has_attribute ... ok
+test types::tuple_type::tests::test_empty_tuple_type ... ok
+test types::tuple_type::tests::test_ttm_proscription_4_no_attribute_ordering ... ok
+test types::tuple_type::tests::test_tuple_type_equality ... ok
+test types::tuple_type::tests::test_tuple_type_defined_by_attributes ... ok
+test types::tuple_type::tests::test_tuple_type_hash_consistency ... ok
+test types::tuple_type::tests::should_panic_when_with_attribute_exceeds_max_depth - should panic ... ok
+test values::relation::tests::should_create_relation_with_capacity ... ok
+test values::relation::tests::test_empty_relation ... ok
+test types::scalar::tests::test_scalar_type_ord_relation_types ... ok
+test values::relation::tests::test_cardinality_and_degree ... ok
+test values::relation::tests::test_contains ... ok
+test values::relation::tests::test_insert_type_mismatch ... ok
+test values::relation::tests::test_relation_body_is_set_no_duplicates ... ok
+test values::relation::tests::test_relation_heading_is_tuple_type ... ok
+test values::relation::tests::test_from_tuples ... ok
+test values::relation::tests::test_from_tuples_optimization_correctness ... ok
+test values::scalar::float_ord_tests::test_float_mixed_sign_ordering ... ok
+test values::scalar::float_ord_tests::test_float_negative_ordering ... ok
+test values::scalar::float_ord_tests::test_float_signed_zero_ordering ... ok
+test values::scalar::float_ord_tests::test_nan_ordering ... ok
+test values::scalar::tests::test_bytes_equality ... ok
+test values::scalar::nan_fix_tests::test_nan_grouping_consistent ... ok
+test values::scalar::tests::test_bytes_hashing ... ok
+test values::scalar::tests::test_bytes_serialization ... ok
+test values::scalar::tests::test_float_equality_for_set_semantics ... ok
+test values::scalar::tests::test_is_type ... ok
+test values::relation::tests::test_tuples_iterator ... ok
+test values::scalar::tests::test_possrep_observer_extracts_representation ... ok
+test values::scalar::tests::test_possrep_selector_constructs_value ... ok
+test values::scalar::tests::test_nested_user_defined_types ... ok
+test values::scalar::tests::test_nested_relation_value ... ok
+test values::relation::tests::test_relation_equality ... ok
+test values::scalar::tests::test_scalar_value_error_display ... ok
+test values::scalar::tests::test_type_safety_prevents_wrong_representation ... ok
+test values::scalar::tests::test_user_defined_type_names_must_be_unique ... ok
+test values::scalar::tests::test_relation_value_equality ... ok
+test values::scalar::tests::test_user_defined_types_are_distinct_from_builtin_types ... ok
+test values::scalar::tests::test_user_defined_types_have_names ... ok
+test values::scalar::tests::test_relation_value_hashing ... ok
+test values::scalar::tests::test_user_defined_values_are_type_safe ... ok
+test values::scalar::tests::test_user_defined_values_carry_their_type ... ok
+test values::scalar::tests::test_user_defined_values_can_be_hashed ... ok
+test values::scalar::tests::test_user_defined_values_of_same_type_are_equal ... ok
+test values::scalar::tests::test_values_can_be_hashed ... ok
+test values::scalar::tests::test_values_can_be_serialized_and_deserialized ... ok
+test values::scalar::tests::test_values_carry_their_type ... ok
+test values::scalar::tests::test_values_of_different_types_are_not_equal ... ok
+test values::scalar::tests::test_values_of_same_type_can_be_compared ... ok
+test values::scalar::tests::test_relation_value_serialization ... ok
+test values::tuple::tests::test_tuple_attribute_access ... ok
+test values::tuple::tests::test_get_typed ... ok
+test values::tuple::tests::test_tuple_conforms_to_type ... ok
+test values::tuple::tests::test_tuple_equality ... ok
+test values::tuple::tests::test_tuple_empty ... ok
+test values::tuple::tests::test_tuple_extra_attribute_fails ... ok
+test values::tuple::tests::test_tuple_hash_consistency_with_different_insertion_order ... ok
+test values::scalar::tests::test_user_defined_types_serialize ... ok
+test values::tuple::tests::test_tuple_macro ... ok
+test values::tuple::tests::test_tuple_missing_value_fails ... ok
+test values::tuple::tests::test_try_from_scalar_value_mismatch ... ok
+test values::tuple::tests::test_tuple_set_attribute_not_found ... ok
+test values::tuple::tests::test_tuple_set_valid ... ok
+test values::tuple::tests::test_tuple_set_invalid_type ... ok
+test values::tuple::tests::test_tuple_type_mismatch_fails ... ok
+test values::tuple::tests::test_tuple_from_different_iterators ... ok
+
+test result: ok. 396 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.77s
+
+[2m2026-05-02T18:06:12.807102Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling::linux[0m[2m:[0m Launching test
+[2m2026-05-02T18:06:12.807161Z[0m [32m INFO[0m [2mcargo_tarpaulin::process_handling[0m[2m:[0m running /app/target/debug/deps/relvar_storage-8eeabfb688a70fea
+
+running 279 tests
+test mvcc::active_txn_table::tests::test_att_abort_nonexistent_is_noop ... ok
+test mvcc::active_txn_table::tests::test_att_commit_nonexistent_is_noop ... ok
+test mvcc::active_txn_table::tests::test_att_commit_removes_txn ... ok
+test mvcc::active_txn_table::tests::test_att_begin_creates_snapshot ... ok
+test mvcc::active_txn_table::tests::test_att_begin_adds_to_table ... ok
+test mvcc::active_txn_table::tests::test_att_abort_removes_txn ... ok
+test mvcc::active_txn_table::tests::test_att_concurrent_transactions ... ok
+test mvcc::active_txn_table::tests::test_att_get_snapshot_exists ... ok
+test mvcc::active_txn_table::tests::test_att_get_snapshot_after_commit ... ok
+test mvcc::active_txn_table::tests::test_att_new_is_empty ... ok
+test mvcc::active_txn_table::tests::test_att_get_snapshot_not_found ... ok
+test mvcc::active_txn_table::tests::test_att_oldest_active_lsn_empty ... ok
+test mvcc::active_txn_table::tests::test_att_updates_current_lsn ... ok
+test mvcc::snapshot::tests::test_snapshot_clone ... ok
+test mvcc::snapshot::tests::test_snapshot_creation_captures_lsn ... ok
+test mvcc::snapshot::tests::test_snapshot_does_not_include_self_in_active ... ok
+test mvcc::snapshot::tests::test_snapshot_duplicate_active_txns ... ok
+test mvcc::snapshot::tests::test_snapshot_empty_active_list ... ok
+test mvcc::snapshot::tests::test_snapshot_equality ... ok
+test mvcc::snapshot::tests::test_snapshot_inequality_different_lsn ... ok
+test mvcc::snapshot::tests::test_snapshot_inequality_different_txn_id ... ok
+test mvcc::snapshot::tests::test_snapshot_is_active_check ... ok
+test mvcc::snapshot::tests::test_snapshot_tracks_active_txns ... ok
+test mvcc::active_txn_table::tests::test_att_oldest_active_lsn_single ... ok
+test mvcc::active_txn_table::tests::test_att_oldest_active_lsn_multiple ... ok
+test mvcc::active_txn_table::tests::test_att_oldest_active_lsn_after_commit ... ok
+test mvcc::visibility::tests::test_aborted_version_never_visible ... ok
+test mvcc::visibility::tests::test_version_invisible_not_committed ... ok
+test mvcc::visibility::tests::test_version_metadata_new ... ok
+test mvcc::visibility::tests::test_version_metadata_new_with_xmax ... ok
+test mvcc::visibility::tests::test_version_visible_after_commit ... ok
+test mvcc::visibility::tests::test_version_invisible_to_concurrent ... ok
+test mvcc::visibility::tests::test_version_visible_to_creator ... ok
+test mvcc::visibility::tests::test_version_visible_deletion_uncommitted ... ok
+test mvcc::visibility::tests::test_visibility_chain_scenario ... ok
+test mvcc::visibility::tests::test_version_visible_concurrent_deletion ... ok
+test mvcc::visibility::tests::test_deleted_version_invisible ... ok
+test mvcc::visibility::tests::test_visibility_deletion_by_creator ... ok
+test mvcc::visibility::tests::test_visibility_creator_uncommitted_deleted ... ok
+test mvcc::visibility::tests::test_visibility_empty_committed_set ... ok
+test mvcc::visibility::tests::test_visibility_long_running_transaction ... ok
+test mvcc::visibility::tests::test_visibility_multiple_concurrent ... ok
+test persistent_engine::tests::basic::test_drop_nonexistent_relation ... ok
+test persistent_engine::tests::basic::test_empty_database_list_relations ... ok
+test persistent_engine::tests::basic::test_get_metadata_nonexistent ... ok
+test persistent_engine::tests::basic::test_duplicate_relation_name ... ok
+test persistent_engine::tests::basic::test_get_relation_metadata ... ok
+test persistent_engine::tests::basic::test_insert_tuple_nonexistent_relation ... ok
+test persistent_engine::tests::basic::test_list_relations ... ok
+test persistent_engine::tests::basic::test_load_relation_nonexistent ... ok
+test persistent_engine::tests::basic::test_drop_relation ... ok
+test persistent_engine::tests::basic::test_path_traversal_protection ... ok
+test persistent_engine::tests::basic::test_create_and_load ... ok
+test persistent_engine::tests::basic::test_multiple_inserts_uses_cached_heap_file ... ok
+test persistent_engine::tests::basic::test_insert_then_load_uses_cached_file ... ok
+test persistent_engine::tests::basic::test_relation_exists_returns_false_for_nonexistent ... ok
+test persistent_engine::tests::basic::test_relation_exists_returns_true_for_existing ... ok
+test persistent_engine::tests::basic::test_store_relation_empty ... ok
+test persistent_engine::tests::basic::test_store_relation_nonexistent ... ok
+test persistent_engine::tests::basic::test_store_relation_replaces_data ... ok
+test persistent_engine::tests::basic::test_reopen_with_existing_relations ... ok
+test persistent_engine::tests::basic::test_persistence ... ok
+test persistent_engine::tests::basic::test_store_relation_large ... ok
+test persistent_engine::tests::gc::test_checkpoint_triggers_gc ... ok
+test persistent_engine::tests::recovery::test_checkpoint_flushes_dirty_pages ... ok
+test persistent_engine::tests::gc::test_gc_preserves_active_transaction_data ... ok
+test persistent_engine::tests::recovery::test_checkpoint_records_active_txns ... ok
+test persistent_engine::tests::gc::test_gc_reclaims_space_after_checkpoint ... ok
+test persistent_engine::tests::recovery::test_commit_flushes_wal ... ok
+test persistent_engine::tests::recovery::test_insert_in_txn_logs_wal ... ok
+test persistent_engine::tests::recovery::test_recovery_idempotent ... ok
+test persistent_engine::tests::recovery::test_recovery_from_checkpoint ... ok
+test persistent_engine::tests::recovery::test_recovery_ignores_dropped_relation ... ok
+test persistent_engine::tests::recovery::test_recovery_replays_committed_insert ... ok
+test persistent_engine::tests::recovery::test_recovery_undoes_uncommitted_data ... ok
+test persistent_engine::tests::transaction::test_abort_does_not_flush ... ok
+test persistent_engine::tests::transaction::test_abort_removes_from_att ... ok
+test persistent_engine::tests::recovery::test_recovery_retains_valid_data_during_cleanup ... ok
+test persistent_engine::tests::recovery::test_wal_truncation_after_checkpoint ... ok
+test persistent_engine::tests::transaction::test_commit_removes_from_att ... ok
+test persistent_engine::tests::transaction::test_each_txn_unique_snapshot ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_concurrent_uncommitted ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_empty_relation ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_after_commit_visible ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_nonexistent_relation ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_multiple_views ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_preserves_tuple_data ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_mixed_committed_uncommitted ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_sees_committed ... ok
+test persistent_engine::tests::transaction::test_multiple_concurrent_begin ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_sees_own_inserts ... ok
+test persistent_engine::tests::transaction::test_load_for_txn_skips_concurrent ... ok
+test persistent_engine::tests::transaction::test_snapshot_captures_concurrent_active ... ok
+test persistent_engine::tests::transaction::test_sequential_transaction_ids ... ok
+test persistent_engine::tests::transaction::test_transactions_isolated ... ok
+test persistent_engine::tests::transaction::test_txn_after_commit ... ok
+test persistent_engine::tests::transaction::test_transaction_with_multiple_relations ... ok
+test persistent_engine::tests::transaction::test_transaction_rollback ... ok
+test storage::catalog::tests::test_catalog_get_nonexistent_relation ... ok
+test storage::catalog::tests::test_catalog_get_relation ... ok
+test storage::catalog::tests::test_catalog_list_relations ... ok
+test storage::catalog::tests::test_catalog_duplicate_relation ... ok
+test storage::catalog::tests::test_catalog_drop_relation ... ok
+test storage::catalog::tests::test_catalog_create_relation ... ok
+test storage::catalog::tests::test_catalog_relation_exists ... ok
+test storage::catalog::tests::test_catalog_load_limit ... ok
+test storage::catalog::tests::test_catalog_load_empty_file ... ok
+test storage::heap::tests::corruption::test_sentry_check_versioned_tuple_size_limit_overflow ... ok
+test storage::heap::tests::corruption::test_check_versioned_tuple_size_limit_overflow ... ok
+test storage::heap::tests::corruption::test_verify_versioned_page_size_slot_dir_too_large ... ok
+test storage::heap::tests::corruption::test_verify_versioned_page_size_overflow ... ok
+test storage::catalog::tests::test_catalog_save_and_load ... ok
+test storage::heap::tests::corruption::test_check_tuple_size_limit_overflow ... ok
+test storage::heap::tests::delete::test_delete_concurrent_txn_sees_tuple ... ok
+test storage::heap::tests::delete::test_delete_deleting_txn_doesnt_see_tuple ... ok
+test storage::heap::tests::delete::test_delete_multiple_tuples ... ok
+test storage::heap::tests::delete::test_delete_invisible_after_commit ... ok
+test storage::heap::tests::delete::test_delete_sets_xmax ... ok
+test storage::heap::tests::delete::test_delete_nonexistent_tuple_fails ... ok
+test storage::heap::tests::delete::test_delete_preserves_xmin ... ok
+test storage::heap::tests::gc::test_gc_empty_heap ... ok
+test storage::heap::tests::delete::test_heap_delete_on_corrupted_page_fails ... ok
+test storage::heap::tests::gc::test_gc_identifies_dead_versions ... ok
+test storage::heap::tests::gc::test_gc_counts_removed_correctly ... ok
+test storage::heap::tests::gc::test_gc_idempotent ... ok
+test storage::heap::tests::gc::test_gc_multiple_tuples ... ok
+test storage::heap::tests::gc::test_gc_preserves_needed_versions ... ok
+test storage::heap::tests::gc::test_gc_respects_oldest_active ... ok
+test storage::heap::tests::gc::test_gc_uncommitted_xmax_preserved ... ok
+test storage::heap::tests::delete::test_delete_preserves_tuple_data ... ok
+test storage::heap::tests::insert::test_delete_and_insert_new_version ... ok
+test storage::heap::tests::gc::test_heap_gc_on_corrupted_page_fails ... ok
+test storage::heap::tests::insert::test_heap_insert_on_corrupted_page_fails ... ok
+test storage::heap::tests::gc::test_gc_preserves_live_versions_after_gc ... ok
+test storage::heap::tests::insert::test_heap_insert_too_large_fails ... ok
+test storage::heap::tests::insert::test_heap_insert_versioned_on_corrupted_page_fails ... ok
+test storage::heap::tests::insert::test_heap_insert_versioned_too_large_fails ... ok
+test storage::heap::tests::insert::test_insert_versioned_different_transactions ... ok
+test storage::heap::tests::insert::test_insert_versioned_empty_tuple ... ok
+test storage::heap::tests::insert::test_insert_versioned_multiple_versions_same_page ... ok
+test storage::heap::tests::insert::test_heap_insert_returns_unit_not_tuple_id ... ok
+test storage::heap::tests::insert::test_insert_versioned_preserves_prev_version_none ... ok
+test storage::heap::tests::insert::test_insert_versioned_returns_tuple_id ... ok
+test storage::heap::tests::insert::test_insert_versioned_sequential_slots ... ok
+test storage::heap::tests::insert::test_insert_versioned_sets_xmin ... ok
+test storage::heap::tests::insert::test_insert_versioned_page_overflow ... ok
+test storage::heap::tests::insert::test_insert_versioned_xmax_is_none ... ok
+test storage::heap::tests::insert::test_sentry_find_page_for_insertion_error_propagation ... ok
+test storage::heap::tests::insert::test_store_relation_returns_unit ... ok
+test storage::heap::tests::other::test_heap_persistence ... ok
+test storage::heap::tests::other::test_heap_page_growth ... ok
+test storage::heap::tests::insert::test_heap_insert_multiple ... ok
+test storage::heap::tests::insert::test_heap_insert_and_read ... ok
+test storage::heap::tests::scan::offset_overflow_tests::test_heap_deserialize_short_page ... ok
+test storage::heap::tests::scan::offset_overflow_tests::test_allocation_bomb_prevention ... ok
+test storage::heap::tests::scan::offset_overflow_tests::test_repack_slots_correctness ... ok
+test storage::heap::tests::scan::test_delete_already_deleted_sets_xmax_again ... ok
+test storage::heap::tests::scan::test_heap_scan ... ok
+test storage::heap::tests::scan::offset_overflow_tests::test_heap_slot_reuse_corruption ... ok
+test storage::heap::tests::scan::test_heap_scan_corrupted_slot ... ok
+test storage::heap::tests::scan::test_heap_scan_mid_stream_corruption ... ok
+test storage::heap::tests::scan::test_heap_scan_offset_overflow ... ok
+test storage::heap::tests::scan::test_heap_scan_returns_only_tuples ... ok
+test storage::heap::tests::scan::test_read_tuple_integer_overflow ... ok
+test storage::heap::tests::scan::test_read_tuple_out_of_bounds ... ok
+test storage::heap::tests::scan::test_read_tuple_versioned_integer_overflow ... ok
+test storage::heap::tests::scan::test_read_tuple_versioned_out_of_bounds ... ok
+test storage::heap::tests::scan::test_scan_visible_across_pages ... ok
+test storage::heap::tests::scan::test_scan_visible_concurrent_uncommitted ... ok
+test storage::heap::tests::scan::test_scan_visible_empty_relation ... ok
+test storage::heap::tests::scan::test_scan_visible_integer_overflow ... ok
+test storage::heap::tests::scan::test_scan_visible_mixed_committed_uncommitted ... ok
+test storage::heap::tests::scan::test_scan_visible_multiple_committed ... ok
+test storage::heap::tests::scan::test_scan_visible_no_committed_set ... ok
+test storage::heap::tests::scan::test_scan_visible_out_of_bounds ... ok
+test storage::heap::tests::scan::test_scan_visible_preserves_tuple_data ... ok
+test storage::heap::tests::scan::test_scan_visible_sees_only_visible ... ok
+test storage::heap::tests::scan::test_scan_visible_sees_own_changes ... ok
+test storage::heap::tests::scan::test_scan_visible_skips_uncommitted ... ok
+test storage::heap::tests::scan::test_store_and_load_relation ... ok
+test storage::heap::tests::update::test_gc_removes_entire_update_chain ... ok
+test storage::heap::tests::update::test_heap_update_on_corrupted_page_fails ... ok
+test storage::heap::tests::update::test_update_after_commit_visible_to_later_txn ... ok
+test storage::heap::tests::update::test_update_concurrent_txn_sees_old_version ... ok
+test storage::heap::tests::update::test_update_creates_new_version ... ok
+test storage::heap::tests::update::test_update_different_pages ... ok
+test storage::heap::tests::update::test_update_links_versions ... ok
+test storage::heap::tests::update::test_update_marks_old_xmax ... ok
+test storage::heap::tests::update::test_update_multiple_times_creates_chain ... ok
+test storage::heap::tests::update::test_update_new_version_has_correct_xmin ... ok
+test storage::heap::tests::update::test_update_nonexistent_tuple_fails ... ok
+test storage::heap::tests::update::test_update_old_version_xmin_unchanged ... ok
+test storage::heap::tests::update::test_update_preserves_tuple_data ... ok
+test storage::heap::tests::update::test_update_updating_txn_sees_new_version ... ok
+test storage::heap::tests::scan::security_tests::test_update_versioned_tuple_too_large_prevents_loop ... ok
+test storage::heap::tests::version::test_versioned_page_empty_slots ... ok
+test storage::heap::tests::version::test_versioned_page_layout ... ok
+test storage::heap::tests::version::test_versioned_slot_roundtrip_multiple ... ok
+test storage::heap::tests::version::test_versioned_slot_serialization ... ok
+test storage::heap::tests::version::test_versioned_slot_size_vs_regular ... ok
+test storage::heap::tests::version::test_versioned_slot_with_prev_version ... ok
+test storage::heap::tests::version::test_versioned_slot_with_xmax ... ok
+test storage::heap::tests::version::test_sentry_extract_tuples_from_versioned_slots ... ok
+test storage::manager::tests::test_create_and_load ... ok
+test storage::manager::tests::test_drop_relation ... ok
+test storage::manager::tests::test_path_traversal_protection ... ok
+test storage::manager::tests::test_store_relation_replaces_data ... ok
+test storage::page::tests::test_page_creation ... ok
+test storage::page::tests::test_page_file_corrupted_length ... ok
+test storage::page::tests::test_page_file_data_len_overflow ... ok
+test storage::page::tests::test_page_file_empty_page ... ok
+test storage::page::tests::test_page_file_length_boundary ... ok
+test storage::page::tests::test_explicit_sync_persists_data ... ok
+test storage::page::tests::test_page_file_multiple_pages ... ok
+test storage::page::tests::test_page_file_overwrite ... ok
+test storage::page::tests::test_page_file_too_short ... ok
+test storage::page::tests::test_page_from_data ... ok
+test storage::page::tests::test_page_file_write_and_read ... ok
+test storage::page::tests::test_page_too_large ... ok
+test storage::page::tests::test_write_buffered_no_immediate_sync ... ok
+test storage::page::tests::test_write_then_crash_simulation ... ok
+test storage::page::tests::test_page_set_data ... ok
+test wal::iter::tests::test_iter_record_too_large ... ok
+test wal::iter::tests::test_iter_short_buffer ... ok
+test wal::lsn::tests::test_lsn_equality ... ok
+test wal::lsn::tests::test_lsn_increment ... ok
+test wal::lsn::tests::test_lsn_ordering ... ok
+test wal::lsn::tests::test_lsn_value ... ok
+test wal::lsn::tests::test_lsn_display ... ok
+test wal::lsn::tests::test_transaction_id_equality ... ok
+test wal::lsn::tests::test_transaction_id_display ... ok
+test wal::lsn::tests::test_transaction_id_generator_overflow - should panic ... ok
+test wal::lsn::tests::test_transaction_id_sequential ... ok
+test wal::lsn::tests::test_transaction_id_uniqueness ... ok
+test wal::lsn::tests::test_transaction_id_generator_default ... ok
+test wal::manager::tests::test_auto_flush_on_capacity ... ok
+test wal::manager::tests::test_create_wal ... ok
+test wal::manager::tests::test_flush_clears_buffer ... ok
+test wal::manager::tests::test_flush_writes_to_file ... ok
+test wal::manager::tests::test_log_appends_to_buffer ... ok
+test wal::manager::tests::test_lsn_monotonic_after_flush ... ok
+test wal::manager::tests::test_open_invalid_magic_header ... ok
+test wal::manager::tests::test_open_existing_wal ... ok
+test wal::manager::tests::test_scan_partial_record ... ok
+test wal::manager::tests::test_scan_reads_all_records ... ok
+test wal::manager::tests::test_scan_corrupted_record_deserialization ... ok
+test storage::heap::tests::scan::test_heap_scan_large_volume ... ok
+test storage::heap::tests::scan::offset_overflow_tests::test_heap_header_corruption ... ok
+test wal::manager::tests::test_wal_record_length_overflow ... ok
+test wal::record::security_tests::test_allocation_bomb_prevention ... ok
+test wal::record::security_tests::test_record_exceeding_limit_fails ... ok
+test wal::record::test_record_txn_id_page_write_and_delete ... ok
+test wal::record::tests::test_insert_record_txn_id_is_xmin ... ok
+test wal::record::tests::test_is_txn_end ... ok
+test wal::record::tests::test_record_roundtrip_abort ... ok
+test wal::record::tests::test_record_roundtrip_begin ... ok
+test wal::record::tests::test_record_roundtrip_checkpoint ... ok
+test wal::record::tests::test_record_roundtrip_commit ... ok
+test wal::record::tests::test_record_roundtrip_delete ... ok
+test wal::record::tests::test_record_roundtrip_insert ... ok
+test wal::record::tests::test_record_roundtrip_page_write ... ok
+test wal::record::tests::test_record_size_bounded ... ok
+test wal::record::tests::test_txn_id_extraction ... ok
+test wal::record::tests::test_update_not_txn_end ... ok
+test wal::record::tests::test_update_record_links_versions ... ok
+test wal::record::tests::test_update_record_roundtrip ... ok
+test wal::record::tests::test_update_txn_id_extraction ... ok
+test wal::record::tests::test_wal_preserves_version_metadata ... ok
+test wal::recovery::tests::test_analyze_empty_wal ... ok
+test wal::recovery::tests::test_recovery_aborted_not_in_committed ... ok
+test wal::recovery::tests::test_recovery_committed_versions_survive ... ok
+test wal::recovery::tests::test_recovery_empty_wal_returns_empty_committed ... ok
+test wal::recovery::tests::test_recovery_mixed_committed_uncommitted ... ok
+test wal::recovery::tests::test_recovery_populates_committed_set ... ok
+test wal::recovery::tests::test_recovery_removes_uncommitted_versions ... ok
+test wal::recovery::tests::test_recovery_result_structure ... ok
+test wal::manager::tests::test_wal_manager_max_file_size_scan_method ... ok
+test wal::manager::tests::test_wal_manager_max_file_size_scan ... ok
+test wal::manager::tests::test_wal_manager_max_file_size_scan_for_last_lsn ... ok
+
+test result: ok. 279 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.86s
+
+[2m2026-05-02T18:06:31.800765Z[0m [32m INFO[0m [2mcargo_tarpaulin::report[0m[2m:[0m Coverage Results:
+|| Tested/Total Lines:
+|| relvar/src/experimental/automata.rs: 54/56 +0.00%
+|| relvar/src/experimental/automl.rs: 82/83 +0.00%
+|| relvar/src/experimental/blockchain.rs: 39/42 +0.00%
+|| relvar/src/experimental/build_system.rs: 15/15 +0.00%
+|| relvar/src/experimental/cellular_automaton.rs: 49/50 +0.00%
+|| relvar/src/experimental/circuit.rs: 63/70 +0.00%
+|| relvar/src/experimental/dom.rs: 20/20 +0.00%
+|| relvar/src/experimental/ecs.rs: 64/74 +0.00%
+|| relvar/src/experimental/enigma.rs: 64/64 +0.00%
+|| relvar/src/experimental/expert_system.rs: 39/42 +0.00%
+|| relvar/src/experimental/garbage_collector.rs: 16/16 +0.00%
+|| relvar/src/experimental/genetic_algorithm.rs: 87/90 +0.00%
+|| relvar/src/experimental/gnn.rs: 29/29 +0.00%
+|| relvar/src/experimental/graph.rs: 113/117 +0.00%
+|| relvar/src/experimental/graph_neural_network.rs: 11/11 +0.00%
+|| relvar/src/experimental/image.rs: 119/122 +0.00%
+|| relvar/src/experimental/kmeans.rs: 57/58 +0.00%
+|| relvar/src/experimental/knowledge_graph.rs: 60/74 +0.00%
+|| relvar/src/experimental/markov.rs: 20/20 +0.00%
+|| relvar/src/experimental/matrix.rs: 45/49 +0.00%
+|| relvar/src/experimental/mock.rs: 39/40 +0.00%
+|| relvar/src/experimental/neural_network.rs: 37/41 +0.00%
+|| relvar/src/experimental/parser.rs: 47/49 +0.00%
+|| relvar/src/experimental/petri_net.rs: 64/68 +0.00%
+|| relvar/src/experimental/physics.rs: 98/101 +0.00%
+|| relvar/src/experimental/pivot.rs: 66/68 +0.00%
+|| relvar/src/experimental/raytracer.rs: 118/123 +0.00%
+|| relvar/src/experimental/rbac.rs: 20/21 +0.00%
+|| relvar/src/experimental/recommend.rs: 86/98 +0.00%
+|| relvar/src/experimental/search.rs: 44/50 +0.00%
+|| relvar/src/experimental/spatial.rs: 35/37 +0.00%
+|| relvar/src/experimental/sudoku.rs: 90/90 +0.00%
+|| relvar/src/experimental/synth.rs: 29/35 +0.00%
+|| relvar/src/experimental/timeseries.rs: 52/54 +0.00%
+|| relvar/src/experimental/turing.rs: 47/49 +0.00%
+|| relvar/src/experimental/vcs.rs: 84/88 +0.00%
+|| relvar/src/experimental/vm.rs: 50/54 +0.00%
+|| relvar/src/lib.rs: 0/3 +0.00%
+|| relvar/src/tools/exporter.rs: 105/115 +0.00%
+|| relvar/src/tools/importer.rs: 201/226 +0.00%
+|| relvar/src/tools/visualizer.rs: 46/55 +0.00%
+|| relvar/tests/query_builder.rs: 126/126 +0.00%
+|| relvar/tests/sentry_importer_coverage.rs: 107/107 +0.00%
+|| relvar/tests/sentry_timeseries_collision.rs: 19/20 +0.00%
+|| relvar/tests/visualizer_security.rs: 19/19 +0.00%
+|| relvar/tests/warden_csv_injection.rs: 24/24 +0.00%
+|| relvar/tests/warden_exploit_csv_dos.rs: 17/22 +0.00%
+|| relvar/tests/warden_exploit_csv_global_dos.rs: 18/30 +0.00%
+|| relvar/tests/warden_exploit_image_dos.rs: 26/26 +0.00%
+|| relvar/tests/warden_exploit_nested_limit.rs: 22/31 +0.00%
+|| relvar/tests/warden_import_limits.rs: 69/73 +0.00%
+|| relvar/tests/warden_json_import.rs: 46/61 +0.00%
+|| relvar-core/src/algebra/delta.rs: 54/54 +0.00%
+|| relvar-core/src/algebra/difference.rs: 21/21 +0.00%
+|| relvar-core/src/algebra/divide.rs: 39/39 +0.00%
+|| relvar-core/src/algebra/extend.rs: 40/54 +0.00%
+|| relvar-core/src/algebra/group.rs: 119/123 +0.00%
+|| relvar-core/src/algebra/intersect.rs: 18/18 +0.00%
+|| relvar-core/src/algebra/join.rs: 116/122 +0.00%
+|| relvar-core/src/algebra/project.rs: 50/52 +0.00%
+|| relvar-core/src/algebra/rename.rs: 37/38 +0.00%
+|| relvar-core/src/algebra/restrict.rs: 3/3 +0.00%
+|| relvar-core/src/algebra/semijoin.rs: 78/86 +0.00%
+|| relvar-core/src/algebra/summarize.rs: 138/145 +0.00%
+|| relvar-core/src/algebra/tclose.rs: 48/48 +0.00%
+|| relvar-core/src/algebra/union.rs: 17/17 +0.00%
+|| relvar-core/src/constraints/check.rs: 34/34 +0.00%
+|| relvar-core/src/constraints/expression.rs: 92/96 +0.00%
+|| relvar-core/src/constraints/foreign_key.rs: 88/91 +0.00%
+|| relvar-core/src/constraints/key.rs: 65/71 +0.00%
+|| relvar-core/src/constraints/manager.rs: 153/160 +0.00%
+|| relvar-core/src/constraints/prepared.rs: 50/50 +0.00%
+|| relvar-core/src/constraints/type_constraint.rs: 34/43 +0.00%
+|| relvar-core/src/database/data.rs: 42/59 +0.00%
+|| relvar-core/src/database/dml.rs: 22/23 +0.00%
+|| relvar-core/src/database/integrity.rs: 14/23 +0.00%
+|| relvar-core/src/database/mod.rs: 3/3 +0.00%
+|| relvar-core/src/database/schema.rs: 33/34 +0.00%
+|| relvar-core/src/database/transaction.rs: 24/24 +0.00%
+|| relvar-core/src/query/mod.rs: 76/80 +0.00%
+|| relvar-core/src/storage_engine/in_memory.rs: 49/50 +0.00%
+|| relvar-core/src/storage_engine/mod.rs: 2/2 +0.00%
+|| relvar-core/src/types/relation_type.rs: 13/13 +0.00%
+|| relvar-core/src/types/scalar.rs: 71/82 +0.00%
+|| relvar-core/src/types/tuple_type.rs: 29/32 +0.00%
+|| relvar-core/src/utils/recursion.rs: 15/15 +0.00%
+|| relvar-core/src/values/relation.rs: 58/58 +0.00%
+|| relvar-core/src/values/scalar.rs: 158/175 +0.00%
+|| relvar-core/src/values/tuple.rs: 118/128 +0.00%
+|| relvar-core/tests/sentry_algebra_error_coverage.rs: 146/146 +0.00%
+|| relvar-core/tests/sentry_algebra_uncovered.rs: 193/196 +0.00%
+|| relvar-core/tests/sentry_check_constraint_coverage.rs: 23/24 +0.00%
+|| relvar-core/tests/sentry_check_constraint_validation.rs: 23/25 +0.00%
+|| relvar-core/tests/sentry_correctness.rs: 52/54 +0.00%
+|| relvar-core/tests/sentry_correctness_algebra.rs: 75/79 +0.00%
+|| relvar-core/tests/sentry_database_data_coverage.rs: 304/304 +0.00%
+|| relvar-core/tests/sentry_database_dml_coverage.rs: 73/73 +0.00%
+|| relvar-core/tests/sentry_database_integrity_coverage.rs: 337/339 +0.00%
+|| relvar-core/tests/sentry_database_schema_coverage.rs: 84/105 +0.00%
+|| relvar-core/tests/sentry_database_transaction_coverage.rs: 36/36 +0.00%
+|| relvar-core/tests/sentry_database_update_fk_coverage.rs: 49/49 +0.00%
+|| relvar-core/tests/sentry_delta_coverage.rs: 14/16 +0.00%
+|| relvar-core/tests/sentry_extend_coverage.rs: 82/86 +0.00%
+|| relvar-core/tests/sentry_group_coverage.rs: 49/60 +0.00%
+|| relvar-core/tests/sentry_project_coverage.rs: 105/105 +0.00%
+|| relvar-core/tests/sentry_query_coverage.rs: 65/66 +0.00%
+|| relvar-core/tests/sentry_relation_type_coverage.rs: 8/8 +0.00%
+|| relvar-core/tests/sentry_scalar_type_coverage.rs: 173/180 +0.00%
+|| relvar-core/tests/sentry_scalar_type_hash_coverage.rs: 22/22 +0.00%
+|| relvar-core/tests/sentry_scalar_value_coverage.rs: 43/43 +0.00%
+|| relvar-core/tests/sentry_semijoin_coverage.rs: 61/61 +0.00%
+|| relvar-core/tests/sentry_stack_overflow.rs: 46/52 +0.00%
+|| relvar-core/tests/sentry_tclose_coverage.rs: 21/23 +0.00%
+|| relvar-core/tests/sentry_tuple_type_coverage.rs: 12/12 +0.00%
+|| relvar-core/tests/warden_exploit_like.rs: 9/9 +0.00%
+|| relvar-core/tests/warden_exploit_like_memory.rs: 18/18 +0.00%
+|| relvar-core/tests/warden_exploit_scalar_type_recursion.rs: 34/37 +0.00%
+|| relvar-core/tests/warden_exploit_scalar_value_deserialization.rs: 10/12 +0.00%
+|| relvar-core/tests/warden_exploit_scalar_value_inconsistency.rs: 10/12 +0.00%
+|| relvar-core/tests/warden_exploit_scalar_value_mismatch.rs: 12/16 +0.00%
+|| relvar-core/tests/warden_exploit_scalar_value_recursion.rs: 29/35 +0.00%
+|| relvar-core/tests/warden_exploit_serde_stack_overflow.rs: 18/20 +0.00%
+|| relvar-core/tests/warden_query_restrict_error.rs: 23/23 +0.00%
+|| relvar-core/tests/warden_scalar_type_coverage.rs: 19/21 +0.00%
+|| relvar-core/tests/warden_sum_float_overflow.rs: 33/33 +0.00%
+|| relvar-storage/src/mvcc/active_txn_table.rs: 17/19 +0.00%
+|| relvar-storage/src/mvcc/snapshot.rs: 4/4 +0.00%
+|| relvar-storage/src/mvcc/visibility.rs: 17/17 +0.00%
+|| relvar-storage/src/persistent_engine/mod.rs: 139/154 +0.00%
+|| relvar-storage/src/storage/catalog.rs: 43/47 +0.00%
+|| relvar-storage/src/storage/heap/mod.rs: 399/448 +0.00%
+|| relvar-storage/src/storage/manager.rs: 114/125 +0.00%
+|| relvar-storage/src/storage/page.rs: 83/89 +0.00%
+|| relvar-storage/src/wal/iter.rs: 29/35 +0.00%
+|| relvar-storage/src/wal/lsn.rs: 20/20 +0.00%
+|| relvar-storage/src/wal/manager.rs: 88/92 +0.00%
+|| relvar-storage/src/wal/record.rs: 16/16 +0.00%
+|| relvar-storage/src/wal/recovery.rs: 50/52 +0.00%
+||
+93.83% coverage, 8248/8790 lines covered, +0.00% change in coverage
