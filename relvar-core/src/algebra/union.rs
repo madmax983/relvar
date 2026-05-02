@@ -36,7 +36,28 @@
 use crate::values::Relation;
 use thiserror::Error;
 
-/// Errors that can occur during union operations.
+/// The strict rules of relational matrimony.
+///
+/// In relational theory, two sets can only be united if they speak the exact same language.
+/// This error is returned when an attempt is made to `union` two relations that are not
+/// type-compatible.
+///
+/// # Recovery
+/// - Ensure both relations have the exact same degree (number of attributes).
+/// - Ensure both relations have the exact same attribute names.
+/// - Ensure the scalar types of those attributes match perfectly.
+/// - Use `project` or `rename` to align their headings before attempting the union.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::UnionError;
+///
+/// // The classic blunder: attempting to union apples and oranges.
+/// // The recovery action is to align their headings first using `rename` or `project`.
+/// let error = UnionError;
+/// assert!(error.to_string().contains("Relations must have the same type"));
+/// ```
 #[derive(Debug, Error)]
 #[error("Relations must have the same type (heading) for union")]
 pub struct UnionError;

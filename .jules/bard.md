@@ -27,3 +27,6 @@
 ## 2025-05-19 - The "GarbageCollector" Examples
 **Confusion:** The experimental `GarbageCollector` module lacked executable doc-tests (`/// # Examples` blocks) for its struct and methods (`new` and `mark_and_sweep`). This made it difficult for users to understand how to instantiate the roots, heap, and references relations and run the GC algorithm.
 **Clarification:** Added comprehensive executable doc-tests to `GarbageCollector`, `new`, and `mark_and_sweep` that demonstrate how to construct the necessary relations and see which objects are identified as garbage.
+## 2024-05-18 - [Error Documentation]
+**Confusion:** Error enums were documented with simple `.to_string()` assertions, which was "Dead End" noise failing to explain how to recover.
+**Clarification:** Rewrote doc-tests to include rich `/// # Recovery` sections mapped to each variant, explaining exactly what the error means in the Relational context and how to fix it, using story-driven lore as per Bard's philosophy.
