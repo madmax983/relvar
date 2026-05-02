@@ -27,3 +27,6 @@
 ## 2025-05-19 - The "GarbageCollector" Examples
 **Confusion:** The experimental `GarbageCollector` module lacked executable doc-tests (`/// # Examples` blocks) for its struct and methods (`new` and `mark_and_sweep`). This made it difficult for users to understand how to instantiate the roots, heap, and references relations and run the GC algorithm.
 **Clarification:** Added comprehensive executable doc-tests to `GarbageCollector`, `new`, and `mark_and_sweep` that demonstrate how to construct the necessary relations and see which objects are identified as garbage.
+## 2025-05-20 - The "Missing Storage" Examples
+**Confusion:** The `relvar-storage` crate had missing examples for `StorageManager` in `src/storage/manager.rs` and the recovery structs (`AnalysisResult`, `UncommittedInsert`, `RecoveryResult`) in `src/wal/recovery.rs`. This omission left the physical storage initialization undocumented. Moreover, testing internal `pub(crate)` modules caused `cargo test --doc` failures.
+**Clarification:** Added executable `/// # Examples` doc-tests for `StorageManager` demonstrating how to create a `StorageManager` and a relation. Added mocked, non-executable examples (`/// ```ignore`) for the recovery structs to illustrate their usage without breaking the test suite due to private module visibility (`relvar_storage::wal`).

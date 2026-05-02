@@ -17,6 +17,33 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Storage Manager handling physical storage operations.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage::storage::StorageManager;
+/// use relvar_core::types::{RelationType, TupleType, ScalarType};
+/// use tempfile::TempDir;
+///
+/// // Create a temporary directory for the database
+/// let temp_dir = TempDir::new().unwrap();
+///
+/// // 1. Initialize StorageManager
+/// let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+///
+/// // 2. Create a relation metadata
+/// let rel_type = RelationType::new(
+///     TupleType::new()
+///         .with_attribute("id", ScalarType::Int)
+///         .with_attribute("name", ScalarType::String)
+/// );
+///
+/// // 3. Create the physical relation
+/// manager.create_relation("USERS", rel_type).unwrap();
+///
+/// // 4. Verify it exists
+/// assert!(manager.relation_exists("USERS"));
+/// ```
 pub struct StorageManager {
     /// Base directory for database files.
     db_path: PathBuf,

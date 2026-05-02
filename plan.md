@@ -1,2 +1,8 @@
-1. **Submit the clean audit report.**
-   - Since no active vulnerabilities were found during the investigation of `unsafe` blocks, bounds checking, buffer limits, and data serialization (verifying that they either safely bounded or properly capped), I will submit the PR to confirm the codebase is secure under the given scope.
+1. **Add Doc-tests to `StorageManager`**: Update `StorageManager` in `relvar-storage/src/storage/manager.rs` with an `/// # Examples` block showing initialization via `new`, creating a relation using `create_relation`, inserting a tuple via `insert_tuple`, and scanning the relation via `scan_relation`. Use `sed` via `run_in_bash_session` to apply changes securely.
+2. **Add Doc-tests to `AnalysisResult`**: Update `AnalysisResult` in `relvar-storage/src/wal/recovery.rs` with an `/// # Examples` block demonstrating how to instantiate and assert on the fields of `AnalysisResult` (`committed`, `aborted`, `records`, `last_checkpoint_lsn`). Use `sed` via `run_in_bash_session` to apply changes securely.
+3. **Add Doc-tests to `UncommittedInsert`**: Update `UncommittedInsert` in `relvar-storage/src/wal/recovery.rs` with an `/// # Examples` block demonstrating construction and checking fields. Use `sed` via `run_in_bash_session` to apply changes securely.
+4. **Add Doc-tests to `RecoveryResult`**: Update `RecoveryResult` in `relvar-storage/src/wal/recovery.rs` with an `/// # Examples` block showing a mocked recovery result creation. Use `sed` via `run_in_bash_session` to apply changes securely.
+5. **Update `.jules/bard.md`**: Log these specific findings and the resolution using the append (`>>`) method in `bard.md` via `run_in_bash_session`.
+6. **Code verification and linting**: Run `cargo fmt --all`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo doc --no-deps --open`. Use `python3 find_undoc.py` to ensure no undocumented items remain via `run_in_bash_session`.
+7. **Testing**: Execute full suite verification utilizing `cargo test` as an independent step via `run_in_bash_session`.
+8. Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.

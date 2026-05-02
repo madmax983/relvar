@@ -35,6 +35,25 @@ use std::io::{Read, Seek, SeekFrom};
 
 /// Result of the analysis pass.
 #[derive(Debug)]
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::{AnalysisResult, TransactionId, Lsn};
+/// use std::collections::HashSet;
+///
+/// let mut committed = HashSet::new();
+/// committed.insert(TransactionId::new(1));
+///
+/// let result = AnalysisResult {
+///     committed,
+///     aborted: HashSet::new(),
+///     records: vec![],
+///     last_checkpoint_lsn: Some(Lsn::new(100)),
+/// };
+///
+/// assert!(result.committed.contains(&TransactionId::new(1)));
+/// assert_eq!(result.last_checkpoint_lsn.unwrap().value(), 100);
+/// ```
 pub struct AnalysisResult {
     /// Transactions that committed.
     pub committed: HashSet<TransactionId>,
@@ -90,6 +109,19 @@ pub fn analyze(wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
 
 /// Uncommitted insert information.
 #[derive(Debug)]
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::UncommittedInsert;
+///
+/// let insert = UncommittedInsert {
+///     relation_name: "USERS".to_string(),
+///     tuple_data: vec![1, 2, 3, 4],
+/// };
+///
+/// assert_eq!(insert.relation_name, "USERS");
+/// assert_eq!(insert.tuple_data.len(), 4);
+/// ```
 pub struct UncommittedInsert {
     /// Relation name.
     pub relation_name: String,
@@ -99,6 +131,30 @@ pub struct UncommittedInsert {
 
 /// Result of recovery process.
 #[derive(Debug)]
+/// # Examples
+///
+/// ```ignore
+/// use relvar_storage::wal::{RecoveryResult, UncommittedInsert, TransactionId};
+/// use std::collections::HashSet;
+///
+/// let mut committed_txns = HashSet::new();
+/// committed_txns.insert(TransactionId::new(1));
+///
+/// let insert = UncommittedInsert {
+///     relation_name: "USERS".to_string(),
+///     tuple_data: vec![1, 2, 3],
+/// };
+///
+/// let result = RecoveryResult {
+///     committed_txns,
+///     uncommitted_inserts: vec![insert],
+///     max_txn_id: TransactionId::new(10),
+/// };
+///
+/// assert!(result.committed_txns.contains(&TransactionId::new(1)));
+/// assert_eq!(result.uncommitted_inserts.len(), 1);
+/// assert_eq!(result.max_txn_id.value(), 10);
+/// ```
 pub struct RecoveryResult {
     /// Set of committed transaction IDs (for MVCC visibility).
     pub committed_txns: HashSet<TransactionId>,
