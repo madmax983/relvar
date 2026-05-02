@@ -128,3 +128,7 @@
 **Concept:** Modeled a Mark-and-Sweep Garbage Collector using purely relational algebra. Represents `roots`, `heap`, and `references` as relations. The Mark phase computes reachability via `tclose`, `join`, and `union`. The Sweep phase identifies garbage via `difference`.
 **Fate:** TBD
 **Lesson:** Relational algebra gracefully handles complex algorithms like Garbage Collection! By leveraging transitive closure to compute reachable sets and difference to identify unreferenced memory, we can declaratively specify Mark-and-Sweep.
+## Relational Apriori Algorithm
+**Concept:** Modeled the Apriori algorithm for Association Rule Learning using purely relational algebra. Represents `transactions` as a relation. Evaluates frequent itemsets using Join (for candidate generation), Restrict, and Summarize (for support counting).
+**Fate:** Merged
+**Lesson:** Data mining algorithms naturally map to relational operations. Finding frequent itemsets is essentially generating candidate pairs via cross-joins and counting occurrences with aggregation.

@@ -5,6 +5,7 @@
 //!
 //! # Included Features
 //!
+//! - **[`apriori`](crate::experimental::apriori)**: Relational Apriori Algorithm (Association Rule Learning).
 //! - **[`automl`](crate::experimental::automl)**: Relational Machine Learning (Naive Bayes).
 //! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
@@ -32,6 +33,7 @@
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
 
+pub mod apriori;
 pub mod automata;
 pub mod automl;
 pub mod blockchain;
