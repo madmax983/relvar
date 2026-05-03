@@ -1,0 +1,1 @@
+Scan log: Checked cargo audit, unsafe code usage, and potential DoS vectors. No new security risks were found in the scope.
