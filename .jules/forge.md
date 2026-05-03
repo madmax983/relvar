@@ -624,3 +624,7 @@ Build it right, make it fast, keep it simple.
 ## 2025-05-15 - Refactored God Function in Relational Logic
 **Learning:** Found a god function `infer` in `relvar/src/experimental/expert_system.rs` executing a massive loop. This is a common anti-pattern where relational logic execution is all piled into one large loop without clean conceptual boundaries. This makes the code difficult to read.
 **Action:** Applied the 'Three-Phase Operator' pattern by extracting the massive chunk of looping logic into clear, domain-specific sub-phases (`compute_total_conditions`, `find_triggered_rules`, and `derive_new_facts`). This dramatically improved readability and clarity. Will continue extracting logic into smaller, properly typed helper functions.
+
+## 2026-05-19 - Refactored God Function in Schema Visualizer
+**Learning:** `relvar/src/tools/visualizer.rs` contained a "God Function" `to_dot` (87 lines) which combined schema traversal, table/node formatting, sorting attributes, extracting primary keys, and generating foreign key edges into one large block.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting `get_primary_key_attributes`, `append_table_node`, and `append_foreign_key_edges` into separate helper functions to improve readability and code organization without changing output.

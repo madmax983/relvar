@@ -106,82 +106,87 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
 
         // 1. Generate nodes (Tables)
         for name in &relvars {
-            // Note: We use get_relvar_type() to get the relation structure.
-            // This avoids loading the full relation data.
-            if let Ok(relation_type) = self.db.get_relvar_type(name) {
-                let tuple_type = relation_type.tuple_type();
-
-                // Determine primary key attributes
-                let pk_attrs = if let Some(key_constraints) = self.db.get_key_constraints(name) {
-                    if let Some(pk) = key_constraints.primary_key() {
-                        pk.attributes().to_vec()
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    Vec::new()
-                };
-
-                let node_id = escape_dot_id(name);
-                let table_title = escape_html(name);
-
-                dot.push_str(&format!(
-                    "    {} [label=<<table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\">\n",
-                    node_id
-                ));
-                dot.push_str(&format!(
-                    "        <tr><td bgcolor=\"lightgrey\" colspan=\"2\"><b>{}</b></td></tr>\n",
-                    table_title
-                ));
-
-                // Sort attributes for consistent output
-                let mut attributes: Vec<_> = tuple_type.attributes().iter().collect();
-                attributes.sort_by(|a, b| a.0.cmp(b.0));
-
-                for (attr_name, scalar_type) in attributes {
-                    let is_pk = pk_attrs.contains(attr_name);
-                    let safe_attr_name = escape_html(attr_name);
-
-                    let display_name = if is_pk {
-                        format!("<u>{}</u>", safe_attr_name)
-                    } else {
-                        safe_attr_name
-                    };
-
-                    // Note: scalar_type implements Debug, which might contain special chars.
-                    // Ideally we'd escape that too, strictly speaking.
-                    let safe_type = escape_html(&format!("{:?}", scalar_type));
-
-                    dot.push_str(&format!(
-                        "        <tr><td align=\"left\">{}</td><td align=\"left\">{}</td></tr>\n",
-                        display_name, safe_type
-                    ));
-                }
-                dot.push_str("    </table>>];\n\n");
-            }
+            self.append_table_node(&mut dot, name);
         }
 
         // 2. Generate edges (Foreign Keys)
         for name in &relvars {
-            if let Some(fk_constraints) = self.db.get_foreign_key_constraints(name) {
-                for fk in fk_constraints.foreign_keys() {
-                    let ref_table = fk.referenced_relation_name();
-                    let cols = fk.foreign_key_attributes().join(", ");
-
-                    let source_id = escape_dot_id(name);
-                    let target_id = escape_dot_id(ref_table);
-                    let label = escape_dot_string_content(&cols);
-
-                    dot.push_str(&format!(
-                        "    {} -> {} [label=\"({})\"];\n",
-                        source_id, target_id, label
-                    ));
-                }
-            }
+            self.append_foreign_key_edges(&mut dot, name);
         }
 
         dot.push_str("}\n");
         dot
+    }
+
+    fn get_primary_key_attributes(&self, name: &str) -> Vec<String> {
+        if let Some(pk) = self
+            .db
+            .get_key_constraints(name)
+            .and_then(|c| c.primary_key())
+        {
+            return pk.attributes().to_vec();
+        }
+        Vec::new()
+    }
+
+    fn append_table_node(&self, dot: &mut String, name: &str) {
+        if let Ok(relation_type) = self.db.get_relvar_type(name) {
+            let tuple_type = relation_type.tuple_type();
+            let pk_attrs = self.get_primary_key_attributes(name);
+
+            let node_id = escape_dot_id(name);
+            let table_title = escape_html(name);
+
+            dot.push_str(&format!(
+                "    {} [label=<<table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\">\n",
+                node_id
+            ));
+            dot.push_str(&format!(
+                "        <tr><td bgcolor=\"lightgrey\" colspan=\"2\"><b>{}</b></td></tr>\n",
+                table_title
+            ));
+
+            // Sort attributes for consistent output
+            let mut attributes: Vec<_> = tuple_type.attributes().iter().collect();
+            attributes.sort_by(|a, b| a.0.cmp(b.0));
+
+            for (attr_name, scalar_type) in attributes {
+                let is_pk = pk_attrs.contains(attr_name);
+                let safe_attr_name = escape_html(attr_name);
+
+                let display_name = if is_pk {
+                    format!("<u>{}</u>", safe_attr_name)
+                } else {
+                    safe_attr_name
+                };
+
+                let safe_type = escape_html(&format!("{:?}", scalar_type));
+
+                dot.push_str(&format!(
+                    "        <tr><td align=\"left\">{}</td><td align=\"left\">{}</td></tr>\n",
+                    display_name, safe_type
+                ));
+            }
+            dot.push_str("    </table>>];\n\n");
+        }
+    }
+
+    fn append_foreign_key_edges(&self, dot: &mut String, name: &str) {
+        if let Some(fk_constraints) = self.db.get_foreign_key_constraints(name) {
+            for fk in fk_constraints.foreign_keys() {
+                let ref_table = fk.referenced_relation_name();
+                let cols = fk.foreign_key_attributes().join(", ");
+
+                let source_id = escape_dot_id(name);
+                let target_id = escape_dot_id(ref_table);
+                let label = escape_dot_string_content(&cols);
+
+                dot.push_str(&format!(
+                    "    {} -> {} [label=\"({})\"];\n",
+                    source_id, target_id, label
+                ));
+            }
+        }
     }
 }
 
