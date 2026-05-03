@@ -279,7 +279,9 @@ fn test_sentry_validate_slot_bounds_offset_overflow() {
 
     // Test the extract_tuple_from_page missing bound limit branch, where offset is fine but we exceed page data bounds
     // to trigger "Corrupted slot on page ... points outside page data"
-    let err = heap.extract_raw_tuple_data(&page, 0, (PAGE_SIZE + 10) as u32).unwrap_err();
+    let err = heap
+        .extract_raw_tuple_data(&page, 0, (PAGE_SIZE + 10) as u32)
+        .unwrap_err();
 
     assert!(matches!(err, HeapError::Serialization(_)));
     if let HeapError::Serialization(msg) = err {
