@@ -121,3 +121,6 @@
 
 **Learning:** It is crucial to append tests to exactly correct lines to avoid collision with multiple `mod tests {` or similar. Directly applying `sed` replacements or `patch` is safer than raw appending (`cat >>`). `TryFrom` conversions must carefully type-check expected fields, such as `unwrap_err().expected` being correctly matched.
 **Action:** Use `replace_with_git_merge_diff` inside existing modules when working with `cfg(test)` items instead of using raw `cat >>` appended blocks, to prevent compilation errors and redundant definitions.
+## 2026-05-04 - Storage Heap Extraction Error Paths
+**Learning:** Certain `HeapError::Serialization` conditions triggered by bounds limit checks inside `extract_tuples_from_versioned_slots` and `validate_slot_bounds` in `relvar-storage/src/storage/heap/mod.rs` were entirely missing coverage. These represent the critical error paths protecting against buffer overflows and memory corruption during MVCC page reconstruction.
+**Action:** Always create targeted error boundary tests for memory slicing and decoding functions, specifically simulating corrupted page states (like manipulating slot lengths past page boundaries or inserting offset overflows) to guarantee the serialization errors are actually thrown instead of panicking.
