@@ -32,6 +32,10 @@
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
 
+
+
+
+
 pub mod automata;
 pub mod automl;
 pub mod blockchain;
@@ -50,6 +54,7 @@ pub mod knowledge_graph;
 pub mod matrix;
 pub mod mock;
 pub mod neural_network;
+
 
 pub mod dom;
 pub mod genetic_algorithm;
@@ -71,3 +76,4 @@ pub mod timeseries;
 pub mod turing;
 pub mod vcs;
 pub mod vm;
+pub mod apriori;
