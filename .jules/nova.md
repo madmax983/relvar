@@ -132,3 +132,7 @@
 **Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
+## Relational Game Theory
+**Concept:** Modeled a Game Theory solver (Normal-Form Games) using pure relational algebra. Actions, payoffs, and players are encoded as a single relation. Pure-strategy Nash Equilibria are declaratively found by summarizing maximum payoffs to find best responses, and joining the best responses of both players.
+**Fate:** Merged
+**Lesson:** Relational algebra gracefully handles complex game theory matrix logic. Nash Equilibria, which traditionally involve looping over action spaces to find mutually optimal profiles, compile seamlessly into a declarative SQL-like join of independent maximal groupings.
