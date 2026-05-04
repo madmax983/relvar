@@ -418,4 +418,104 @@ mod tests {
         // V2 should be visible (created by committed T2)
         assert!(is_visible(&v2, &snapshot, &committed));
     }
+
+    #[test]
+    fn should_return_true_when_version_created_by_committed_txn() {
+        let t1 = test_txn(1);
+        let t2 = test_txn(2);
+
+        let version = VersionMetadata {
+            xmin: t1,
+            xmax: None,
+        };
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![]);
+        let mut committed = HashSet::new();
+        committed.insert(t1);
+
+        assert!(is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_false_when_version_created_by_uncommitted_concurrent_txn() {
+        let t1 = test_txn(1);
+        let t2 = test_txn(2);
+
+        let version = VersionMetadata {
+            xmin: t1,
+            xmax: None,
+        };
+        // t2 sees t1 as active
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![t1]);
+        let committed = HashSet::new(); // t1 not committed
+
+        assert!(!is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_true_when_version_created_by_self() {
+        let t1 = test_txn(1);
+
+        let version = VersionMetadata {
+            xmin: t1,
+            xmax: None,
+        };
+        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
+        let committed = HashSet::new(); // t1 not committed
+
+        // Transaction can see its own changes
+        assert!(is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_false_when_version_deleted_by_committed_txn() {
+        let t1 = test_txn(1);
+        let t2 = test_txn(2);
+        let t3 = test_txn(3);
+
+        let version = VersionMetadata {
+            xmin: t1,
+            xmax: Some(t2),
+        };
+        let snapshot = TransactionSnapshot::new(t3, test_lsn(200), vec![]);
+        let mut committed = HashSet::new();
+        committed.insert(t1);
+        committed.insert(t2); // t2 is committed
+
+        // T3 shouldn't see it because it was deleted by committed T2
+        assert!(!is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_true_when_version_deleted_by_uncommitted_txn() {
+        let t1 = test_txn(1);
+        let t2 = test_txn(2);
+        let t3 = test_txn(3);
+
+        let version = VersionMetadata {
+            xmin: t1,
+            xmax: Some(t2),
+        };
+        // t3 sees t2 as active
+        let snapshot = TransactionSnapshot::new(t3, test_lsn(200), vec![t2]);
+        let mut committed = HashSet::new();
+        committed.insert(t1); // t1 committed, t2 not
+
+        // T3 should see it because deletion is not yet visible
+        assert!(is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_false_when_version_deleted_by_self() {
+        let t1 = test_txn(1);
+
+        let version = VersionMetadata {
+            xmin: t1,
+            xmax: Some(t1),
+        };
+        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
+        let mut committed = HashSet::new();
+        committed.insert(t1); // created by self, deleted by self
+
+        assert!(!is_visible(&version, &snapshot, &committed));
+    }
 }
