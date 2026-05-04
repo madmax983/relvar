@@ -17,7 +17,27 @@ pub(crate) mod in_memory;
 
 pub use in_memory::InMemoryEngine;
 
-/// Errors that can occur during storage operations.
+/// The grim reality of physical storage.
+///
+/// Even the most pristine relational algebra must eventually touch the cold, hard disk.
+/// This enum represents the various ways persistence can fail. From the tragic
+/// loss of a file (`IoError`) to the phantom menace of a missing relation
+/// (`RelationNotFound`).
+///
+/// # Recovery
+/// - **RelationNotFound:** Double check your system catalog. Are you querying a relvar that hasn't been defined yet? Ensure `create_relvar` was called.
+/// - **RelationAlreadyExists:** You're attempting to define a relvar with a name that is already taken. Choose a unique name or drop the existing one.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::storage_engine::StorageError;
+///
+/// // An attempt to query a relation that the Storage Engine cannot find in its catalog.
+/// // The proper response is to ensure the table was created before querying.
+/// let err = StorageError::RelationNotFound("EMPLOYEES".to_string());
+/// assert!(err.to_string().contains("EMPLOYEES not found"));
+/// ```
 #[derive(Debug, Error)]
 pub enum StorageError {
     /// The relation already exists.
