@@ -1,11 +1,4 @@
-🚮 Smell
-The `SudokuSolver::solve` function was an overly long "God Function" (>100 lines) that mixed multiple distinct relational operations—calculating all possibilities, finding invalid outcomes via constraints, and determining cells—into one massive block.
-
-✨ Solution
-Refactored `SudokuSolver::solve` using the "Three-Phase Operator" pattern. Extracted the logic into three cleanly named private helper functions: `compute_all_possibilities`, `compute_invalid_possibilities`, and `find_determined_cells`.
-
-🧼 Benefit
-Significantly flattens the execution flow, reducing cognitive load and making it much easier to comprehend how the algorithm navigates relational algebra to solve the grid.
-
-🛡️ Verification
-`cargo test`, `cargo clippy`, and `cargo fmt` complete with no errors. No behavior changed.
+💡 What: Optimized `compute_relation_after_update` in `relvar-core/src/database/dml.rs` to borrow `expected_type` as a reference rather than unnecessarily calling `.clone()` on the underlying `Arc<TupleType>`.
+🎯 Why: Avoiding an unnecessary clone call on `Arc<TupleType>` during data modifications. This `Arc` clone was happening repeatedly during setup of the update operations and could easily be avoided by borrowing a reference instead.
+📊 Impact: Minor speedup and removal of an unnecessary clone operation overhead, which could matter under heavy multi-threaded workloads where atomic refcounts are heavily contended. The `tuple_creation` bench showed a minor performance improvement.
+🔬 Measurement: Run bench `tuple_creation` / `group_bench`.
