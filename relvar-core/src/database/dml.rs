@@ -37,7 +37,7 @@ where
     U: Fn(&Tuple) -> Tuple,
 {
     let relation_type = current_relation.relation_type().clone();
-    let expected_type = relation_type.tuple_type().clone();
+    let expected_type = relation_type.tuple_type(); // Borrow instead of cloning Arc<TupleType>
     let initial_cardinality = current_relation.cardinality();
 
     let (body, update_count) = current_relation.into_iter().try_fold(
@@ -53,7 +53,7 @@ where
 
             let updated_tuple = updater(&tuple);
 
-            if !updated_tuple.conforms_to(&expected_type) {
+            if !updated_tuple.conforms_to(expected_type) {
                 return Err(DatabaseError::TupleMismatch);
             }
 
