@@ -30,3 +30,6 @@
 ## 2024-05-18 - [Error Documentation]
 **Confusion:** Error enums were documented with simple `.to_string()` assertions, which was "Dead End" noise failing to explain how to recover.
 **Clarification:** Rewrote doc-tests to include rich `/// # Recovery` sections mapped to each variant, explaining exactly what the error means in the Relational context and how to fix it, using story-driven lore as per Bard's philosophy.
+## 2024-05-04 - [The Knowledge Graph Mystery]
+**Confusion:** The `experimental::knowledge_graph` module lacked documentation explaining *why* a graph was being built using pure relational algebra. The public structs and functions also lacked executable examples demonstrating how to use the API to insert triples and evaluate Basic Graph Patterns.
+**Clarification:** Added storytelling module-level documentation (`//!`) explaining how graphs are just interconnected relations. Added comprehensive `/// # Examples` doctests to `KnowledgeGraph` and its methods to show how standard relational operations simulate complex graph traversals.
