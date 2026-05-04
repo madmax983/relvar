@@ -618,7 +618,12 @@ impl Relation {
         if group_by.is_empty() {
             // No grouping - all tuples in one group
             let mut map = HashMap::new();
-            map.insert(Vec::new(), self.tuples().collect());
+            // Optimization: Pre-allocate Vec to avoid internal reallocations during collect
+            let mut all_tuples = Vec::with_capacity(self.cardinality());
+            for tuple in self.tuples() {
+                all_tuples.push(tuple);
+            }
+            map.insert(Vec::new(), all_tuples);
             map
         } else {
             // Group by specified attributes

@@ -44,6 +44,9 @@
 ## 2024-05-22 - [Group Operator Allocation Removal]
 **Learning:** In the `group` operator, intermediate RVA results were being collected into a `Vec<Tuple>` and then passed to `Relation::from_tuples_unchecked`, which creates a redundant heap allocation since we know we are building a set.
 **Action:** Modified `group_tuples` to directly accumulate tuples into a `HashSet<Tuple>`, and used `Relation::from_body_unchecked` to bypass the intermediate `Vec` allocation entirely, eliminating a redundant allocation.
+## 2025-05-23 - [Summarize Group By Empty Allocation Removal]
+**Learning:** In `summarize.rs`, the empty group-by branch mapped `self.tuples().collect()` directly into a `Vec`. Because `tuples()` iterates over a `HashSet`, `collect()` performs multiple dynamic allocations under the hood if the size hints are insufficient or exact sizes are poorly propagated through generic wrappers.
+**Action:** Changed the empty `group_by` branch to explicitly pre-allocate the `Vec` using `Vec::with_capacity(self.cardinality())` and manually push each tuple. This bypasses the iterator `collect` overhead and guarantees exactly one allocation, reducing memory fragmentation during empty aggregations.
 
 ## 2026-05-01 - Avoided Arc clone in DML loop
 **Learning:** `Arc<TupleType>::clone()` incurs reference counting overhead and potential allocation overhead, taking around 14ms per 10k tuple creations as shown in `tuple_creation` bench.
