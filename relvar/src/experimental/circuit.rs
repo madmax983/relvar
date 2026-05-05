@@ -19,7 +19,7 @@
 use relvar_core::{
     error::DatabaseError,
     types::ScalarType,
-    values::{Relation, ScalarValue},
+    values::{Relation, ScalarValue, Tuple},
 };
 
 /// A Relational Digital Logic Circuit Simulator.
@@ -30,6 +30,36 @@ use relvar_core::{
 /// use relvar::experimental::circuit::LogicSimulator;
 /// // Note: This is a placeholder example
 /// ```
+fn compute_binary_gate(t: &Tuple) -> ScalarValue {
+    let tpe = t.get_typed::<String>("gate_type").unwrap();
+    let v1 = t.get_typed::<bool>("val1").unwrap();
+    let v2 = t.get_typed::<bool>("val2").unwrap();
+
+    let res = match tpe.as_str() {
+        "AND" => v1 && v2,
+        "OR" => v1 || v2,
+        "XOR" => v1 ^ v2,
+        "NAND" => !(v1 && v2),
+        "NOR" => !(v1 || v2),
+        "XNOR" => v1 == v2,
+        _ => false, // unknown gate
+    };
+    ScalarValue::Bool(res)
+}
+
+fn compute_unary_gate(t: &Tuple) -> ScalarValue {
+    let tpe = t.get_typed::<String>("gate_type").unwrap();
+    let v_in = t.get_typed::<bool>("val_in").unwrap();
+
+    let res = match tpe.as_str() {
+        "NOT" => !v_in,
+        "BUF" => v_in,
+        _ => v_in, // unknown gate
+    };
+    ScalarValue::Bool(res)
+}
+
+/// A logic simulator
 pub struct LogicSimulator {
     /// Binary gates in the circuit.
     /// Schema: (gate: String, gate_type: String, in1: String, in2: String, out: String)
@@ -86,22 +116,7 @@ impl LogicSimulator {
         let joined2 = joined1.join(&w2)?;
 
         let eval_binary = joined2
-            .extend("out_val", ScalarType::Bool, |t| {
-                let tpe = t.get_typed::<String>("gate_type").unwrap();
-                let v1 = t.get_typed::<bool>("val1").unwrap();
-                let v2 = t.get_typed::<bool>("val2").unwrap();
-
-                let res = match tpe.as_str() {
-                    "AND" => v1 && v2,
-                    "OR" => v1 || v2,
-                    "XOR" => v1 ^ v2,
-                    "NAND" => !(v1 && v2),
-                    "NOR" => !(v1 || v2),
-                    "XNOR" => v1 == v2,
-                    _ => false, // unknown gate
-                };
-                ScalarValue::Bool(res)
-            })
+            .extend("out_val", ScalarType::Bool, compute_binary_gate)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["out", "out_val"])
             .rename(&[("out", "wire"), ("out_val", "val")]);
@@ -114,17 +129,7 @@ impl LogicSimulator {
         let joined_unary = self.unary_gates.join(&w_in)?;
 
         let eval_unary = joined_unary
-            .extend("out_val", ScalarType::Bool, |t| {
-                let tpe = t.get_typed::<String>("gate_type").unwrap();
-                let v_in = t.get_typed::<bool>("val_in").unwrap();
-
-                let res = match tpe.as_str() {
-                    "NOT" => !v_in,
-                    "BUF" => v_in,
-                    _ => v_in, // unknown gate
-                };
-                ScalarValue::Bool(res)
-            })
+            .extend("out_val", ScalarType::Bool, compute_unary_gate)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["out", "out_val"])
             .rename(&[("out", "wire"), ("out_val", "val")]);

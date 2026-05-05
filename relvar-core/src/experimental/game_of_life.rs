@@ -44,6 +44,18 @@ pub fn next_generation(alive_cells: &Relation) -> Result<Relation, crate::error:
     apply_rules(alive_cells, &counts_renamed)
 }
 
+fn compute_nx(t: &Tuple) -> ScalarValue {
+    let x = t.get_typed::<i64>("x").unwrap();
+    let dx = t.get_typed::<i64>("dx").unwrap();
+    ScalarValue::Int(x + dx)
+}
+
+fn compute_ny(t: &Tuple) -> ScalarValue {
+    let y = t.get_typed::<i64>("y").unwrap();
+    let dy = t.get_typed::<i64>("dy").unwrap();
+    ScalarValue::Int(y + dy)
+}
+
 fn generate_offsets() -> Relation {
     let off_heading = TupleType::new()
         .with_attribute("dx", ScalarType::Int)
@@ -73,19 +85,11 @@ fn calculate_neighbor_counts(
 
     // 3. Extend to compute actual neighbor coordinates (nx, ny)
     let ext1 = cross
-        .extend("nx", ScalarType::Int, |t: &Tuple| {
-            let x = t.get_typed::<i64>("x").unwrap();
-            let dx = t.get_typed::<i64>("dx").unwrap();
-            ScalarValue::Int(x + dx)
-        })
+        .extend("nx", ScalarType::Int, compute_nx)
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     let ext2 = ext1
-        .extend("ny", ScalarType::Int, |t: &Tuple| {
-            let y = t.get_typed::<i64>("y").unwrap();
-            let dy = t.get_typed::<i64>("dy").unwrap();
-            ScalarValue::Int(y + dy)
-        })
+        .extend("ny", ScalarType::Int, compute_ny)
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     // 4. Project to (nx, ny) to count properly

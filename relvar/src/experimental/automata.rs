@@ -161,12 +161,24 @@ mod tests {
     use relvar_core::tuple;
     use relvar_core::types::{RelationType, ScalarType, TupleType};
 
-    fn build_nfa() -> RelationalNfa {
+    fn create_empty_states() -> Relation {
         let state_heading = TupleType::new()
             .with_attribute("state", ScalarType::String)
             .with_attribute("is_start", ScalarType::Bool)
             .with_attribute("is_accept", ScalarType::Bool);
-        let mut states = Relation::new(RelationType::new(state_heading));
+        Relation::new(RelationType::new(state_heading))
+    }
+
+    fn create_empty_transitions() -> Relation {
+        let trans_heading = TupleType::new()
+            .with_attribute("from_state", ScalarType::String)
+            .with_attribute("symbol", ScalarType::String)
+            .with_attribute("to_state", ScalarType::String);
+        Relation::new(RelationType::new(trans_heading))
+    }
+
+    fn build_nfa() -> RelationalNfa {
+        let mut states = create_empty_states();
 
         states
             .insert(tuple! { state: "q0", is_start: true, is_accept: false })
@@ -178,11 +190,7 @@ mod tests {
             .insert(tuple! { state: "q2", is_start: false, is_accept: true })
             .unwrap();
 
-        let trans_heading = TupleType::new()
-            .with_attribute("from_state", ScalarType::String)
-            .with_attribute("symbol", ScalarType::String)
-            .with_attribute("to_state", ScalarType::String);
-        let mut transitions = Relation::new(RelationType::new(trans_heading));
+        let mut transitions = create_empty_transitions();
 
         // q0 --"a"--> q1
         transitions
@@ -239,11 +247,7 @@ mod tests {
     #[test]
     fn test_nfa_star() {
         // a* NFA
-        let state_heading = TupleType::new()
-            .with_attribute("state", ScalarType::String)
-            .with_attribute("is_start", ScalarType::Bool)
-            .with_attribute("is_accept", ScalarType::Bool);
-        let mut states = Relation::new(RelationType::new(state_heading));
+        let mut states = create_empty_states();
 
         states
             .insert(tuple! { state: "q0", is_start: true, is_accept: true })
@@ -252,11 +256,7 @@ mod tests {
             .insert(tuple! { state: "q1", is_start: false, is_accept: false })
             .unwrap();
 
-        let trans_heading = TupleType::new()
-            .with_attribute("from_state", ScalarType::String)
-            .with_attribute("symbol", ScalarType::String)
-            .with_attribute("to_state", ScalarType::String);
-        let mut transitions = Relation::new(RelationType::new(trans_heading));
+        let mut transitions = create_empty_transitions();
 
         // q0 --"a"--> q1
         transitions
@@ -280,11 +280,7 @@ mod tests {
     #[test]
     fn test_nfa_union() {
         // (ab)|(ac) NFA
-        let state_heading = TupleType::new()
-            .with_attribute("state", ScalarType::String)
-            .with_attribute("is_start", ScalarType::Bool)
-            .with_attribute("is_accept", ScalarType::Bool);
-        let mut states = Relation::new(RelationType::new(state_heading));
+        let mut states = create_empty_states();
 
         states
             .insert(tuple! { state: "start", is_start: true, is_accept: false })
@@ -308,11 +304,7 @@ mod tests {
             .insert(tuple! { state: "c1_a", is_start: false, is_accept: false })
             .unwrap();
 
-        let trans_heading = TupleType::new()
-            .with_attribute("from_state", ScalarType::String)
-            .with_attribute("symbol", ScalarType::String)
-            .with_attribute("to_state", ScalarType::String);
-        let mut transitions = Relation::new(RelationType::new(trans_heading));
+        let mut transitions = create_empty_transitions();
 
         // Branch 1: ab
         transitions

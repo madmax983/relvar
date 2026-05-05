@@ -13,6 +13,53 @@ use relvar_core::{
     values::{Relation, ScalarValue},
 };
 
+fn compute_fx(t: &relvar_core::values::Tuple, g: f64) -> ScalarValue {
+    let x1 = t.get_typed::<f64>("x1").unwrap();
+    let y1 = t.get_typed::<f64>("y1").unwrap();
+    let x2 = t.get_typed::<f64>("x2").unwrap();
+    let y2 = t.get_typed::<f64>("y2").unwrap();
+    let m1 = t.get_typed::<f64>("m1").unwrap();
+    let m2 = t.get_typed::<f64>("m2").unwrap();
+
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist_sq = dx * dx + dy * dy;
+
+    // Avoid division by zero
+    if dist_sq < 1e-10 {
+        return ScalarValue::Float(0.0);
+    }
+
+    let dist = dist_sq.sqrt();
+    let f = g * m1 * m2 / dist_sq;
+    let fx = f * (dx / dist);
+
+    ScalarValue::Float(fx)
+}
+
+fn compute_fy(t: &relvar_core::values::Tuple, g: f64) -> ScalarValue {
+    let x1 = t.get_typed::<f64>("x1").unwrap();
+    let y1 = t.get_typed::<f64>("y1").unwrap();
+    let x2 = t.get_typed::<f64>("x2").unwrap();
+    let y2 = t.get_typed::<f64>("y2").unwrap();
+    let m1 = t.get_typed::<f64>("m1").unwrap();
+    let m2 = t.get_typed::<f64>("m2").unwrap();
+
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist_sq = dx * dx + dy * dy;
+
+    if dist_sq < 1e-10 {
+        return ScalarValue::Float(0.0);
+    }
+
+    let dist = dist_sq.sqrt();
+    let f = g * m1 * m2 / dist_sq;
+    let fy = f * (dy / dist);
+
+    ScalarValue::Float(fy)
+}
+
 /// A relational N-Body Physics Simulation.
 /// # Examples
 ///
@@ -91,52 +138,9 @@ impl PhysicsEngine {
         // 3. Compute forces for each pair
         let g = self.g;
         interactions
-            .extend("fx", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                // Avoid division by zero
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fx = f * (dx / dist);
-
-                ScalarValue::Float(fx)
-            })
+            .extend("fx", ScalarType::Float, move |t| compute_fx(t, g))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .extend("fy", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fy = f * (dy / dist);
-
-                ScalarValue::Float(fy)
-            })
+            .extend("fy", ScalarType::Float, move |t| compute_fy(t, g))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 
