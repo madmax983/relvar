@@ -3,3 +3,8 @@
    We can simply compare their `attributes().len()` first, and if equal, use `Iterator::zip` to compare `(name, type)` pairs sequentially.
 2. Complete pre-commit steps.
 3. Submit PR.
+
+* I found that `rename_into` does this:
+`let values_map: BTreeMap<String, _> = new_names.iter().zip(tuple.into_values().into_values()).map(|(new_name, value)| (new_name.clone(), value)).collect();`
+
+which allocates a completely new String key even if `new_name == old_name`. I will optimize this by re-using the old name when they match to avoid unnecessary memory allocations.
