@@ -51,3 +51,6 @@
 ## 2026-05-01 - Avoided Arc clone in DML loop
 **Learning:** `Arc<TupleType>::clone()` incurs reference counting overhead and potential allocation overhead, taking around 14ms per 10k tuple creations as shown in `tuple_creation` bench.
 **Action:** Always borrow reference from wrapper container types instead of cloning Arc explicitly if the borrow lifetime spans the whole needed lifetime block, like `tuple.conforms_to(relation_type.tuple_type())` instead of `.clone()`ing `expected_type`.
+## 2025-05-05 - Avoid .collect() into Vec<String> when yielding references
+**Learning:** Converting an iterator of string clones into an intermediate `Vec<String>` and then mapping to `Vec<&str>` requires an unnecessary O(N) heap allocation.
+**Action:** Yield `Vec<&'a str>` directly by mapping `.as_str()` off the underlying struct's fields (e.g. from `TupleType`), eliminating the string allocation.
