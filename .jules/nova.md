@@ -132,3 +132,7 @@
 **Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
+## Relational CRDTs
+**Concept:** Modeled a Last-Write-Wins (LWW) Map CRDT purely with relational algebra. The state is a relation and merging two replicas is performed via relational Union, Summarization (to find the max timestamp), Rename, and Join to resolve the latest value for each key.
+**Fate:** Merged
+**Lesson:** CRDT semantics map very cleanly to relational algebra! By representing time as an attribute, resolving conflicts is just an aggregation and a join. It shows that distributed state management can be built natively on pure relational concepts without specialized conflict-resolution data structures.
