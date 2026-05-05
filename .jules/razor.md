@@ -21,3 +21,8 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+## [Reduction]\n**Bloat:** Deeply nested module folder hierarchies for tests (, , ) with low file counts.\n**Cut:** Flattened the nested folder hierarchies into single  files within their respective parent directories.\n**Saved:** Unnecessary indirection and folder structure overhead, aligning with the KISS principle.
+## [Reduction]
+**Bloat:** Deeply nested module folder hierarchies for tests (relvar-core/src/database/tests/, relvar-storage/src/persistent_engine/tests/, relvar-storage/src/storage/heap/tests/) with low file counts.
+**Cut:** Flattened the nested folder hierarchies into single tests.rs files within their respective parent directories.
+**Saved:** Unnecessary indirection and folder structure overhead, aligning with the KISS principle.
