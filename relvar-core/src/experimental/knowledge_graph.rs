@@ -3,6 +3,19 @@ use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::Relation;
 
 /// A Knowledge Graph modeled purely using relational algebra.
+/// # Examples
+///
+/// ```
+/// use relvar_core::experimental::knowledge_graph::{KnowledgeGraph, TriplePattern};
+///
+/// let mut kg = KnowledgeGraph::new();
+/// kg.insert("Alice", "knows", "Bob").unwrap();
+///
+/// let patterns = vec![TriplePattern::new("Alice", "knows", "?person")];
+/// let result = kg.query(&patterns).unwrap();
+///
+/// assert_eq!(result.cardinality(), 1);
+/// ```
 pub struct KnowledgeGraph {
     /// A single relation storing triples (subject, predicate, object)
     pub triples: Relation,
@@ -10,6 +23,14 @@ pub struct KnowledgeGraph {
 
 impl KnowledgeGraph {
     /// Create a new empty Knowledge Graph.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::experimental::knowledge_graph::KnowledgeGraph;
+    ///
+    /// let kg = KnowledgeGraph::new();
+    /// assert_eq!(kg.triples.cardinality(), 0);
+    /// ```
     pub fn new() -> Self {
         let heading = TupleType::new()
             .with_attribute("subject", ScalarType::String)
@@ -22,6 +43,15 @@ impl KnowledgeGraph {
     }
 
     /// Insert a new triple into the Knowledge Graph.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::experimental::knowledge_graph::KnowledgeGraph;
+    ///
+    /// let mut kg = KnowledgeGraph::new();
+    /// kg.insert("Alice", "likes", "Rust").unwrap();
+    /// assert_eq!(kg.triples.cardinality(), 1);
+    /// ```
     pub fn insert(
         &mut self,
         subject: &str,
@@ -41,6 +71,29 @@ impl KnowledgeGraph {
 
     /// Query the graph using a basic graph pattern (BGP).
     /// A pattern is represented as a list of `TriplePattern` structs.
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::experimental::knowledge_graph::{KnowledgeGraph, TriplePattern};
+    ///
+    /// let mut kg = KnowledgeGraph::new();
+    /// kg.insert("Alice", "knows", "Bob").unwrap();
+    /// kg.insert("Bob", "likes", "Rust").unwrap();
+    ///
+    /// let patterns = vec![
+    ///     TriplePattern::new("Alice", "knows", "?friend"),
+    ///     TriplePattern::new("?friend", "likes", "?lang"),
+    /// ];
+    ///
+    /// let result = kg.query(&patterns).unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    ///
+    /// let expected_tuple = relvar_core::tuple! {
+    ///     friend: "Bob",
+    ///     lang: "Rust"
+    /// };
+    /// assert!(result.contains(&expected_tuple));
+    /// ```
     pub fn query(&self, patterns: &[TriplePattern]) -> Result<Relation, DatabaseError> {
         if patterns.is_empty() {
             return Err(DatabaseError::AlgebraError("Empty BGP".to_string()));
@@ -119,6 +172,16 @@ pub struct TriplePattern {
 
 impl TriplePattern {
     /// Create a new TriplePattern
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::experimental::knowledge_graph::TriplePattern;
+    ///
+    /// let pattern = TriplePattern::new("?person", "knows", "Bob");
+    /// assert_eq!(pattern.subject, "?person");
+    /// assert_eq!(pattern.predicate, "knows");
+    /// assert_eq!(pattern.object, "Bob");
+    /// ```
     pub fn new(subject: &str, predicate: &str, object: &str) -> Self {
         Self {
             subject: subject.to_string(),
