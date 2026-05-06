@@ -30,3 +30,6 @@
 ## 2024-05-18 - [Error Documentation]
 **Confusion:** Error enums were documented with simple `.to_string()` assertions, which was "Dead End" noise failing to explain how to recover.
 **Clarification:** Rewrote doc-tests to include rich `/// # Recovery` sections mapped to each variant, explaining exactly what the error means in the Relational context and how to fix it, using story-driven lore as per Bard's philosophy.
+## 2025-05-06 - [The Ghost Knowledge Graph]
+**Confusion:** The experimental `KnowledgeGraph` module was completely undocumented, leaving users to guess how it connects to the relational model.
+**Clarification:** Wrote comprehensive module-level documentation and executable doctests for `KnowledgeGraph` and `TriplePattern` explaining the "Relational Semantic Web" concept.
