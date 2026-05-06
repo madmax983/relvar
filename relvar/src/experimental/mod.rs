@@ -65,6 +65,8 @@ pub mod rbac;
 pub mod recommend;
 pub mod search;
 pub mod spatial;
+/// Relational Spreadsheet Simulator.
+pub mod spreadsheet;
 pub mod sudoku;
 pub mod synth;
 pub mod timeseries;
