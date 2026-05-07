@@ -627,3 +627,6 @@ Build it right, make it fast, keep it simple.
 ## 2026-05-01 - Extract God Function in CYK Parser
 **Learning:** `relvar/src/experimental/parser.rs` contained a "God Function" `parse` (over 65 lines) which combined initializing the parse table, generating new entries, and looping until fixpoint.
 **Action:** Applied the 'Three-Phase Operator' pattern by extracting `initialize_parse_table` and `compute_new_entries` into separate private helper functions to dramatically improve readability and modularity without changing behavior.
+## 2026-05-07 - Refactoring God Function to_dot
+**Learning:** The `to_dot` visualizer method had become extremely long (God Function) and deeply nested (Pyramid of Doom), making it hard to follow. Extracting generation logic into separate node and edge helper methods, and using an iterator chain (`.and_then().map().unwrap_or_default()`) over deeply nested `if let Some()` drastically improves clarity without altering functionality.
+**Action:** Proactively scan for God Functions with deep nesting during refactoring and use early returns/iterator combinators when extracting them into smaller focused methods.
