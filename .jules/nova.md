@@ -132,3 +132,7 @@
 **Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
+## Relational Pathfinding (Dijkstra)
+**Concept:** Modeled the Shortest Path problem using purely relational algebra (Join, Extend, Summarize, Union). Iteratively relaxed edge weights using `Aggregation::min` to compute shortest paths across the graph recursively until a fixpoint is reached.
+**Fate:** Merged
+**Lesson:** Relational algebra easily maps well to dynamic programming shortest path algorithms like Dijkstra/Bellman-Ford. `Join` is used to follow edges, and `Summarize` with `min` keeps the lowest cost path to each node.

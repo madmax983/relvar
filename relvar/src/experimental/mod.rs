@@ -31,6 +31,7 @@
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
+//! - **[`pathfinding`](crate::experimental::pathfinding)**: Relational Pathfinding Simulator.
 
 pub mod automata;
 pub mod automl;
@@ -56,6 +57,8 @@ pub mod genetic_algorithm;
 pub mod graph_neural_network;
 pub mod markov;
 pub mod parser;
+/// Relational Pathfinding Simulator.
+pub mod pathfinding;
 /// Relational Petri Net Simulator.
 pub mod petri_net;
 pub mod physics;
