@@ -51,3 +51,6 @@
 ## 2026-05-01 - Avoided Arc clone in DML loop
 **Learning:** `Arc<TupleType>::clone()` incurs reference counting overhead and potential allocation overhead, taking around 14ms per 10k tuple creations as shown in `tuple_creation` bench.
 **Action:** Always borrow reference from wrapper container types instead of cloning Arc explicitly if the borrow lifetime spans the whole needed lifetime block, like `tuple.conforms_to(relation_type.tuple_type())` instead of `.clone()`ing `expected_type`.
+## $(date +%Y-%m-%d) - [HashSet Pre-Allocation in Relation::from_tuples_unchecked]
+**Learning:** `Relation::from_tuples_unchecked` previously allocated a `HashSet` using the lower bound of an iterator's `size_hint`. For chained iterators like `.filter()`, the lower bound is often 0, leading to a zero-capacity `HashSet` allocation and repeated reallocation churn as elements are inserted.
+**Action:** Use `let capacity = upper.unwrap_or(lower);` to fall back on the upper bound when constructing the collection. While this can risk over-allocation in extreme filtered edge cases, it drastically reduces allocation overhead in the majority of relational algebra operations (like `restrict` and `semijoin`) where the filtered set size aligns closer to the original capacity.
