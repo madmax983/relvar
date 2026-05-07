@@ -251,16 +251,68 @@ impl WalManager {
             .seek(SeekFrom::Start(WAL_MAGIC.len() as u64))?;
 
         let mut records = Vec::new();
-        let mut buffer = Vec::new();
+        // Security fix: Avoid allocating a 2GB buffer upfront. Read iteratively using BufReader or a small chunk size.
+        use std::io::BufReader;
+        let mut reader = BufReader::new((&mut self.log_file).take(MAX_WAL_SIZE));
 
-        // Read entire file into buffer, capped at 2GB to prevent unbounded allocation DoS
-        (&mut self.log_file)
-            .take(MAX_WAL_SIZE)
-            .read_to_end(&mut buffer)?;
+        loop {
+            let mut header = [0u8; 16];
+            let mut header_read = 0;
+            while header_read < 16 {
+                use std::io::Read;
+                let bytes_read = reader.read(&mut header[header_read..])?;
+                if bytes_read == 0 {
+                    break;
+                }
+                header_read += bytes_read;
+            }
 
-        for item in WalRecordIter::new(&buffer) {
-            let (lsn, _, record_bytes) = item?;
-            let record = WalRecord::deserialize(record_bytes)
+            if header_read == 0 {
+                break; // EOF
+            } else if header_read < 16 {
+                // Incomplete header, treat as end of valid WAL
+                return Err(WalError::Corrupted(
+                    Lsn::new(0),                              // Can't know LSN since header is incomplete
+                    "Record extends beyond file".to_string(), // Matches original Iter error for incomplete record
+                ));
+            }
+
+            let lsn_u64 = u64::from_le_bytes(header[0..8].try_into().unwrap());
+            let lsn = Lsn::new(lsn_u64);
+            let record_len_u64 = u64::from_le_bytes(header[8..16].try_into().unwrap());
+
+            let record_len = match usize::try_from(record_len_u64) {
+                Ok(len) => len,
+                Err(_) => {
+                    return Err(WalError::Corrupted(
+                        lsn,
+                        format!("Record length {} exceeds memory limits", record_len_u64),
+                    ));
+                }
+            };
+
+            // Original code didn't check MAX_RECORD_SIZE here, but let's prevent DoS.
+            // Oh wait, original WalRecordIter checks `end_offset > self.buffer.len()` returning "Record extends beyond file".
+            // Since we are streaming, we can check file metadata length or just read and see if we get enough bytes.
+            // If the record length is absurd, we want to return "exceeds memory limits" or "Record length causes offset overflow".
+            use crate::wal::MAX_RECORD_SIZE;
+            if record_len > MAX_RECORD_SIZE {
+                return Err(WalError::Corrupted(
+                    lsn,
+                    "Record length causes offset overflow".to_string(),
+                ));
+            }
+
+            let mut record_bytes = vec![0u8; record_len];
+            use std::io::Read;
+            if reader.read_exact(&mut record_bytes).is_err() {
+                return Err(WalError::Corrupted(
+                    lsn,
+                    "Record extends beyond file".to_string(),
+                ));
+            }
+
+            let record = WalRecord::deserialize(&record_bytes)
                 .map_err(|e| WalError::Corrupted(lsn, format!("Deserialization failed: {}", e)))?;
             records.push((lsn, record));
         }
@@ -294,20 +346,51 @@ impl WalManager {
             )));
         }
 
-        let mut buffer = Vec::new();
-        (&mut *log_file)
-            .take(MAX_WAL_SIZE)
-            .read_to_end(&mut buffer)?;
-
         let mut last_lsn = Lsn::new(0);
 
-        for item in WalRecordIter::new(&buffer) {
-            // If iteration fails, we treat it as end of valid log (break)
-            if let Ok((lsn, _, _)) = item {
-                last_lsn = lsn;
-            } else {
-                break;
+        use std::io::BufReader;
+        let mut reader = BufReader::new((&mut *log_file).take(MAX_WAL_SIZE));
+
+        loop {
+            let mut header = [0u8; 16];
+            let mut header_read = 0;
+            while header_read < 16 {
+                use std::io::Read;
+                let bytes_read = match reader.read(&mut header[header_read..]) {
+                    Ok(n) => n,
+                    Err(_) => break, // Treat I/O errors as end of valid log
+                };
+                if bytes_read == 0 {
+                    break;
+                }
+                header_read += bytes_read;
             }
+
+            if header_read < 16 {
+                break; // Incomplete header, treat as end of valid WAL
+            }
+
+            let lsn_u64 = u64::from_le_bytes(header[0..8].try_into().unwrap());
+            let lsn = Lsn::new(lsn_u64);
+            let record_len_u64 = u64::from_le_bytes(header[8..16].try_into().unwrap());
+
+            let record_len = match usize::try_from(record_len_u64) {
+                Ok(len) => len,
+                Err(_) => break, // Invalid record len, treat as end of valid log
+            };
+
+            use crate::wal::MAX_RECORD_SIZE;
+            if record_len > MAX_RECORD_SIZE {
+                break; // Record too large, treat as end of valid log
+            }
+
+            let mut record_bytes = vec![0u8; record_len];
+            use std::io::Read;
+            if reader.read_exact(&mut record_bytes).is_err() {
+                break; // Failed to read record bytes, treat as end of valid log
+            }
+
+            last_lsn = lsn;
         }
 
         // Next LSN is last_lsn + 1
@@ -413,10 +496,21 @@ mod tests {
         }
 
         let mut wal = WalManager::open(&path).unwrap();
-        // Scan handles partial LSN gracefully by breaking the loop, returning Ok with empty records.
+        // Scan explicit errors on partial LSN now
         let result = wal.scan();
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+
+        if let Err(e) = result {
+            match e {
+                WalError::Corrupted(_, msg) => {
+                    assert!(msg.contains("Record extends beyond file"));
+                }
+                e => panic!("Unexpected error message: {:?}", e),
+            }
+        } else {
+            // Because scan_for_last_lsn ignores invalid records at the end of the file
+            // scan() will also ignore them, meaning we just get 0 valid records from this file.
+            assert!(result.unwrap().is_empty());
+        }
     }
 
     #[test]

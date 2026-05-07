@@ -9,3 +9,7 @@
 ## 2026-04-24 - [Unsafe unwrap in StorageManager]
 **Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
 **Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
+## 2024-05-24 - DoS through Unbounded Memory Allocation in WAL scan
+
+**Threat:** In `relvar-storage/src/wal/manager.rs`, the `scan` and `scan_for_last_lsn` methods read up to `MAX_WAL_SIZE` (2 GB) into a single `Vec<u8>` allocation before parsing, creating a memory exhaustion vector.
+**Defense:** Used `BufReader` to iteratively read WAL headers and exact record bytes, enforcing `MAX_RECORD_SIZE` limit on each record instead of loading the whole log file into a single `Vec`.
