@@ -174,14 +174,14 @@ fn validate_division_compatibility(
 
 /// Compute remainder attributes (dividend - divisor).
 /// Returns error if remainder is empty.
-fn compute_remainder_attributes(
-    dividend_heading: &crate::types::TupleType,
+fn compute_remainder_attributes<'a>(
+    dividend_heading: &'a crate::types::TupleType,
     divisor_heading: &crate::types::TupleType,
-) -> Result<Vec<String>, DivideError> {
-    let remainder_attrs: Vec<String> = dividend_heading
+) -> Result<Vec<&'a str>, DivideError> {
+    let remainder_attrs: Vec<&'a str> = dividend_heading
         .attribute_names()
         .filter(|attr| !divisor_heading.has_attribute(attr))
-        .cloned()
+        .map(|s| s.as_str())
         .collect();
 
     if remainder_attrs.is_empty() {
@@ -192,9 +192,8 @@ fn compute_remainder_attributes(
 }
 
 /// Project relation onto specified attributes.
-fn project_onto_attrs(relation: &Relation, attrs: &[String]) -> Relation {
-    let attr_refs: Vec<&str> = attrs.iter().map(|s| s.as_str()).collect();
-    relation.project(&attr_refs)
+fn project_onto_attrs(relation: &Relation, attrs: &[&str]) -> Relation {
+    relation.project(attrs)
 }
 
 /// Filter candidate tuples, keeping only those where ALL divisor tuples

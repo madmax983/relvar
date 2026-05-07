@@ -51,3 +51,6 @@
 ## 2026-05-01 - Avoided Arc clone in DML loop
 **Learning:** `Arc<TupleType>::clone()` incurs reference counting overhead and potential allocation overhead, taking around 14ms per 10k tuple creations as shown in `tuple_creation` bench.
 **Action:** Always borrow reference from wrapper container types instead of cloning Arc explicitly if the borrow lifetime spans the whole needed lifetime block, like `tuple.conforms_to(relation_type.tuple_type())` instead of `.clone()`ing `expected_type`.
+## 2026-05-21 - [Vec<&str> String Allocation Avoidance]
+**Learning:** Returning `Vec<String>` from internal pre-calculation helpers like `compute_remainder_attributes` or `common_attributes` causes operations (like projecting in `divide`) to map and collect those strings unnecessarily. This adds significant heap allocations inside loops or filter chains.
+**Action:** By explicitly changing the return type to `Vec<&str>` where lifetimes allow (e.g. slicing references tied to the original headers), the operations can slice and pass atomic references rather than allocating and pushing full `String`s. This drops time and space complexity during mapped iterations from O(N * C) (C being attribute string length) to essentially O(N).
