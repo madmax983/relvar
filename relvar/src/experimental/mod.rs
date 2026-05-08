@@ -31,6 +31,7 @@
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
+//! - **[`package_manager`](crate::experimental::package_manager)**: Relational Package Manager.
 
 pub mod automata;
 pub mod automl;
@@ -55,6 +56,8 @@ pub mod dom;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;
 pub mod markov;
+/// Relational Package Manager.
+pub mod package_manager;
 pub mod parser;
 /// Relational Petri Net Simulator.
 pub mod petri_net;

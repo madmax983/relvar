@@ -132,3 +132,7 @@
 **Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
+## Relational Package Manager
+**Concept:** A package manager that models installed packages, explicit installations, and dependencies as relations, using relational algebra (joins, differences) to find unmet dependencies, orphan packages, and conflicts.
+**Fate:** Pending
+**Lesson:** TBD
