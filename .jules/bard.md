@@ -30,3 +30,6 @@
 ## 2024-05-18 - [Error Documentation]
 **Confusion:** Error enums were documented with simple `.to_string()` assertions, which was "Dead End" noise failing to explain how to recover.
 **Clarification:** Rewrote doc-tests to include rich `/// # Recovery` sections mapped to each variant, explaining exactly what the error means in the Relational context and how to fix it, using story-driven lore as per Bard's philosophy.
+## 2025-05-20 - The "KnowledgeGraph" Examples
+**Confusion:** The experimental `KnowledgeGraph` module was flagged by `find_undoc.py` for missing module-level documentation (`//!`) and lacking executable doc-tests (`/// # Examples` blocks) for its main struct, `TriplePattern`, and methods (`new`, `insert`, `query`). This lack of storytelling made it hard to understand how basic graph patterns are modeled relationally.
+**Clarification:** Added module-level documentation explaining the purpose of the experimental Knowledge Graph. Systematically added executable `/// # Examples` blocks demonstrating how to initialize the graph, insert triples, construct `TriplePattern` instances, and execute queries, fulfilling Bard's philosophy.
