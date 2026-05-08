@@ -1,7 +1,9 @@
 import sys
-import os
+import argparse
 
-with open("pr_description.md") as f:
-    body = f.read()
+parser = argparse.ArgumentParser()
+parser.add_argument('--title', required=True)
+parser.add_argument('--description', required=True)
+args = parser.parse_args()
 
-print(f"Submitting PR with title: ⚡ Bolt: Avoid cloning heading per tuple in ungroup\n\n{body}")
+print(f"Submitting PR with title: {args.title}\n\n{args.description}")

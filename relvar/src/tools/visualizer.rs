@@ -104,23 +104,18 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
 
         let relvars = self.db.list_relvars();
 
-        // 1. Generate nodes (Tables)
-        for name in &relvars {
-            // Note: We use get_relvar_type() to get the relation structure.
-            // This avoids loading the full relation data.
+        self.append_nodes(&relvars, &mut dot);
+        self.append_edges(&relvars, &mut dot);
+
+        dot.push_str("}\n");
+        dot
+    }
+
+    fn append_nodes(&self, relvars: &[String], dot: &mut String) {
+        for name in relvars {
             if let Ok(relation_type) = self.db.get_relvar_type(name) {
                 let tuple_type = relation_type.tuple_type();
-
-                // Determine primary key attributes
-                let pk_attrs = if let Some(key_constraints) = self.db.get_key_constraints(name) {
-                    if let Some(pk) = key_constraints.primary_key() {
-                        pk.attributes().to_vec()
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    Vec::new()
-                };
+                let pk_attrs = self.get_primary_key_attributes(name);
 
                 let node_id = escape_dot_id(name);
                 let table_title = escape_html(name);
@@ -134,7 +129,6 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                     table_title
                 ));
 
-                // Sort attributes for consistent output
                 let mut attributes: Vec<_> = tuple_type.attributes().iter().collect();
                 attributes.sort_by(|a, b| a.0.cmp(b.0));
 
@@ -148,8 +142,6 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                         safe_attr_name
                     };
 
-                    // Note: scalar_type implements Debug, which might contain special chars.
-                    // Ideally we'd escape that too, strictly speaking.
                     let safe_type = escape_html(&format!("{:?}", scalar_type));
 
                     dot.push_str(&format!(
@@ -160,9 +152,10 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                 dot.push_str("    </table>>];\n\n");
             }
         }
+    }
 
-        // 2. Generate edges (Foreign Keys)
-        for name in &relvars {
+    fn append_edges(&self, relvars: &[String], dot: &mut String) {
+        for name in relvars {
             if let Some(fk_constraints) = self.db.get_foreign_key_constraints(name) {
                 for fk in fk_constraints.foreign_keys() {
                     let ref_table = fk.referenced_relation_name();
@@ -179,9 +172,14 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                 }
             }
         }
+    }
 
-        dot.push_str("}\n");
-        dot
+    fn get_primary_key_attributes(&self, name: &str) -> Vec<String> {
+        self.db
+            .get_key_constraints(name)
+            .and_then(|c| c.primary_key())
+            .map(|pk| pk.attributes().to_vec())
+            .unwrap_or_default()
     }
 }
 
