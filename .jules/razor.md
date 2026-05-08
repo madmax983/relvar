@@ -21,3 +21,8 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+
+## [Reduction]
+**Bloat:** Deep folder hierarchies for simple modules like `relvar-core/src/query/mod.rs`, `relvar-core/src/utils/mod.rs`, `relvar-storage/src/persistent_engine/mod.rs`, and `relvar-storage/src/storage/heap/mod.rs` where the file count was extremely low (1-2 files).
+**Cut:** Flattened the modules by renaming `mod.rs` to `<module_name>.rs` and moving them up one directory level. For example, `relvar-core/src/query/mod.rs` became `relvar-core/src/query.rs`, and `utils/recursion.rs` was merged into `utils.rs`.
+**Saved:** Multiple unnecessary directories, making the project structure flatter, simpler, and easier to navigate.

@@ -1,4 +1,4 @@
-💡 What: Optimized `compute_relation_after_update` in `relvar-core/src/database/dml.rs` to borrow `expected_type` as a reference rather than unnecessarily calling `.clone()` on the underlying `Arc<TupleType>`.
-🎯 Why: Avoiding an unnecessary clone call on `Arc<TupleType>` during data modifications. This `Arc` clone was happening repeatedly during setup of the update operations and could easily be avoided by borrowing a reference instead.
-📊 Impact: Minor speedup and removal of an unnecessary clone operation overhead, which could matter under heavy multi-threaded workloads where atomic refcounts are heavily contended. The `tuple_creation` bench showed a minor performance improvement.
-🔬 Measurement: Run bench `tuple_creation` / `group_bench`.
+🚰 Smell: Deep folder hierarchies (`relvar-core/src/query/mod.rs`, `relvar-storage/src/storage/heap/mod.rs`, etc.) with 1-2 files per folder added unnecessary abstractions and made the codebase harder to navigate.
+✨ Solution: Flattened deep folders by moving `mod.rs` contents directly into `<module>.rs` (e.g., `relvar-core/src/query.rs`).
+🧼 Benefit: Much flatter and more intuitive project structure without unnecessary boilerplate nesting, abiding by the KISS principle.
+🛡️ Verification: Ran `cargo test`, `cargo clippy`, and `cargo fmt`. All verify successfully and compilation continues to succeed. Documented in `.jules/razor.md`.

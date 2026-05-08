@@ -575,12 +575,12 @@ enum ScalarValueUnchecked {
     Bool(bool),
     Bytes(Vec<u8>),
     Relation(
-        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        #[serde(deserialize_with = "crate::utils::deserialize_guarded")]
         crate::values::Relation,
     ),
     UserDefined {
         type_def: ScalarType,
-        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        #[serde(deserialize_with = "crate::utils::deserialize_guarded")]
         value: Box<ScalarValueUnchecked>,
     },
 }

@@ -709,12 +709,12 @@ enum ScalarTypeUnchecked {
     Bool,
     Bytes,
     Relation(
-        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        #[serde(deserialize_with = "crate::utils::deserialize_guarded")]
         Box<crate::types::RelationType>,
     ),
     UserDefined {
         name: String,
-        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        #[serde(deserialize_with = "crate::utils::deserialize_guarded")]
         representation: Box<ScalarTypeUnchecked>,
     },
 }
