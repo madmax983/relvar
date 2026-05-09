@@ -132,3 +132,7 @@
 **Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
+## Relational Text Adventure Engine
+**Concept:** Modeled a Text Adventure / MUD game using purely relational algebra. Represents `rooms`, `exits`, `items`, `inventory`, and `player_state` as relations. Operations like `look`, `walk`, and `take` are computed declaratively using Relvar's algebra.
+**Fate:** TBD
+**Lesson:** Relational algebra gracefully handles complex state mutations and traversals like MUDs.
