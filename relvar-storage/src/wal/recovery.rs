@@ -408,4 +408,22 @@ mod tests {
         // Aborted transaction should NOT be in committed set
         assert!(!result.committed_txns.contains(&txn1));
     }
+
+    #[test]
+    fn test_recovery_missing_begin() {
+        let temp = NamedTempFile::new().unwrap();
+        let mut wal = WalManager::create(temp.path()).unwrap();
+
+        // Log a commit and abort without a begin
+        let t1 = TransactionId::new(100);
+        let t2 = TransactionId::new(200);
+
+        wal.log(WalRecord::Commit { txn_id: t1 }).unwrap();
+        wal.log(WalRecord::Abort { txn_id: t2 }).unwrap();
+
+        let result = recover(&mut wal).unwrap();
+
+        assert!(result.committed_txns.contains(&t1));
+        assert!(!result.committed_txns.contains(&t2));
+    }
 }

@@ -292,4 +292,11 @@ mod tests {
         let generator = TransactionIdGenerator::from_start(TransactionId::new(u64::MAX));
         generator.generate();
     }
+
+    #[test]
+    #[should_panic(expected = "LSN overflow")]
+    fn test_lsn_next_overflow() {
+        let lsn = Lsn::new(u64::MAX);
+        lsn.next();
+    }
 }

@@ -415,4 +415,25 @@ mod tests {
         assert_eq!(loaded.cardinality(), 1);
         assert!(loaded.contains(&tuple! { id: 100i64, name: "Charlie" }));
     }
+
+    #[test]
+    fn test_storage_manager_validate_name_edge_cases() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+
+        assert!(manager.create_relation(".", test_rel_type()).is_err());
+        assert!(manager.create_relation("..", test_rel_type()).is_err());
+        assert!(
+            manager
+                .create_relation("foo..bar", test_rel_type())
+                .is_err()
+        );
+        assert!(manager.create_relation("", test_rel_type()).is_err());
+        assert!(manager.create_relation("foo/bar", test_rel_type()).is_err());
+        assert!(
+            manager
+                .create_relation("foo\\bar", test_rel_type())
+                .is_err()
+        );
+    }
 }

@@ -881,4 +881,24 @@ mod tests {
             _ => panic!("Expected Serialization error, got {:?}", result),
         }
     }
+
+    #[test]
+    fn test_page_set_data_too_large() {
+        let mut page = Page::new(0);
+        let data = vec![0u8; PAGE_SIZE + 1];
+
+        let result = page.set_data(data);
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PageError::PageTooLarge));
+    }
+
+    #[test]
+    fn test_page_from_data_too_large_boundary() {
+        let data = vec![0u8; PAGE_SIZE - 7]; // PAGE_SIZE - 7 > PAGE_SIZE - 8
+        let result = Page::from_data(0, data);
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PageError::PageTooLarge));
+    }
 }
