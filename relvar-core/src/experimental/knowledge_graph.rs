@@ -3,6 +3,16 @@ use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::Relation;
 
 /// A Knowledge Graph modeled purely using relational algebra.
+///
+/// # Examples
+/// ```
+/// use relvar_core::experimental::knowledge_graph::KnowledgeGraph;
+///
+/// let mut kg = KnowledgeGraph::new();
+/// kg.insert("Alice", "knows", "Bob").unwrap();
+///
+/// assert_eq!(kg.triples.cardinality(), 1);
+/// ```
 pub struct KnowledgeGraph {
     /// A single relation storing triples (subject, predicate, object)
     pub triples: Relation,
@@ -10,6 +20,14 @@ pub struct KnowledgeGraph {
 
 impl KnowledgeGraph {
     /// Create a new empty Knowledge Graph.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_core::experimental::knowledge_graph::KnowledgeGraph;
+    ///
+    /// let kg = KnowledgeGraph::new();
+    /// assert_eq!(kg.triples.cardinality(), 0);
+    /// ```
     pub fn new() -> Self {
         let heading = TupleType::new()
             .with_attribute("subject", ScalarType::String)
@@ -22,6 +40,16 @@ impl KnowledgeGraph {
     }
 
     /// Insert a new triple into the Knowledge Graph.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_core::experimental::knowledge_graph::KnowledgeGraph;
+    ///
+    /// let mut kg = KnowledgeGraph::new();
+    /// kg.insert("Alice", "knows", "Bob").unwrap();
+    ///
+    /// assert_eq!(kg.triples.cardinality(), 1);
+    /// ```
     pub fn insert(
         &mut self,
         subject: &str,
@@ -41,6 +69,25 @@ impl KnowledgeGraph {
 
     /// Query the graph using a basic graph pattern (BGP).
     /// A pattern is represented as a list of `TriplePattern` structs.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_core::experimental::knowledge_graph::{KnowledgeGraph, TriplePattern};
+    ///
+    /// let mut kg = KnowledgeGraph::new();
+    /// kg.insert("Alice", "knows", "Bob").unwrap();
+    /// kg.insert("Bob", "knows", "Charlie").unwrap();
+    /// kg.insert("Bob", "age", "30").unwrap();
+    ///
+    /// // Query: Who does Alice know that also has an age?
+    /// let patterns = vec![
+    ///     TriplePattern::new("Alice", "knows", "?friend"),
+    ///     TriplePattern::new("?friend", "age", "?age"),
+    /// ];
+    ///
+    /// let result = kg.query(&patterns).unwrap();
+    /// assert_eq!(result.cardinality(), 1);
+    /// ```
     pub fn query(&self, patterns: &[TriplePattern]) -> Result<Relation, DatabaseError> {
         if patterns.is_empty() {
             return Err(DatabaseError::AlgebraError("Empty BGP".to_string()));
@@ -119,6 +166,17 @@ pub struct TriplePattern {
 
 impl TriplePattern {
     /// Create a new TriplePattern
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_core::experimental::knowledge_graph::TriplePattern;
+    ///
+    /// // A pattern with concrete values
+    /// let p1 = TriplePattern::new("Alice", "knows", "Bob");
+    ///
+    /// // A pattern with variables
+    /// let p2 = TriplePattern::new("?person", "knows", "?friend");
+    /// ```
     pub fn new(subject: &str, predicate: &str, object: &str) -> Self {
         Self {
             subject: subject.to_string(),

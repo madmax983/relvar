@@ -30,3 +30,4 @@
 ## 2024-05-18 - [Error Documentation]
 **Confusion:** Error enums were documented with simple `.to_string()` assertions, which was "Dead End" noise failing to explain how to recover.
 **Clarification:** Rewrote doc-tests to include rich `/// # Recovery` sections mapped to each variant, explaining exactly what the error means in the Relational context and how to fix it, using story-driven lore as per Bard's philosophy.
+## 2025-05-20 - The "KnowledgeGraph" Examples\n**Confusion:** The experimental `KnowledgeGraph` module had no executable doc-tests for the main struct or its methods (`new`, `insert`, `query`, and `TriplePattern::new`). This lack of examples made it confusing to understand how to initialize the graph, insert triples, and execute Basic Graph Pattern queries.\n**Clarification:** Added executable `/// # Examples` doc-tests for `KnowledgeGraph` and all its core methods, demonstrating how to construct the graph and query variables successfully.
