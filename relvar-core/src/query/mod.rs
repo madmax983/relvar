@@ -30,7 +30,7 @@
 //!         op: CmpOp::Eq,
 //!         right: ValueOrRef::Value(ScalarValue::Int(1)),
 //!     })
-//!     .project(vec!["name"]);
+//!     .project(["name"]);
 //!
 //! // Execute
 //! let result = query.execute(&db).unwrap();
@@ -369,9 +369,11 @@ impl Query {
     /// ```
     /// use relvar_core::query::Query;
     ///
-    /// let q = Query::scan("USERS").project(vec!["name", "email"]);
+    /// let q = Query::scan("USERS").project(["name", "email"]);
     /// ```
-    pub fn project<S: Into<String>>(self, attributes: Vec<S>) -> Self {
+    /// **Optimization**: Accepts `IntoIterator` to allow passing stack-allocated arrays
+    /// (e.g., `["a", "b"]`) instead of requiring heap-allocated vectors (`vec!["a", "b"]`).
+    pub fn project<S: Into<String>, I: IntoIterator<Item = S>>(self, attributes: I) -> Self {
         Query::Project {
             input: Box::new(self),
             attributes: attributes.into_iter().map(|s| s.into()).collect(),
@@ -384,9 +386,14 @@ impl Query {
     /// ```
     /// use relvar_core::query::Query;
     ///
-    /// let q = Query::scan("USERS").rename(vec![("name", "full_name")]);
+    /// let q = Query::scan("USERS").rename([("name", "full_name")]);
     /// ```
-    pub fn rename<S1: Into<String>, S2: Into<String>>(self, mappings: Vec<(S1, S2)>) -> Self {
+    /// **Optimization**: Accepts `IntoIterator` to allow passing stack-allocated arrays
+    /// (e.g., `[("old", "new")]`) instead of requiring heap-allocated vectors.
+    pub fn rename<S1: Into<String>, S2: Into<String>, I: IntoIterator<Item = (S1, S2)>>(
+        self,
+        mappings: I,
+    ) -> Self {
         Query::Rename {
             input: Box::new(self),
             mappings: mappings
@@ -420,17 +427,23 @@ impl Query {
     /// use relvar_core::query::Query;
     /// use relvar_core::algebra::Aggregation;
     ///
-    /// let q = Query::scan("USERS").summarize(vec!["department"], vec![Aggregation::count("emp_count")]);
+    /// let q = Query::scan("USERS").summarize(["department"], [Aggregation::count("emp_count")]);
     /// ```
-    pub fn summarize<S: Into<String>>(
+    /// **Optimization**: Accepts `IntoIterator` for both `group_by` and `aggregations`
+    /// to allow passing stack-allocated arrays instead of requiring heap-allocated vectors.
+    pub fn summarize<
+        S: Into<String>,
+        I: IntoIterator<Item = S>,
+        A: IntoIterator<Item = Aggregation>,
+    >(
         self,
-        group_by: Vec<S>,
-        aggregations: Vec<Aggregation>,
+        group_by: I,
+        aggregations: A,
     ) -> Self {
         Query::Summarize {
             input: Box::new(self),
             group_by: group_by.into_iter().map(|s| s.into()).collect(),
-            aggregations,
+            aggregations: aggregations.into_iter().collect(),
         }
     }
 }
@@ -529,7 +542,7 @@ mod tests {
     #[test]
     fn test_project() {
         let db = setup_db();
-        let query = Query::scan("USERS").project(vec!["name"]);
+        let query = Query::scan("USERS").project(["name"]);
 
         let result = query.execute(&db).unwrap();
         assert_eq!(result.degree(), 1);
@@ -539,7 +552,7 @@ mod tests {
     #[test]
     fn test_rename() {
         let db = setup_db();
-        let query = Query::scan("USERS").rename(vec![("name", "full_name")]);
+        let query = Query::scan("USERS").rename([("name", "full_name")]);
 
         let result = query.execute(&db).unwrap();
         assert!(result.relation_type().heading().has_attribute("full_name"));
@@ -562,7 +575,7 @@ mod tests {
     #[test]
     fn test_summarize() {
         let db = setup_db();
-        let query = Query::scan("USERS").summarize(vec!["age"], vec![Aggregation::count("count")]);
+        let query = Query::scan("USERS").summarize(["age"], [Aggregation::count("count")]);
         let result = query.execute(&db).unwrap();
 
         // One person with age 25, one with age 30
@@ -577,7 +590,7 @@ mod tests {
                 op: CmpOp::Eq,
                 right: ValueOrRef::Value(ScalarValue::Int(1)),
             })
-            .project(vec!["name"]);
+            .project(["name"]);
 
         let explain_str = query.explain();
         assert!(explain_str.contains("Project([\"name\"])"));
@@ -587,10 +600,10 @@ mod tests {
         let q_join = Query::scan("A").join(Query::scan("B"));
         assert!(q_join.explain().contains("Join"));
 
-        let q_rename = Query::scan("A").rename(vec![("old", "new")]);
+        let q_rename = Query::scan("A").rename([("old", "new")]);
         assert!(q_rename.explain().contains("Rename([(\"old\", \"new\")])"));
 
-        let q_summarize = Query::scan("A").summarize(vec!["a"], vec![Aggregation::count("cnt")]);
+        let q_summarize = Query::scan("A").summarize(["a"], [Aggregation::count("cnt")]);
         assert!(q_summarize.explain().contains("Summarize"));
     }
 
@@ -599,7 +612,7 @@ mod tests {
         let db = setup_db();
 
         // Algebra error in Summarize (grouping by missing attribute)
-        let q_bad_sum = Query::scan("USERS").summarize(vec!["nonexistent_col"], vec![]);
+        let q_bad_sum = Query::scan("USERS").summarize(["nonexistent_col"], []);
         let err = q_bad_sum.execute(&db);
         assert!(matches!(err, Err(QueryError::Algebra(_))));
     }

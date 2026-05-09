@@ -51,3 +51,7 @@
 ## 2026-05-01 - Avoided Arc clone in DML loop
 **Learning:** `Arc<TupleType>::clone()` incurs reference counting overhead and potential allocation overhead, taking around 14ms per 10k tuple creations as shown in `tuple_creation` bench.
 **Action:** Always borrow reference from wrapper container types instead of cloning Arc explicitly if the borrow lifetime spans the whole needed lifetime block, like `tuple.conforms_to(relation_type.tuple_type())` instead of `.clone()`ing `expected_type`.
+
+## 2024-05-15 - [Avoid `Vec` allocation in query AST builder methods]
+**Learning:** `IntoIterator` can be used to accept both arrays (`["a", "b"]`) and Vec (`vec!["a", "b"]`) to avoid intermediate heap allocation from using `.collect()` when calling API methods.
+**Action:** Replace `Vec<T>` inputs with `IntoIterator<Item = T>` in API builders where intermediate conversions or slices are common.
