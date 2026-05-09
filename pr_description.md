@@ -1,4 +1,4 @@
-💡 What: Optimized `compute_relation_after_update` in `relvar-core/src/database/dml.rs` to borrow `expected_type` as a reference rather than unnecessarily calling `.clone()` on the underlying `Arc<TupleType>`.
-🎯 Why: Avoiding an unnecessary clone call on `Arc<TupleType>` during data modifications. This `Arc` clone was happening repeatedly during setup of the update operations and could easily be avoided by borrowing a reference instead.
-📊 Impact: Minor speedup and removal of an unnecessary clone operation overhead, which could matter under heavy multi-threaded workloads where atomic refcounts are heavily contended. The `tuple_creation` bench showed a minor performance improvement.
-🔬 Measurement: Run bench `tuple_creation` / `group_bench`.
+🕸️ Tangle: The `relvar-core/src/database/tests/mod.rs` module leaked its internal `common` testing setup module publicly via `pub mod common;`.
+📐 Blueprint: Changed the visibility of the `common` testing module to `pub(crate) mod common;`, properly encapsulating internal test utilities while adhering to strict structural boundaries.
+🧱 Stability: Prevents internal testing utilities from leaking, establishing a cleaner boundary within the core database implementation.
+🔬 Verification: Builds successfully (`cargo check`), tests pass (`cargo test`), and strictly adheres to formatting and clippy lints (`cargo clippy --all-targets --all-features -- -D warnings`).
