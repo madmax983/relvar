@@ -10,7 +10,7 @@ use relvar_core::{
     algebra::Aggregation,
     error::DatabaseError,
     types::ScalarType,
-    values::{Relation, ScalarValue},
+    values::{Relation, ScalarValue, Tuple},
 };
 
 /// A relational N-Body Physics Simulation.
@@ -59,8 +59,12 @@ impl PhysicsEngine {
     }
 
     fn compute_pairwise_forces(&self) -> Result<Relation, DatabaseError> {
-        // 1. Cross join particles with themselves to compute pairwise forces.
-        // Rename attributes to distinguish particle 1 and particle 2.
+        let pairs = self.generate_particle_pairs()?;
+        let interactions = pairs.restrict(is_distinct_pair);
+        self.calculate_force_components(&interactions)
+    }
+
+    fn generate_particle_pairs(&self) -> Result<Relation, DatabaseError> {
         let p1 = self.particles.rename(&[
             ("id", "id1"),
             ("x", "x1"),
@@ -79,64 +83,18 @@ impl PhysicsEngine {
             ("mass", "m2"),
         ]);
 
-        let pairs = p1.join(&p2)?;
+        p1.join(&p2)
+    }
 
-        // 2. Filter out self-interactions (id1 == id2)
-        let interactions = pairs.restrict(|t| {
-            let id1 = t.get_typed::<i64>("id1").unwrap();
-            let id2 = t.get_typed::<i64>("id2").unwrap();
-            id1 != id2
-        });
-
-        // 3. Compute forces for each pair
+    fn calculate_force_components(
+        &self,
+        interactions: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         let g = self.g;
         interactions
-            .extend("fx", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                // Avoid division by zero
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fx = f * (dx / dist);
-
-                ScalarValue::Float(fx)
-            })
+            .extend("fx", ScalarType::Float, move |t| compute_force_x(t, g))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .extend("fy", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fy = f * (dy / dist);
-
-                ScalarValue::Float(fy)
-            })
+            .extend("fy", ScalarType::Float, move |t| compute_force_y(t, g))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 
@@ -180,44 +138,82 @@ impl PhysicsEngine {
             .union(&missing_with_zero_forces)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
+}
 
+fn is_distinct_pair(t: &Tuple) -> bool {
+    let id1 = t.get_typed::<i64>("id1").unwrap();
+    let id2 = t.get_typed::<i64>("id2").unwrap();
+    id1 != id2
+}
+
+fn compute_force_x(t: &Tuple, g: f64) -> ScalarValue {
+    let x1 = t.get_typed::<f64>("x1").unwrap();
+    let x2 = t.get_typed::<f64>("x2").unwrap();
+    let y1 = t.get_typed::<f64>("y1").unwrap();
+    let y2 = t.get_typed::<f64>("y2").unwrap();
+    let m1 = t.get_typed::<f64>("m1").unwrap();
+    let m2 = t.get_typed::<f64>("m2").unwrap();
+
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist_sq = dx * dx + dy * dy;
+
+    if dist_sq < 1e-10 {
+        return ScalarValue::Float(0.0);
+    }
+
+    let dist = dist_sq.sqrt();
+    let f = g * m1 * m2 / dist_sq;
+    ScalarValue::Float(f * (dx / dist))
+}
+
+fn compute_force_y(t: &Tuple, g: f64) -> ScalarValue {
+    let x1 = t.get_typed::<f64>("x1").unwrap();
+    let x2 = t.get_typed::<f64>("x2").unwrap();
+    let y1 = t.get_typed::<f64>("y1").unwrap();
+    let y2 = t.get_typed::<f64>("y2").unwrap();
+    let m1 = t.get_typed::<f64>("m1").unwrap();
+    let m2 = t.get_typed::<f64>("m2").unwrap();
+
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist_sq = dx * dx + dy * dy;
+
+    if dist_sq < 1e-10 {
+        return ScalarValue::Float(0.0);
+    }
+
+    let dist = dist_sq.sqrt();
+    let f = g * m1 * m2 / dist_sq;
+    ScalarValue::Float(f * (dy / dist))
+}
+
+impl PhysicsEngine {
     fn update_kinematics_and_project(
         &self,
         all_particles_with_forces: &Relation,
     ) -> Result<Relation, DatabaseError> {
-        // 6. Update kinematics: v = v + a*dt, p = p + v*dt
-        let dt = self.dt;
-        let updated = all_particles_with_forces
-            .extend("new_vx", ScalarType::Float, move |t| {
-                let vx = t.get_typed::<f64>("vx").unwrap();
-                let m = t.get_typed::<f64>("mass").unwrap();
-                let fx = t.get_typed::<f64>("net_fx").unwrap();
-                let ax = fx / m;
-                ScalarValue::Float(vx + ax * dt)
-            })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .extend("new_vy", ScalarType::Float, move |t| {
-                let vy = t.get_typed::<f64>("vy").unwrap();
-                let m = t.get_typed::<f64>("mass").unwrap();
-                let fy = t.get_typed::<f64>("net_fy").unwrap();
-                let ay = fy / m;
-                ScalarValue::Float(vy + ay * dt)
-            })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .extend("new_x", ScalarType::Float, move |t| {
-                let x = t.get_typed::<f64>("x").unwrap();
-                let new_vx = t.get_typed::<f64>("new_vx").unwrap();
-                ScalarValue::Float(x + new_vx * dt)
-            })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .extend("new_y", ScalarType::Float, move |t| {
-                let y = t.get_typed::<f64>("y").unwrap();
-                let new_vy = t.get_typed::<f64>("new_vy").unwrap();
-                ScalarValue::Float(y + new_vy * dt)
-            })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        let updated = self.apply_kinematics(all_particles_with_forces)?;
+        self.project_to_next_state(&updated)
+    }
 
-        // 7. Project back to original schema and rename
+    fn apply_kinematics(
+        &self,
+        all_particles_with_forces: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        let dt = self.dt;
+        all_particles_with_forces
+            .extend("new_vx", ScalarType::Float, move |t| compute_new_vx(t, dt))
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .extend("new_vy", ScalarType::Float, move |t| compute_new_vy(t, dt))
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .extend("new_x", ScalarType::Float, move |t| compute_new_x(t, dt))
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
+            .extend("new_y", ScalarType::Float, move |t| compute_new_y(t, dt))
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
+
+    fn project_to_next_state(&self, updated: &Relation) -> Result<Relation, DatabaseError> {
         let next_state = updated
             .project(&["id1", "new_x", "new_y", "new_vx", "new_vy", "mass"])
             .rename(&[
@@ -227,9 +223,36 @@ impl PhysicsEngine {
                 ("new_vx", "vx"),
                 ("new_vy", "vy"),
             ]);
-
         Ok(next_state)
     }
+}
+
+fn compute_new_vx(t: &Tuple, dt: f64) -> ScalarValue {
+    let vx = t.get_typed::<f64>("vx").unwrap();
+    let m = t.get_typed::<f64>("mass").unwrap();
+    let fx = t.get_typed::<f64>("net_fx").unwrap();
+    let ax = fx / m;
+    ScalarValue::Float(vx + ax * dt)
+}
+
+fn compute_new_vy(t: &Tuple, dt: f64) -> ScalarValue {
+    let vy = t.get_typed::<f64>("vy").unwrap();
+    let m = t.get_typed::<f64>("mass").unwrap();
+    let fy = t.get_typed::<f64>("net_fy").unwrap();
+    let ay = fy / m;
+    ScalarValue::Float(vy + ay * dt)
+}
+
+fn compute_new_x(t: &Tuple, dt: f64) -> ScalarValue {
+    let x = t.get_typed::<f64>("x").unwrap();
+    let new_vx = t.get_typed::<f64>("new_vx").unwrap();
+    ScalarValue::Float(x + new_vx * dt)
+}
+
+fn compute_new_y(t: &Tuple, dt: f64) -> ScalarValue {
+    let y = t.get_typed::<f64>("y").unwrap();
+    let new_vy = t.get_typed::<f64>("new_vy").unwrap();
+    ScalarValue::Float(y + new_vy * dt)
 }
 
 #[cfg(test)]
