@@ -1111,3 +1111,40 @@ mod float_ord_tests {
         assert_eq!(nan.cmp(&nan2), Ordering::Equal);
     }
 }
+
+#[cfg(test)]
+mod sentry_additional_scalar_value_tests {
+    use super::*;
+    use crate::types::ScalarType;
+    use crate::values::scalar::ScalarValueUnchecked;
+
+    #[test]
+    fn test_scalar_value_try_from_unchecked_mismatch() {
+        let u_type = ScalarType::user_defined("U1", ScalarType::Int);
+
+        let unchecked = ScalarValueUnchecked::UserDefined {
+            type_def: u_type,
+            value: Box::new(ScalarValueUnchecked::Float(1.0)),
+        };
+
+        let result = ScalarValue::try_from(unchecked);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Type mismatch in UserDefined value")
+        );
+    }
+
+    #[test]
+    fn test_scalar_value_try_from_unchecked_invalid_typedef() {
+        let unchecked = ScalarValueUnchecked::UserDefined {
+            type_def: ScalarType::Int,
+            value: Box::new(ScalarValueUnchecked::Int(1)),
+        };
+
+        let result = ScalarValue::try_from(unchecked);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid UserDefined value"));
+    }
+}

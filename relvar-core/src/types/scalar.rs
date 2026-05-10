@@ -772,7 +772,7 @@ mod additional_scalar_tests_final {
 
         let result = ScalarType::try_from(deeply_nested);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Type nesting too deep"));
+        assert!(result.unwrap_err().to_string().contains("Type nesting too deep"));
     }
 
     #[test]
@@ -795,5 +795,25 @@ mod additional_scalar_tests_final {
             t.hash(&mut hasher);
             let _ = hasher.finish();
         }
+    }
+}
+
+#[cfg(test)]
+mod sentry_additional_scalar_type_tests {
+    use super::*;
+
+    #[test]
+    fn test_scalar_type_try_from_unchecked_user_defined_depth_limit() {
+        let mut deeply_nested = ScalarTypeUnchecked::Int;
+        for _ in 0..(crate::types::MAX_TYPE_DEPTH + 1) {
+            deeply_nested = ScalarTypeUnchecked::UserDefined {
+                name: "Nested".to_string(),
+                representation: Box::new(deeply_nested),
+            };
+        }
+
+        let result = ScalarType::try_from(deeply_nested);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Type nesting too deep"));
     }
 }
