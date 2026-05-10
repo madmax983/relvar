@@ -104,8 +104,16 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
 
         let relvars = self.db.list_relvars();
 
+        self.generate_nodes(&relvars, &mut dot);
+        self.generate_edges(&relvars, &mut dot);
+
+        dot.push_str("}\n");
+        dot
+    }
+
+    fn generate_nodes(&self, relvars: &[String], dot: &mut String) {
         // 1. Generate nodes (Tables)
-        for name in &relvars {
+        for name in relvars {
             // Note: We use get_relvar_type() to get the relation structure.
             // This avoids loading the full relation data.
             if let Ok(relation_type) = self.db.get_relvar_type(name) {
@@ -160,9 +168,11 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                 dot.push_str("    </table>>];\n\n");
             }
         }
+    }
 
+    fn generate_edges(&self, relvars: &[String], dot: &mut String) {
         // 2. Generate edges (Foreign Keys)
-        for name in &relvars {
+        for name in relvars {
             if let Some(fk_constraints) = self.db.get_foreign_key_constraints(name) {
                 for fk in fk_constraints.foreign_keys() {
                     let ref_table = fk.referenced_relation_name();
@@ -179,9 +189,6 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
                 }
             }
         }
-
-        dot.push_str("}\n");
-        dot
     }
 }
 
