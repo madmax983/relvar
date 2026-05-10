@@ -279,7 +279,7 @@ fn group_tuples<'a>(
     grouping_attrs: &[String],
     attrs_to_group: &[&str],
     rva_heading_arc: std::sync::Arc<TupleType>,
-) -> HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>> {
+) -> Result<HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>>, GroupError> {
     let mut groups: HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>> =
         HashMap::new();
 
@@ -316,7 +316,7 @@ fn group_tuples<'a>(
         }
     }
 
-    groups
+    Ok(groups)
 }
 
 fn compute_grouped_tuples(
@@ -330,7 +330,7 @@ fn compute_grouped_tuples(
     let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
-    let groups = group_tuples(relation, grouping_attrs, attrs_to_group, rva_heading_arc);
+    let groups = group_tuples(relation, grouping_attrs, attrs_to_group, rva_heading_arc)?;
 
     // Build result tuples
     let mut result_tuples = std::collections::HashSet::with_capacity(groups.len());
@@ -422,7 +422,10 @@ fn compute_ungrouped_tuples(
     // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
     let mut total_capacity = 0;
     for tuple in relation.tuples() {
-        match tuple.get(rva_name).unwrap() {
+        let val = tuple
+            .get(rva_name)
+            .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
+        match val {
             ScalarValue::Relation(rel) => total_capacity += rel.cardinality(),
             _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
         }
@@ -432,7 +435,10 @@ fn compute_ungrouped_tuples(
 
     for tuple in relation.tuples() {
         // Get the RVA relation
-        let rva_relation = match tuple.get(rva_name).unwrap() {
+        let val = tuple
+            .get(rva_name)
+            .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
+        let rva_relation = match val {
             ScalarValue::Relation(rel) => rel,
             _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
         };
@@ -441,7 +447,10 @@ fn compute_ungrouped_tuples(
         let mut base_values = std::collections::BTreeMap::new();
         for attr_name in relation.relation_type().tuple_type().attribute_names() {
             if attr_name != rva_name {
-                base_values.insert(attr_name.to_string(), tuple.get(attr_name).unwrap().clone());
+                let val = tuple
+                    .get(attr_name)
+                    .ok_or_else(|| UngroupError::AttributeNotFound(attr_name.to_string()))?;
+                base_values.insert(attr_name.to_string(), val.clone());
             }
         }
 
@@ -450,10 +459,10 @@ fn compute_ungrouped_tuples(
         for rva_tuple in rva_relation.tuples() {
             let mut values = base_values.clone();
             for attr_name in rva_relation_type.tuple_type().attribute_names() {
-                values.insert(
-                    attr_name.to_string(),
-                    rva_tuple.get(attr_name).unwrap().clone(),
-                );
+                let val = rva_tuple
+                    .get(attr_name)
+                    .ok_or_else(|| UngroupError::AttributeNotFound(attr_name.to_string()))?;
+                values.insert(attr_name.to_string(), val.clone());
             }
 
             // Re-use the cloned heading_arc

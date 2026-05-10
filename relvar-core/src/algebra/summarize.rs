@@ -44,7 +44,26 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
 
-/// Errors that can occur during summarize operations.
+/// Errors that arise when attempting to distill the truth.
+///
+/// The `summarize` operator acts as a lens, focusing many tuples into a single aggregated value.
+/// However, if the lens is flawed (e.g. referencing an attribute that doesn't exist),
+/// the operation will fail.
+///
+/// # Recovery
+/// - **GroupingAttributeNotFound:** You are trying to group by an attribute that is not in the relation. Check your spelling and the relation's heading.
+/// - **ResultAttributeExists:** The name you chose for your aggregated column (e.g. 'total_salary') is already taken by another attribute. Pick a fresh, unique alias.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::SummarizeError;
+///
+/// // The user tried to group by a column that doesn't exist.
+/// // They should inspect the relation's heading to find the correct spelling.
+/// let error = SummarizeError::GroupingAttributeNotFound("salary".to_string());
+/// assert!(error.to_string().contains("Grouping attribute 'salary' does not exist"));
+/// ```
 #[derive(Debug, Error)]
 pub enum SummarizeError {
     /// A specified grouping attribute does not exist in the relation.
@@ -599,7 +618,12 @@ impl Relation {
         if group_by.is_empty() {
             // No grouping - all tuples in one group
             let mut map = HashMap::new();
-            map.insert(Vec::new(), self.tuples().collect());
+            // Optimization: Pre-allocate Vec to avoid internal reallocations during collect
+            let mut all_tuples = Vec::with_capacity(self.cardinality());
+            for tuple in self.tuples() {
+                all_tuples.push(tuple);
+            }
+            map.insert(Vec::new(), all_tuples);
             map
         } else {
             // Group by specified attributes

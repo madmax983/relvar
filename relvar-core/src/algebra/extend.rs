@@ -37,7 +37,25 @@
 use crate::values::{Relation, ScalarValue, Tuple};
 use thiserror::Error;
 
-/// Errors that can occur during extend operations.
+/// The boundaries of extending knowledge.
+///
+/// The `extend` operator breathes new life into a relation by generating new attributes
+/// from existing data. However, the universe has rules.
+///
+/// # Recovery
+/// - **AttributeExists:** You cannot overwrite an existing attribute. Relational attributes are immutable facts. If you want to replace an attribute, you must first `rename` the old one or `project` it away.
+/// - **TupleCreation:** The closure you provided returned a `ScalarValue` that doesn't match the `ScalarType` you promised in the `extend` signature. Ensure your types align.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::ExtendError;
+///
+/// // The user attempted to create a new attribute that collides with an existing one.
+/// // To recover, they should either pick a new name, or `project` away the old attribute.
+/// let error = ExtendError::AttributeExists("id".to_string());
+/// assert!(error.to_string().contains("Attribute 'id' already exists"));
+/// ```
 #[derive(Debug, Error)]
 pub enum ExtendError {
     /// The new attribute name conflicts with an existing attribute.

@@ -45,7 +45,27 @@ use std::io::BufRead;
 use std::rc::Rc;
 use thiserror::Error;
 
-/// Errors that can occur during import.
+/// Errors that halt the import saga.
+///
+/// Importing data from the chaotic outside world into the structured realm
+/// of a relational database is perilous. This enum categorizes the specific
+/// tragedies that can occur, ranging from sheer physical exhaustion (I/O failures)
+/// to philosophical disagreements (Type mismatches).
+///
+/// # Recovery
+/// - **LimitExceeded:** The payload is too massive (e.g. >10MB for JSON). If this occurs, chunk your data into smaller files or streams.
+/// - **TypeError:** Ensure your input data strictly adheres to the scalar types defined in your `RelationType` heading. The error specifies which attribute failed.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::tools::importer::ImporterError;
+///
+/// // Example of a DoS protection limit triggering.
+/// // The user should be informed that their payload is too large, and they should chunk it.
+/// let error = ImporterError::LimitExceeded("Input exceeds 10MB".to_string());
+/// assert!(error.to_string().contains("Size limit exceeded"));
+/// ```
 #[derive(Debug, Error)]
 pub enum ImporterError {
     /// I/O error reading the input.
