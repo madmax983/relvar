@@ -1,4 +1,4 @@
-💡 What: Optimized `compute_relation_after_update` in `relvar-core/src/database/dml.rs` to borrow `expected_type` as a reference rather than unnecessarily calling `.clone()` on the underlying `Arc<TupleType>`.
-🎯 Why: Avoiding an unnecessary clone call on `Arc<TupleType>` during data modifications. This `Arc` clone was happening repeatedly during setup of the update operations and could easily be avoided by borrowing a reference instead.
-📊 Impact: Minor speedup and removal of an unnecessary clone operation overhead, which could matter under heavy multi-threaded workloads where atomic refcounts are heavily contended. The `tuple_creation` bench showed a minor performance improvement.
-🔬 Measurement: Run bench `tuple_creation` / `group_bench`.
+💡 What: Optimized `rename_into` inside `relvar-core/src/algebra/rename.rs` by re-using the existing String memory allocation when an attribute name does not change.
+🎯 Why: `rename_into` previously extracted the `values` from the tuple, discarded the original String keys via `.into_values()`, and explicitly allocated a new cloned string for every single attribute column of every single tuple using `new_name.clone()`. For relations with a large degree or high tuple count where only one or two fields are being renamed, this resulted in an enormous amount of useless String allocations.
+📊 Impact: Avoids `M * N` String allocations (where M is un-renamed attributes per tuple, and N is the number of tuples).
+🔬 Measurement: Run tests via `cargo test`.
