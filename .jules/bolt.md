@@ -54,3 +54,7 @@
 ## 2025-05-05 - Avoid .collect() into Vec<String> when yielding references
 **Learning:** Converting an iterator of string clones into an intermediate `Vec<String>` and then mapping to `Vec<&str>` requires an unnecessary O(N) heap allocation.
 **Action:** Yield `Vec<&'a str>` directly by mapping `.as_str()` off the underlying struct's fields (e.g. from `TupleType`), eliminating the string allocation.
+
+## 2024-05-20 - String Allocations in Iterators
+**Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
+**Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.

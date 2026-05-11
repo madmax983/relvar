@@ -161,12 +161,22 @@ impl Relation {
 
         // Rename attributes in each tuple by consuming it
         let renamed_tuples = self.into_iter().map(move |tuple| {
-            // Optimization: Zip pre-calculated new names with consumed values.
+            // Optimization: Zip pre-calculated new names with consumed (key, value) pairs.
             // Both iterators follow the sorted order of old attribute names.
+            // By keeping the old key string, we can reuse its memory allocation
+            // if the name didn't actually change, avoiding String cloning.
             let values_map: BTreeMap<String, _> = new_names
                 .iter()
-                .zip(tuple.into_values().into_values())
-                .map(|(new_name, value)| (new_name.clone(), value))
+                .zip(tuple.into_values())
+                .map(|(new_name, (old_name, value))| {
+                    if new_name == &old_name {
+                        // Reuse the existing string allocation
+                        (old_name, value)
+                    } else {
+                        // Must allocate a new string for the changed name
+                        (new_name.clone(), value)
+                    }
+                })
                 .collect();
 
             // Safety:

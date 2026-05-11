@@ -226,3 +226,65 @@ fn test_sentry_extract_tuples_from_versioned_slots() {
     assert_eq!(extracted.len(), 1);
     assert_eq!(extracted[0], tuple);
 }
+
+#[test]
+fn test_sentry_extract_tuples_from_versioned_slots_corrupted_length() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let tuple = tuple! { id: 1i64, name: "Alice" };
+    let mut tuple_data: Vec<u8> = vec![];
+    let _ = postcard::to_io(&tuple, &mut tuple_data);
+
+    let mut versioned_page = VersionedSlottedPage {
+        magic: 0,
+        slot_count: 1,
+        slots: vec![Some(VersionedSlotEntry {
+            offset: 0,
+            length: (PAGE_SIZE + 10) as u32, // Intentional overflow past page size
+            xmin: crate::wal::TransactionId::new(1),
+            xmax: None,
+            prev_version: None,
+        })],
+    };
+
+    let existing_tuples = vec![tuple_data.clone()];
+    HeapFile::repack_versioned_slots(&mut versioned_page.slots, &existing_tuples, PAGE_SIZE - 8)
+        .unwrap();
+    let page_data = heap
+        .serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)
+        .unwrap();
+    let page = Page::from_data(0, page_data).unwrap();
+
+    let mut slots = [versioned_page.slots[0].clone().unwrap()];
+    // Now intentionally corrupt the page entry for extract
+    slots[0].length = (PAGE_SIZE + 10) as u32;
+
+    let extracted_err = heap
+        .extract_tuples_from_versioned_slots(&page, slots.iter())
+        .unwrap_err();
+
+    assert!(matches!(extracted_err, HeapError::Serialization(_)));
+    if let HeapError::Serialization(msg) = extracted_err {
+        assert!(msg.contains("Corrupted slot on page"));
+    }
+}
+
+#[test]
+fn test_sentry_validate_slot_bounds_offset_overflow() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let page = Page::new(0);
+
+    // Test the extract_tuple_from_page missing bound limit branch, where offset is fine but we exceed page data bounds
+    // to trigger "Corrupted slot on page ... points outside page data"
+    let err = heap
+        .extract_raw_tuple_data(&page, 0, (PAGE_SIZE + 10) as u32)
+        .unwrap_err();
+
+    assert!(matches!(err, HeapError::Serialization(_)));
+    if let HeapError::Serialization(msg) = err {
+        assert!(msg.contains("Corrupted slot on page"));
+    }
+}
