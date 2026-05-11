@@ -482,3 +482,98 @@ fn test_database_insert_type_constraint_violation_detail() {
 
     assert!(db_bad.insert("TEST_BAD", tuple! { count: 5i64 }).is_err());
 }
+
+#[test]
+fn test_database_update_key_constraint_violation_uncovered2() {
+    let mut db = setup();
+
+    db.insert("TEST", tuple! { id: 2i64, val: 20i64 }).unwrap();
+
+    let pk = relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let key_cons = relvar_core::constraints::KeyConstraints::new().with_primary_key(pk);
+    db.set_key_constraints("TEST", key_cons).unwrap();
+
+    // Update id 2 to id 1, which violates the key constraint
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 2,
+        |_t| tuple! { id: 1i64, val: 20i64 },
+    );
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_delete_virtual_relvar_fails_uncovered2() {
+    let mut db = setup();
+    let rel_type = db.get_relvar_type("TEST").unwrap();
+    db.define_virtual_relvar("VIRT", rel_type, |_db| {
+        Ok(relvar_core::values::Relation::new(
+            relvar_core::types::RelationType::new(relvar_core::types::TupleType::new()),
+        ))
+    })
+    .unwrap();
+
+    let result = db.delete("VIRT", |_| true);
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::CannotModifyVirtualRelvar(_))
+    ));
+}
+
+#[test]
+fn test_database_update_key_constraint_bulk_validation() {
+    let mut db = setup();
+
+    db.insert("TEST", tuple! { id: 2i64, val: 20i64 }).unwrap();
+    db.insert("TEST", tuple! { id: 3i64, val: 30i64 }).unwrap();
+
+    let pk = relvar_core::constraints::PrimaryKey::new(vec!["val".to_string()]).unwrap();
+    let key_cons = relvar_core::constraints::KeyConstraints::new().with_primary_key(pk);
+    db.set_key_constraints("TEST", key_cons).unwrap();
+
+    // Update id 2 and id 3 to have the same val, which violates the key constraint
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() >= 2,
+        |t| tuple! { id: t.get_typed::<i64>("id").unwrap(), val: 100i64 },
+    );
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}
+
+#[test]
+fn test_database_update_parent_violates_referencing_foreign_key() {
+    let mut db = setup();
+
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("test_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type).unwrap();
+
+    let fk = relvar_core::constraints::ForeignKey::new(
+        vec!["test_id".to_string()],
+        "TEST".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let fk_constraints =
+        relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("CHILD", fk_constraints)
+        .unwrap();
+
+    db.insert("CHILD", tuple! { child_id: 100i64, test_id: 1i64 })
+        .unwrap();
+
+    // Update parent TEST.id to 2 should fail because CHILD has test_id = 1
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_t| tuple! { id: 2i64, val: 10i64 },
+    );
+    assert!(result.is_err());
+    assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+}

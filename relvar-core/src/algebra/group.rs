@@ -416,7 +416,7 @@ fn compute_ungrouped_tuples(
     relation: &Relation,
     rva_name: &str,
     result_heading: &TupleType,
-    rva_relation_type: &RelationType,
+    _rva_relation_type: &RelationType,
 ) -> Result<std::collections::HashSet<Tuple>, UngroupError> {
     // Perform an initial pass to sum the cardinality of the target RVAs
     // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
@@ -445,12 +445,9 @@ fn compute_ungrouped_tuples(
 
         // Pre-compute the invariant non-RVA attributes for this outer tuple
         let mut base_values = std::collections::BTreeMap::new();
-        for attr_name in relation.relation_type().tuple_type().attribute_names() {
+        for (attr_name, val) in tuple.values().iter() {
             if attr_name != rva_name {
-                let val = tuple
-                    .get(attr_name)
-                    .ok_or_else(|| UngroupError::AttributeNotFound(attr_name.to_string()))?;
-                base_values.insert(attr_name.to_string(), val.clone());
+                base_values.insert(attr_name.clone(), val.clone());
             }
         }
 
@@ -458,11 +455,8 @@ fn compute_ungrouped_tuples(
         let heading_arc = result_heading_arc.clone();
         for rva_tuple in rva_relation.tuples() {
             let mut values = base_values.clone();
-            for attr_name in rva_relation_type.tuple_type().attribute_names() {
-                let val = rva_tuple
-                    .get(attr_name)
-                    .ok_or_else(|| UngroupError::AttributeNotFound(attr_name.to_string()))?;
-                values.insert(attr_name.to_string(), val.clone());
+            for (attr_name, val) in rva_tuple.values().iter() {
+                values.insert(attr_name.clone(), val.clone());
             }
 
             // Re-use the cloned heading_arc
