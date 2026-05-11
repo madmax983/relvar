@@ -39,7 +39,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar_storage::storage::{HeapFile, Catalog};
+//! use relvar_storage::{HeapFile, Catalog};
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use relvar_core::tuple;
 //! use std::path::PathBuf;

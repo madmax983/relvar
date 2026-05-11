@@ -14,7 +14,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar_storage::storage::Catalog;
+//! use relvar_storage::Catalog;
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use std::path::PathBuf;
 //!
@@ -98,7 +98,7 @@ pub struct RelationMetadata {
 /// # Examples
 ///
 /// ```no_run
-/// use relvar_storage::storage::Catalog;
+/// use relvar_storage::Catalog;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use std::path::PathBuf;
 ///
@@ -136,7 +136,7 @@ impl Catalog {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Catalog;
+    /// use relvar_storage::Catalog;
     ///
     /// let catalog = Catalog::new();
     /// assert_eq!(catalog.relation_count(), 0);
@@ -158,7 +158,7 @@ impl Catalog {
     ///
     /// # Examples
     /// ```
-    /// use relvar_storage::storage::Catalog;
+    /// use relvar_storage::Catalog;
     /// use tempfile::tempdir;
     /// let dir = tempdir().unwrap();
     /// let path = dir.path().join("catalog.json");
@@ -210,7 +210,7 @@ impl Catalog {
     ///
     /// # Examples
     /// ```
-    /// use relvar_storage::storage::Catalog;
+    /// use relvar_storage::Catalog;
     /// use tempfile::tempdir;
     /// let dir = tempdir().unwrap();
     /// let path = dir.path().join("catalog.json");
@@ -276,7 +276,7 @@ impl Catalog {
     ///
     /// # Examples
     /// ```
-    /// use relvar_storage::storage::Catalog;
+    /// use relvar_storage::Catalog;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use std::path::PathBuf;
     /// let mut catalog = Catalog::new();
@@ -295,7 +295,7 @@ impl Catalog {
     ///
     /// # Examples
     /// ```
-    /// use relvar_storage::storage::Catalog;
+    /// use relvar_storage::Catalog;
     /// let catalog = Catalog::new();
     /// assert!(!catalog.relation_exists("my_table"));
     /// ```
@@ -337,7 +337,7 @@ impl Catalog {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Catalog;
+    /// use relvar_storage::Catalog;
     ///
     /// let catalog = Catalog::new();
     /// assert_eq!(catalog.relation_count(), 0);
