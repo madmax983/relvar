@@ -321,13 +321,24 @@ impl Relation {
     /// `relation_type.heading()`.
     ///
     /// It still performs duplicate elimination (set semantics).
+    /// Creates a new relation from an iterator of tuples without type validation.
+    ///
+    /// # Performance
+    ///
+    /// This method pre-allocates the underlying `HashSet` based on the iterator's
+    /// size hint. It prefers the upper bound (`upper`) over the lower bound (`lower`).
+    /// This is a critical optimization for chained iterators (e.g., those using `.filter()`),
+    /// which typically yield a lower bound of `0`. By falling back to the upper bound,
+    /// we avoid zero-capacity allocations and the significant internal reallocation
+    /// churn that would occur as tuples are inserted.
     pub(crate) fn from_tuples_unchecked(
         relation_type: RelationType,
         tuples: impl IntoIterator<Item = Tuple>,
     ) -> Self {
         let iter = tuples.into_iter();
-        let (lower, _upper) = iter.size_hint();
-        let mut body = HashSet::with_capacity(lower);
+        let (lower, upper) = iter.size_hint();
+        let capacity = upper.unwrap_or(lower);
+        let mut body = HashSet::with_capacity(capacity);
 
         for tuple in iter {
             body.insert(tuple);
