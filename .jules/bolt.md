@@ -61,3 +61,9 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2026-05-12 - [Zero-Cost Query Builder Iterators]
+**Learning:** Replaced  with  in  builder methods (, , ). This allows users to pass stack-allocated arrays like  without forcing a heap allocation for a , while still supporting standard  or  usage via implicit trait resolution.
+**Action:** Always prefer  for public API functions that consume collections to provide zero-cost abstractions to callers.
+## $(date +%Y-%m-%d) - [Zero-Cost Query Builder Iterators]
+**Learning:** Replaced `Vec<T>` with `IntoIterator<Item = T>` in `Query` builder methods (`project`, `rename`, `summarize`). This allows users to pass stack-allocated arrays like `["a", "b"]` without forcing a heap allocation for a `Vec`, while still supporting standard `.collect()` or `vec![]` usage via implicit trait resolution.
+**Action:** Always prefer `IntoIterator` for public API functions that consume collections to provide zero-cost abstractions to callers.
