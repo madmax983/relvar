@@ -369,9 +369,12 @@ impl Query {
     /// ```
     /// use relvar_core::query::Query;
     ///
-    /// let q = Query::scan("USERS").project(vec!["name", "email"]);
+    /// let q = Query::scan("USERS").project(["name", "email"]);
     /// ```
-    pub fn project<S: Into<String>>(self, attributes: Vec<S>) -> Self {
+    ///
+    /// ⚡ **Performance Note:** Accepts `IntoIterator` to allow passing stack-allocated arrays
+    /// (e.g., `["a", "b"]`) without requiring intermediate heap allocations (`vec!["a", "b"]`).
+    pub fn project<I: IntoIterator<Item = S>, S: Into<String>>(self, attributes: I) -> Self {
         Query::Project {
             input: Box::new(self),
             attributes: attributes.into_iter().map(|s| s.into()).collect(),
@@ -384,9 +387,15 @@ impl Query {
     /// ```
     /// use relvar_core::query::Query;
     ///
-    /// let q = Query::scan("USERS").rename(vec![("name", "full_name")]);
+    /// let q = Query::scan("USERS").rename([("name", "full_name")]);
     /// ```
-    pub fn rename<S1: Into<String>, S2: Into<String>>(self, mappings: Vec<(S1, S2)>) -> Self {
+    ///
+    /// ⚡ **Performance Note:** Accepts `IntoIterator` to allow passing stack-allocated arrays
+    /// without requiring intermediate heap allocations.
+    pub fn rename<I: IntoIterator<Item = (S1, S2)>, S1: Into<String>, S2: Into<String>>(
+        self,
+        mappings: I,
+    ) -> Self {
         Query::Rename {
             input: Box::new(self),
             mappings: mappings
@@ -420,17 +429,24 @@ impl Query {
     /// use relvar_core::query::Query;
     /// use relvar_core::algebra::Aggregation;
     ///
-    /// let q = Query::scan("USERS").summarize(vec!["department"], vec![Aggregation::count("emp_count")]);
+    /// let q = Query::scan("USERS").summarize(["department"], [Aggregation::count("emp_count")]);
     /// ```
-    pub fn summarize<S: Into<String>>(
+    ///
+    /// ⚡ **Performance Note:** Accepts `IntoIterator` for `group_by` and `aggregations` to allow passing
+    /// stack-allocated arrays without requiring intermediate heap allocations.
+    pub fn summarize<
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+        A: IntoIterator<Item = Aggregation>,
+    >(
         self,
-        group_by: Vec<S>,
-        aggregations: Vec<Aggregation>,
+        group_by: I,
+        aggregations: A,
     ) -> Self {
         Query::Summarize {
             input: Box::new(self),
             group_by: group_by.into_iter().map(|s| s.into()).collect(),
-            aggregations,
+            aggregations: aggregations.into_iter().collect(),
         }
     }
 }
