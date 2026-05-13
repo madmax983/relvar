@@ -631,3 +631,7 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## 2024-05-31 - Refactor `compute_kernel_contributions` and `compute_pairwise_forces` God Functions
+**Learning:** Functions that combine complex relational iteration structures (like looping over kernel taps or calculating distances between Cartesian pairs) with deeply nested, inline relational logic (like `extend` and `project`) quickly become "God Functions". This pattern hurts readability and makes the relation construction flow difficult to trace.
+**Action:** Applied the "Three-Phase Operator" pattern to extract the inner relational logic into distinct, tightly-scoped private helper functions (`compute_single_contribution` and `calculate_force_components`). This flattened the primary algorithms into highly readable coordination blocks without sacrificing execution context or behavior.

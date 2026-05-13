@@ -89,7 +89,13 @@ impl PhysicsEngine {
         });
 
         // 3. Compute forces for each pair
-        let g = self.g;
+        Self::calculate_force_components(interactions, self.g)
+    }
+
+    fn calculate_force_components(
+        interactions: Relation,
+        g: f64,
+    ) -> Result<Relation, DatabaseError> {
         interactions
             .extend("fx", ScalarType::Float, move |t| {
                 let x1 = t.get_typed::<f64>("x1").unwrap();
