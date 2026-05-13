@@ -61,10 +61,11 @@ impl RelationalNfa {
         let mut active_states = self.get_initial_active_states()?;
         active_states = Self::apply_epsilon_closure(&active_states, &epsilon_closure)?;
 
-        if let Some(states) = self.process_input_string(input, active_states, &epsilon_closure)? {
-            self.check_accepting_states(&states)
-        } else {
+        let states = self.process_input_string(input, active_states, &epsilon_closure)?;
+        if states.cardinality() == 0 {
             Ok(false)
+        } else {
+            self.check_accepting_states(&states)
         }
     }
 
@@ -119,7 +120,7 @@ impl RelationalNfa {
         input: &str,
         mut active_states: Relation,
         epsilon_closure: &Relation,
-    ) -> Result<Option<Relation>, DatabaseError> {
+    ) -> Result<Relation, DatabaseError> {
         for c in input.chars() {
             let symbol_str = c.to_string();
 
@@ -137,10 +138,10 @@ impl RelationalNfa {
             active_states = Self::apply_epsilon_closure(&active_states, epsilon_closure)?;
 
             if active_states.cardinality() == 0 {
-                return Ok(None);
+                break;
             }
         }
-        Ok(Some(active_states))
+        Ok(active_states)
     }
 
     fn check_accepting_states(&self, active_states: &Relation) -> Result<bool, DatabaseError> {

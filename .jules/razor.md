@@ -21,3 +21,8 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+
+## [Reduction]
+**Bloat:** `Result<Option<Relation>, DatabaseError>` in `relvar/src/experimental/automata.rs`. The `Option` wrapping was an unnecessary layer of complexity; an empty relation natively represents the "no active states" condition.
+**Cut:** Simplified the return types to `Result<Relation, DatabaseError>`. Replaced `return Ok(None)` with `break`ing and returning the empty `Relation`, using `.cardinality() == 0` for checks.
+**Saved:** Multiple layers of pattern matching, boilerplate unwrapping, and unnecessary abstraction, adhering tightly to the KISS principle.
