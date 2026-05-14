@@ -92,50 +92,11 @@ impl PhysicsEngine {
         let g = self.g;
         interactions
             .extend("fx", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                // Avoid division by zero
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fx = f * (dx / dist);
-
-                ScalarValue::Float(fx)
+                Self::compute_force_x(t, g)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("fy", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fy = f * (dy / dist);
-
-                ScalarValue::Float(fy)
+                Self::compute_force_y(t, g)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
@@ -189,31 +150,19 @@ impl PhysicsEngine {
         let dt = self.dt;
         let updated = all_particles_with_forces
             .extend("new_vx", ScalarType::Float, move |t| {
-                let vx = t.get_typed::<f64>("vx").unwrap();
-                let m = t.get_typed::<f64>("mass").unwrap();
-                let fx = t.get_typed::<f64>("net_fx").unwrap();
-                let ax = fx / m;
-                ScalarValue::Float(vx + ax * dt)
+                Self::compute_new_vx(t, dt)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("new_vy", ScalarType::Float, move |t| {
-                let vy = t.get_typed::<f64>("vy").unwrap();
-                let m = t.get_typed::<f64>("mass").unwrap();
-                let fy = t.get_typed::<f64>("net_fy").unwrap();
-                let ay = fy / m;
-                ScalarValue::Float(vy + ay * dt)
+                Self::compute_new_vy(t, dt)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("new_x", ScalarType::Float, move |t| {
-                let x = t.get_typed::<f64>("x").unwrap();
-                let new_vx = t.get_typed::<f64>("new_vx").unwrap();
-                ScalarValue::Float(x + new_vx * dt)
+                Self::compute_new_x(t, dt)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("new_y", ScalarType::Float, move |t| {
-                let y = t.get_typed::<f64>("y").unwrap();
-                let new_vy = t.get_typed::<f64>("new_vy").unwrap();
-                ScalarValue::Float(y + new_vy * dt)
+                Self::compute_new_y(t, dt)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
@@ -229,6 +178,80 @@ impl PhysicsEngine {
             ]);
 
         Ok(next_state)
+    }
+
+    fn compute_force_x(t: &relvar_core::values::Tuple, g: f64) -> ScalarValue {
+        let x1 = t.get_typed::<f64>("x1").unwrap();
+        let y1 = t.get_typed::<f64>("y1").unwrap();
+        let x2 = t.get_typed::<f64>("x2").unwrap();
+        let y2 = t.get_typed::<f64>("y2").unwrap();
+        let m1 = t.get_typed::<f64>("m1").unwrap();
+        let m2 = t.get_typed::<f64>("m2").unwrap();
+
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let dist_sq = dx * dx + dy * dy;
+
+        if dist_sq < 1e-10 {
+            return ScalarValue::Float(0.0);
+        }
+
+        let dist = dist_sq.sqrt();
+        let f = g * m1 * m2 / dist_sq;
+        let fx = f * (dx / dist);
+
+        ScalarValue::Float(fx)
+    }
+
+    fn compute_force_y(t: &relvar_core::values::Tuple, g: f64) -> ScalarValue {
+        let x1 = t.get_typed::<f64>("x1").unwrap();
+        let y1 = t.get_typed::<f64>("y1").unwrap();
+        let x2 = t.get_typed::<f64>("x2").unwrap();
+        let y2 = t.get_typed::<f64>("y2").unwrap();
+        let m1 = t.get_typed::<f64>("m1").unwrap();
+        let m2 = t.get_typed::<f64>("m2").unwrap();
+
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let dist_sq = dx * dx + dy * dy;
+
+        if dist_sq < 1e-10 {
+            return ScalarValue::Float(0.0);
+        }
+
+        let dist = dist_sq.sqrt();
+        let f = g * m1 * m2 / dist_sq;
+        let fy = f * (dy / dist);
+
+        ScalarValue::Float(fy)
+    }
+
+    fn compute_new_vx(t: &relvar_core::values::Tuple, dt: f64) -> ScalarValue {
+        let vx = t.get_typed::<f64>("vx").unwrap();
+        let m = t.get_typed::<f64>("mass").unwrap();
+        let fx = t.get_typed::<f64>("net_fx").unwrap();
+        let ax = fx / m;
+        ScalarValue::Float(vx + ax * dt)
+    }
+
+    fn compute_new_vy(t: &relvar_core::values::Tuple, dt: f64) -> ScalarValue {
+        let vy = t.get_typed::<f64>("vy").unwrap();
+        let m = t.get_typed::<f64>("mass").unwrap();
+        let fy = t.get_typed::<f64>("net_fy").unwrap();
+        let ay = fy / m;
+        ScalarValue::Float(vy + ay * dt)
+    }
+
+    fn compute_new_x(t: &relvar_core::values::Tuple, dt: f64) -> ScalarValue {
+        let x = t.get_typed::<f64>("x").unwrap();
+        let new_vx = t.get_typed::<f64>("new_vx").unwrap();
+        ScalarValue::Float(x + new_vx * dt)
+    }
+
+    fn compute_new_y(t: &relvar_core::values::Tuple, dt: f64) -> ScalarValue {
+        let y = t.get_typed::<f64>("y").unwrap();
+        let new_vy = t.get_typed::<f64>("new_vy").unwrap();
+        ScalarValue::Float(y + new_vy * dt)
     }
 }
 

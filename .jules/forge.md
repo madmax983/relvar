@@ -631,3 +631,7 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## 2026-05-19 - Extract God Function Inline Closures in Physics Engine
+**Learning:** `relvar/src/experimental/physics.rs` contained "God Function" behaviors within `compute_pairwise_forces` and `update_kinematics_and_project`, where very large inline closures were used for `extend` operations (e.g., calculating forces and new kinematics). This deeply nested and duplicated logic hurt readability.
+**Action:** Extracted the inline closure logic into cleanly typed, private helper functions (`compute_force_x`, `compute_force_y`, `compute_new_vx`, etc.) on the `PhysicsEngine`. This flattens the relational algebra pipeline and makes the physical calculations easy to read independently.
