@@ -106,7 +106,7 @@ pub enum HeapError {
 /// # Examples
 ///
 /// ```no_run
-/// use relvar_storage::storage::HeapFile;
+/// use relvar_storage::HeapFile;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use relvar_core::tuple;
 ///
@@ -232,7 +232,7 @@ impl HeapFile {
     ///
     /// # Examples
     /// ```text
-    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_storage::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use tempfile::tempdir;
     /// let dir = tempdir().unwrap();
@@ -262,7 +262,7 @@ impl HeapFile {
     ///
     /// # Examples
     /// ```text
-    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_storage::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use tempfile::tempdir;
     /// let dir = tempdir().unwrap();
@@ -300,7 +300,7 @@ impl HeapFile {
     ///
     /// # Examples
     /// ```text
-    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_storage::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use relvar_core::values::Tuple;
     /// use std::collections::HashMap;
@@ -754,7 +754,7 @@ impl HeapFile {
     ///
     /// # Examples
     /// ```text
-    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_storage::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use relvar_core::values::Tuple;
     /// use std::collections::HashMap;
@@ -814,7 +814,7 @@ impl HeapFile {
     ///
     /// # Examples
     /// ```text
-    /// use relvar_storage::storage::heap::HeapFile;
+    /// use relvar_storage::HeapFile;
     /// use relvar_core::types::{RelationType, TupleType};
     /// use tempfile::tempdir;
     /// let dir = tempdir().unwrap();

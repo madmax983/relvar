@@ -104,7 +104,7 @@
 //! ### Using `HeapFile` (Low-level)
 //!
 //! ```no_run
-//! use relvar_storage::storage::HeapFile;
+//! use relvar_storage::HeapFile;
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use relvar_core::tuple;
 //!
@@ -128,8 +128,8 @@
 
 #![warn(missing_docs)]
 
-pub mod persistent_engine;
-pub mod storage;
+pub(crate) mod persistent_engine;
+pub(crate) mod storage;
 
 // WAL module is pub(crate) - not exposed to logical layer (TTM compliance)
 pub(crate) mod wal;
@@ -140,4 +140,7 @@ pub(crate) mod mvcc;
 pub use persistent_engine::PersistentEngine;
 
 // Re-export key storage types
-pub use storage::{Catalog, CatalogError, HeapError, HeapFile, Page, PageError, PageFile};
+pub use storage::catalog::RelationMetadata;
+pub use storage::{
+    Catalog, CatalogError, HeapError, HeapFile, PAGE_SIZE, Page, PageError, PageFile, PageId,
+};
