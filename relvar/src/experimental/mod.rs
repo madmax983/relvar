@@ -50,6 +50,7 @@ pub mod knowledge_graph;
 pub mod matrix;
 pub mod mock;
 pub mod neural_network;
+pub mod quantum;
 
 pub mod dom;
 pub mod genetic_algorithm;

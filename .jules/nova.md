@@ -133,3 +133,7 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+## Relational Quantum Circuit Simulator
+**Concept:** Modeled a Quantum Circuit Simulator purely using relational algebra. Quantum states are represented as relations of probability amplitudes, and quantum gates are represented as relations. Gate application maps to joining state vectors with gate matrices and aggregating (Matrix Multiplication). Multi-qubit gates are computed via relational Kronecker products (Cross Joins).
+**Fate:** TBD
+**Lesson:** Relational engines can model quantum mechanics! Matrix operations and tensor products elegantly compile down to relational joins, extensions, and aggregations, demonstrating that database queries can simulate state transitions.
