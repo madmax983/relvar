@@ -60,7 +60,7 @@ fn test_query_builder_e2e() {
             op: CmpOp::Eq,
             right: ValueOrRef::Value(ScalarValue::Int(10)),
         })
-        .project(vec!["name", "salary"]);
+        .project(["name", "salary"]);
 
     // 3. Execute
     let result = query.execute(&db).unwrap();
@@ -171,10 +171,10 @@ fn test_query_rename_aggregations() {
 
     // Query: Rename id -> player_id, Summarize by player_id, Min(score), Max(score), Sum(score)
     let query = Query::scan("SCORES")
-        .rename(vec![("id", "player_id")])
+        .rename([("id", "player_id")])
         .summarize(
-            vec!["player_id"],
-            vec![
+            ["player_id"],
+            [
                 Aggregation::min("min_score", "score", ScalarType::Int),
                 Aggregation::max("max_score", "score", ScalarType::Int),
                 Aggregation::sum("total_score", "score"),

@@ -36,7 +36,7 @@ fn test_restrict() {
 #[test]
 fn test_project() {
     let db = setup_db();
-    let query = Query::scan("USERS").project(vec!["name"]);
+    let query = Query::scan("USERS").project(["name"]);
 
     let result = query.execute(&db).unwrap();
     assert_eq!(result.degree(), 1);
@@ -46,7 +46,7 @@ fn test_project() {
 #[test]
 fn test_rename() {
     let db = setup_db();
-    let query = Query::scan("USERS").rename(vec![("name", "full_name")]);
+    let query = Query::scan("USERS").rename([("name", "full_name")]);
 
     let result = query.execute(&db).unwrap();
     assert!(result.relation_type().heading().has_attribute("full_name"));
@@ -69,7 +69,7 @@ fn test_join() {
 #[test]
 fn test_summarize() {
     let db = setup_db();
-    let query = Query::scan("USERS").summarize(vec!["age"], vec![Aggregation::count("count")]);
+    let query = Query::scan("USERS").summarize(["age"], [Aggregation::count("count")]);
     let result = query.execute(&db).unwrap();
 
     // One person with age 25, one with age 30
@@ -84,7 +84,7 @@ fn test_explain() {
             op: CmpOp::Eq,
             right: ValueOrRef::Value(ScalarValue::Int(1)),
         })
-        .project(vec!["name"]);
+        .project(["name"]);
 
     let explain_str = query.explain();
     assert!(explain_str.contains("Project([\"name\"])"));
@@ -94,10 +94,10 @@ fn test_explain() {
     let q_join = Query::scan("A").join(Query::scan("B"));
     assert!(q_join.explain().contains("Join"));
 
-    let q_rename = Query::scan("A").rename(vec![("old", "new")]);
+    let q_rename = Query::scan("A").rename([("old", "new")]);
     assert!(q_rename.explain().contains("Rename([(\"old\", \"new\")])"));
 
-    let q_summarize = Query::scan("A").summarize(vec!["a"], vec![Aggregation::count("cnt")]);
+    let q_summarize = Query::scan("A").summarize(["a"], [Aggregation::count("cnt")]);
     assert!(q_summarize.explain().contains("Summarize"));
 }
 
@@ -106,7 +106,7 @@ fn test_query_error_propagation() {
     let db = setup_db();
 
     // Algebra error in Summarize (grouping by missing attribute)
-    let q_bad_sum = Query::scan("USERS").summarize(vec!["nonexistent_col"], vec![]);
+    let q_bad_sum = Query::scan("USERS").summarize(["nonexistent_col"], []);
     let err = q_bad_sum.execute(&db);
     assert!(matches!(err, Err(QueryError::Algebra(_))));
 }

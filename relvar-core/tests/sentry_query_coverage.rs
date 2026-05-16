@@ -72,7 +72,7 @@ fn test_query_project_coverage() {
     db.insert("TEST", tuple! { id: 1i64, name: "Alice".to_string() })
         .unwrap();
 
-    let query = Query::scan("TEST").project(vec!["id"]);
+    let query = Query::scan("TEST").project(["id"]);
 
     let result = query.execute(&db).unwrap();
     assert_eq!(result.cardinality(), 1);
@@ -88,7 +88,7 @@ fn test_query_rename_coverage() {
     db.create_relvar("TEST", rel_type).unwrap();
     db.insert("TEST", tuple! { id: 1i64 }).unwrap();
 
-    let query = Query::scan("TEST").rename(vec![("id", "new_id")]);
+    let query = Query::scan("TEST").rename([("id", "new_id")]);
 
     let result = query.execute(&db).unwrap();
     assert_eq!(result.cardinality(), 1);

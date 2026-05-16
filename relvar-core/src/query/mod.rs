@@ -364,14 +364,17 @@ impl Query {
     }
 
     /// Wraps the query in a Project operation.
+    ///
+    /// ⚡ Performance Note: This accepts an `IntoIterator`, allowing you to pass stack-allocated
+    /// arrays (e.g., `["a", "b"]`) without incurring intermediate heap allocations.
     /// # Examples
     ///
     /// ```
     /// use relvar_core::query::Query;
     ///
-    /// let q = Query::scan("USERS").project(vec!["name", "email"]);
+    /// let q = Query::scan("USERS").project(["name", "email"]);
     /// ```
-    pub fn project<S: Into<String>>(self, attributes: Vec<S>) -> Self {
+    pub fn project<S: Into<String>, I: IntoIterator<Item = S>>(self, attributes: I) -> Self {
         Query::Project {
             input: Box::new(self),
             attributes: attributes.into_iter().map(|s| s.into()).collect(),
@@ -379,14 +382,20 @@ impl Query {
     }
 
     /// Wraps the query in a Rename operation.
+    ///
+    /// ⚡ Performance Note: This accepts an `IntoIterator`, allowing you to pass stack-allocated
+    /// arrays (e.g., `[("a", "b")]`) without incurring intermediate heap allocations.
     /// # Examples
     ///
     /// ```
     /// use relvar_core::query::Query;
     ///
-    /// let q = Query::scan("USERS").rename(vec![("name", "full_name")]);
+    /// let q = Query::scan("USERS").rename([("name", "full_name")]);
     /// ```
-    pub fn rename<S1: Into<String>, S2: Into<String>>(self, mappings: Vec<(S1, S2)>) -> Self {
+    pub fn rename<S1: Into<String>, S2: Into<String>, I: IntoIterator<Item = (S1, S2)>>(
+        self,
+        mappings: I,
+    ) -> Self {
         Query::Rename {
             input: Box::new(self),
             mappings: mappings
@@ -414,23 +423,30 @@ impl Query {
     }
 
     /// Wraps the query in a Summarize operation.
+    ///
+    /// ⚡ Performance Note: This accepts `IntoIterator`s for both groupings and aggregations,
+    /// allowing stack-allocated arrays to be passed and avoiding intermediate heap allocations.
     /// # Examples
     ///
     /// ```
     /// use relvar_core::query::Query;
     /// use relvar_core::algebra::Aggregation;
     ///
-    /// let q = Query::scan("USERS").summarize(vec!["department"], vec![Aggregation::count("emp_count")]);
+    /// let q = Query::scan("USERS").summarize(["department"], [Aggregation::count("emp_count")]);
     /// ```
-    pub fn summarize<S: Into<String>>(
+    pub fn summarize<
+        S: Into<String>,
+        I1: IntoIterator<Item = S>,
+        I2: IntoIterator<Item = Aggregation>,
+    >(
         self,
-        group_by: Vec<S>,
-        aggregations: Vec<Aggregation>,
+        group_by: I1,
+        aggregations: I2,
     ) -> Self {
         Query::Summarize {
             input: Box::new(self),
             group_by: group_by.into_iter().map(|s| s.into()).collect(),
-            aggregations,
+            aggregations: aggregations.into_iter().collect(),
         }
     }
 }
