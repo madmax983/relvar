@@ -1,0 +1,4 @@
+📖 Chapter: The `Spreadsheet` Module
+🔦 Insight: The experimental relational spreadsheet module lacked comprehensive top-level documentation explaining how it models a spreadsheet engine using pure relational algebra. Additionally, its `Spreadsheet` struct, `new` method, and `evaluate` method contained placeholder doctests instead of executable examples, leaving users confused about how to actually construct the value and formula relations to run the fixpoint evaluation. Added detailed module documentation and provided copy-pasteable, executable doctests demonstrating initialization and fixpoint evaluation.
+🧪 Example: Added 3 executable doctests to `Spreadsheet`, `Spreadsheet::new`, and `Spreadsheet::evaluate`, showing how to populate input cells and perform calculations like `ADD` and `MUL`.
+🖼️ Preview: Evaluated spreadsheet rows resolving via a fixpoint loop using join and extend.

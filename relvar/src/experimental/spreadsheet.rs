@@ -1,3 +1,13 @@
+//! # Relational Spreadsheet
+//!
+//! This module models a spreadsheet engine using pure relational algebra.
+//! It evaluates spreadsheet formulas by iteratively performing relational joins and extensions
+//! until all formula cells are resolved to their final values (a fixpoint).
+//!
+//! The spreadsheet is composed of two relations:
+//! * `values`: Contains the already resolved cell values (e.g. inputs or fully calculated cells).
+//! * `formulas`: Contains the operations and operands needed to calculate unresolved cells.
+
 use relvar_core::{
     error::DatabaseError,
     types::ScalarType,
@@ -9,6 +19,34 @@ use relvar_core::{
 /// Models a spreadsheet where cells can contain raw values or formulas referencing
 /// other cells. Evaluation is performed purely using relational joins and extensions
 /// until all cell values are resolved (fixpoint).
+///
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
+/// use relvar::experimental::spreadsheet::Spreadsheet;
+///
+/// let val_type = TupleType::new()
+///     .with_attribute("id", ScalarType::String)
+///     .with_attribute("val", ScalarType::Float);
+/// let mut values = Relation::new(RelationType::new(val_type));
+/// values.insert(tuple! { id: "A1".to_string(), val: 10.0 }).unwrap();
+/// values.insert(tuple! { id: "A2".to_string(), val: 20.0 }).unwrap();
+///
+/// let form_type = TupleType::new()
+///     .with_attribute("id", ScalarType::String)
+///     .with_attribute("op", ScalarType::String)
+///     .with_attribute("arg1", ScalarType::String)
+///     .with_attribute("arg2", ScalarType::String);
+/// let mut formulas = Relation::new(RelationType::new(form_type));
+/// formulas.insert(tuple! {
+///     id: "A3".to_string(), op: "ADD".to_string(), arg1: "A1".to_string(), arg2: "A2".to_string()
+/// }).unwrap();
+///
+/// let spreadsheet = Spreadsheet::new(values, formulas);
+/// let result = spreadsheet.evaluate().unwrap();
+/// assert_eq!(result.cardinality(), 3);
+/// ```
 pub struct Spreadsheet {
     /// Resolved values. Schema: `(id: String, val: Float)`
     pub values: Relation,
@@ -18,27 +56,62 @@ pub struct Spreadsheet {
 }
 
 impl Spreadsheet {
-    /// Creates a new Spreadsheet.
+    /// Creates a new Spreadsheet from resolved values and formulas.
     ///
     /// # Examples
     ///
     /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    ///
+    /// let mut values = Relation::new(RelationType::new(TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float)));
+    /// values.insert(tuple! { id: "A1".to_string(), val: 42.0 }).unwrap();
+    ///
+    /// let formulas = Relation::new(RelationType::new(TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String)));
+    ///
+    /// let sheet = Spreadsheet::new(values, formulas);
+    /// assert_eq!(sheet.values.cardinality(), 1);
+    /// assert_eq!(sheet.formulas.cardinality(), 0);
     /// ```
     pub fn new(values: Relation, formulas: Relation) -> Self {
         Self { values, formulas }
     }
 
-    /// Evaluates the spreadsheet until all possible formulas are resolved.
+    /// Evaluates the spreadsheet formulas until a fixpoint is reached.
     ///
     /// # Examples
     ///
     /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    ///
+    /// let mut values = Relation::new(RelationType::new(TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float)));
+    /// values.insert(tuple! { id: "A1".to_string(), val: 10.0 }).unwrap();
+    /// values.insert(tuple! { id: "B1".to_string(), val: 2.0 }).unwrap();
+    ///
+    /// let mut formulas = Relation::new(RelationType::new(TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String)));
+    /// formulas.insert(tuple! {
+    ///     id: "C1".to_string(), op: "MUL".to_string(), arg1: "A1".to_string(), arg2: "B1".to_string()
+    /// }).unwrap();
+    ///
+    /// let sheet = Spreadsheet::new(values, formulas);
+    /// let evaluated = sheet.evaluate().unwrap();
+    ///
+    /// assert_eq!(evaluated.cardinality(), 3);
+    /// let c1 = evaluated.tuples().find(|t| t.get_typed::<String>("id").unwrap() == "C1").unwrap();
+    /// assert_eq!(c1.get_typed::<f64>("val").unwrap(), 20.0);
     /// ```
     pub fn evaluate(&self) -> Result<Relation, DatabaseError> {
         let mut current_values = self.values.clone();
