@@ -197,75 +197,65 @@ fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Ve
     let mut contributions = Vec::with_capacity(kernel.len());
 
     for (i, tap) in kernel.iter().enumerate() {
-        let dx = tap.dx;
-        let dy = tap.dy;
-        let weight = tap.weight;
-        let k_idx = i as i64;
-
-        // Step 1: Shift and Scale
-        // We use extend to compute new coordinates and weighted values
-        // We project to keep only relevant columns + k_idx
-        // Logic: A pixel at (x,y) contributes to (x+dx, y+dy) with weight w.
-        // So for a target pixel (tx, ty), the source is (tx-dx, ty-dy).
-        // But here we are iterating source pixels.
-        // Source (x,y) contributes to Target (x+dx, y+dy).
-        // So let's name the new coordinates `tx` and `ty`.
-
-        // Extend 1: Calculate target coordinates
-        let with_coords = relation
-            .extend("tx", ScalarType::Int, move |t| {
-                let x = t.get_typed::<i64>("x").unwrap();
-                ScalarValue::Int(x + dx)
-            })
-            .unwrap()
-            .extend("ty", ScalarType::Int, move |t| {
-                let y = t.get_typed::<i64>("y").unwrap();
-                ScalarValue::Int(y + dy)
-            })
-            .unwrap();
-
-        // Extend 2: Calculate weighted color components
-        let with_weights = with_coords
-            .extend("wr", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("r").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap()
-            .extend("wg", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("g").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap()
-            .extend("wb", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("b").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap();
-
-        // Extend 3: Add kernel index (to prevent set deduplication of values)
-        let with_idx = with_weights
-            .extend("k_idx", ScalarType::Int, move |_| ScalarValue::Int(k_idx))
-            .unwrap();
-
-        // Project: Keep (tx, ty, wr, wg, wb, k_idx)
-        // But we rename them to a standard schema for Union
-        // Standard: (x, y, r, g, b, k_idx)
-        // Rename mapping: tx->x, ty->y, wr->r, wg->g, wb->b
-        let rename_map = vec![
-            ("tx", "x"),
-            ("ty", "y"),
-            ("wr", "r"),
-            ("wg", "g"),
-            ("wb", "b"),
-        ];
-
-        let projected = with_idx.project(&["tx", "ty", "wr", "wg", "wb", "k_idx"]);
-        let renamed = projected.rename(&rename_map);
+        let with_coords = extend_target_coordinates(relation, tap.dx, tap.dy);
+        let with_weights = extend_weighted_colors(&with_coords, tap.weight);
+        let renamed = extend_kernel_idx_and_project(&with_weights, i as i64);
 
         contributions.push(renamed);
     }
 
     contributions
+}
+
+fn extend_target_coordinates(relation: &Relation, dx: i64, dy: i64) -> Relation {
+    relation
+        .extend("tx", ScalarType::Int, move |t| {
+            let x = t.get_typed::<i64>("x").unwrap();
+            ScalarValue::Int(x + dx)
+        })
+        .unwrap()
+        .extend("ty", ScalarType::Int, move |t| {
+            let y = t.get_typed::<i64>("y").unwrap();
+            ScalarValue::Int(y + dy)
+        })
+        .unwrap()
+}
+
+fn extend_weighted_colors(relation: &Relation, weight: i64) -> Relation {
+    relation
+        .extend("wr", ScalarType::Int, move |t| {
+            let v = t.get_typed::<i64>("r").unwrap();
+            ScalarValue::Int(v * weight)
+        })
+        .unwrap()
+        .extend("wg", ScalarType::Int, move |t| {
+            let v = t.get_typed::<i64>("g").unwrap();
+            ScalarValue::Int(v * weight)
+        })
+        .unwrap()
+        .extend("wb", ScalarType::Int, move |t| {
+            let v = t.get_typed::<i64>("b").unwrap();
+            ScalarValue::Int(v * weight)
+        })
+        .unwrap()
+}
+
+fn extend_kernel_idx_and_project(relation: &Relation, k_idx: i64) -> Relation {
+    let with_idx = relation
+        .extend("k_idx", ScalarType::Int, move |_| ScalarValue::Int(k_idx))
+        .unwrap();
+
+    let rename_map = vec![
+        ("tx", "x"),
+        ("ty", "y"),
+        ("wr", "r"),
+        ("wg", "g"),
+        ("wb", "b"),
+    ];
+
+    with_idx
+        .project(&["tx", "ty", "wr", "wg", "wb", "k_idx"])
+        .rename(&rename_map)
 }
 
 fn union_contributions(contributions: &[Relation]) -> Relation {
