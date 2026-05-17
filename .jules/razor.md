@@ -21,3 +21,13 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+
+## [Reduction]
+**Bloat:** Deep folder hierarchy for three small test files in `relvar-core/src/query/tests/`.
+**Cut:** Flattened the module by merging `basic.rs` and `common.rs` into a single `relvar-core/src/query/tests.rs` and deleting the `tests/` directory.
+**Saved:** Unnecessary module nesting and folder structure.
+
+## [Reduction]
+**Bloat:** Unused zombie code `would_violate_on_insert` and `are_satisfied_by` in `KeyConstraints` (`relvar-core/src/constraints/key.rs`) alongside their tests. They were completely unused by `ConstraintManager`, which invoked methods directly on `PrimaryKey` and `CandidateKey`.
+**Cut:** Deleted the dead functions and their associated tests.
+**Saved:** Around 100 lines of dead code and associated maintenance overhead.

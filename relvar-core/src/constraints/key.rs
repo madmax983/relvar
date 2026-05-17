@@ -55,15 +55,11 @@
 //! let constraints = KeyConstraints::new().with_primary_key(pk);
 //!
 //! // Check if current data satisfies the key constraint
-//! assert!(constraints.are_satisfied_by(&relation).unwrap());
 //!
 //! // Check if inserting a duplicate would violate the constraint
 //! let duplicate = tuple! { emp_id: 1i64, name: "Charlie" };  // emp_id=1 already exists!
-//! let violation = constraints.would_violate_on_insert(&relation, &duplicate).unwrap();
 //!
 //! // Violation detected - returns the violated key attributes
-//! assert!(violation.is_some());
-//! assert_eq!(violation.unwrap(), vec!["emp_id"]);
 //! ```
 
 use crate::values::{Relation, Tuple};
@@ -352,60 +348,6 @@ impl KeyConstraints {
     pub fn candidate_keys(&self) -> &[CandidateKey] {
         &self.candidate_keys
     }
-
-    /// Check if all constraints are satisfied
-    ///
-    /// # Examples
-    ///
-    /// ```text
-    /// // Example
-    /// ```
-    pub fn are_satisfied_by(&self, relation: &Relation) -> Result<bool, KeyConstraintError> {
-        // Check primary key
-        if let Some(pk) = &self.primary_key
-            && !pk.is_satisfied_by(relation)?
-        {
-            return Ok(false);
-        }
-
-        // Check candidate keys
-        for ck in &self.candidate_keys {
-            if !ck.is_satisfied_by(relation)? {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
-    }
-
-    /// Check if inserting a tuple would violate any key constraints
-    ///
-    /// # Examples
-    ///
-    /// ```text
-    /// // Example
-    /// ```
-    pub fn would_violate_on_insert(
-        &self,
-        relation: &Relation,
-        new_tuple: &Tuple,
-    ) -> Result<Option<Vec<String>>, KeyConstraintError> {
-        // Check primary key
-        if let Some(pk) = &self.primary_key
-            && pk.would_violate(relation, new_tuple)?
-        {
-            return Ok(Some(pk.attributes().to_vec()));
-        }
-
-        // Check candidate keys
-        for ck in &self.candidate_keys {
-            if ck.would_violate(relation, new_tuple)? {
-                return Ok(Some(ck.attributes().to_vec()));
-            }
-        }
-
-        Ok(None)
-    }
 }
 
 impl Default for KeyConstraints {
@@ -514,73 +456,6 @@ mod tests {
             .unwrap();
 
         assert!(pk.is_satisfied_by(&relation).unwrap());
-    }
-
-    #[test]
-    fn test_key_constraints_with_primary_key() {
-        let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
-        let constraints = KeyConstraints::new().with_primary_key(pk);
-
-        let mut relation = create_employee_relation();
-        relation
-            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
-            .unwrap();
-        relation
-            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
-            .unwrap();
-
-        assert!(constraints.are_satisfied_by(&relation).unwrap());
-    }
-
-    #[test]
-    fn test_key_constraints_violation_detection() {
-        let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
-        let constraints = KeyConstraints::new().with_primary_key(pk);
-
-        let mut relation = create_employee_relation();
-        relation
-            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
-            .unwrap();
-
-        let new_tuple = tuple! { emp_id: 1i64, name: "Bob", dept_id: 20i64 };
-        let violation = constraints
-            .would_violate_on_insert(&relation, &new_tuple)
-            .unwrap();
-
-        assert!(violation.is_some());
-        assert_eq!(violation.unwrap(), vec!["emp_id"]);
-    }
-
-    #[test]
-    fn test_multiple_candidate_keys() {
-        let heading = TupleType::new()
-            .with_attribute("emp_id".to_string(), ScalarType::Int)
-            .with_attribute("email".to_string(), ScalarType::String)
-            .with_attribute("name".to_string(), ScalarType::String);
-
-        let mut relation = Relation::new(RelationType::new(heading));
-        relation
-            .insert(tuple! { emp_id: 1i64, email: "alice@example.com", name: "Alice" })
-            .unwrap();
-        relation
-            .insert(tuple! { emp_id: 2i64, email: "bob@example.com", name: "Bob" })
-            .unwrap();
-
-        let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
-        let ck = CandidateKey::new(vec!["email".to_string()]).unwrap();
-
-        let constraints = KeyConstraints::new()
-            .with_primary_key(pk)
-            .with_candidate_key(ck);
-
-        assert!(constraints.are_satisfied_by(&relation).unwrap());
-
-        // Try to insert with duplicate email
-        let new_tuple = tuple! { emp_id: 3i64, email: "alice@example.com", name: "Alice2" };
-        let violation = constraints
-            .would_violate_on_insert(&relation, &new_tuple)
-            .unwrap();
-        assert!(violation.is_some());
     }
 
     #[test]
