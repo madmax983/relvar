@@ -31,6 +31,7 @@
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
+//! - **[`fourier`](crate::experimental::fourier)**: Relational Fourier Transform.
 
 pub mod automata;
 pub mod automl;
@@ -52,6 +53,7 @@ pub mod mock;
 pub mod neural_network;
 
 pub mod dom;
+pub mod fourier;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;
 pub mod markov;
