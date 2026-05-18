@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2026-05-20 - Refactored God Functions in GNN and Physics modules
+**Learning:** Functions like `forward` in GNN and `compute_pairwise_forces` in Physics mixed distinct relational operations (message propagation/linear transformation and pair generation/force calculation) into long God Functions.
+**Action:** Applied the 'Three-Phase Operator' pattern to extract these phases into cleanly typed private helper functions, flattening the main methods and improving clarity without modifying behavior.

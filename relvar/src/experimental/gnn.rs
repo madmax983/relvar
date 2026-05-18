@@ -123,16 +123,30 @@ impl GraphNeuralNetwork {
         edges: &Relation,
         weights: &Relation,
     ) -> Result<Relation, DatabaseError> {
-        // Step 1: Prepare features for message passing. Rename 'node_id' to 'src'.
+        // Step 1 & 2 & 3: Propagate messages along edges
+        let aggregated = Self::propagate_messages(features, edges)?;
+
+        // Step 4 & 5 & 6 & 7: Apply linear transformation via weights
+        let out_features = Self::apply_linear_transformation(&aggregated, weights)?;
+
+        // Step 8: Standardize the schema for the next layer.
+        let final_features =
+            out_features.rename(&[("out_idx", "in_idx"), ("sum_product", "value")]);
+
+        Ok(final_features)
+    }
+
+    fn propagate_messages(
+        features: &Relation,
+        edges: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         let features_src = features.rename(&[("node_id", "src")]);
 
-        // Step 2: Message Passing - Propagate features along edges.
         let messages = edges
             .join(&features_src)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Step 3: Aggregate messages for each destination node.
-        let aggregated = messages
+        messages
             .summarize(
                 &["dst", "in_idx"],
                 &[Aggregation {
@@ -141,17 +155,19 @@ impl GraphNeuralNetwork {
                     function: AggregationFn::Sum("value".to_string()),
                 }],
             )
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
-        // Step 4: Rename back to 'node_id' for linear transformation.
+    fn apply_linear_transformation(
+        aggregated: &Relation,
+        weights: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         let agg_renamed = aggregated.rename(&[("dst", "node_id")]);
 
-        // Step 5: Linear Transformation - Join aggregated features with layer weights.
         let transformed = agg_renamed
             .join(weights)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Step 6: Multiply aggregated values by weights.
         let multiplied = transformed
             .extend("product", ScalarType::Float, |t: &Tuple| {
                 let v = t.get_typed::<f64>("agg_value").unwrap();
@@ -160,8 +176,7 @@ impl GraphNeuralNetwork {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Step 7: Sum the products over 'out_idx' to complete the matrix multiplication.
-        let out_features = multiplied
+        multiplied
             .summarize(
                 &["node_id", "out_idx"],
                 &[Aggregation {
@@ -170,13 +185,7 @@ impl GraphNeuralNetwork {
                     function: AggregationFn::Sum("product".to_string()),
                 }],
             )
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        // Step 8: Standardize the schema for the next layer.
-        let final_features =
-            out_features.rename(&[("out_idx", "in_idx"), ("sum_product", "value")]);
-
-        Ok(final_features)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 }
 
