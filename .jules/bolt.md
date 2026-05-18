@@ -61,3 +61,7 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+
+## $(date +%Y-%m-%d) - [Group Operator Vec Allocation Removal]
+**Learning:** In relational grouping operations, extracting grouping attributes previously mapped to a `Vec<String>`. `Tuple::new_unchecked` expects a `BTreeMap<String, ScalarValue>`, which natively consumes `String` keys during insertion. Pre-allocating a vector to store all mapped `attr_names` only to clone them later provides no benefit and forces redundant intermediate heap allocations on the hot path.
+**Action:** Remove intermediate `Vec<String>` pre-allocations when creating string keys for `Tuple` properties. Instead, perform `attr.to_string()` lazily at the exact point of insertion into the `BTreeMap`, allowing the compiler to manage just the final necessary string allocations. Update validation helper signatures to pass down slices of references (`&[&str]`) instead of owned strings.

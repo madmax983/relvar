@@ -190,11 +190,11 @@ impl Relation {
 
 // --- Private Helper Functions for Group ---
 
-fn validate_group_request(
-    relation: &Relation,
+fn validate_group_request<'a>(
+    relation: &'a Relation,
     attrs_to_group: &[&str],
     rva_name: &str,
-) -> Result<Vec<String>, GroupError> {
+) -> Result<Vec<&'a str>, GroupError> {
     if attrs_to_group.is_empty() {
         return Err(GroupError::NoAttributesSpecified);
     }
@@ -212,18 +212,18 @@ fn validate_group_request(
     }
 
     // Determine grouping attributes (the ones NOT being grouped into RVA)
-    let grouping_attrs: Vec<String> = relation
+    let grouping_attrs: Vec<&'a str> = relation
         .relation_type()
         .tuple_type()
         .attribute_names()
         .filter(|attr| !attrs_to_group.contains(&attr.as_str()))
-        .map(|s| s.to_string())
+        .map(|s| s.as_str())
         .collect();
 
     // Check RVA name doesn't conflict with grouping attributes
     // Note: We check against the resulting heading, which contains grouping attributes + RVA name
     // If rva_name is one of the grouping attributes, that's a conflict.
-    if grouping_attrs.contains(&rva_name.to_string()) {
+    if grouping_attrs.contains(&rva_name) {
         return Err(GroupError::ResultAttributeExists(rva_name.to_string()));
     }
 
@@ -232,7 +232,7 @@ fn validate_group_request(
 
 fn build_group_result_heading(
     relation: &Relation,
-    grouping_attrs: &[String],
+    grouping_attrs: &[&str],
     attrs_to_group: &[&str],
     rva_name: &str,
 ) -> Result<(TupleType, TupleType), GroupError> {
@@ -246,7 +246,7 @@ fn build_group_result_heading(
             .tuple_type()
             .get_attribute_type(attr)
             .unwrap();
-        result_heading = result_heading.with_attribute(attr.clone(), attr_type.clone());
+        result_heading = result_heading.with_attribute(attr.to_string(), attr_type.clone());
     }
 
     // Build RVA heading (from attributes being grouped)
@@ -276,15 +276,12 @@ fn build_group_result_heading(
 /// this prevents dynamic heap reallocations when constructing the resulting relation.
 fn group_tuples<'a>(
     relation: &'a Relation,
-    grouping_attrs: &[String],
+    grouping_attrs: &[&str],
     attrs_to_group: &[&str],
     rva_heading_arc: std::sync::Arc<TupleType>,
 ) -> Result<HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>>, GroupError> {
     let mut groups: HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>> =
         HashMap::new();
-
-    // Pre-allocate attribute name strings
-    let attr_names: Vec<String> = attrs_to_group.iter().map(|a| a.to_string()).collect();
 
     // PERF: Reusable buffer for the grouping key avoids allocating a new Vec
     // for every single tuple just to query the HashMap.
@@ -299,8 +296,8 @@ fn group_tuples<'a>(
 
         // Extract grouped attributes for RVA
         let mut rva_values = std::collections::BTreeMap::new();
-        for (i, &attr) in attrs_to_group.iter().enumerate() {
-            rva_values.insert(attr_names[i].clone(), tuple.get(attr).unwrap().clone());
+        for &attr in attrs_to_group.iter() {
+            rva_values.insert(attr.to_string(), tuple.get(attr).unwrap().clone());
         }
 
         let rva_tuple = Tuple::new_unchecked(rva_heading_arc.clone(), rva_values);
@@ -321,7 +318,7 @@ fn group_tuples<'a>(
 
 fn compute_grouped_tuples(
     relation: &Relation,
-    grouping_attrs: &[String],
+    grouping_attrs: &[&str],
     attrs_to_group: &[&str],
     result_heading: &TupleType,
     rva_heading: &TupleType,
@@ -340,7 +337,7 @@ fn compute_grouped_tuples(
 
         // Add grouping attribute values
         for (i, attr) in grouping_attrs.iter().enumerate() {
-            values.insert(attr.clone(), (*key[i]).clone());
+            values.insert(attr.to_string(), (*key[i]).clone());
         }
 
         // Create RVA relation
