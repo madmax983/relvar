@@ -32,7 +32,7 @@ impl<'t, 'a> PartialEq for SemijoinKey<'t, 'a> {
         // with the same common_attrs slice.
         for (i, attr) in self.attributes.iter().enumerate() {
             let v1 = self.tuple.get(attr);
-            let v2 = other.tuple.get(&other.attributes[i]);
+            let v2 = other.tuple.get(other.attributes[i]);
             if v1 != v2 {
                 return false;
             }
