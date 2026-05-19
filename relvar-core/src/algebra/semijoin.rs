@@ -23,7 +23,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Debug, Eq)]
 struct SemijoinKey<'t, 'a> {
     tuple: &'t Tuple,
-    attributes: &'a [String],
+    attributes: &'a [&'a str],
 }
 
 impl<'t, 'a> PartialEq for SemijoinKey<'t, 'a> {
@@ -52,12 +52,16 @@ impl<'t, 'a> Hash for SemijoinKey<'t, 'a> {
 }
 
 /// Finds common attribute names between two relations' headings.
-fn common_attributes(a: &Relation, b: &Relation) -> Vec<String> {
-    a.relation_type()
+///
+/// ⚡ **Bolt Optimization**: Yields string slices (`&str`) borrowing from the `Relation`'s heading
+/// instead of allocating owned `String`s. This completely eliminates intermediate heap allocations
+/// for attribute names during semijoin operations.
+fn common_attributes<'a>(a: &Relation, b: &'a Relation) -> Vec<&'a str> {
+    b.relation_type()
         .heading()
         .attribute_names()
-        .filter(|attr| b.relation_type().heading().has_attribute(attr))
-        .cloned()
+        .filter(|attr| a.relation_type().heading().has_attribute(attr))
+        .map(|s| s.as_str())
         .collect()
 }
 
@@ -1046,7 +1050,7 @@ mod tests {
         use std::hash::Hash;
 
         let t1 = tuple! { a: 1i64 };
-        let attributes = vec!["a".to_string(), "b".to_string()];
+        let attributes = vec!["a", "b"];
 
         let key1 = super::SemijoinKey {
             tuple: &t1,
