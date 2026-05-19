@@ -60,6 +60,7 @@ pub mod parser;
 pub mod petri_net;
 pub mod physics;
 pub mod pivot;
+pub mod quantum;
 pub mod raytracer;
 pub mod rbac;
 pub mod recommend;
