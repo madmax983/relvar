@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2026-05-20 - Refactor God Function in Neural Network Forward Layer
+**Learning:** `relvar/src/experimental/neural_network.rs` contained a "God Function" `forward_layer` which mixed logic for computing weighted inputs, summarizing pre-activations, and applying biases and ReLU activation. This violated the 'Three-Phase Operator' pattern, making the neural network relational operations harder to follow.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting `compute_weighted_inputs`, `summarize_pre_activations`, and `apply_biases_and_activation` into cleanly typed private helper functions to flatten the method and improve readability.
