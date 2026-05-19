@@ -78,7 +78,7 @@ const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 /// - `relation_type` - The type (heading) defining attribute names and types
 /// - `heap_file_path` - Path to the heap file containing the relation's tuples
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RelationMetadata {
+pub struct CatalogEntry {
     /// The relation's type (heading).
     pub relation_type: RelationType,
     /// Path to the heap file storing the relation's data.
@@ -127,7 +127,7 @@ pub struct RelationMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Catalog {
     /// Map from relation name to metadata.
-    relations: HashMap<String, RelationMetadata>,
+    relations: HashMap<String, CatalogEntry>,
 }
 
 impl Catalog {
@@ -258,7 +258,7 @@ impl Catalog {
             return Err(CatalogError::RelationExists(name));
         }
 
-        let metadata = RelationMetadata {
+        let metadata = CatalogEntry {
             relation_type,
             heap_file_path,
         };
@@ -285,7 +285,7 @@ impl Catalog {
     /// let meta = catalog.get_relation("my_table").unwrap();
     /// assert_eq!(meta.heap_file_path, PathBuf::from("my_table.heap"));
     /// ```
-    pub fn get_relation(&self, name: &str) -> Result<&RelationMetadata, CatalogError> {
+    pub fn get_relation(&self, name: &str) -> Result<&CatalogEntry, CatalogError> {
         self.relations
             .get(name)
             .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))
@@ -316,7 +316,7 @@ impl Catalog {
     ///
     /// Returns [`CatalogError::RelationNotFound`] if no relation with
     /// this name exists.
-    pub fn drop_relation(&mut self, name: &str) -> Result<RelationMetadata, CatalogError> {
+    pub fn drop_relation(&mut self, name: &str) -> Result<CatalogEntry, CatalogError> {
         self.relations
             .remove(name)
             .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))

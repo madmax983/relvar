@@ -66,7 +66,8 @@ pub(crate) mod heap;
 pub(crate) mod manager;
 pub(crate) mod page;
 
-pub use catalog::{Catalog, CatalogError, RelationMetadata};
+pub use catalog::{Catalog, CatalogEntry, CatalogError};
+
 pub use heap::{HeapError, HeapFile};
 pub use manager::StorageManager;
 // TupleId is now pub(crate) in heap.rs, not exported

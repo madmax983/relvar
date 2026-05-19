@@ -27,3 +27,6 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+## 2024-05-19 - Catalog Entry Domain Boundary
+**Tangle:** The `RelationMetadata` struct name was duplicated across `relvar-core::storage_engine` and `relvar-storage::storage::catalog`, representing different concepts (public logical metadata vs internal physical location tracking), violating clear domain boundaries.
+**Blueprint:** Renamed the catalog-specific struct to `CatalogEntry` to distinguish it from the core logical `RelationMetadata`, removing the name collision and clarifying the physical storage responsibilities.
