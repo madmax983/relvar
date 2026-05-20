@@ -97,6 +97,10 @@ pub fn load(width: usize, height: usize, data: &[u8]) -> Relation {
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
 /// // Note: This is a placeholder example
 /// ```
+pub const MAX_IMAGE_PIXELS: i128 = 10_000_000;
+
+/// Saves a relation representing an image (with attributes x, y, r, g, b) into a raw byte buffer.
+/// Returns the width, height, and raw RGB pixel data.
 pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
     if relation.is_empty() {
         return (0, 0, Vec::new());
@@ -126,14 +130,30 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         }
     }
 
-    let width = (max_x.saturating_sub(min_x).saturating_add(1)) as usize;
-    let height = (max_y.saturating_sub(min_y).saturating_add(1)) as usize;
+    // Use i128 for coordinate span to safely handle full i64 range
+    let width_i128 = (max_x as i128)
+        .saturating_sub(min_x as i128)
+        .saturating_add(1);
+    let height_i128 = (max_y as i128)
+        .saturating_sub(min_y as i128)
+        .saturating_add(1);
 
-    if width.saturating_mul(height) > 10_000_000 {
+    if width_i128.saturating_mul(height_i128) > MAX_IMAGE_PIXELS {
         return (0, 0, Vec::new());
     }
 
-    let mut data = vec![0u8; width * height * 3];
+    let width = width_i128 as usize;
+    let height = height_i128 as usize;
+
+    let buffer_size = width
+        .checked_mul(height)
+        .and_then(|p| p.checked_mul(3))
+        .unwrap_or(0);
+    if buffer_size == 0 {
+        return (0, 0, Vec::new());
+    }
+
+    let mut data = vec![0u8; buffer_size];
 
     for tuple in relation.tuples() {
         let x = tuple.get_typed::<i64>("x").unwrap_or(0);
@@ -142,14 +162,22 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         let g = tuple.get_typed::<i64>("g").unwrap_or(0).clamp(0, 255) as u8;
         let b = tuple.get_typed::<i64>("b").unwrap_or(0).clamp(0, 255) as u8;
 
-        let img_x = (x - min_x) as usize;
-        let img_y = (y - min_y) as usize;
+        let img_x = (x as i128).saturating_sub(min_x as i128) as usize;
+        let img_y = (y as i128).saturating_sub(min_y as i128) as usize;
 
         if img_x < width && img_y < height {
-            let idx = (img_y * width + img_x) * 3;
-            data[idx] = r;
-            data[idx + 1] = g;
-            data[idx + 2] = b;
+            let Some(idx) = img_y
+                .checked_mul(width)
+                .and_then(|p| p.checked_add(img_x))
+                .and_then(|p| p.checked_mul(3))
+            else {
+                continue;
+            };
+            if idx + 2 < data.len() {
+                data[idx] = r;
+                data[idx + 1] = g;
+                data[idx + 2] = b;
+            }
         }
     }
 
