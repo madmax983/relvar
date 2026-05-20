@@ -1,0 +1,4 @@
+🚮 Smell: The `evaluate` method in `Spreadsheet` was an overly long "God Function" that combined the logic for finding unresolved formulas, resolving their arguments against current values, and evaluating the final mathematical expressions into one continuous block.
+✨ Solution: Applied the "Three-Phase Operator" pattern. Extracted the logic into three private, well-named helper functions: `find_unresolved_formulas`, `resolve_arguments`, and `evaluate_resolved_formulas`.
+🧼 Benefit: Significantly reduces cognitive load. The main loop is now concise and clearly describes the high-level algorithm, while the details of relational joins and extensions are encapsulated in the helper methods.
+🛡️ Verification: Tests passed. No logic changed.
