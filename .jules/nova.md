@@ -133,3 +133,7 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+## Relational Boids Simulation
+**Concept:** Modeled a flocking algorithm (Boids) purely using relational algebra (Join, Extend, Summarize, Difference). Separation, alignment, and cohesion vectors are calculated purely by restricting neighbors, computing vector distances via extension, and summarizing over nearest neighbors.
+**Fate:** Merged
+**Lesson:** Relational algebra easily maps well to entity simulations with local neighborhoods! We can resolve N-body style proximity rules smoothly without writing nested for-loops simply by performing a Cartesian Join (or Cross Join) and Restricting based on distances, followed by Aggregate summarizations to compute local flock centers and headings.

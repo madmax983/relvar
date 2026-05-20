@@ -1,0 +1,4 @@
+💡 **The Spark:** "Flocking simulations (Boids) rely on querying local neighbors to calculate cohesion, separation, and alignment vectors. Could we model these neighborhood interactions purely with relational queries and aggregations?"
+🚀 **The Feature:** "Implemented `BoidsSimulation` in `src/experimental/boids.rs`, evaluating Boids flocking rules purely through relational joins (finding neighbors), restrictions (radius checks), and summarizations (computing average headings and positions)."
+🔮 **The Potential:** "Demonstrates that our relational engine can perform complex N-body spatial queries and aggregations efficiently, opening the door for declarative game logic or physical system modeling without procedural loops."
+⚠️ **Risk:** "Low. The feature is entirely self-contained within `src/experimental/boids.rs`."
