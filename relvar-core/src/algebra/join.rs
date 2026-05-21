@@ -262,12 +262,12 @@ impl Relation {
 }
 
 /// Helper to compute common attributes between two relations.
-fn compute_common_attributes(left: &Relation, right: &Relation) -> Vec<String> {
+fn compute_common_attributes<'a>(left: &'a Relation, right: &Relation) -> Vec<&'a str> {
     left.relation_type()
         .heading()
         .attribute_names()
         .filter(|attr| right.relation_type().heading().has_attribute(attr))
-        .cloned()
+        .map(|s| s.as_str())
         .collect()
 }
 
@@ -336,7 +336,7 @@ fn probe_and_combine_single<'a>(
 #[derive(Debug, Eq)]
 struct JoinKey<'t, 'a> {
     tuple: &'t Tuple,
-    attributes: &'a [String],
+    attributes: &'a [&'a str],
 }
 
 impl<'t, 'a> PartialEq for JoinKey<'t, 'a> {
@@ -345,7 +345,7 @@ impl<'t, 'a> PartialEq for JoinKey<'t, 'a> {
         // with the same common_attrs slice.
         for (i, attr) in self.attributes.iter().enumerate() {
             let v1 = self.tuple.get(attr);
-            let v2 = other.tuple.get(&other.attributes[i]);
+            let v2 = other.tuple.get(other.attributes[i]);
             if v1 != v2 {
                 return false;
             }
@@ -367,7 +367,7 @@ impl<'t, 'a> Hash for JoinKey<'t, 'a> {
 /// Helper to build the hash map for the join operation (Build Phase).
 fn build_join_map<'t, 'a>(
     build_rel: &'t Relation,
-    common_attrs: &'a [String],
+    common_attrs: &'a [&'a str],
 ) -> Result<HashMap<JoinKey<'t, 'a>, Vec<&'t Tuple>>, DatabaseError> {
     let mut build_map: HashMap<JoinKey<'t, 'a>, Vec<&Tuple>> =
         HashMap::with_capacity(build_rel.cardinality());
@@ -386,7 +386,7 @@ fn build_join_map<'t, 'a>(
 fn probe_and_combine<'t, 'a>(
     probe_rel: &'t Relation,
     build_map: &HashMap<JoinKey<'t, 'a>, Vec<&'t Tuple>>,
-    common_attrs: &'a [String],
+    common_attrs: &'a [&'a str],
     result_heading: &Arc<TupleType>,
 ) -> Result<HashSet<Tuple>, DatabaseError> {
     // Optimization: Pre-allocate a `HashSet` instead of a `Vec` to accumulate tuples.
@@ -426,7 +426,7 @@ fn determine_hash_join_sides<'a>(
 fn perform_hash_join(
     build_rel: &Relation,
     probe_rel: &Relation,
-    common_attrs: &[String],
+    common_attrs: &[&str],
     result_heading: &Arc<TupleType>,
 ) -> Result<HashSet<Tuple>, DatabaseError> {
     if common_attrs.len() == 1 {
