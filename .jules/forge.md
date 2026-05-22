@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2026-05-22 - Refactored God Function compute_kernel_contributions
+**Learning:** Found a god function `compute_kernel_contributions` in `relvar/src/experimental/image.rs` which combined shifting and scaling, creating new coordinates, calculating weighted color components, appending kernel indexes and renaming schemas all within the main loop.
+**Action:** Applied the 'Three-Phase Operator' pattern by extracting the inline loop operations into distinct helper functions: `calculate_target_coordinates`, `calculate_weighted_colors`, `add_kernel_index`, and `project_and_rename_contribution` to significantly improve readability and reduce nesting.
