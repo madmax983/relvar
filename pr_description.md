@@ -1,0 +1,4 @@
+🚮 Smell: The `compute_kernel_contributions` function in `relvar/src/experimental/image.rs` was a "God Function" exceeding 70 lines. It conflated shifting coordinates, scaling colors via extension, and finalizing projections all within a single massive iterator loop, making the relational logic difficult to track.
+✨ Solution: Applied the "Three-Phase Operator" pattern by extracting the inline logic into three clear, properly typed private helper functions: `shift_coordinates`, `scale_colors`, and `finalize_contribution`. The main function now delegates efficiently.
+🧼 Benefit: Substantially improves readability, strictly separates distinct relational operations, flattens the inner block, and eliminates the inline variable bloat.
+🛡️ Verification: `cargo test` passes seamlessly. No logic changed. `cargo clippy` and `cargo fmt` executed.
