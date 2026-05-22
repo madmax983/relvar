@@ -1,0 +1,4 @@
+🦠 Threat: Potential DoS/Panic from a thread panicking while holding the `RwLock` for `StorageManager`. This would cause the lock to be poisoned, and subsequent `.unwrap()` calls on lock acquisition would cause a panic across the system, turning a localized error into a system-wide crash.
+🛡️ Defense: Removed `.unwrap()` calls when acquiring the `RwLock` in `PersistentEngine`. Replaced `.write().unwrap()` with `.map_err` returning `StorageError::Other` for `Result`-returning functions, and `.read().unwrap()` with `.unwrap_or_else(|e| e.into_inner())` allowing reads to proceed with the poisoned data safely, ensuring graceful error handling.
+💥 Severity: High - A single thread crash could bring down the entire storage engine via lock poisoning propagation.
+🧪 Verification: Ran `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test`, and `cargo fmt --all`.
