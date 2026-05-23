@@ -4,9 +4,7 @@ use crate::tuple;
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue};
 
-pub fn setup_db() -> Database<InMemoryEngine> {
-    let mut db = Database::new(InMemoryEngine::new());
-
+fn setup_users(db: &mut Database<InMemoryEngine>) {
     let users_heading = TupleType::new()
         .with_attribute("id", ScalarType::Int)
         .with_attribute("name", ScalarType::String)
@@ -34,7 +32,9 @@ pub fn setup_db() -> Database<InMemoryEngine> {
     for t in users_rel.tuples() {
         db.insert("USERS", t.clone()).unwrap();
     }
+}
 
+fn setup_orders(db: &mut Database<InMemoryEngine>) {
     let orders_heading = TupleType::new()
         .with_attribute("order_id", ScalarType::Int)
         .with_attribute("id", ScalarType::Int) // FK to users
@@ -53,6 +53,11 @@ pub fn setup_db() -> Database<InMemoryEngine> {
     for t in orders_rel.tuples() {
         db.insert("ORDERS", t.clone()).unwrap();
     }
+}
 
+pub fn setup_db() -> Database<InMemoryEngine> {
+    let mut db = Database::new(InMemoryEngine::new());
+    setup_users(&mut db);
+    setup_orders(&mut db);
     db
 }
