@@ -61,3 +61,8 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2024-05-24 - Zero-cost abstractions with Join/Semijoin Keys
+
+**Learning:** Using `Vec<String>` to extract common attribute names and storing them in `JoinKey` and `SemijoinKey` structs causes redundant intermediate allocations and string copying during hashing and matching. `&[&str]` is much better as it doesn't allocate and instead refers back to string slices from heading structures, but it requires careful lifetime annotations across multiple scopes.
+
+**Action:** Whenever identifying attributes dynamically to compute joins or semi-joins, try to use `&[&str]` instead of `Vec<String>`. The original implementation performed cloning strings inside `compute_common_attributes`, which is easily replaced by just referencing and `.map(|s| s.as_str())`.
