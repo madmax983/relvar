@@ -140,5 +140,4 @@ mod tests {
             panic!("Expected corrupted error");
         }
     }
-
 }
