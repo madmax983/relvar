@@ -139,6 +139,8 @@ impl Relation {
         // self(from, to) -> self(temp, to)
         // Note: Relation::rename returns a new Relation.
         let edges = self.rename(&self_mappings);
+        let empty_delta = Relation::new(r_delta.relation_type().clone());
+        let empty_total = Relation::new(r_total.relation_type().clone());
 
         loop {
             if !perform_tclose_iteration(
@@ -148,6 +150,8 @@ impl Relation {
                 from_attr,
                 to_attr,
                 &mut r_total,
+                &empty_delta,
+                &empty_total,
             )? {
                 break;
             }
@@ -159,6 +163,7 @@ impl Relation {
 
 /// Helper to perform a single iteration of the transitive closure algorithm.
 /// Returns `true` if new paths were found (continue), `false` if not (terminate).
+#[allow(clippy::too_many_arguments)]
 fn perform_tclose_iteration(
     r_delta: &mut Relation,
     edges: &Relation,
@@ -166,9 +171,18 @@ fn perform_tclose_iteration(
     from_attr: &str,
     to_attr: &str,
     r_total: &mut Relation,
+    empty_delta: &Relation,
+    empty_total: &Relation,
 ) -> Result<bool, DatabaseError> {
-    let new_unique_paths =
-        compute_next_paths(r_delta, edges, delta_mappings, from_attr, to_attr, r_total)?;
+    let old_delta = std::mem::replace(r_delta, empty_delta.clone());
+    let new_unique_paths = compute_next_paths(
+        old_delta,
+        edges,
+        delta_mappings,
+        from_attr,
+        to_attr,
+        r_total,
+    )?;
 
     // 6. Termination check
     if new_unique_paths.is_empty() {
@@ -177,7 +191,7 @@ fn perform_tclose_iteration(
 
     // 7. Update accumulators
     // r_total = r_total UNION new_unique_paths
-    let old_total = std::mem::replace(r_total, Relation::new(r_total.relation_type().clone()));
+    let old_total = std::mem::replace(r_total, empty_total.clone());
     *r_total = old_total
         .union_into(&new_unique_paths)
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
@@ -189,7 +203,7 @@ fn perform_tclose_iteration(
 }
 
 fn compute_next_paths(
-    r_delta: &Relation,
+    r_delta: Relation,
     edges: &Relation,
     delta_mappings: &[(&str, &str)],
     from_attr: &str,
@@ -197,7 +211,7 @@ fn compute_next_paths(
     r_total: &Relation,
 ) -> Result<Relation, DatabaseError> {
     // 2. Rename delta: r_delta(from, to) -> r_delta(from, temp)
-    let delta_renamed = r_delta.rename(delta_mappings);
+    let delta_renamed = r_delta.rename_into(delta_mappings);
 
     // 3. Join: r_delta(from, temp) JOIN edges(temp, to) -> (from, temp, to)
     let joined = delta_renamed.join(edges)?;
