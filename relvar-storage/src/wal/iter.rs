@@ -120,4 +120,25 @@ mod tests {
             assert!(matches!(e, WalError::Corrupted(_, _)));
         }
     }
+
+    #[test]
+    fn test_iter_offset_overflow_coverage() {
+        let mut buffer = Vec::new();
+        // LSN
+        buffer.extend_from_slice(&1u64.to_le_bytes());
+        // Length that will cause overflow when added to offset.
+        // On 64-bit systems usize is u64 so u64::MAX -> causes offset_overflow.
+        // On 32-bit systems, try_from fails immediately, so it triggers "exceeds memory limits".
+        buffer.extend_from_slice(&u64::MAX.to_le_bytes());
+
+        let mut iter = WalRecordIter::new(&buffer);
+        let result = iter.next().unwrap();
+        assert!(result.is_err());
+        if let Err(WalError::Corrupted(_, msg)) = result {
+            assert!(msg.contains("Record length") || msg.contains("offset overflow"));
+        } else {
+            panic!("Expected corrupted error");
+        }
+    }
+
 }
