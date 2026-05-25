@@ -12,16 +12,16 @@
 //! ┌────────────────────────────────────────────────────┐
 //! │ data_length (8 bytes, little-endian u64)           │
 //! ├────────────────────────────────────────────────────┤
-//! │ actual_data (variable, up to PAGE_SIZE - 8 bytes)  │
+//! │ actual_data (variable, up to 4096 - 8 bytes)  │
 //! ├────────────────────────────────────────────────────┤
-//! │ padding (zeros to fill PAGE_SIZE)                  │
+//! │ padding (zeros to fill 4096)                  │
 //! └────────────────────────────────────────────────────┘
 //! ```
 //!
 //! # Example
 //!
 //! ```no_run
-//! use relvar_storage::storage::{Page, PageFile, PAGE_SIZE};
+//! use relvar_storage::{Page, PageFile};
 //!
 //! // Create a page file
 //! let mut pf = PageFile::create("data.pages").unwrap();
@@ -56,7 +56,7 @@ pub const PAGE_SIZE: usize = 4096;
 /// Unique identifier for a page within a page file.
 ///
 /// Pages are numbered sequentially starting from 0. The page ID determines
-/// the byte offset in the file: `offset = page_id * PAGE_SIZE`.
+/// the byte offset in the file: `offset = page_id * 4096`.
 pub type PageId = u64;
 
 /// Errors that can occur during page operations.
@@ -78,18 +78,18 @@ pub enum PageError {
 /// A fixed-size block of data stored on disk.
 ///
 /// Pages are the fundamental unit of I/O between disk and memory. Each page
-/// has a unique ID and can hold up to [`PAGE_SIZE`] bytes of data. The actual
+/// has a unique ID and can hold up to [`4096`] bytes of data. The actual
 /// data is stored along with its length to handle variable-size content.
 ///
 /// # Examples
 ///
 /// ```
-/// use relvar_storage::storage::{Page, PAGE_SIZE};
+/// use relvar_storage::Page;
 ///
 /// // Create an empty page
 /// let mut page = Page::new(0);
 /// assert!(page.is_empty());
-/// assert_eq!(page.available_space(), PAGE_SIZE);
+/// assert_eq!(page.available_space(), 4096);
 ///
 /// // Create a page with data
 /// let page = Page::from_data(1, vec![1, 2, 3, 4, 5]).unwrap();
@@ -99,7 +99,7 @@ pub enum PageError {
 pub struct Page {
     /// Page identifier.
     id: PageId,
-    /// Raw page data (up to PAGE_SIZE bytes).
+    /// Raw page data (up to 4096 bytes).
     data: Vec<u8>,
 }
 
@@ -113,7 +113,7 @@ impl Page {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Page;
+    /// use relvar_storage::Page;
     ///
     /// let page = Page::new(0);
     /// assert_eq!(page.id(), 0);
@@ -135,21 +135,21 @@ impl Page {
     ///
     /// # Errors
     ///
-    /// Returns [`PageError::PageTooLarge`] if `data.len() > PAGE_SIZE`.
+    /// Returns [`PageError::PageTooLarge`] if `data.len() > 4096`.
     ///
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Page;
+    /// use relvar_storage::Page;
     ///
     /// let page = Page::from_data(42, vec![1, 2, 3]).unwrap();
     /// assert_eq!(page.id(), 42);
     /// assert_eq!(page.data(), &[1, 2, 3]);
     /// ```
     pub fn from_data(id: PageId, data: Vec<u8>) -> Result<Self, PageError> {
-        // Limit to PAGE_SIZE - 8 to account for the 8-byte length prefix
-        // written by write_page(), ensuring total on-disk size is exactly PAGE_SIZE
-        if data.len() > PAGE_SIZE - 8 {
+        // Limit to 4096 - 8 to account for the 8-byte length prefix
+        // written by write_page(), ensuring total on-disk size is exactly 4096
+        if data.len() > 4096 - 8 {
             return Err(PageError::PageTooLarge);
         }
         Ok(Self { id, data })
@@ -157,14 +157,14 @@ impl Page {
 
     /// Obtains the `PageId`, which serves as the physical address of this page on disk.
     ///
-    /// The page ID corresponds to the offset in the page file (`page_id * PAGE_SIZE`).
+    /// The page ID corresponds to the offset in the page file (`page_id * 4096`).
     /// This is strictly for internal storage engine routing and is never exposed to
     /// the logical relational layer (TTM Proscription 6).
     ///
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Page;
+    /// use relvar_storage::Page;
     ///
     /// let page = Page::new(42);
     /// assert_eq!(page.id(), 42);
@@ -182,9 +182,9 @@ impl Page {
     ///
     /// # Errors
     ///
-    /// Returns [`PageError::PageTooLarge`] if `data.len() > PAGE_SIZE`.
+    /// Returns [`PageError::PageTooLarge`] if `data.len() > 4096`.
     pub fn set_data(&mut self, data: Vec<u8>) -> Result<(), PageError> {
-        if data.len() > PAGE_SIZE {
+        if data.len() > 4096 {
             return Err(PageError::PageTooLarge);
         }
         self.data = data;
@@ -200,16 +200,16 @@ impl Page {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::{Page, PAGE_SIZE};
+    /// use relvar_storage::Page;
     ///
     /// let page = Page::new(1);
     /// // A new page starts completely empty (data length is 0).
-    /// assert_eq!(page.available_space(), PAGE_SIZE);
+    /// assert_eq!(page.available_space(), 4096);
     /// ```
     ///
-    /// This is `PAGE_SIZE - data.len()`.
+    /// This is `4096 - data.len()`.
     pub fn available_space(&self) -> usize {
-        PAGE_SIZE - self.data.len()
+        4096 - self.data.len()
     }
 
     /// Returns `true` if the page contains no data.
@@ -221,24 +221,24 @@ impl Page {
 /// Manages fixed-size pages stored in a file on disk.
 ///
 /// `PageFile` provides random access to pages by their ID. Pages are stored
-/// at fixed offsets (`page_id * PAGE_SIZE`), allowing efficient seek-based
+/// at fixed offsets (`page_id * 4096`), allowing efficient seek-based
 /// access without scanning the entire file.
 ///
 /// # File Format
 ///
-/// The file consists of consecutive PAGE_SIZE blocks:
+/// The file consists of consecutive 4096 blocks:
 ///
 /// ```text
 /// Offset 0:                 Page 0
-/// Offset PAGE_SIZE:         Page 1
-/// Offset 2*PAGE_SIZE:       Page 2
+/// Offset 4096:         Page 1
+/// Offset 2*4096:       Page 2
 /// ...
 /// ```
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use relvar_storage::storage::{Page, PageFile};
+/// use relvar_storage::{Page, PageFile};
 ///
 /// // Create a new page file
 /// let mut pf = PageFile::create("data.pages").unwrap();
@@ -299,7 +299,7 @@ impl PageFile {
 
     /// Reads a page from disk.
     ///
-    /// Seeks to the page's offset (`page_id * PAGE_SIZE`) and reads the data.
+    /// Seeks to the page's offset (`page_id * 4096`) and reads the data.
     /// If the page doesn't exist or is unreadable, returns an empty page.
     ///
     /// # Arguments
@@ -310,7 +310,7 @@ impl PageFile {
     ///
     /// Returns [`PageError::Io`] if the read fails.
     pub fn read_page(&mut self, page_id: PageId) -> Result<Page, PageError> {
-        let mut buffer = vec![0u8; PAGE_SIZE];
+        let mut buffer = vec![0u8; 4096];
         let bytes_read = self.read_raw_page(page_id, &mut buffer)?;
 
         // If we read nothing, it's a new/empty page
@@ -325,7 +325,7 @@ impl PageFile {
 
     fn read_raw_page(&mut self, page_id: PageId, buffer: &mut [u8]) -> Result<usize, PageError> {
         let offset = page_id
-            .checked_mul(PAGE_SIZE as u64)
+            .checked_mul(4096 as u64)
             .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.read(buffer).map_err(PageError::Io)
@@ -345,12 +345,12 @@ impl PageFile {
                 PageError::Serialization("Failed to parse length prefix".to_string())
             })?);
 
-        // Check if data length exceeds PAGE_SIZE - 8 (maximum possible data)
-        if data_len_u64 > (PAGE_SIZE - 8) as u64 {
+        // Check if data length exceeds 4096 - 8 (maximum possible data)
+        if data_len_u64 > (4096 - 8) as u64 {
             return Err(PageError::Serialization(format!(
                 "Page data length {} exceeds maximum {}",
                 data_len_u64,
-                PAGE_SIZE - 8
+                4096 - 8
             )));
         }
 
@@ -371,8 +371,8 @@ impl PageFile {
 
     /// Writes a page to disk.
     ///
-    /// The page is written at offset `page.id() * PAGE_SIZE`. The data is
-    /// prefixed with its length and padded to fill exactly PAGE_SIZE bytes.
+    /// The page is written at offset `page.id() * 4096`. The data is
+    /// prefixed with its length and padded to fill exactly 4096 bytes.
     ///
     /// # Arguments
     ///
@@ -385,12 +385,12 @@ impl PageFile {
         // Seek to the page offset
         let offset = page
             .id()
-            .checked_mul(PAGE_SIZE as u64)
+            .checked_mul(4096 as u64)
             .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
 
         // Prepare buffer with length prefix and data
-        let mut buffer = Vec::with_capacity(PAGE_SIZE);
+        let mut buffer = Vec::with_capacity(4096);
 
         // Write data length (8 bytes)
         let data_len = page.data().len() as u64;
@@ -399,14 +399,14 @@ impl PageFile {
         // Write actual data
         buffer.extend_from_slice(page.data());
 
-        // Ensure buffer doesn't exceed PAGE_SIZE (would corrupt page alignment)
-        if buffer.len() > PAGE_SIZE {
+        // Ensure buffer doesn't exceed 4096 (would corrupt page alignment)
+        if buffer.len() > 4096 {
             return Err(PageError::PageTooLarge);
         }
 
-        // Pad to PAGE_SIZE
-        if buffer.len() < PAGE_SIZE {
-            buffer.resize(PAGE_SIZE, 0);
+        // Pad to 4096
+        if buffer.len() < 4096 {
+            buffer.resize(4096, 0);
         }
 
         // Write to file
@@ -439,12 +439,12 @@ impl PageFile {
         // Seek to the page offset
         let offset = page
             .id()
-            .checked_mul(PAGE_SIZE as u64)
+            .checked_mul(4096 as u64)
             .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
 
         // Prepare buffer with length prefix and data
-        let mut buffer = Vec::with_capacity(PAGE_SIZE);
+        let mut buffer = Vec::with_capacity(4096);
 
         // Write data length (8 bytes)
         let data_len = page.data().len() as u64;
@@ -453,14 +453,14 @@ impl PageFile {
         // Write actual data
         buffer.extend_from_slice(page.data());
 
-        // Ensure buffer doesn't exceed PAGE_SIZE (would corrupt page alignment)
-        if buffer.len() > PAGE_SIZE {
+        // Ensure buffer doesn't exceed 4096 (would corrupt page alignment)
+        if buffer.len() > 4096 {
             return Err(PageError::PageTooLarge);
         }
 
-        // Pad to PAGE_SIZE
-        if buffer.len() < PAGE_SIZE {
-            buffer.resize(PAGE_SIZE, 0);
+        // Pad to 4096
+        if buffer.len() < 4096 {
+            buffer.resize(4096, 0);
         }
 
         // Write to file WITHOUT sync (buffered)
@@ -492,7 +492,7 @@ mod tests {
         let page = Page::new(0);
         assert_eq!(page.id(), 0);
         assert!(page.is_empty());
-        assert_eq!(page.available_space(), PAGE_SIZE);
+        assert_eq!(page.available_space(), 4096);
     }
 
     #[test]
@@ -502,12 +502,12 @@ mod tests {
 
         assert_eq!(page.id(), 42);
         assert_eq!(page.data(), &data);
-        assert_eq!(page.available_space(), PAGE_SIZE - 5);
+        assert_eq!(page.available_space(), 4096 - 5);
     }
 
     #[test]
     fn test_page_too_large() {
-        let data = vec![0u8; PAGE_SIZE + 1];
+        let data = vec![0u8; 4096 + 1];
         let result = Page::from_data(0, data);
 
         assert!(result.is_err());
@@ -696,11 +696,11 @@ mod tests {
         let mut page_file = PageFile::create(path).unwrap();
 
         // manually write a page with corrupted length
-        // Length 9999 (larger than PAGE_SIZE)
+        // Length 9999 (larger than 4096)
         let bad_len: u64 = 9999;
         let mut buffer = Vec::new();
         buffer.extend_from_slice(&bad_len.to_le_bytes());
-        buffer.resize(PAGE_SIZE, 0); // Fill rest with zeros
+        buffer.resize(4096, 0); // Fill rest with zeros
 
         // Write manually to file
         {
@@ -714,7 +714,7 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {
-                // 9999 > 4088 (PAGE_SIZE-8), so it hits the max size check first
+                // 9999 > 4088 (4096-8), so it hits the max size check first
                 assert!(msg.contains("exceeds maximum"));
             }
             _ => panic!("Expected Serialization error"),
@@ -761,7 +761,7 @@ mod tests {
         let bad_len: u64 = u64::MAX;
         let mut buffer = Vec::new();
         buffer.extend_from_slice(&bad_len.to_le_bytes());
-        buffer.resize(PAGE_SIZE, 0); // Fill rest with zeros
+        buffer.resize(4096, 0); // Fill rest with zeros
 
         // Write manually to file
         {
@@ -775,7 +775,7 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {
-                // u64::MAX > PAGE_SIZE-8, so it hits the max size check first
+                // u64::MAX > 4096-8, so it hits the max size check first
                 assert!(
                     msg.contains("exceeds maximum"),
                     "Unexpected message: {}",
@@ -795,14 +795,14 @@ mod tests {
         let path = temp_file.path();
 
         let mut page_file = PageFile::create(path).unwrap();
-        let max_data = PAGE_SIZE - 8;
+        let max_data = 4096 - 8;
 
-        // Test Case 1: Max allowed length (PAGE_SIZE - 8)
+        // Test Case 1: Max allowed length (4096 - 8)
         {
             let len = max_data as u64;
             let mut buffer = Vec::new();
             buffer.extend_from_slice(&len.to_le_bytes());
-            buffer.resize(PAGE_SIZE, 0); // Fill with valid data
+            buffer.resize(4096, 0); // Fill with valid data
 
             // Write directly
             let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
@@ -819,12 +819,12 @@ mod tests {
         let page = result.unwrap();
         assert_eq!(page.data().len(), max_data);
 
-        // Test Case 2: Max allowed length + 1 (PAGE_SIZE - 7)
+        // Test Case 2: Max allowed length + 1 (4096 - 7)
         {
             let len = (max_data + 1) as u64;
             let mut buffer = Vec::new();
             buffer.extend_from_slice(&len.to_le_bytes());
-            buffer.resize(PAGE_SIZE, 0);
+            buffer.resize(4096, 0);
 
             // Write directly
             let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
@@ -853,7 +853,7 @@ mod tests {
             let len: u64 = 0x100000001;
             let mut buffer = Vec::new();
             buffer.extend_from_slice(&len.to_le_bytes());
-            buffer.resize(PAGE_SIZE, 0);
+            buffer.resize(4096, 0);
 
             // Write directly
             let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
