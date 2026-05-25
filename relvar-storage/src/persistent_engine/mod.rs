@@ -161,11 +161,11 @@ impl PersistentEngine {
         let snapshot = self.get_snapshot_for_current_context()?;
 
         // scan_relation implicitly filters out uncommitted tuples because they are not in committed_txns
-        let relation = self.storage_manager.write().unwrap().scan_relation(
-            relation_name,
-            &snapshot,
-            &self.committed_txns,
-        )?;
+        let relation = self
+            .storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("Storage manager lock poisoned".to_string()))?
+            .scan_relation(relation_name, &snapshot, &self.committed_txns)?;
 
         // Store back (effectively removing uncommitted garbage from the heap file)
         self.store_relation(relation_name, &relation)?;
@@ -197,7 +197,10 @@ impl PersistentEngine {
         self.flush_wal()?;
 
         // Now safe to flush heap files (dirty pages to disk)
-        self.storage_manager.write().unwrap().flush_heap_files()?;
+        self.storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("Storage manager lock poisoned".to_string()))?
+            .flush_heap_files()?;
 
         // Determine minimum active LSN
         let min_active_lsn = self.get_checkpoint_lsn();
@@ -293,27 +296,36 @@ impl StorageEngine for PersistentEngine {
     ) -> Result<(), StorageError> {
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|_| StorageError::Other("Storage manager lock poisoned".to_string()))?
             .create_relation(name, relation_type)
     }
 
     fn drop_relation(&mut self, name: &str) -> Result<(), StorageError> {
-        self.storage_manager.write().unwrap().drop_relation(name)
+        self.storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("Storage manager lock poisoned".to_string()))?
+            .drop_relation(name)
     }
 
     fn relation_exists(&self, name: &str) -> bool {
-        self.storage_manager.read().unwrap().relation_exists(name)
+        self.storage_manager
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .relation_exists(name)
     }
 
     fn get_relation_metadata(&self, name: &str) -> Result<RelationMetadata, StorageError> {
         self.storage_manager
             .read()
-            .unwrap()
+            .map_err(|_| StorageError::Other("Storage manager lock poisoned".to_string()))?
             .get_relation_metadata(name)
     }
 
     fn list_relations(&self) -> Vec<String> {
-        self.storage_manager.read().unwrap().list_relations()
+        self.storage_manager
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .list_relations()
     }
 
     fn load_relation(&self, name: &str) -> Result<Relation, StorageError> {
@@ -395,7 +407,10 @@ impl StorageEngine for PersistentEngine {
             .flush()
             .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
 
-        self.storage_manager.write().unwrap().flush_heap_files()?;
+        self.storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("Storage manager lock poisoned".to_string()))?
+            .flush_heap_files()?;
 
         self.committed_txns.insert(snapshot.txn_id);
         self.active_txns.commit(snapshot.txn_id);

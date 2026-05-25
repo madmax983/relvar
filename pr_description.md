@@ -1,0 +1,4 @@
+🦠 Threat: Denial of Service (DoS) due to system-wide panic cascade. If an RwLock in `PersistentEngine` (which guards `StorageManager`) became poisoned (e.g., due to a panic during a write lock), subsequent calls to `.unwrap()` would also panic, leading to a complete crash of the storage engine.
+🛡️ Defense: Replaced `.unwrap()` calls on `RwLock` results with `.map_err()` for functions returning `Result<T, StorageError>`, and `.unwrap_or_else(|e| e.into_inner())` for read-only operations where lock poison doesn't invalidate the ability to read the current state safely.
+💥 Severity: High. A panic in any thread holding the write lock would render the entire database unusable until restart, acting as an internal DoS vector.
+🧪 Verification: Ran `cargo test` and `cargo clippy`. Verified the replacement logic manually. Added entry to `.jules/warden.md`.
