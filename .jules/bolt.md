@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2025-05-24 - [Avoid `collect()` for array slicing in tests]
+**Learning:** In tests (e.g., `summarize`), using `.collect::<Vec<_>>()` on an iterator to extract a single element for assertion allocates memory needlessly and fails to verify uniqueness reliably.
+**Action:** Replace `let results: Vec<_> = iter.collect(); assert_eq!(results.len(), 1); let result = results[0];` with `let mut iter = ...; let result = iter.next().unwrap(); assert!(iter.next().is_none());` to avoid allocations and ensure exactly one element exists without constructing an intermediate `Vec`.

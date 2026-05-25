@@ -371,7 +371,11 @@ impl Query {
     ///
     /// let q = Query::scan("USERS").project(vec!["name", "email"]);
     /// ```
-    pub fn project<S: Into<String>>(self, attributes: Vec<S>) -> Self {
+    pub fn project<I, S>(self, attributes: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
         Query::Project {
             input: Box::new(self),
             attributes: attributes.into_iter().map(|s| s.into()).collect(),
@@ -386,7 +390,12 @@ impl Query {
     ///
     /// let q = Query::scan("USERS").rename(vec![("name", "full_name")]);
     /// ```
-    pub fn rename<S1: Into<String>, S2: Into<String>>(self, mappings: Vec<(S1, S2)>) -> Self {
+    pub fn rename<I, S1, S2>(self, mappings: I) -> Self
+    where
+        I: IntoIterator<Item = (S1, S2)>,
+        S1: Into<String>,
+        S2: Into<String>,
+    {
         Query::Rename {
             input: Box::new(self),
             mappings: mappings
@@ -422,15 +431,16 @@ impl Query {
     ///
     /// let q = Query::scan("USERS").summarize(vec!["department"], vec![Aggregation::count("emp_count")]);
     /// ```
-    pub fn summarize<S: Into<String>>(
-        self,
-        group_by: Vec<S>,
-        aggregations: Vec<Aggregation>,
-    ) -> Self {
+    pub fn summarize<I, S, A>(self, group_by: I, aggregations: A) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+        A: IntoIterator<Item = Aggregation>,
+    {
         Query::Summarize {
             input: Box::new(self),
             group_by: group_by.into_iter().map(|s| s.into()).collect(),
-            aggregations,
+            aggregations: aggregations.into_iter().collect(),
         }
     }
 }
