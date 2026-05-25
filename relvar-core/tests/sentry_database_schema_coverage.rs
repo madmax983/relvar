@@ -156,7 +156,6 @@ fn test_database_define_virtual_relvar_already_exists() {
     use relvar_core::types::{RelationType, ScalarType, TupleType};
 
     let mut db = Database::new(InMemoryEngine::new());
-
     let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
     db.create_relvar("TABLE_1", rel_type.clone()).unwrap();
 
@@ -167,6 +166,5 @@ fn test_database_define_virtual_relvar_already_exists() {
             ))
         })
         .unwrap_err();
-
     assert!(matches!(err, DatabaseError::RelationAlreadyExists(_)));
 }

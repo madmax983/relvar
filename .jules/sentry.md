@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-05-25 - Internal Test Visibility for Constraints Coverage
+**Learning:** Attempting to write integration tests in the `tests/` directory to cover failure paths for internal constraint validations (like `DatabaseError::Constraint` mappings from `CandidateKeyViolation` or `TypeConstraintViolation`) resulted in `error[E0603]: module 'key' is private` because the inner constraint structs are declared inside `pub(crate)` modules.
+**Action:** When writing tests that directly construct or assert on deep internal structures that are not part of the public API, always append these tests to the module's internal test files (e.g., `src/database/tests/data.rs`) instead of the external integration test directory.
