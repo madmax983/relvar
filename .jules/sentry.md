@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-05-18 - Unchecked Deserialization Validation Gaps
+**Learning:** `serde` deserialization structs implementing validation logic via `try_from` bounds (`ScalarTypeUnchecked` and `ScalarValueUnchecked`) have uncovered error branches mapping to nested depth limits and invalid UserDefined configurations.
+**Action:** When testing validation logic for private serialization structs bound via `#[serde(try_from)]`, exercise the private error branches by passing simulated JSON string payloads directly to `serde_json::from_str` in the test cases to ensure the deserialization safety constraints perform properly during dynamic loads.

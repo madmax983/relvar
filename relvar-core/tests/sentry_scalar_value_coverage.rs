@@ -67,3 +67,31 @@ fn test_scalar_value_hash_user_defined() {
     val.hash(&mut s);
     let _ = s.finish();
 }
+
+#[test]
+fn test_scalar_value_unchecked_user_defined_invalid_type_def() {
+    let json = r#"
+        {"UserDefined": {
+            "type_def": "Int",
+            "value": {"Int": 42}
+        }}
+    "#;
+    let decoded: Result<ScalarValue, _> = serde_json::from_str(json);
+    assert!(decoded.is_err());
+    let err_msg = decoded.unwrap_err().to_string();
+    assert!(err_msg.contains("Invalid UserDefined value: type definition must be UserDefined"));
+}
+
+#[test]
+fn test_scalar_value_unchecked_user_defined_type_mismatch() {
+    let json = r#"
+        {"UserDefined": {
+            "type_def": {"UserDefined": {"name": "WidgetId", "representation": "Int"}},
+            "value": {"String": "42"}
+        }}
+    "#;
+    let decoded: Result<ScalarValue, _> = serde_json::from_str(json);
+    assert!(decoded.is_err());
+    let err_msg = decoded.unwrap_err().to_string();
+    assert!(err_msg.contains("Type mismatch in UserDefined value: type definition expects Int, but value is String"));
+}
