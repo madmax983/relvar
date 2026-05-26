@@ -24,6 +24,11 @@
 ## 2024-05-19 - Sub-modularizing the Query Tests Blob
 **Tangle:** The `relvar-core/src/query/mod.rs` file had grown into a God File, with tests taking up a large portion of the file, hindering readability and maintainability. Inline tests mixed everything together into a Blob.
 **Blueprint:** Removed the `tests` module from the `mod.rs` monolith and extracted its contents into a specialized sub-module structure under a new `relvar-core/src/query/tests/` directory. Created explicit sub-modules for `basic.rs` along with a `common.rs` for shared helpers, restoring high cohesion to the testing structure.
+
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+
+## 2024-05-26 - Fixing Public Module Leaks
+**Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph. Specifically, `relvar-core/src/query/tests/mod.rs` had `pub mod` declarations that were leaking internal submodules.
+**Blueprint:** Converted top-level internal module definitions in `relvar-core/src/query/tests/mod.rs` to `pub(crate) mod` where appropriate to fix the leak.
