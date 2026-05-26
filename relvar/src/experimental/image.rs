@@ -102,7 +102,21 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         return (0, 0, Vec::new());
     }
 
-    // 1. Find dimensions
+    let (min_x, max_x, min_y, max_y) = find_dimensions(relation);
+
+    let width = (max_x.saturating_sub(min_x).saturating_add(1)) as usize;
+    let height = (max_y.saturating_sub(min_y).saturating_add(1)) as usize;
+
+    if width.saturating_mul(height) > 10_000_000 {
+        return (0, 0, Vec::new());
+    }
+
+    let data = populate_pixel_data(relation, width, height, min_x, min_y);
+
+    (width, height, data)
+}
+
+fn find_dimensions(relation: &Relation) -> (i64, i64, i64, i64) {
     let mut min_x = i64::MAX;
     let mut max_x = i64::MIN;
     let mut min_y = i64::MAX;
@@ -126,13 +140,16 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         }
     }
 
-    let width = (max_x.saturating_sub(min_x).saturating_add(1)) as usize;
-    let height = (max_y.saturating_sub(min_y).saturating_add(1)) as usize;
+    (min_x, max_x, min_y, max_y)
+}
 
-    if width.saturating_mul(height) > 10_000_000 {
-        return (0, 0, Vec::new());
-    }
-
+fn populate_pixel_data(
+    relation: &Relation,
+    width: usize,
+    height: usize,
+    min_x: i64,
+    min_y: i64,
+) -> Vec<u8> {
     let mut data = vec![0u8; width * height * 3];
 
     for tuple in relation.tuples() {
@@ -153,7 +170,7 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         }
     }
 
-    (width, height, data)
+    data
 }
 
 /// Applies a convolution kernel to the image relation.
@@ -194,78 +211,64 @@ pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
 }
 
 fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Vec<Relation> {
-    let mut contributions = Vec::with_capacity(kernel.len());
+    kernel
+        .iter()
+        .enumerate()
+        .map(|(i, tap)| {
+            let shifted = shift_coordinates(relation, tap.dx, tap.dy);
+            let scaled = apply_color_weights_and_tag(&shifted, tap.weight, i as i64);
+            project_and_rename_contribution(&scaled)
+        })
+        .collect()
+}
 
-    for (i, tap) in kernel.iter().enumerate() {
-        let dx = tap.dx;
-        let dy = tap.dy;
-        let weight = tap.weight;
-        let k_idx = i as i64;
+fn shift_coordinates(relation: &Relation, dx: i64, dy: i64) -> Relation {
+    relation
+        .extend("tx", ScalarType::Int, move |t| {
+            let x = t.get_typed::<i64>("x").unwrap();
+            ScalarValue::Int(x + dx)
+        })
+        .unwrap()
+        .extend("ty", ScalarType::Int, move |t| {
+            let y = t.get_typed::<i64>("y").unwrap();
+            ScalarValue::Int(y + dy)
+        })
+        .unwrap()
+}
 
-        // Step 1: Shift and Scale
-        // We use extend to compute new coordinates and weighted values
-        // We project to keep only relevant columns + k_idx
-        // Logic: A pixel at (x,y) contributes to (x+dx, y+dy) with weight w.
-        // So for a target pixel (tx, ty), the source is (tx-dx, ty-dy).
-        // But here we are iterating source pixels.
-        // Source (x,y) contributes to Target (x+dx, y+dy).
-        // So let's name the new coordinates `tx` and `ty`.
+fn apply_color_weights_and_tag(relation: &Relation, weight: i64, k_idx: i64) -> Relation {
+    relation
+        .extend("wr", ScalarType::Int, move |t| {
+            let v = t.get_typed::<i64>("r").unwrap();
+            ScalarValue::Int(v * weight)
+        })
+        .unwrap()
+        .extend("wg", ScalarType::Int, move |t| {
+            let v = t.get_typed::<i64>("g").unwrap();
+            ScalarValue::Int(v * weight)
+        })
+        .unwrap()
+        .extend("wb", ScalarType::Int, move |t| {
+            let v = t.get_typed::<i64>("b").unwrap();
+            ScalarValue::Int(v * weight)
+        })
+        .unwrap()
+        .extend("k_idx", ScalarType::Int, move |_| ScalarValue::Int(k_idx))
+        .unwrap()
+}
 
-        // Extend 1: Calculate target coordinates
-        let with_coords = relation
-            .extend("tx", ScalarType::Int, move |t| {
-                let x = t.get_typed::<i64>("x").unwrap();
-                ScalarValue::Int(x + dx)
-            })
-            .unwrap()
-            .extend("ty", ScalarType::Int, move |t| {
-                let y = t.get_typed::<i64>("y").unwrap();
-                ScalarValue::Int(y + dy)
-            })
-            .unwrap();
+fn project_and_rename_contribution(relation: &Relation) -> Relation {
+    let rename_map = vec![
+        ("tx", "x"),
+        ("ty", "y"),
+        ("wr", "r"),
+        ("wg", "g"),
+        ("wb", "b"),
+    ];
 
-        // Extend 2: Calculate weighted color components
-        let with_weights = with_coords
-            .extend("wr", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("r").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap()
-            .extend("wg", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("g").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap()
-            .extend("wb", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("b").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap();
-
-        // Extend 3: Add kernel index (to prevent set deduplication of values)
-        let with_idx = with_weights
-            .extend("k_idx", ScalarType::Int, move |_| ScalarValue::Int(k_idx))
-            .unwrap();
-
-        // Project: Keep (tx, ty, wr, wg, wb, k_idx)
-        // But we rename them to a standard schema for Union
-        // Standard: (x, y, r, g, b, k_idx)
-        // Rename mapping: tx->x, ty->y, wr->r, wg->g, wb->b
-        let rename_map = vec![
-            ("tx", "x"),
-            ("ty", "y"),
-            ("wr", "r"),
-            ("wg", "g"),
-            ("wb", "b"),
-        ];
-
-        let projected = with_idx.project(&["tx", "ty", "wr", "wg", "wb", "k_idx"]);
-        let renamed = projected.rename(&rename_map);
-
-        contributions.push(renamed);
-    }
-
-    contributions
+    relation
+        .project(&["tx", "ty", "wr", "wg", "wb", "k_idx"])
+        .rename(&rename_map)
 }
 
 fn union_contributions(contributions: &[Relation]) -> Relation {

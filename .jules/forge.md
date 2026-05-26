@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2024-05-30 - Extract God Function in RIP
+**Learning:** The image processing logic in `relvar/src/experimental/image.rs` contained God Functions (`compute_kernel_contributions` and `save`) that combined multiple operations together, reducing readability.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting inner operations into specific helper functions. For `compute_kernel_contributions`, logic was split into `shift_coordinates`, `apply_color_weights_and_tag` and `project_and_rename_contribution`. For `save`, logic was extracted into `find_dimensions` and `populate_pixel_data`. This significantly simplified the flow without altering behavior.
