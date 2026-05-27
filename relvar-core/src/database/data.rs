@@ -333,3 +333,94 @@ impl<E: StorageEngine> Database<E> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::database::Database;
+    use crate::error::DatabaseError;
+    use crate::storage_engine::InMemoryEngine;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::values::Tuple;
+
+    #[test]
+    fn test_database_update_parent_violates_referencing_foreign_key() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        let parent_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("name", ScalarType::String),
+        );
+        db.create_relvar("TEST", parent_type).unwrap();
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        let child_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("child_id", ScalarType::Int)
+                .with_attribute("test_id", ScalarType::Int),
+        );
+        db.create_relvar("CHILD", child_type).unwrap();
+
+        let fk = crate::constraints::ForeignKey::new(
+            vec!["test_id".to_string()],
+            "TEST".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+        let fk_constraints = crate::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+        db.set_foreign_key_constraints("CHILD", fk_constraints)
+            .unwrap();
+
+        db.insert("CHILD", tuple! { child_id: 100i64, test_id: 1i64 })
+            .unwrap();
+
+        // Update parent TEST.id to 2 should fail because CHILD has test_id = 1
+        let result = db.update(
+            "TEST",
+            |t: &Tuple| t.get_typed::<i64>("id").unwrap() == 1,
+            |_| tuple! { id: 2i64, name: "Alice" },
+        );
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+    }
+
+    #[test]
+    fn test_database_delete_parent_violates_referencing_foreign_key() {
+        let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+        let parent_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("name", ScalarType::String),
+        );
+        db.create_relvar("TEST", parent_type).unwrap();
+        db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+            .unwrap();
+
+        let child_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("child_id", ScalarType::Int)
+                .with_attribute("test_id", ScalarType::Int),
+        );
+        db.create_relvar("CHILD", child_type).unwrap();
+
+        let fk = crate::constraints::ForeignKey::new(
+            vec!["test_id".to_string()],
+            "TEST".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+        let fk_constraints = crate::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+        db.set_foreign_key_constraints("CHILD", fk_constraints)
+            .unwrap();
+
+        db.insert("CHILD", tuple! { child_id: 100i64, test_id: 1i64 })
+            .unwrap();
+
+        let result = db.delete("TEST", |t: &Tuple| t.get_typed::<i64>("id").unwrap() == 1);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DatabaseError::Constraint(_))));
+    }
+}

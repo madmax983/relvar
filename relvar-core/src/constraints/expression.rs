@@ -938,3 +938,67 @@ mod like_tests {
         assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
     }
 }
+
+#[cfg(test)]
+mod additional_tests {
+    use super::*;
+    use crate::values::ScalarValue;
+
+    #[test]
+    fn test_expression_evaluate_cmp_lt_le_gt() {
+        use crate::types::{ScalarType, TupleType};
+        use crate::values::Tuple;
+        use std::collections::BTreeMap;
+        use std::sync::Arc;
+
+        let tt = Arc::new(
+            TupleType::new()
+                .with_attribute("a", ScalarType::Int)
+                .with_attribute("b", ScalarType::Int),
+        );
+        let mut map = BTreeMap::new();
+        map.insert("a".to_string(), ScalarValue::Int(10));
+        map.insert("b".to_string(), ScalarValue::Int(20));
+        let tuple = Tuple::new(tt.clone(), map).unwrap();
+
+        let mut map2 = BTreeMap::new();
+        map2.insert("a".to_string(), ScalarValue::Int(20));
+        map2.insert("b".to_string(), ScalarValue::Int(10));
+        let tuple2 = Tuple::new(tt.clone(), map2).unwrap();
+
+        let mut map3 = BTreeMap::new();
+        map3.insert("a".to_string(), ScalarValue::Int(10));
+        map3.insert("b".to_string(), ScalarValue::Int(10));
+        let tuple3 = Tuple::new(tt.clone(), map3).unwrap();
+
+        let expr_lt = ConstraintExpression::Cmp {
+            left: "a".to_string(),
+            op: CmpOp::Lt,
+            right: ValueOrRef::Attribute("b".to_string()),
+        };
+
+        let expr_le = ConstraintExpression::Cmp {
+            left: "a".to_string(),
+            op: CmpOp::Le,
+            right: ValueOrRef::Attribute("b".to_string()),
+        };
+
+        let expr_gt = ConstraintExpression::Cmp {
+            left: "a".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Attribute("b".to_string()),
+        };
+
+        assert!(expr_lt.evaluate(&tuple).unwrap());
+        assert!(!expr_lt.evaluate(&tuple2).unwrap());
+        assert!(!expr_lt.evaluate(&tuple3).unwrap());
+
+        assert!(expr_le.evaluate(&tuple).unwrap());
+        assert!(!expr_le.evaluate(&tuple2).unwrap());
+        assert!(expr_le.evaluate(&tuple3).unwrap());
+
+        assert!(!expr_gt.evaluate(&tuple).unwrap());
+        assert!(expr_gt.evaluate(&tuple2).unwrap());
+        assert!(!expr_gt.evaluate(&tuple3).unwrap());
+    }
+}
