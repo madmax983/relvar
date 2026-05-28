@@ -19,10 +19,7 @@
 //! );
 //!
 //! // 2. Generate random data
-//! let relation = MockRelation::new(rel_type)
-//!     .count(100)       // Generate 100 tuples
-//!     .seed(42)         // Use fixed seed for deterministic results
-//!     .generate();
+//! let relation = MockRelation::new(rel_type, 100, Some(42)).generate();
 //!
 //! assert_eq!(relation.cardinality(), 100);
 //! ```
@@ -47,10 +44,7 @@ use std::collections::BTreeMap;
 ///         .with_attribute("name", ScalarType::String)
 /// );
 ///
-/// let relation = MockRelation::new(rel_type)
-///     .count(10)
-///     .seed(42)
-///     .generate();
+/// let relation = MockRelation::new(rel_type, 10, Some(42)).generate();
 ///
 /// assert_eq!(relation.cardinality(), 10);
 /// ```
@@ -69,42 +63,12 @@ impl MockRelation {
     /// use relvar::experimental::mock::MockRelation;
     /// // Note: This is a placeholder example
     /// ```
-    pub fn new(relation_type: RelationType) -> Self {
+    pub fn new(relation_type: RelationType, count: usize, seed: Option<u64>) -> Self {
         Self {
             relation_type,
-            count: 0,
-            seed: None,
+            count,
+            seed,
         }
-    }
-
-    /// Set the number of tuples to generate.
-    ///
-    /// Note: Since relations are sets, duplicate tuples will be ignored.
-    /// If the random generation produces duplicates, the final cardinality
-    /// might be less than `count`.
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::mock::MockRelation;
-    /// // Note: This is a placeholder example
-    /// ```
-    pub fn count(mut self, count: usize) -> Self {
-        self.count = count;
-        self
-    }
-
-    /// Set the random seed for deterministic generation.
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::mock::MockRelation;
-    /// // Note: This is a placeholder example
-    /// ```
-    pub fn seed(mut self, seed: u64) -> Self {
-        self.seed = Some(seed);
-        self
     }
 
     /// Generate the relation.
@@ -192,10 +156,7 @@ mod tests {
                 .with_attribute("active", ScalarType::Bool),
         );
 
-        let relation = MockRelation::new(rel_type)
-            .count(50)
-            .seed(12345) // Deterministic
-            .generate();
+        let relation = MockRelation::new(rel_type, 50, Some(12345)).generate();
 
         assert_eq!(relation.cardinality(), 50);
         assert_eq!(relation.degree(), 3);
@@ -222,7 +183,7 @@ mod tests {
                 .with_attribute("user_val", user_defined_type),
         );
 
-        let relation = MockRelation::new(rel_type).count(10).seed(42).generate();
+        let relation = MockRelation::new(rel_type, 10, Some(42)).generate();
 
         assert_eq!(relation.degree(), 7);
         assert_eq!(relation.cardinality(), 10);
@@ -232,12 +193,9 @@ mod tests {
     fn test_determinism() {
         let rel_type = RelationType::new(TupleType::new().with_attribute("val", ScalarType::Float));
 
-        let rel1 = MockRelation::new(rel_type.clone())
-            .count(10)
-            .seed(42)
-            .generate();
+        let rel1 = MockRelation::new(rel_type.clone(), 10, Some(42)).generate();
 
-        let rel2 = MockRelation::new(rel_type).count(10).seed(42).generate();
+        let rel2 = MockRelation::new(rel_type, 10, Some(42)).generate();
 
         assert_eq!(rel1, rel2);
     }
