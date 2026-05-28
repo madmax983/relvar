@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2026-05-28 - Extract God Functions in Raytracer
+**Learning:** `relvar/src/experimental/raytracer.rs` contained two "God Functions" `compute_intersections` (67 lines) and `calculate_visible_pixels` (68 lines) which combined several distinct relational operations into large blocks, hurting readability.
+**Action:** Applied the 'Three-Phase Operator' pattern, breaking out `prepare_spheres_for_join`, `calculate_intersection_distances`, `filter_positive_hits`, `find_closest_hits`, `map_hit_colors`, and `combine_with_background` into focused, descriptive private helper functions.

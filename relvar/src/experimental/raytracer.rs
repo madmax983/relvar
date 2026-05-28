@@ -190,16 +190,23 @@ impl Scene {
     }
 
     fn compute_intersections(&self, rays: &Relation) -> Result<Relation, DatabaseError> {
+        let spheres_prepared = self.prepare_spheres_for_join()?;
+        let combinations = rays.join(&spheres_prepared)?;
+        self.calculate_intersection_distances(&combinations)
+    }
+
+    fn prepare_spheres_for_join(&self) -> Result<Relation, DatabaseError> {
         // 2. Prepare Spheres for Cross Join
         // We use extend to add `dummy_join: 1` so natural join acts as a cross join.
-        let spheres_prepared = self
-            .spheres
+        self.spheres
             .extend("dummy_join", ScalarType::Int, |_| ScalarValue::Int(1))
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
-        // 3. Cross Join: All rays against all spheres
-        let combinations = rays.join(&spheres_prepared)?;
-
+    fn calculate_intersection_distances(
+        &self,
+        combinations: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 4. Calculate Intersections
         // Mathematical derivation:
         // Ray: P(t) = O + t*D
@@ -211,7 +218,7 @@ impl Scene {
         // Let half_b = D \cdot (O - C)
         // Let c = (O - C) \cdot (O - C) - r^2
         // discriminant = half_b^2 - a*c
-        let intersections = combinations
+        combinations
             .extend("t", ScalarType::Float, |tup| {
                 let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
                 let oy = tup.get_typed::<f64>("oy").unwrap_or(0.0);
@@ -252,9 +259,7 @@ impl Scene {
                     }
                 }
             })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        Ok(intersections)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 
     fn calculate_visible_pixels(
@@ -262,12 +267,21 @@ impl Scene {
         rays: &Relation,
         intersections: &Relation,
     ) -> Result<Relation, DatabaseError> {
+        let hits = self.filter_positive_hits(intersections);
+        let closest_hits_base = self.find_closest_hits(&hits)?;
+        let rendered_hits = self.map_hit_colors(closest_hits_base, &hits)?;
+        self.combine_with_background(rays, &rendered_hits)
+    }
+
+    fn filter_positive_hits(&self, intersections: &Relation) -> Relation {
         // 5. Filter Hits
-        let hits = intersections.restrict(|t| {
+        intersections.restrict(|t| {
             let dist = t.get_typed::<f64>("t").unwrap_or(-1.0);
             dist > 0.0
-        });
+        })
+    }
 
+    fn find_closest_hits(&self, hits: &Relation) -> Result<Relation, DatabaseError> {
         // 6. Find Closest Hits (Z-Buffer)
         // If there are hits, group by (x, y) and find min(t)
         // We use min on 't' to find the closest intersection per ray.
@@ -287,6 +301,14 @@ impl Scene {
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         }
 
+        Ok(closest_hits_base)
+    }
+
+    fn map_hit_colors(
+        &self,
+        closest_hits_base: Relation,
+        hits: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 7. Map Colors
         // Rename min_t to t in closest_hits to natural join it back with hits.
         // This acts like an INNER JOIN hits h ON h.x=c.x AND h.y=c.y AND h.t=c.min_t
@@ -295,11 +317,17 @@ impl Scene {
         // Note: Multiple spheres could theoretically be exactly at distance t.
         // Set semantics handle duplicates, but we could get multiple colors if
         // different spheres occupy the exact same spot. For a basic raytracer, this is fine.
-        let visible_pixels = closest_renamed.join(&hits)?;
+        let visible_pixels = closest_renamed.join(hits)?;
 
         // Project down to final image attributes
-        let rendered_hits = visible_pixels.project(&["x", "y", "r", "g", "b"]);
+        Ok(visible_pixels.project(&["x", "y", "r", "g", "b"]))
+    }
 
+    fn combine_with_background(
+        &self,
+        rays: &Relation,
+        rendered_hits: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 8. Background Color
         // Find rays that didn't hit anything: all rays MINUS rays that hit something
         let all_pixels = rays.project(&["x", "y"]);
@@ -319,11 +347,9 @@ impl Scene {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Combine hits and background
-        let final_image = rendered_hits
+        rendered_hits
             .union(&background_colored)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        Ok(final_image)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 
     /// Renders the scene to a relation of pixels.
