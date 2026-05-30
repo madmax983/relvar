@@ -1,0 +1,4 @@
+🚮 Smell: `relvar/src/experimental/physics.rs` contained a "God Function" `compute_pairwise_forces` (81 lines) which combined creating particle pairs (cross join), filtering out self-interactions, and calculating force components for each pair, mixing distinct relational operations into one massive block.
+✨ Solution: Applied the "Three-Phase Operator" pattern by extracting `create_particle_pairs`, `filter_self_interactions`, and `calculate_force_components` into separate helper functions.
+🧼 Benefit: Improves readability and structural clarity by breaking out individual phases without changing the runtime behavior.
+🛡️ Verification: Tests passed. No logic changed.

@@ -59,6 +59,12 @@ impl PhysicsEngine {
     }
 
     fn compute_pairwise_forces(&self) -> Result<Relation, DatabaseError> {
+        let pairs = self.create_particle_pairs()?;
+        let interactions = self.filter_self_interactions(&pairs);
+        self.calculate_force_components(&interactions)
+    }
+
+    fn create_particle_pairs(&self) -> Result<Relation, DatabaseError> {
         // 1. Cross join particles with themselves to compute pairwise forces.
         // Rename attributes to distinguish particle 1 and particle 2.
         let p1 = self.particles.rename(&[
@@ -79,15 +85,22 @@ impl PhysicsEngine {
             ("mass", "m2"),
         ]);
 
-        let pairs = p1.join(&p2)?;
+        p1.join(&p2)
+    }
 
+    fn filter_self_interactions(&self, pairs: &Relation) -> Relation {
         // 2. Filter out self-interactions (id1 == id2)
-        let interactions = pairs.restrict(|t| {
+        pairs.restrict(|t| {
             let id1 = t.get_typed::<i64>("id1").unwrap();
             let id2 = t.get_typed::<i64>("id2").unwrap();
             id1 != id2
-        });
+        })
+    }
 
+    fn calculate_force_components(
+        &self,
+        interactions: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 3. Compute forces for each pair
         let g = self.g;
         interactions
