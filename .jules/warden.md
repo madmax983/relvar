@@ -9,3 +9,7 @@
 ## 2026-04-24 - [Unsafe unwrap in StorageManager]
 **Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
 **Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
+
+## 2026-04-24 - [Fix recursion DoS in ConstraintExpression deserialization]
+**Threat:** Unbounded recursion (stack overflow Denial of Service) through recursive deserialization via serde (`And`, `Or`, `Not` enum variants in `ConstraintExpression`).
+**Defense:** Added `#[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]` to the `Box<ConstraintExpression>` fields within the recursive enum variants.
