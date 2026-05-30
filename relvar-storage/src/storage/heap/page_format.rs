@@ -2,9 +2,6 @@ use super::HeapError;
 use crate::storage::page::PageId;
 use serde::{Deserialize, Serialize};
 
-pub const HEADER_SIZE: usize = 4;
-pub const USABLE_PAGE_SIZE: usize = crate::storage::page::PAGE_SIZE - HEADER_SIZE;
-pub const USABLE_PAGE_SIZE_V2: usize = USABLE_PAGE_SIZE;
 
 /// Tuple ID: (page_id, slot_number)
 /// Internal to storage layer only (TTM Proscription 6)
