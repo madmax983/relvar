@@ -51,7 +51,7 @@
 ## 2026-05-01 - Avoided Arc clone in DML loop
 **Learning:** `Arc<TupleType>::clone()` incurs reference counting overhead and potential allocation overhead, taking around 14ms per 10k tuple creations as shown in `tuple_creation` bench.
 **Action:** Always borrow reference from wrapper container types instead of cloning Arc explicitly if the borrow lifetime spans the whole needed lifetime block, like `tuple.conforms_to(relation_type.tuple_type())` instead of `.clone()`ing `expected_type`.
-## $(date +%Y-%m-%d) - [HashSet Pre-Allocation in Relation::from_tuples_unchecked]
+## 2025-05-23 - [HashSet Pre-Allocation in Relation::from_tuples_unchecked]
 **Learning:** `Relation::from_tuples_unchecked` previously allocated a `HashSet` using the lower bound of an iterator's `size_hint`. For chained iterators like `.filter()`, the lower bound is often 0, leading to a zero-capacity `HashSet` allocation and repeated reallocation churn as elements are inserted.
 **Action:** Use `let capacity = upper.unwrap_or(lower);` to fall back on the upper bound when constructing the collection. While this can risk over-allocation in extreme filtered edge cases, it drastically reduces allocation overhead in the majority of relational algebra operations (like `restrict` and `semijoin`) where the filtered set size aligns closer to the original capacity.
 ## 2025-05-05 - Avoid .collect() into Vec<String> when yielding references
@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2025-05-23 - [Join and Semijoin String Slice Optimization]
+**Learning:** For relational operations like `join`, `semijoin`, and `semidifference`, we were cloning `String` objects when extracting common attribute names to form a `Vec<String>`. This led to unnecessary heap allocations and redundant `String` copies.
+**Action:** When computing common attribute names for read-only comparisons or lookups, borrow string slices from the relations (e.g. `other` relation) to form a `Vec<&str>`. The `JoinKey` and `SemijoinKey` structs can accept `&[&str]` to hold these references during hashing, completely eliminating the intermediate `String` cloning.
