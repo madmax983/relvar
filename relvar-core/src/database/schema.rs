@@ -191,7 +191,7 @@ impl<E: StorageEngine> Database<E> {
     ///     emp_type,
     ///     |db_exec| {
     ///         let emp = db_exec.query("EMP").unwrap();
-    ///         Ok(emp.restrict(|t| t.get_typed::<bool>("active").unwrap_or(false)))
+    ///         Ok(emp.restrict_into(|t| t.get_typed::<bool>("active").unwrap_or(false)))
     ///     }
     /// ).unwrap();
     ///

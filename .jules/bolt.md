@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2026-05-31 - [Restrict Optimization and restrict_into]
+**Learning:** In `relvar-core/src/experimental/knowledge_graph.rs`, `evaluate_pattern`, and `relvar-core/src/database/schema.rs`, `define_virtual_relvar` we called `restrict`, which iterates, filters, clones, and collects into a new relation. We can use `restrict_into` on owned relations instead to mutate them in-place with `retain`, eliminating redundant allocations and clones.
+**Action:** Replaced calls to `restrict` with `restrict_into` where the relation is owned, achieving zero-cost filtering.

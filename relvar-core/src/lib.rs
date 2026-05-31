@@ -83,7 +83,7 @@
 //!     // 5. Query using Relational Algebra
 //!     //    "Get names of active users"
 //!     let active_users = db.query("USERS")?
-//!         .restrict(|t| t.get_typed::<bool>("active").unwrap_or(false))
+//!         .restrict_into(|t| t.get_typed::<bool>("active").unwrap_or(false))
 //!         .project(&["name"]);
 //!
 //!     // 6. Verify results

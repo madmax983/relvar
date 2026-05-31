@@ -114,7 +114,7 @@ fn apply_rules(
     // 7. Rule 1: Stays Alive (alive cells with 2 or 3 neighbors)
     let alive_with_neighbors = alive_cells.join(counts_renamed)?;
     let stays_alive = alive_with_neighbors
-        .restrict(|t: &Tuple| {
+        .restrict_into(|t: &Tuple| {
             let count = t.get_typed::<i64>("n_count").unwrap();
             count == 2 || count == 3
         })

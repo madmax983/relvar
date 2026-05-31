@@ -154,15 +154,15 @@ impl KnowledgeGraph {
         // Restrict based on constant values
         if !pattern.subject.starts_with('?') {
             let s = pattern.subject.clone();
-            rel = rel.restrict(move |t| t.get_typed::<String>("subject") == Some(s.clone()));
+            rel = rel.restrict_into(move |t| t.get_typed::<String>("subject") == Some(s.clone()));
         }
         if !pattern.predicate.starts_with('?') {
             let p = pattern.predicate.clone();
-            rel = rel.restrict(move |t| t.get_typed::<String>("predicate") == Some(p.clone()));
+            rel = rel.restrict_into(move |t| t.get_typed::<String>("predicate") == Some(p.clone()));
         }
         if !pattern.object.starts_with('?') {
             let o = pattern.object.clone();
-            rel = rel.restrict(move |t| t.get_typed::<String>("object") == Some(o.clone()));
+            rel = rel.restrict_into(move |t| t.get_typed::<String>("object") == Some(o.clone()));
         }
 
         // Project and Rename for variables
