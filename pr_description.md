@@ -1,0 +1,4 @@
+🚮 Smell: The `compute_pairwise_forces` function in `relvar/src/experimental/physics.rs` was an over 80 line "God Function". It combined cross joins, restrictions, and extend operations, which violated the "Three-Phase Operator" pattern and made the relational operations difficult to follow.
+✨ Solution: Applied the "Three-Phase Operator" pattern by extracting `generate_particle_pairs`, `filter_self_interactions`, and `calculate_force_components` into separate private helper functions. The main function now just orchestrates these helpers sequentially.
+🧼 Benefit: Significantly improves readability by flattening the execution flow. The boundaries of the relational operations (joining, restricting, extending) are now clearly defined by well-named helper functions, reducing cognitive load.
+🛡️ Verification: Tests passed (`cargo test`). No logic changed (`cargo clippy`, `cargo check`).
