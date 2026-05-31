@@ -78,3 +78,74 @@ fn test_heap_page_growth() {
 fn test_txn(value: u64) -> crate::wal::TransactionId {
     crate::wal::TransactionId::new(value)
 }
+
+#[test]
+fn test_sentry_extract_tuples_from_slots() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let tuple = tuple! { id: 1i64, name: "Alice" };
+    let mut tuple_data: Vec<u8> = vec![];
+    postcard::to_io(&tuple, &mut tuple_data).unwrap();
+
+    let mut slotted_page = SlottedPage {
+        slot_count: 1,
+        slots: vec![Some(SlotEntry {
+            offset: 0,
+            length: tuple_data.len() as u32,
+        })],
+    };
+
+    let existing_tuples = vec![tuple_data.clone()];
+    // Using a very simplified repack matching logic
+    let usable_size = PAGE_SIZE - 8;
+    slotted_page.slots[0].as_mut().unwrap().offset = (usable_size - tuple_data.len()) as u32;
+
+    let page_data = heap
+        .serialize_slotted_page_with_tuples(&slotted_page, &existing_tuples)
+        .unwrap();
+    let page = Page::from_data(0, page_data).unwrap();
+
+    let slots = [slotted_page.slots[0].clone().unwrap()];
+
+    let extracted = heap.extract_tuples_from_slots(&page, slots.iter()).unwrap();
+
+    assert_eq!(extracted.len(), 1);
+    assert_eq!(extracted[0], tuple);
+}
+
+#[test]
+fn test_sentry_extract_all_tuples() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let tuple1 = tuple! { id: 1i64, name: "Alice" };
+    let mut tuple_data1: Vec<u8> = vec![];
+    postcard::to_io(&tuple1, &mut tuple_data1).unwrap();
+
+    let mut slotted_page = SlottedPage {
+        slot_count: 2,
+        slots: vec![
+            Some(SlotEntry {
+                offset: 0,
+                length: tuple_data1.len() as u32,
+            }),
+            None,
+        ],
+    };
+
+    let existing_tuples = vec![tuple_data1.clone(), vec![]];
+    let usable_size = PAGE_SIZE - 8;
+    slotted_page.slots[0].as_mut().unwrap().offset = (usable_size - tuple_data1.len()) as u32;
+
+    let page_data = heap
+        .serialize_slotted_page_with_tuples(&slotted_page, &existing_tuples)
+        .unwrap();
+    let page = Page::from_data(0, page_data).unwrap();
+
+    let extracted = heap.extract_all_tuples(&page, &slotted_page.slots).unwrap();
+
+    assert_eq!(extracted.len(), 2);
+    assert_eq!(extracted[0], tuple_data1);
+    assert_eq!(extracted[1].len(), 0);
+}
