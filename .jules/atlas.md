@@ -27,3 +27,6 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+## 2023-10-27 - [HeapFile Extracted Page Format]
+**Tangle:** The HeapFile module had grown into a Blob, mixing data formats and operations.
+**Blueprint:** Extracted pure data structures (like page formats) and their serialization logic into a dedicated internal submodule (`page_format.rs`), re-exporting them in the parent `mod.rs` to flatten boundaries while isolating data from operational implementations.
