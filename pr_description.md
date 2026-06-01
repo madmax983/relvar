@@ -1,0 +1,4 @@
+🚮 Smell: `compute_pairwise_forces` in `relvar/src/experimental/physics.rs` was an overly long "God Function" (81 lines) mixing distinct logical phases: joining, restricting, and extending logic.
+✨ Solution: Applied the "Three-Phase Operator" pattern. Extracted logic into three properly scoped private helper methods: `generate_particle_pairs`, `filter_self_interactions`, and `calculate_forces`.
+🧼 Benefit: Significantly improves clarity, modularity, and readability. Reduces cognitive load by separating the generation of pairs, filtering out self-interactions, and performing force calculations.
+🛡️ Verification: Extracted code runs exactly the same as before. Cargo tests, clippy, and formatting passed successfully.
