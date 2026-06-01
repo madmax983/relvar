@@ -1,0 +1,4 @@
+💡 **The Spark:** "Build systems are essentially constraint solvers over dependency graphs, and we already have a robust engine capable of relational closure. Can we compute stale dependencies purely relationally?"
+🚀 **The Feature:** "Implemented `BuildSystem` using the `tclose` (transitive closure) and join operators to evaluate dependency staleness declaratively."
+🔮 **The Potential:** "Demonstrates the flexibility of relational algebra to model generic graph traversal algorithms and dependency resolution systems without procedural looping."
+⚠️ **Risk:** "Low. Isolated in `src/experimental/build_system.rs` behind the `nova` feature flag."
