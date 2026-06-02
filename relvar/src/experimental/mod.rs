@@ -32,6 +32,9 @@
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
 
+/// Relational Boids flocking simulator.
+pub mod boids;
+
 pub mod automata;
 pub mod automl;
 pub mod blockchain;
