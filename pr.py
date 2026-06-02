@@ -2,6 +2,13 @@ import sys
 import os
 
 with open("pr_description.md") as f:
-    body = f.read()
+    lines = f.read().splitlines()
 
-print(f"Submitting PR with title: ⚡ Bolt: Avoid cloning heading per tuple in ungroup\n\n{body}")
+if len(lines) > 0 and lines[0].startswith("🗺️ Atlas:"):
+    title = lines[0]
+    body = "\n".join(lines[1:]).strip()
+else:
+    title = "🗺️ Atlas: Architectural change"
+    body = "\n".join(lines)
+
+print(f"Submitting PR with title: {title}\n\n{body}")
