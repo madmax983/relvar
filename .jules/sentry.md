@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2024-03-30 - Coverage for tool modules
+**Learning:** Added tests for the importer, exporter, visualizer, and `lib.rs` components within the `relvar` crate. Specifically covered missing formatting combinations of ScalarValue in exporting, missing max rows, line too long limits and correct global limit behaviors for the CSV importer, rendering primary keys in the visualizer, and adding coverage for the in-memory db factory methods in `lib.rs`.
+**Action:** Focus on verifying coverage metrics using actual files instead of unverified reports.

@@ -38,3 +38,4 @@
 pub mod exporter;
 pub mod importer;
 pub mod visualizer;
+#[cfg(test)] mod tests;

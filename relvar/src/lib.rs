@@ -198,3 +198,23 @@ pub fn open<P: AsRef<std::path::Path>>(
 ) -> Result<Database<PersistentEngine>, StorageError> {
     Ok(Database::new(PersistentEngine::open(path)?))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_in_memory() {
+        let db = in_memory();
+        assert!(!db.relvar_exists("UNKNOWN"));
+    }
+
+    #[cfg(feature = "storage")]
+    #[test]
+    fn test_open() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let db = open(temp_dir.path()).unwrap();
+        assert!(!db.relvar_exists("UNKNOWN"));
+    }
+}
