@@ -181,3 +181,88 @@ fn test_join_missing_probe_attribute() {
     // Line 301 and 322 are missing attributes in probe/build single attribute.
     // However, relation API usually protects this. We can trigger this using tuples created manually.
 }
+
+#[test]
+fn test_restrict_into_filters_tuples() {
+    let heading = TupleType::new()
+        .with_attribute("id", ScalarType::Int)
+        .with_attribute("val", ScalarType::Int);
+
+    let rel_type = RelationType::new(heading);
+    let mut relation = Relation::new(rel_type);
+
+    relation.insert(tuple! { id: 1i64, val: 10i64 }).unwrap();
+    relation.insert(tuple! { id: 2i64, val: 20i64 }).unwrap();
+    relation.insert(tuple! { id: 3i64, val: 10i64 }).unwrap();
+
+    // Consume the relation and filter in-place (val == 10)
+    let result = relation.restrict_into(|t| {
+        if let Some(ScalarValue::Int(val)) = t.get("val") {
+            *val == 10
+        } else {
+            false
+        }
+    });
+
+    assert_eq!(result.cardinality(), 2);
+
+    let t1 = tuple! { id: 1i64, val: 10i64 };
+    let t3 = tuple! { id: 3i64, val: 10i64 };
+    assert!(result.contains(&t1));
+    assert!(result.contains(&t3));
+}
+
+#[test]
+fn test_restrict_into_empty_relation() {
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+
+    let rel_type = RelationType::new(heading);
+    let relation = Relation::new(rel_type);
+
+    let result = relation.restrict_into(|_| true);
+    assert_eq!(result.cardinality(), 0);
+}
+
+#[test]
+fn test_restrict_into_stateful_closure() {
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    let rel_type = RelationType::new(heading);
+    let mut relation = Relation::new(rel_type);
+
+    relation.insert(tuple! { id: 1i64 }).unwrap();
+    relation.insert(tuple! { id: 2i64 }).unwrap();
+    relation.insert(tuple! { id: 3i64 }).unwrap();
+
+    let mut counter = 0;
+    // We can use a stateful closure since restrict_into accepts FnMut
+    let result = relation.restrict_into(|_t| {
+        counter += 1;
+        counter <= 2
+    });
+
+    assert_eq!(result.cardinality(), 2);
+    assert_eq!(counter, 3);
+}
+
+#[test]
+fn test_restrict_stateful_closure() {
+    // Tests that restrict uses a closure with state tracking (using RefCell to mutate from Fn).
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    let rel_type = RelationType::new(heading);
+    let mut relation = Relation::new(rel_type);
+
+    relation.insert(tuple! { id: 1i64 }).unwrap();
+    relation.insert(tuple! { id: 2i64 }).unwrap();
+    relation.insert(tuple! { id: 3i64 }).unwrap();
+
+    let counter = std::cell::RefCell::new(0);
+    // restrict accepts Fn, so we need interior mutability.
+    let result = relation.restrict(|_t| {
+        let mut c = counter.borrow_mut();
+        *c += 1;
+        *c <= 2
+    });
+
+    assert_eq!(result.cardinality(), 2);
+    assert_eq!(*counter.borrow(), 3);
+}
