@@ -9,3 +9,7 @@
 ## 2026-04-24 - [Unsafe unwrap in StorageManager]
 **Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
 **Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
+
+## 2024-06-04 - Unbounded Recursion DoS
+**Threat:** Stack overflow DoS via deeply nested Postcard payloads in Query and ConstraintExpression enums.
+**Defense:** Applied deserialize_with recursion guards directly to recursive Box fields.
