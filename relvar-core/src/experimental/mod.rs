@@ -9,3 +9,6 @@ pub mod pagerank;
 
 /// Knowledge Graph implementation.
 pub mod knowledge_graph;
+
+/// Relational Mark-and-Sweep Garbage Collector
+pub mod garbage_collector;
