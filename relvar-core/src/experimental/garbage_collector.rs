@@ -70,10 +70,14 @@ pub fn find_garbage(
         .rename(&[("to_id", "id")]);
 
     // Also, roots themselves are reachable.
-    let all_reachable = reachable_indirect.union(roots).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+    let all_reachable = reachable_indirect
+        .union(roots)
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
     // 2. Sweep Phase: Find garbage by taking the difference between heap and reachable.
-    let garbage = heap.difference(&all_reachable).map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+    let garbage = heap
+        .difference(&all_reachable)
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
     Ok(garbage)
 }
