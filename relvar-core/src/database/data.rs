@@ -254,10 +254,20 @@ impl<E: StorageEngine> Database<E> {
 
         // Load current relation
         let current_relation = self.query(relation_name)?;
+        let initial_cardinality = current_relation.cardinality();
 
         // Apply updates
         let (new_relation, update_count) =
             compute_relation_after_update(current_relation, predicate, updater)?;
+
+        // If the new relation has fewer tuples than the initial relation minus the deleted ones,
+        // it means an update resulted in a duplicate tuple that was absorbed by the set.
+        // This is a violation of the candidate key constraint implicitly or explicitly.
+        if new_relation.cardinality() < initial_cardinality {
+            return Err(DatabaseError::Constraint(
+                crate::constraints::ConstraintManagerError::CandidateKeyViolation,
+            ));
+        }
 
         self.validate_relation_constraints(relation_name, &new_relation)?;
 
@@ -319,6 +329,13 @@ impl<E: StorageEngine> Database<E> {
         if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
             self.constraints
                 .validate_key_constraints_bulk(relation, key_constraints)?;
+        } else {
+            // Even if there are no explicit key constraints, a relation cannot have duplicate tuples.
+            // But since Relation uses a HashSet, duplicates are automatically removed during creation.
+            // If the relation cardinality is less than expected (which we can't easily check here without
+            // passing the expected cardinality), it means a duplicate was removed, which is a violation
+            // of the UPDATE operation's intent if it causes two distinct tuples to become identical.
+            // However, since Relation automatically deduplicates, we rely on the constraints.
         }
 
         // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation

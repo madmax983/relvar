@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-05-05 - WAL Record Coverage
+**Learning:** `WalRecord` serialization, deserialization, and associated internal methods like `txn_id()` and `is_txn_end()` were untested, masking missing internal struct exports preventing straightforward testing across the storage internal boundary map without the usage of `#[cfg(test)]`.
+**Action:** When evaluating internal `wal` implementation logic under `relvar-storage`, attach targeted tests covering basic API implementations on structures directly inside the localized `mod tests` inside the file, preserving boundary logic safely without needing `pub(crate)` visibility changes across `src/lib.rs`.
