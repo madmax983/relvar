@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2024-05-24 - Relational Algebra God Functions
+**Learning:** In relational algebra pipelines (like `compute_pairwise_forces`), combining renaming, joining, restricting, and extending logic creates dense "God Functions" that are hard to read.
+**Action:** Consistently apply the Three-Phase Operator pattern by extracting pure relational operations (joining, restricting, extending) into distinct, well-named helper functions.
