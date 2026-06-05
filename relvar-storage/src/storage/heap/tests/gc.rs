@@ -261,7 +261,7 @@ fn test_gc_preserves_live_versions_after_gc() {
         .unwrap();
 
     // New version should still be visible
-    let snapshot = TransactionSnapshot::new(test_txn(3), test_lsn(300), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(3), test_lsn(300), std::collections::HashSet::from([]));
     let visible = heap.scan_visible(&snapshot, &committed).unwrap();
 
     assert_eq!(visible.len(), 1);

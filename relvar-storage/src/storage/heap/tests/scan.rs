@@ -141,7 +141,7 @@ fn test_scan_visible_sees_only_visible() {
         .unwrap();
 
     // T2 starts after T1 committed
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), std::collections::HashSet::from([]));
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
 
@@ -163,7 +163,7 @@ fn test_scan_visible_skips_uncommitted() {
         .unwrap();
 
     // T2 starts
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), std::collections::HashSet::from([]));
     let committed = HashSet::new(); // T1 not committed
 
     let visible = heap.scan_visible(&snapshot, &committed).unwrap();
@@ -187,7 +187,7 @@ fn test_scan_visible_sees_own_changes() {
         .unwrap();
 
     // T1's snapshot
-    let snapshot = TransactionSnapshot::new(txn_id, test_lsn(100), vec![]);
+    let snapshot = TransactionSnapshot::new(txn_id, test_lsn(100), std::collections::HashSet::from([]));
     let committed = HashSet::new(); // T1 not committed yet
 
     let visible = heap.scan_visible(&snapshot, &committed).unwrap();
@@ -209,7 +209,7 @@ fn test_scan_visible_concurrent_uncommitted() {
         .unwrap();
 
     // T2 starts while T1 is active
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(100), vec![test_txn(1)]);
+    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(100), std::collections::HashSet::from([test_txn(1)]));
     let mut committed = HashSet::new();
     committed.insert(test_txn(1)); // T1 committed after T2 started
 
@@ -227,7 +227,7 @@ fn test_scan_visible_empty_relation() {
     let rel_type = create_test_relation_type();
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
-    let snapshot = TransactionSnapshot::new(test_txn(1), test_lsn(100), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(1), test_lsn(100), std::collections::HashSet::from([]));
     let committed = HashSet::new();
 
     let visible = heap.scan_visible(&snapshot, &committed).unwrap();
@@ -252,7 +252,7 @@ fn test_scan_visible_multiple_committed() {
         .unwrap();
 
     // T4 starts after all committed
-    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), std::collections::HashSet::from([]));
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
     committed.insert(test_txn(2));
@@ -284,7 +284,7 @@ fn test_scan_visible_mixed_committed_uncommitted() {
         .unwrap();
 
     // T4 starts
-    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), std::collections::HashSet::from([]));
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
     // T2 not committed
@@ -316,7 +316,7 @@ fn test_scan_visible_across_pages() {
     heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(3))
         .unwrap();
 
-    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), std::collections::HashSet::from([]));
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
     committed.insert(test_txn(2));
@@ -341,7 +341,7 @@ fn test_scan_visible_no_committed_set() {
         .unwrap();
 
     // Empty committed set
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), std::collections::HashSet::from([]));
     let committed = HashSet::new();
 
     let visible = heap.scan_visible(&snapshot, &committed).unwrap();
@@ -362,7 +362,7 @@ fn test_scan_visible_preserves_tuple_data() {
     heap.insert_tuple_versioned(&original_tuple, test_txn(1))
         .unwrap();
 
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), std::collections::HashSet::from([]));
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
 
@@ -1150,7 +1150,7 @@ fn test_scan_visible_integer_overflow() {
     // Test
     let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
     let snapshot =
-        crate::mvcc::TransactionSnapshot::new(test_txn(2), crate::wal::Lsn::new(100), vec![]);
+        crate::mvcc::TransactionSnapshot::new(test_txn(2), crate::wal::Lsn::new(100), std::collections::HashSet::from([]));
     let committed = std::collections::HashSet::from([test_txn(1)]);
     let result = heap.scan_visible(&snapshot, &committed);
 
@@ -1210,7 +1210,7 @@ fn test_scan_visible_out_of_bounds() {
     // Test
     let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
     let snapshot =
-        crate::mvcc::TransactionSnapshot::new(test_txn(2), crate::wal::Lsn::new(100), vec![]);
+        crate::mvcc::TransactionSnapshot::new(test_txn(2), crate::wal::Lsn::new(100), std::collections::HashSet::from([]));
     let committed = std::collections::HashSet::from([test_txn(1)]);
     let result = heap.scan_visible(&snapshot, &committed);
 

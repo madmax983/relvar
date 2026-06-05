@@ -267,7 +267,7 @@ impl PersistentEngine {
             Ok(crate::mvcc::TransactionSnapshot::new(
                 TransactionId::new(0),
                 self.wal.current_lsn(),
-                vec![],
+                std::collections::HashSet::new(),
             ))
         }
     }

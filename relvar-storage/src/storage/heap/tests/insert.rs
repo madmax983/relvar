@@ -288,7 +288,7 @@ fn test_delete_and_insert_new_version() {
     committed.insert(test_txn(3));
 
     // Should see only the new version
-    let snapshot = crate::mvcc::TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
+    let snapshot = crate::mvcc::TransactionSnapshot::new(test_txn(4), test_lsn(400), std::collections::HashSet::from([]));
     let visible = heap.scan_visible(&snapshot, &committed).unwrap();
 
     assert_eq!(visible.len(), 1);

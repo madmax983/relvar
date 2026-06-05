@@ -54,7 +54,7 @@ fn test_delete_invisible_after_commit() {
     committed.insert(test_txn(2));
 
     // T3: Should not see deleted tuple
-    let snapshot_t3 = TransactionSnapshot::new(test_txn(3), test_lsn(300), vec![]);
+    let snapshot_t3 = TransactionSnapshot::new(test_txn(3), test_lsn(300), std::collections::HashSet::from([]));
     let visible = heap.scan_visible(&snapshot_t3, &committed).unwrap();
 
     assert_eq!(visible.len(), 0); // Deleted tuple not visible
@@ -76,7 +76,7 @@ fn test_delete_concurrent_txn_sees_tuple() {
     committed.insert(test_txn(1));
 
     // T2: Begin (concurrent with T3)
-    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), std::collections::HashSet::from([]));
 
     // T3: Delete and commit
     heap.delete_tuple_versioned(tuple_id, test_txn(3)).unwrap();
@@ -108,7 +108,7 @@ fn test_delete_deleting_txn_doesnt_see_tuple() {
     heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
 
     // T2 should not see the tuple it deleted
-    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), std::collections::HashSet::from([]));
     let visible = heap.scan_visible(&snapshot_t2, &committed).unwrap();
 
     assert_eq!(visible.len(), 0);
@@ -204,7 +204,7 @@ fn test_delete_multiple_tuples() {
     committed.insert(test_txn(2));
 
     // Should see first and third, but not second
-    let snapshot = TransactionSnapshot::new(test_txn(3), test_lsn(300), vec![]);
+    let snapshot = TransactionSnapshot::new(test_txn(3), test_lsn(300), std::collections::HashSet::from([]));
     let visible = heap.scan_visible(&snapshot, &committed).unwrap();
 
     assert_eq!(visible.len(), 2);

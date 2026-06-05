@@ -28,7 +28,7 @@ use std::collections::HashSet;
 /// // Imagine transactions 40 and 41 are currently running
 /// let active = vec![TransactionId::new(40), TransactionId::new(41)];
 ///
-/// let snapshot = TransactionSnapshot::new(my_txn, current_lsn, active);
+/// let snapshot = TransactionSnapshot::new(my_txn, current_lsn, active.into_iter().collect());
 ///
 /// // We know that txn 40 was active when we started, so we must NOT see its changes.
 /// assert!(snapshot.is_active(TransactionId::new(40)));
@@ -72,11 +72,13 @@ impl TransactionSnapshot {
     ///
     /// assert_eq!(snapshot.txn_id, TransactionId::new(10));
     /// ```ignore
-    pub fn new(txn_id: TransactionId, snapshot_lsn: Lsn, active: Vec<TransactionId>) -> Self {
+    ///
+    /// Optimization: Accepts `HashSet` directly to avoid an intermediate `Vec` allocation.
+    pub fn new(txn_id: TransactionId, snapshot_lsn: Lsn, active: HashSet<TransactionId>) -> Self {
         Self {
             txn_id,
             snapshot_lsn,
-            active_txns: active.into_iter().collect(),
+            active_txns: active,
         }
     }
 
@@ -101,7 +103,7 @@ impl TransactionSnapshot {
     /// let t1 = TransactionId::new(1);
     /// let t2 = TransactionId::new(2);
     ///
-    /// let snapshot = TransactionSnapshot::new(t2, Lsn::new(100), vec![t1]);
+    /// let snapshot = TransactionSnapshot::new(t2, Lsn::new(100), std::collections::HashSet::from([t1]));
     ///
     /// assert!(snapshot.is_active(t1)); // T1 was running
     /// assert!(!snapshot.is_active(TransactionId::new(0))); // T0 was not running
@@ -131,7 +133,7 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![test_txn(2), test_txn(3)];
 
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
+        let snapshot = TransactionSnapshot::new(txn_id, lsn, active.into_iter().collect());
 
         assert_eq!(snapshot.txn_id, txn_id);
         assert_eq!(snapshot.snapshot_lsn, lsn);
@@ -143,7 +145,7 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![test_txn(2), test_txn(3)];
 
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active.clone());
+        let snapshot = TransactionSnapshot::new(txn_id, lsn, active.clone().into_iter().collect());
 
         assert_eq!(snapshot.active_txns.len(), 2);
         assert!(snapshot.active_txns.contains(&test_txn(2)));
@@ -156,7 +158,7 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![test_txn(2), test_txn(3)];
 
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
+        let snapshot = TransactionSnapshot::new(txn_id, lsn, active.into_iter().collect());
 
         assert!(snapshot.is_active(test_txn(2)));
         assert!(snapshot.is_active(test_txn(3)));
@@ -169,7 +171,7 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![];
 
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
+        let snapshot = TransactionSnapshot::new(txn_id, lsn, active.into_iter().collect());
 
         assert_eq!(snapshot.active_txns.len(), 0);
         assert!(!snapshot.is_active(test_txn(2)));
@@ -181,7 +183,7 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![test_txn(1), test_txn(2)]; // Including self
 
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
+        let snapshot = TransactionSnapshot::new(txn_id, lsn, active.into_iter().collect());
 
         // Self should be in active_txns set (it's up to caller to exclude if needed)
         assert!(snapshot.active_txns.contains(&test_txn(1)));
@@ -194,7 +196,7 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![test_txn(2), test_txn(2), test_txn(3)]; // Duplicate
 
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
+        let snapshot = TransactionSnapshot::new(txn_id, lsn, active.into_iter().collect());
 
         // HashSet should deduplicate
         assert_eq!(snapshot.active_txns.len(), 2);
@@ -208,7 +210,7 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![test_txn(2), test_txn(3)];
 
-        let snapshot1 = TransactionSnapshot::new(txn_id, lsn, active);
+        let snapshot1 = TransactionSnapshot::new(txn_id, lsn, active.into_iter().collect());
         let snapshot2 = snapshot1.clone();
 
         assert_eq!(snapshot1, snapshot2);
@@ -223,8 +225,8 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![test_txn(2), test_txn(3)];
 
-        let snapshot1 = TransactionSnapshot::new(txn_id, lsn, active.clone());
-        let snapshot2 = TransactionSnapshot::new(txn_id, lsn, active);
+        let snapshot1 = TransactionSnapshot::new(txn_id, lsn, active.clone().into_iter().collect());
+        let snapshot2 = TransactionSnapshot::new(txn_id, lsn, active.into_iter().collect());
 
         assert_eq!(snapshot1, snapshot2);
     }
@@ -234,8 +236,8 @@ mod tests {
         let lsn = test_lsn(100);
         let active = vec![test_txn(2)];
 
-        let snapshot1 = TransactionSnapshot::new(test_txn(1), lsn, active.clone());
-        let snapshot2 = TransactionSnapshot::new(test_txn(2), lsn, active);
+        let snapshot1 = TransactionSnapshot::new(test_txn(1), lsn, active.clone().into_iter().collect());
+        let snapshot2 = TransactionSnapshot::new(test_txn(2), lsn, active.into_iter().collect());
 
         assert_ne!(snapshot1, snapshot2);
     }
@@ -245,8 +247,8 @@ mod tests {
         let txn_id = test_txn(1);
         let active = vec![test_txn(2)];
 
-        let snapshot1 = TransactionSnapshot::new(txn_id, test_lsn(100), active.clone());
-        let snapshot2 = TransactionSnapshot::new(txn_id, test_lsn(200), active);
+        let snapshot1 = TransactionSnapshot::new(txn_id, test_lsn(100), active.clone().into_iter().collect());
+        let snapshot2 = TransactionSnapshot::new(txn_id, test_lsn(200), active.into_iter().collect());
 
         assert_ne!(snapshot1, snapshot2);
     }

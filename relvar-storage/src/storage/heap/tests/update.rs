@@ -138,7 +138,7 @@ fn test_update_concurrent_txn_sees_old_version() {
     committed.insert(test_txn(1));
 
     // T2: Begin (concurrent with T3)
-    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), std::collections::HashSet::from([]));
 
     // T3: Update
     let updated = tuple! { id: 1i64, name: "Updated" };
@@ -178,7 +178,7 @@ fn test_update_updating_txn_sees_new_version() {
         .unwrap();
 
     // T2 should see its own update (not yet committed)
-    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), std::collections::HashSet::from([]));
     let visible = heap.scan_visible(&snapshot_t2, &committed).unwrap();
 
     assert_eq!(visible.len(), 1);
@@ -338,7 +338,7 @@ fn test_update_after_commit_visible_to_later_txn() {
     committed.insert(test_txn(2));
 
     // T3: Should see updated version
-    let snapshot_t3 = TransactionSnapshot::new(test_txn(3), test_lsn(300), vec![]);
+    let snapshot_t3 = TransactionSnapshot::new(test_txn(3), test_lsn(300), std::collections::HashSet::from([]));
     let visible = heap.scan_visible(&snapshot_t3, &committed).unwrap();
 
     assert_eq!(visible.len(), 1);

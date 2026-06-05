@@ -334,7 +334,7 @@ mod tests {
     }
 
     fn dummy_snapshot() -> TransactionSnapshot {
-        TransactionSnapshot::new(TransactionId::new(1), crate::wal::Lsn::new(0), vec![])
+        TransactionSnapshot::new(TransactionId::new(1), crate::wal::Lsn::new(0), std::collections::HashSet::from([]))
     }
 
     fn committed_set() -> HashSet<TransactionId> {

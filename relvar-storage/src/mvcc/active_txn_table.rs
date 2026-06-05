@@ -98,7 +98,8 @@ impl ActiveTransactionTable {
         self.current_lsn = lsn;
 
         // Capture all currently active transactions (excluding the new one)
-        let active: Vec<TransactionId> = self.transactions.keys().copied().collect();
+        let active: std::collections::HashSet<TransactionId> =
+            self.transactions.keys().copied().collect();
 
         // Create snapshot for this transaction
         let snapshot = TransactionSnapshot::new(txn_id, lsn, active);

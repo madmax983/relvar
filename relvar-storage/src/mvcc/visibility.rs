@@ -81,7 +81,7 @@ pub struct VersionMetadata {
 /// committed.insert(t1);
 ///
 /// // T2 starts, T1 is already committed, no active txns
-/// let snapshot = TransactionSnapshot::new(t2, Lsn::new(100), vec![]);
+/// let snapshot = TransactionSnapshot::new(t2, Lsn::new(100), std::collections::HashSet::from([]));
 ///
 /// // Tuple inserted by T1, never deleted
 /// let version = VersionMetadata { xmin: t1, xmax: None };
@@ -190,7 +190,7 @@ mod tests {
         let txn_id = test_txn(1);
         let version = new_version(txn_id);
 
-        let snapshot = TransactionSnapshot::new(txn_id, test_lsn(100), vec![]);
+        let snapshot = TransactionSnapshot::new(txn_id, test_lsn(100), std::collections::HashSet::from([]));
         let committed = HashSet::new(); // txn not committed yet
 
         // Creator should see its own uncommitted version
@@ -206,7 +206,7 @@ mod tests {
         let version = new_version(t1);
 
         // T2's snapshot shows T1 as active (concurrent)
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![t1]);
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), std::collections::HashSet::from([t1]));
         let committed = HashSet::new(); // T1 not committed
 
         assert!(!is_visible(&version, &snapshot, &committed));
@@ -221,7 +221,7 @@ mod tests {
         let version = new_version(t1);
 
         // T2 starts after T1 committed (T1 not in active list)
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), std::collections::HashSet::from([]));
         let mut committed = HashSet::new();
         committed.insert(t1); // T1 committed
 
@@ -238,7 +238,7 @@ mod tests {
         let version = new_version_with_xmax(t1, t2);
 
         // T3 starts after both T1 and T2 committed
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![]);
+        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), std::collections::HashSet::from([]));
         let mut committed = HashSet::new();
         committed.insert(t1);
         committed.insert(t2); // Deletion committed
@@ -256,7 +256,7 @@ mod tests {
         let version = new_version_with_xmax(t1, t2);
 
         // T3 starts, sees T2 as active
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![t2]);
+        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), std::collections::HashSet::from([t2]));
         let mut committed = HashSet::new();
         committed.insert(t1);
         // T2 not committed
@@ -272,7 +272,7 @@ mod tests {
 
         let version = new_version(t1);
 
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), std::collections::HashSet::from([]));
         let committed = HashSet::new(); // T1 NOT in committed set (aborted)
 
         assert!(!is_visible(&version, &snapshot, &committed));
@@ -289,7 +289,7 @@ mod tests {
         let version = new_version_with_xmax(t1, t2);
 
         // T3's snapshot shows T2 as active
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![t2]);
+        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), std::collections::HashSet::from([t2]));
         let mut committed = HashSet::new();
         committed.insert(t1);
         committed.insert(t2); // T2 committed AFTER T3 started
@@ -306,7 +306,7 @@ mod tests {
 
         let version = new_version(t1);
 
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), std::collections::HashSet::from([]));
         let committed = HashSet::new(); // T1 not committed
 
         // T2 can't see T1's version if T1 != T2
@@ -320,7 +320,7 @@ mod tests {
 
         let version = new_version_with_xmax(t1, t1);
 
-        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
+        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), std::collections::HashSet::from([]));
         let committed = HashSet::new();
 
         // T1 deleted its own version, should NOT see it
@@ -335,7 +335,7 @@ mod tests {
 
         let version = new_version(t1);
 
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![]);
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), std::collections::HashSet::from([]));
         let committed = HashSet::new();
 
         assert!(!is_visible(&version, &snapshot, &committed));
@@ -352,7 +352,7 @@ mod tests {
         let version = new_version(t1);
 
         // T4 sees T2 and T3 as active, but not T1 (T1 committed before T4 started)
-        let snapshot = TransactionSnapshot::new(t4, test_lsn(400), vec![t2, t3]);
+        let snapshot = TransactionSnapshot::new(t4, test_lsn(400), std::collections::HashSet::from([t2, t3]));
         let mut committed = HashSet::new();
         committed.insert(t1);
 
@@ -367,7 +367,7 @@ mod tests {
 
         let version = new_version_with_xmax(t1, t1_new);
 
-        let snapshot = TransactionSnapshot::new(t1_new, test_lsn(200), vec![]);
+        let snapshot = TransactionSnapshot::new(t1_new, test_lsn(200), std::collections::HashSet::from([]));
         let mut committed = HashSet::new();
         committed.insert(t1);
         committed.insert(t1_new);
@@ -386,7 +386,7 @@ mod tests {
         let version = new_version(t2);
 
         // T1's snapshot captured T2 as active
-        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![t2]);
+        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), std::collections::HashSet::from([t2]));
         let mut committed = HashSet::new();
         committed.insert(t2);
 
@@ -407,7 +407,7 @@ mod tests {
         let v1 = new_version_with_xmax(t1, t2);
         let v2 = new_version(t2);
 
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![]);
+        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), std::collections::HashSet::from([]));
         let mut committed = HashSet::new();
         committed.insert(t1);
         committed.insert(t2);
@@ -428,7 +428,7 @@ mod tests {
             xmin: t1,
             xmax: None,
         };
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![]);
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), std::collections::HashSet::from([]));
         let mut committed = HashSet::new();
         committed.insert(t1);
 
@@ -445,7 +445,7 @@ mod tests {
             xmax: None,
         };
         // t2 sees t1 as active
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![t1]);
+        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), std::collections::HashSet::from([t1]));
         let committed = HashSet::new(); // t1 not committed
 
         assert!(!is_visible(&version, &snapshot, &committed));
@@ -459,7 +459,7 @@ mod tests {
             xmin: t1,
             xmax: None,
         };
-        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
+        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), std::collections::HashSet::from([]));
         let committed = HashSet::new(); // t1 not committed
 
         // Transaction can see its own changes
@@ -476,7 +476,7 @@ mod tests {
             xmin: t1,
             xmax: Some(t2),
         };
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(200), vec![]);
+        let snapshot = TransactionSnapshot::new(t3, test_lsn(200), std::collections::HashSet::from([]));
         let mut committed = HashSet::new();
         committed.insert(t1);
         committed.insert(t2); // t2 is committed
@@ -496,7 +496,7 @@ mod tests {
             xmax: Some(t2),
         };
         // t3 sees t2 as active
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(200), vec![t2]);
+        let snapshot = TransactionSnapshot::new(t3, test_lsn(200), std::collections::HashSet::from([t2]));
         let mut committed = HashSet::new();
         committed.insert(t1); // t1 committed, t2 not
 
@@ -512,7 +512,7 @@ mod tests {
             xmin: t1,
             xmax: Some(t1),
         };
-        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
+        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), std::collections::HashSet::from([]));
         let mut committed = HashSet::new();
         committed.insert(t1); // created by self, deleted by self
 
