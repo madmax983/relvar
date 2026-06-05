@@ -61,3 +61,7 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+
+## 2025-05-18 - Avoid Intermediate Vec for BTreeMap
+**Learning:** `BTreeMap::from_iter` directly consumes iterators without requiring an intermediate `Vec`. When mapping or merging collections for tuple construction, chaining iterators (or using `std::iter::from_fn`) saves a heap allocation compared to collecting into a `Vec` first.
+**Action:** Use iterator patterns like `map` and `from_fn` in conjunction with `from_iter` to bypass `Vec`s when constructing Hash/BTree maps, especially during relational algebra operator execution.
