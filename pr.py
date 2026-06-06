@@ -2,6 +2,6 @@ import sys
 import os
 
 with open("pr_description.md") as f:
-    body = f.read()
+    body = f.read().strip()
 
-print(f"Submitting PR with title: ⚡ Bolt: Avoid cloning heading per tuple in ungroup\n\n{body}")
+print(f"Submitting PR with title: 🛡️ Sentry: [test coverage improvement]\n\n{body}")
