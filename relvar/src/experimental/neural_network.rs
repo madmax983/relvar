@@ -71,6 +71,20 @@ impl NeuralNetwork {
     /// // Note: This is a placeholder example
     /// ```
     pub fn forward_layer(&mut self, current_layer_idx: i64) -> Result<(), DatabaseError> {
+        let joined = self.prepare_layer_inputs(current_layer_idx)?;
+        let sum_products = self.compute_pre_activations(&joined, current_layer_idx)?;
+        let new_activations = self.apply_biases_and_activation(&sum_products)?;
+
+        // 8. Union the new activations into the network state
+        self.activations = self
+            .activations
+            .union(&new_activations)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    fn prepare_layer_inputs(&self, current_layer_idx: i64) -> Result<Relation, DatabaseError> {
         // 1. Restrict to current layer activations
         let current_activations = self
             .activations
@@ -84,8 +98,14 @@ impl NeuralNetwork {
         // 3. Join activations with weights on (node = from_node)
         // Rename `node` in activations to `from_node` for natural join
         let acts_renamed = current_activations.rename(&[("node", "from_node")]);
-        let joined = acts_renamed.join(&current_weights)?;
+        acts_renamed.join(&current_weights)
+    }
 
+    fn compute_pre_activations(
+        &self,
+        joined: &Relation,
+        current_layer_idx: i64,
+    ) -> Result<Relation, DatabaseError> {
         // 4. Extend to multiply `val` * `weight`
         let with_products = joined
             .extend("product", ScalarType::Float, |t| {
@@ -100,7 +120,7 @@ impl NeuralNetwork {
         // However, `current_weights` has `layer`, so grouping by `to_node` is fine, we just need the next layer idx.
         let next_layer_idx = current_layer_idx.saturating_add(1);
 
-        let sum_products = with_products
+        with_products
             .summarize(
                 &["to_node"],
                 &[Aggregation::sum_float("sum_prod", "product")],
@@ -110,8 +130,13 @@ impl NeuralNetwork {
             .extend("layer", ScalarType::Int, move |_| {
                 ScalarValue::Int(next_layer_idx)
             })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
+    fn apply_biases_and_activation(
+        &self,
+        sum_products: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 6. Join with biases
         let joined_biases = sum_products.join(&self.biases)?;
 
@@ -128,13 +153,7 @@ impl NeuralNetwork {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["layer", "node", "val"]);
 
-        // 8. Union the new activations into the network state
-        self.activations = self
-            .activations
-            .union(&new_activations)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        Ok(())
+        Ok(new_activations)
     }
 
     /// Computes the full forward pass through all layers.
