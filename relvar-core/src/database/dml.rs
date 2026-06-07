@@ -69,3 +69,53 @@ where
 
     Ok((new_relation, update_count))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::values::ScalarValue;
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    fn get_tuple(id: i64, val: i64) -> Tuple {
+        let mut map = BTreeMap::new();
+        map.insert("id".to_string(), ScalarValue::Int(id));
+        map.insert("val".to_string(), ScalarValue::Int(val));
+        Tuple::new(
+            Arc::new(
+                TupleType::new()
+                    .with_attribute("id", ScalarType::Int)
+                    .with_attribute("val", ScalarType::Int),
+            ),
+            map,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn should_return_error_when_update_creates_tuple_mismatch() {
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("val", ScalarType::Int),
+        );
+        let tuple1 = get_tuple(1, 10);
+        let mut relation = Relation::new(rel_type);
+        relation.insert(tuple1).unwrap();
+
+        let predicate = |t: &Tuple| t.get_typed::<i64>("id").unwrap() == 1;
+        let updater = |_t: &Tuple| {
+            let mut map = BTreeMap::new();
+            map.insert("id".to_string(), ScalarValue::Int(1));
+            Tuple::new(
+                Arc::new(TupleType::new().with_attribute("id", ScalarType::Int)),
+                map,
+            )
+            .unwrap()
+        };
+
+        let result = compute_relation_after_update(relation, predicate, updater);
+        assert!(matches!(result, Err(DatabaseError::TupleMismatch)));
+    }
+}
