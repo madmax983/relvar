@@ -164,6 +164,11 @@ impl IntoIterator for Relation {
 }
 
 impl Relation {
+    /// Consumes the relation, returning its type and its body as a HashSet.
+    pub fn into_parts(self) -> (RelationType, std::collections::HashSet<Tuple>) {
+        (self.relation_type, self.body)
+    }
+
     /// Creates a new empty relation with the given type.
     ///
     /// The relation starts with zero tuples but has a defined structure
