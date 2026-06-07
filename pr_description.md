@@ -1,0 +1,6 @@
+⚒️ Forge: Refactor God Functions in Physics and Benchmarks
+
+🚮 Smell: `compute_pairwise_forces` in `relvar/src/experimental/physics.rs` (81 lines) and `bench_insert_with_check_constraint` in `benches/database.rs` (113 lines) were lengthy God Functions containing mixed setup, logic, and formatting operations. This harmed readability and violated the 'Three-Phase Operator' pattern.
+✨ Solution: Applied the 'Three-Phase Operator' pattern to `compute_pairwise_forces` by extracting `compute_interaction_pairs` and `extend_with_forces` into separate private helper functions. In `benches/database.rs`, extracted reusable database setup logic for simple and complex check constraints into cleanly named helper functions `setup_simple_check_db` and `setup_complex_check_db`.
+🧼 Benefit: Significantly flattens the execution flow and improves readability by isolating relational operations into distinct, logically bounded helpers without changing underlying behavior or performance semantics.
+🛡️ Verification: Tests passed (`cargo test`). No logic changed. Checked with `cargo check`, `cargo fmt`, and `cargo clippy`.
