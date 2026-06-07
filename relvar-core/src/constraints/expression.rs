@@ -102,11 +102,24 @@ pub enum ConstraintExpression {
     },
 
     /// Logical AND: both expressions must be true
-    And(Box<ConstraintExpression>, Box<ConstraintExpression>),
+    And(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
     /// Logical OR: at least one expression must be true
-    Or(Box<ConstraintExpression>, Box<ConstraintExpression>),
+    Or(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
     /// Logical NOT: inverts the expression
-    Not(Box<ConstraintExpression>),
+    Not(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
 
     /// Set membership: attribute IN (value1, value2, ...)
     In(String, std::collections::HashSet<ScalarValue>),
