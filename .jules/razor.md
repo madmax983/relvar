@@ -21,3 +21,8 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+
+## [Reduction]
+**Bloat:** `Result<Option<Vec<String>>, KeyConstraintError>` and `Result<Option<Relation>, DatabaseError>` in `relvar-core/src/constraints/key.rs` and `relvar/src/experimental/automata.rs` returning Options inside Results.
+**Cut:** Simplified to return `Result<(), KeyConstraintError>` by mapping violations to the Error channel (`Err(DuplicateKey(...))`) and `Result<Relation, DatabaseError>` respectively.
+**Saved:** Reduced nested matching and simplified error propagation, enforcing the KISS principle and Razor's rule against `Result<Option<Result<T>>>` variants.
