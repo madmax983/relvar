@@ -59,7 +59,7 @@ use thiserror::Error;
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::tools::exporter;
+/// use relvar::data::exporter;
 /// // Example usage
 /// ```
 pub enum ExporterError {

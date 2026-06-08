@@ -128,7 +128,8 @@
 
 #![warn(missing_docs)]
 
-pub mod persistent_engine;
+pub(crate) mod persistent_engine;
+pub use persistent_engine::PersistentEngine;
 pub mod storage;
 
 // WAL module is pub(crate) - not exposed to logical layer (TTM compliance)
@@ -136,8 +137,6 @@ pub(crate) mod wal;
 
 // MVCC module is pub(crate) - not exposed to logical layer (TTM compliance)
 pub(crate) mod mvcc;
-
-pub use persistent_engine::PersistentEngine;
 
 // Re-export key storage types
 pub use storage::{Catalog, CatalogError, HeapError, HeapFile, Page, PageError, PageFile};

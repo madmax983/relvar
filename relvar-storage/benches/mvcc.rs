@@ -9,7 +9,7 @@ use relvar_core::StorageEngine;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Relation;
-use relvar_storage::persistent_engine::PersistentEngine;
+use relvar_storage::PersistentEngine;
 use tempfile::TempDir;
 
 fn create_test_relation_type() -> RelationType {

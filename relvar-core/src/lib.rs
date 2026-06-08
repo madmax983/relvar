@@ -108,7 +108,7 @@ pub mod utils;
 
 #[cfg(feature = "nova")]
 /// Experimental features.
-pub mod experimental;
+pub(crate) mod experimental;
 pub mod values;
 
 pub use database::Database;

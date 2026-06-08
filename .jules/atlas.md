@@ -27,3 +27,6 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+## 2024-06-08 - Module Encapsulation Cleanup 2
+**Tangle:** Broad visibility (`pub mod`) across many internal modules (`wal`, `mvcc`, `persistent_engine`, `experimental`) leaked implementation details and complicated the dependency graph.
+**Blueprint:** Converted top-level internal module definitions in `relvar-core`, `relvar-storage`, and `relvar` to `pub(crate) mod`. Re-exported necessary types via their respective `mod.rs` files, ensuring clean, intention-revealing public APIs while maintaining low coupling between internal components. Cleaned up unused methods and imports to enforce high code quality.

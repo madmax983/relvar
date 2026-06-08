@@ -10,7 +10,7 @@
 //! use relvar::{Database, InMemoryEngine};
 //! use relvar::{TupleType, RelationType, ScalarType};
 //! use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
-//! use relvar::tools::visualizer::SchemaVisualizer;
+//! use relvar::visualizer::SchemaVisualizer;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
 //!

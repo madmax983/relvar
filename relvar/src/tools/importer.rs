@@ -59,7 +59,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use relvar::tools::importer::ImporterError;
+/// use relvar::data::importer::ImporterError;
 ///
 /// // Example of a DoS protection limit triggering.
 /// // The user should be informed that their payload is too large, and they should chunk it.
@@ -116,7 +116,7 @@ const MAX_CSV_LINE_LEN: usize = 1_000_000; // 1MB
 ///
 /// ```
 /// use relvar::{TupleType, RelationType, ScalarType};
-/// use relvar::tools::importer;
+/// use relvar::data::importer;
 /// use std::io::Cursor;
 ///
 /// let rel_type = RelationType::new(
@@ -468,7 +468,7 @@ impl<'de> Visitor<'de> for ScalarValueVisitor {
 ///
 /// ```
 /// use relvar::{TupleType, RelationType, ScalarType};
-/// use relvar::tools::importer;
+/// use relvar::data::importer;
 /// use std::io::Cursor;
 ///
 /// let rel_type = RelationType::new(
