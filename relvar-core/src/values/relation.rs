@@ -391,6 +391,30 @@ impl Relation {
     ///
     /// assert_eq!(relation.relation_type(), &rel_type);
     /// ```
+
+    /// Consumes the relation, returning its type and body.
+    ///
+    /// This prevents an unnecessary heap allocation associated with cloning
+    /// the relation type when decomposing a relation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let rel_type = RelationType::new(heading);
+    /// let relation = Relation::new(rel_type.clone());
+    ///
+    /// let (t, body) = relation.into_parts();
+    /// assert_eq!(t, rel_type);
+    /// assert!(body.is_empty());
+    /// ```
+    pub fn into_parts(self) -> (RelationType, HashSet<Tuple>) {
+        (self.relation_type, self.body)
+    }
+
     pub fn relation_type(&self) -> &RelationType {
         &self.relation_type
     }
