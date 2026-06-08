@@ -9,3 +9,7 @@
 ## 2026-04-24 - [Unsafe unwrap in StorageManager]
 **Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
 **Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
+
+## 2024-06-08 - [Unbounded Recursion DoS in ASTs]
+**Threat:** Deeply nested JSON/Postcard payloads for `Query` and `ConstraintExpression` ASTs can trigger a stack overflow DoS during `serde` deserialization due to unbounded recursive `Box` fields.
+**Defense:** Applied `#[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]` to the recursive `Box` fields to securely enforce a maximum depth limit.
