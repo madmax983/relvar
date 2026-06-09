@@ -33,3 +33,6 @@
 ## 2025-05-06 - [The Ghost Knowledge Graph]
 **Confusion:** The experimental `KnowledgeGraph` module was completely undocumented, leaving users to guess how it connects to the relational model.
 **Clarification:** Wrote comprehensive module-level documentation and executable doctests for `KnowledgeGraph` and `TriplePattern` explaining the "Relational Semantic Web" concept.
+## 2024-06-10 - Undocumented Spreadsheet Engine
+**Confusion:** The `relvar/src/experimental/spreadsheet.rs` module lacked executable doctests, causing `find_undoc.py` to flag it and making it unclear how to use the Spreadsheet Engine.
+**Clarification:** Added comprehensive and executable doctests for `Spreadsheet`, `Spreadsheet::new`, and `Spreadsheet::evaluate` to provide clear, copy-pasteable examples of how to initialize and evaluate a relational spreadsheet.
