@@ -27,3 +27,6 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+## 2024-05-19 - Sub-modularizing the HeapFile Blob
+**Tangle:** The `relvar-storage/src/storage/heap/mod.rs` module grew into a massive Blob of >1500 lines, mixing internal page layout data structures with complex I/O, serialization, and MVCC transaction logic.
+**Blueprint:** Extracted page and slot data structures (`SlottedPage`, `VersionedSlottedPage`, `SlotEntry`, etc.) along with helper serialization logic into a new `pub(crate) mod layout;` submodule, allowing `mod.rs` to act purely as the operational facade for the `HeapFile` API.
