@@ -631,3 +631,7 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## 2024-06-09 - Extract God Function in Spreadsheet Evaluate
+**Learning:** `relvar/src/experimental/spreadsheet.rs` contained a "God Function" `evaluate` (over 65 lines) which combined finding unresolved formulas, joining arguments, evaluating the mathematical formulas, and unioning results inside a single massive loop. This violated the 'Three-Phase Operator' pattern and made the logic harder to follow.
+**Action:** Applied the 'Three-Phase Operator' pattern by extracting `find_unresolved_formulas`, `prepare_arguments`, and `evaluate_formulas` into separate helper functions to drastically improve readability and flatten the execution flow without changing logic.
