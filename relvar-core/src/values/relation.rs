@@ -663,6 +663,14 @@ impl Relation {
         self.body.retain(|tuple| predicate(tuple));
         self
     }
+
+    /// Consumes the relation, returning its underlying type and body.
+    ///
+    /// This prevents an unnecessary heap allocation associated with cloning
+    /// the `RelationType` when both the type and the tuples are needed.
+    pub fn into_parts(self) -> (RelationType, HashSet<Tuple>) {
+        (self.relation_type, self.body)
+    }
 }
 
 #[cfg(test)]
