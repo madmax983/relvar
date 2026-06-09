@@ -50,3 +50,6 @@ pub use key::{CandidateKey, KeyConstraintError, KeyConstraints, PrimaryKey};
 pub use manager::{ConstraintManager, ConstraintManagerError};
 pub use prepared::PreparedConstraintExpression;
 pub use type_constraint::{AttributeConstraints, TypeConstraint, TypeConstraintError};
+
+#[cfg(test)]
+mod exploit_test;

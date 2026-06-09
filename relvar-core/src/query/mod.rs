@@ -76,6 +76,7 @@ pub enum Query {
     /// relation where the `predicate` evaluates to true.
     Restrict {
         /// The input query to filter.
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
         input: Box<Query>,
         /// The predicate condition.
         predicate: ConstraintExpression,
@@ -87,6 +88,7 @@ pub enum Query {
     /// the specified attributes.
     Project {
         /// The input query.
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
         input: Box<Query>,
         /// The list of attribute names to keep.
         attributes: Vec<String>,
@@ -99,6 +101,7 @@ pub enum Query {
     /// self-join.
     Rename {
         /// The input query.
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
         input: Box<Query>,
         /// Mapping of (old_name, new_name).
         mappings: Vec<(String, String)>,
@@ -111,8 +114,10 @@ pub enum Query {
     /// this becomes a Cartesian product.
     Join {
         /// The left relation.
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
         left: Box<Query>,
         /// The right relation.
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
         right: Box<Query>,
     },
 
@@ -122,6 +127,7 @@ pub enum Query {
     /// values (Sum, Count, Avg, Min, Max) for each group.
     Summarize {
         /// The input query.
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
         input: Box<Query>,
         /// Attributes to group by.
         group_by: Vec<String>,
@@ -436,3 +442,6 @@ impl Query {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod exploit_test;
