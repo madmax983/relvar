@@ -485,13 +485,6 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
     group.bench_function("simple_check", |b| {
         b.iter_batched(
             || {
-                // Setup: create database with CHECK constraint
-                let temp_dir = TempDir::new().unwrap();
-                let mut db = Database::open(temp_dir.path()).unwrap();
-                let emp_type = create_employee_type();
-                db.create_relvar("EMP", emp_type).unwrap();
-
-                // Add CHECK constraint: salary > 0
                 let constraints = CheckConstraints::new().with_constraint(
                     CheckConstraint::from_expression(
                         "positive_salary",
@@ -502,21 +495,9 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
                         ),
                     ),
                 );
-                db.set_check_constraints("EMP", constraints).unwrap();
-
-                (temp_dir, db)
+                setup_db_with_constraints(constraints)
             },
-            |(_temp_dir, mut db)| {
-                // Measured: insert with CHECK constraint
-                let tuple = tuple! {
-                    emp_id: 1i64,
-                    name: "Alice",
-                    dept_id: 10i64,
-                    salary: 50000.0
-                };
-                db.insert("EMP", tuple).unwrap();
-                black_box(db);
-            },
+            insert_test_tuple_into_db,
             BatchSize::SmallInput,
         );
     });
@@ -525,12 +506,6 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
     group.bench_function("complex_check", |b| {
         b.iter_batched(
             || {
-                let temp_dir = TempDir::new().unwrap();
-                let mut db = Database::open(temp_dir.path()).unwrap();
-                let emp_type = create_employee_type();
-                db.create_relvar("EMP", emp_type).unwrap();
-
-                // Add CHECK constraint: salary > 0 AND salary < 1000000
                 let constraints = CheckConstraints::new().with_constraint(
                     CheckConstraint::from_expression(
                         "valid_salary_range",
@@ -547,20 +522,9 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
                         ),
                     ),
                 );
-                db.set_check_constraints("EMP", constraints).unwrap();
-
-                (temp_dir, db)
+                setup_db_with_constraints(constraints)
             },
-            |(_temp_dir, mut db)| {
-                let tuple = tuple! {
-                    emp_id: 1i64,
-                    name: "Alice",
-                    dept_id: 10i64,
-                    salary: 50000.0
-                };
-                db.insert("EMP", tuple).unwrap();
-                black_box(db);
-            },
+            insert_test_tuple_into_db,
             BatchSize::SmallInput,
         );
     });
@@ -575,16 +539,7 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
                 db.create_relvar("EMP", emp_type).unwrap();
                 (temp_dir, db)
             },
-            |(_temp_dir, mut db)| {
-                let tuple = tuple! {
-                    emp_id: 1i64,
-                    name: "Alice",
-                    dept_id: 10i64,
-                    salary: 50000.0
-                };
-                db.insert("EMP", tuple).unwrap();
-                black_box(db);
-            },
+            insert_test_tuple_into_db,
             BatchSize::SmallInput,
         );
     });
@@ -592,83 +547,35 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
     group.finish();
 }
 
+fn setup_db_with_constraints(constraints: CheckConstraints) -> (TempDir, Database) {
+    let temp_dir = TempDir::new().unwrap();
+    let mut db = Database::open(temp_dir.path()).unwrap();
+    let emp_type = create_employee_type();
+    db.create_relvar("EMP", emp_type).unwrap();
+    db.set_check_constraints("EMP", constraints).unwrap();
+    (temp_dir, db)
+}
+
+fn insert_test_tuple_into_db((_temp_dir, mut db): (TempDir, Database)) {
+    let tuple = tuple! {
+        emp_id: 1i64,
+        name: "Alice",
+        dept_id: 10i64,
+        salary: 50000.0
+    };
+    db.insert("EMP", tuple).unwrap();
+    black_box(db);
+}
+
+
 fn bench_check_constraint_evaluation(c: &mut Criterion) {
     let mut group = c.benchmark_group("check_constraint_evaluation");
 
-    // Benchmark different expression types
     for expr_type in ["simple", "and", "between", "in_small", "in_large"].iter() {
         group.bench_function(*expr_type, |b| {
             b.iter_batched(
-                || {
-                    // Setup: create constraint
-                    match *expr_type {
-                        "simple" => CheckConstraint::from_expression(
-                            "test",
-                            "test",
-                            ConstraintExpression::Gt(
-                                "salary".to_string(),
-                                ValueOrRef::Value(ScalarValue::Float(0.0)),
-                            ),
-                        ),
-                        "and" => CheckConstraint::from_expression(
-                            "test",
-                            "test",
-                            ConstraintExpression::And(
-                                Box::new(ConstraintExpression::Gt(
-                                    "salary".to_string(),
-                                    ValueOrRef::Value(ScalarValue::Float(0.0)),
-                                )),
-                                Box::new(ConstraintExpression::Lt(
-                                    "salary".to_string(),
-                                    ValueOrRef::Value(ScalarValue::Float(1000000.0)),
-                                )),
-                            ),
-                        ),
-                        "between" => CheckConstraint::from_expression(
-                            "test",
-                            "test",
-                            ConstraintExpression::Between(
-                                "salary".to_string(),
-                                ScalarValue::Float(0.0),
-                                ScalarValue::Float(1000000.0),
-                            ),
-                        ),
-                        "in_small" => CheckConstraint::from_expression(
-                            "test",
-                            "test",
-                            ConstraintExpression::In(
-                                "dept_id".to_string(),
-                                vec![
-                                    ScalarValue::Int(1),
-                                    ScalarValue::Int(2),
-                                    ScalarValue::Int(3),
-                                    ScalarValue::Int(4),
-                                    ScalarValue::Int(5),
-                                ],
-                            ),
-                        ),
-                        "in_large" => CheckConstraint::from_expression(
-                            "test",
-                            "test",
-                            ConstraintExpression::In(
-                                "dept_id".to_string(),
-                                (1..=100).map(ScalarValue::Int).collect(),
-                            ),
-                        ),
-                        _ => unreachable!(),
-                    }
-                },
-                |constraint| {
-                    // Measured: evaluate constraint
-                    let tuple = tuple! {
-                        emp_id: 1i64,
-                        name: "Alice",
-                        dept_id: 10i64,
-                        salary: 50000.0
-                    };
-                    let result = constraint.is_satisfied_by(&tuple).unwrap();
-                    black_box(result);
-                },
+                || create_test_constraint(expr_type),
+                evaluate_constraint,
                 BatchSize::SmallInput,
             );
         });
@@ -676,6 +583,77 @@ fn bench_check_constraint_evaluation(c: &mut Criterion) {
 
     group.finish();
 }
+
+fn create_test_constraint(expr_type: &str) -> CheckConstraint {
+    match expr_type {
+        "simple" => CheckConstraint::from_expression(
+            "test",
+            "test",
+            ConstraintExpression::Gt(
+                "salary".to_string(),
+                ValueOrRef::Value(ScalarValue::Float(0.0)),
+            ),
+        ),
+        "and" => CheckConstraint::from_expression(
+            "test",
+            "test",
+            ConstraintExpression::And(
+                Box::new(ConstraintExpression::Gt(
+                    "salary".to_string(),
+                    ValueOrRef::Value(ScalarValue::Float(0.0)),
+                )),
+                Box::new(ConstraintExpression::Lt(
+                    "salary".to_string(),
+                    ValueOrRef::Value(ScalarValue::Float(1000000.0)),
+                )),
+            ),
+        ),
+        "between" => CheckConstraint::from_expression(
+            "test",
+            "test",
+            ConstraintExpression::Between(
+                "salary".to_string(),
+                ScalarValue::Float(0.0),
+                ScalarValue::Float(1000000.0),
+            ),
+        ),
+        "in_small" => CheckConstraint::from_expression(
+            "test",
+            "test",
+            ConstraintExpression::In(
+                "dept_id".to_string(),
+                vec![
+                    ScalarValue::Int(1),
+                    ScalarValue::Int(2),
+                    ScalarValue::Int(3),
+                    ScalarValue::Int(4),
+                    ScalarValue::Int(5),
+                ],
+            ),
+        ),
+        "in_large" => CheckConstraint::from_expression(
+            "test",
+            "test",
+            ConstraintExpression::In(
+                "dept_id".to_string(),
+                (1..=100).map(ScalarValue::Int).collect(),
+            ),
+        ),
+        _ => unreachable!(),
+    }
+}
+
+fn evaluate_constraint(constraint: CheckConstraint) {
+    let tuple = tuple! {
+        emp_id: 1i64,
+        name: "Alice",
+        dept_id: 10i64,
+        salary: 50000.0
+    };
+    let result = constraint.is_satisfied_by(&tuple).unwrap();
+    black_box(result);
+}
+
 
 criterion_group!(
     benches,

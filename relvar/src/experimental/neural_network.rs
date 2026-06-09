@@ -21,7 +21,7 @@ use relvar_core::{
     algebra::Aggregation,
     error::DatabaseError,
     types::ScalarType,
-    values::{Relation, ScalarValue},
+    values::{Relation, ScalarValue, Tuple},
 };
 
 /// A simple Relational Feedforward Neural Network.
@@ -117,14 +117,7 @@ impl NeuralNetwork {
 
         // 7. Extend to add bias and apply ReLU
         let new_activations = joined_biases
-            .extend("val", ScalarType::Float, |t| {
-                let sum_prod = t.get_typed::<f64>("sum_prod").unwrap_or(0.0);
-                let bias = t.get_typed::<f64>("bias").unwrap_or(0.0);
-                let x = sum_prod + bias;
-                // ReLU activation
-                let relu = if x > 0.0 { x } else { 0.0 };
-                ScalarValue::Float(relu)
-            })
+            .extend("val", ScalarType::Float, apply_relu_with_bias)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["layer", "node", "val"]);
 
@@ -166,6 +159,15 @@ impl NeuralNetwork {
         self.activations
             .restrict(move |t| t.get_typed::<i64>("layer").unwrap_or(-1) == layer_idx)
     }
+}
+
+fn apply_relu_with_bias(t: &Tuple) -> ScalarValue {
+    let sum_prod = t.get_typed::<f64>("sum_prod").unwrap_or(0.0);
+    let bias = t.get_typed::<f64>("bias").unwrap_or(0.0);
+    let x = sum_prod + bias;
+    // ReLU activation
+    let relu = if x > 0.0 { x } else { 0.0 };
+    ScalarValue::Float(relu)
 }
 
 #[cfg(test)]

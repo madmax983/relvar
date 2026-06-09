@@ -47,7 +47,7 @@ use relvar_core::algebra::Aggregation;
 use relvar_core::error::DatabaseError;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
-use relvar_core::values::{Relation, ScalarValue};
+use relvar_core::values::{Relation, ScalarValue, Tuple};
 
 /// A 3D scene containing spheres to be rendered.
 /// # Examples
@@ -212,46 +212,7 @@ impl Scene {
         // Let c = (O - C) \cdot (O - C) - r^2
         // discriminant = half_b^2 - a*c
         let intersections = combinations
-            .extend("t", ScalarType::Float, |tup| {
-                let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
-                let oy = tup.get_typed::<f64>("oy").unwrap_or(0.0);
-                let oz = tup.get_typed::<f64>("oz").unwrap_or(0.0);
-                let dx = tup.get_typed::<f64>("dx").unwrap_or(0.0);
-                let dy = tup.get_typed::<f64>("dy").unwrap_or(0.0);
-                let dz = tup.get_typed::<f64>("dz").unwrap_or(0.0);
-                let cx = tup.get_typed::<f64>("cx").unwrap_or(0.0);
-                let cy = tup.get_typed::<f64>("cy").unwrap_or(0.0);
-                let cz = tup.get_typed::<f64>("cz").unwrap_or(0.0);
-                let radius = tup.get_typed::<f64>("radius").unwrap_or(0.0);
-
-                let oc_x = ox - cx;
-                let oc_y = oy - cy;
-                let oc_z = oz - cz;
-
-                let a = dx * dx + dy * dy + dz * dz; // Should be ~1.0
-                let half_b = dx * oc_x + dy * oc_y + dz * oc_z;
-                let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - radius * radius;
-
-                let discriminant = half_b * half_b - a * c;
-
-                if discriminant < 0.0 {
-                    // No intersection, return negative distance
-                    ScalarValue::Float(-1.0)
-                } else {
-                    // Two solutions, we want the smallest positive one
-                    let sqrtd = discriminant.sqrt();
-                    let t1 = (-half_b - sqrtd) / a;
-                    let t2 = (-half_b + sqrtd) / a;
-
-                    if t1 > 0.001 {
-                        ScalarValue::Float(t1)
-                    } else if t2 > 0.001 {
-                        ScalarValue::Float(t2)
-                    } else {
-                        ScalarValue::Float(-1.0)
-                    }
-                }
-            })
+            .extend("t", ScalarType::Float, calculate_intersection_distance)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         Ok(intersections)
@@ -263,14 +224,23 @@ impl Scene {
         intersections: &Relation,
     ) -> Result<Relation, DatabaseError> {
         // 5. Filter Hits
-        let hits = intersections.restrict(|t| {
-            let dist = t.get_typed::<f64>("t").unwrap_or(-1.0);
-            dist > 0.0
-        });
+        let hits = self.filter_positive_intersections(intersections);
 
         // 6. Find Closest Hits (Z-Buffer)
-        // If there are hits, group by (x, y) and find min(t)
-        // We use min on 't' to find the closest intersection per ray.
+        let rendered_hits = self.find_and_color_closest_hits(&hits)?;
+
+        // 7. Background Color and Combine
+        self.apply_background_and_combine(rays, &rendered_hits)
+    }
+
+    fn filter_positive_intersections(&self, intersections: &Relation) -> Relation {
+        intersections.restrict(|t| {
+            let dist = t.get_typed::<f64>("t").unwrap_or(-1.0);
+            dist > 0.0
+        })
+    }
+
+    fn find_and_color_closest_hits(&self, hits: &Relation) -> Result<Relation, DatabaseError> {
         let mut closest_hits_base = Relation::new(RelationType::new(
             TupleType::new()
                 .with_attribute("x", ScalarType::Int)
@@ -287,21 +257,16 @@ impl Scene {
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
         }
 
-        // 7. Map Colors
-        // Rename min_t to t in closest_hits to natural join it back with hits.
-        // This acts like an INNER JOIN hits h ON h.x=c.x AND h.y=c.y AND h.t=c.min_t
         let closest_renamed = closest_hits_base.rename(&[("min_t", "t")]);
+        let visible_pixels = closest_renamed.join(hits)?;
+        Ok(visible_pixels.project(&["x", "y", "r", "g", "b"]))
+    }
 
-        // Note: Multiple spheres could theoretically be exactly at distance t.
-        // Set semantics handle duplicates, but we could get multiple colors if
-        // different spheres occupy the exact same spot. For a basic raytracer, this is fine.
-        let visible_pixels = closest_renamed.join(&hits)?;
-
-        // Project down to final image attributes
-        let rendered_hits = visible_pixels.project(&["x", "y", "r", "g", "b"]);
-
-        // 8. Background Color
-        // Find rays that didn't hit anything: all rays MINUS rays that hit something
+    fn apply_background_and_combine(
+        &self,
+        rays: &Relation,
+        rendered_hits: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         let all_pixels = rays.project(&["x", "y"]);
         let hit_pixels = rendered_hits.project(&["x", "y"]);
 
@@ -309,7 +274,6 @@ impl Scene {
             .difference(&hit_pixels)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Extend background with default sky blue color (135, 206, 235)
         let background_colored = background_pixels
             .extend("r", ScalarType::Int, |_| ScalarValue::Int(135))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
@@ -318,12 +282,9 @@ impl Scene {
             .extend("b", ScalarType::Int, |_| ScalarValue::Int(235))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Combine hits and background
-        let final_image = rendered_hits
+        rendered_hits
             .union(&background_colored)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        Ok(final_image)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 
     /// Renders the scene to a relation of pixels.
@@ -346,6 +307,47 @@ impl Scene {
 impl Default for Scene {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn calculate_intersection_distance(tup: &Tuple) -> ScalarValue {
+    let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
+    let oy = tup.get_typed::<f64>("oy").unwrap_or(0.0);
+    let oz = tup.get_typed::<f64>("oz").unwrap_or(0.0);
+    let dx = tup.get_typed::<f64>("dx").unwrap_or(0.0);
+    let dy = tup.get_typed::<f64>("dy").unwrap_or(0.0);
+    let dz = tup.get_typed::<f64>("dz").unwrap_or(0.0);
+    let cx = tup.get_typed::<f64>("cx").unwrap_or(0.0);
+    let cy = tup.get_typed::<f64>("cy").unwrap_or(0.0);
+    let cz = tup.get_typed::<f64>("cz").unwrap_or(0.0);
+    let radius = tup.get_typed::<f64>("radius").unwrap_or(0.0);
+
+    let oc_x = ox - cx;
+    let oc_y = oy - cy;
+    let oc_z = oz - cz;
+
+    let a = dx * dx + dy * dy + dz * dz; // Should be ~1.0
+    let half_b = dx * oc_x + dy * oc_y + dz * oc_z;
+    let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - radius * radius;
+
+    let discriminant = half_b * half_b - a * c;
+
+    if discriminant < 0.0 {
+        // No intersection, return negative distance
+        ScalarValue::Float(-1.0)
+    } else {
+        // Two solutions, we want the smallest positive one
+        let sqrtd = discriminant.sqrt();
+        let t1 = (-half_b - sqrtd) / a;
+        let t2 = (-half_b + sqrtd) / a;
+
+        if t1 > 0.001 {
+            ScalarValue::Float(t1)
+        } else if t2 > 0.001 {
+            ScalarValue::Float(t2)
+        } else {
+            ScalarValue::Float(-1.0)
+        }
     }
 }
 
