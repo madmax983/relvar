@@ -69,3 +69,160 @@ where
 
     Ok((new_relation, update_count))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::values::{Relation, ScalarValue, Tuple};
+    use std::collections::HashSet;
+
+    fn test_relation() -> Relation {
+        let rel_type = RelationType::new(
+            TupleType::new()
+                .with_attribute("id", ScalarType::Int)
+                .with_attribute("val", ScalarType::Int),
+        );
+        let mut body = HashSet::new();
+        let t1 = Tuple::new(
+            rel_type.tuple_type().clone(),
+            vec![
+                ("id".to_string(), ScalarValue::Int(1)),
+                ("val".to_string(), ScalarValue::Int(10)),
+            ],
+        )
+        .unwrap();
+        body.insert(t1);
+
+        let t2 = Tuple::new(
+            rel_type.tuple_type().clone(),
+            vec![
+                ("id".to_string(), ScalarValue::Int(2)),
+                ("val".to_string(), ScalarValue::Int(20)),
+            ],
+        )
+        .unwrap();
+        body.insert(t2);
+
+        let t3 = Tuple::new(
+            rel_type.tuple_type().clone(),
+            vec![
+                ("id".to_string(), ScalarValue::Int(3)),
+                ("val".to_string(), ScalarValue::Int(30)),
+            ],
+        )
+        .unwrap();
+        body.insert(t3);
+
+        Relation::from_body_unchecked(rel_type, body)
+    }
+
+    #[test]
+    fn test_compute_relation_after_delete() {
+        let rel = test_relation();
+        let (new_rel, count) = compute_relation_after_delete(rel, |t| {
+            t.get_typed::<i64>("id").unwrap() == 1 || t.get_typed::<i64>("id").unwrap() == 2
+        })
+        .unwrap();
+
+        assert_eq!(count, 2);
+        assert_eq!(new_rel.cardinality(), 1);
+
+        let remaining_tuple = new_rel.into_iter().next().unwrap();
+        assert_eq!(remaining_tuple.get_typed::<i64>("id").unwrap(), 3);
+    }
+
+    #[test]
+    fn test_compute_relation_after_delete_no_match() {
+        let rel = test_relation();
+        let (new_rel, count) =
+            compute_relation_after_delete(rel, |t| t.get_typed::<i64>("id").unwrap() == 99)
+                .unwrap();
+
+        assert_eq!(count, 0);
+        assert_eq!(new_rel.cardinality(), 3);
+    }
+
+    #[test]
+    fn test_compute_relation_after_update_success() {
+        let rel = test_relation();
+        let (new_rel, count) = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap() == 1 || t.get_typed::<i64>("id").unwrap() == 2,
+            |t| {
+                let mut new_t = t.clone();
+                let current_val = new_t.get_typed::<i64>("val").unwrap();
+                new_t
+                    .set("val".to_string(), ScalarValue::Int(current_val + 100))
+                    .unwrap();
+                new_t
+            },
+        )
+        .unwrap();
+
+        assert_eq!(count, 2);
+        assert_eq!(new_rel.cardinality(), 3);
+
+        // Verify updates
+        let mut ids_found = 0;
+        for t in new_rel.into_iter() {
+            let id = t.get_typed::<i64>("id").unwrap();
+            let val = t.get_typed::<i64>("val").unwrap();
+            if id == 1 {
+                assert_eq!(val, 110);
+                ids_found += 1;
+            } else if id == 2 {
+                assert_eq!(val, 120);
+                ids_found += 1;
+            } else if id == 3 {
+                assert_eq!(val, 30);
+                ids_found += 1;
+            }
+        }
+        assert_eq!(ids_found, 3);
+    }
+
+    #[test]
+    fn test_compute_relation_after_update_merge_identical_tuples() {
+        let rel = test_relation();
+        // Update tuple with id 2 to be identical to tuple with id 1
+        let (new_rel, count) = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |t| {
+                let mut new_t = t.clone();
+                new_t.set("id".to_string(), ScalarValue::Int(1)).unwrap();
+                new_t.set("val".to_string(), ScalarValue::Int(10)).unwrap();
+                new_t
+            },
+        )
+        .unwrap();
+
+        assert_eq!(count, 1);
+        // Cardinality should reduce by 1 because the updated tuple merges with an existing one
+        assert_eq!(new_rel.cardinality(), 2);
+    }
+
+    #[test]
+    fn test_compute_relation_after_update_mismatch() {
+        let rel = test_relation();
+        let expected_type = rel.relation_type().tuple_type().clone();
+        let res = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap() == 1,
+            |_| {
+                // Manually create a tuple with wrong type that bypasses the normal setter checks
+                // just to test compute_relation_after_update's check
+                crate::values::Tuple::new_unchecked(
+                    expected_type.clone().into(),
+                    std::collections::BTreeMap::from([
+                        ("id".to_string(), ScalarValue::Int(1)),
+                        ("val".to_string(), ScalarValue::Float(100.0)),
+                    ]),
+                )
+            },
+        );
+
+        assert!(matches!(res, Err(DatabaseError::TupleMismatch)));
+    }
+}

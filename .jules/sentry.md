@@ -132,3 +132,8 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2025-05-22 - DML Logic Coverage
+
+**Learning:** Missing coverage branches for the pure inner modules handling DML functions `compute_relation_after_delete` and `compute_relation_after_update` within `relvar-core/src/database/dml.rs`. Specifically error paths when `updater` closures output invalid mismatched tuples, as well as the cardinality reduction behavior when an update modifies distinct tuples into identical values causing a set merge.
+
+**Action:** Whenever working on updating core database algebraic evaluation functions or testing their constraint layers, ensure comprehensive tests are placed in inner `mod tests` block specifically checking type mismatch Result failures and edge cases regarding cardinality.
