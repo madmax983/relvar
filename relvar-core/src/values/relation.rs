@@ -633,6 +633,12 @@ impl Relation {
         self.body.is_empty()
     }
 
+    /// Deconstructs the `Relation` into its underlying `RelationType` and `HashSet<Tuple>`,
+    /// avoiding allocations that would be required to clone the `RelationType`.
+    pub fn into_parts(self) -> (RelationType, std::collections::HashSet<Tuple>) {
+        (self.relation_type, self.body)
+    }
+
     /// Restricts this relation by filtering tuples in-place.
     ///
     /// This consumes the relation and modifies it, avoiding allocations for a new relation

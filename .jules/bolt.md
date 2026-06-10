@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2025-05-24 - [Remove RelationType allocation in DML Update]
+**Learning:** When consuming a `Relation` to process its tuples during operations like DML updates, calling `.relation_type().clone()` to keep the type information before calling `.into_iter()` introduces an unnecessary heap allocation because `RelationType` internally manages an `Arc` that gets cloned.
+**Action:** Use `into_parts(self) -> (RelationType, HashSet<Tuple>)` on `Relation` to deconstruct it into its components. This safely extracts both the `RelationType` and the body by value without performing any heap allocations or reference count increments.
