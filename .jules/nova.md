@@ -133,7 +133,3 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
-## Relational Garbage Collector
-**Concept:** Modeled a Mark-and-Sweep Garbage Collector using purely relational algebra. Represents `roots`, `heap`, and `references` as relations. The Mark phase computes reachability via `tclose`, `join`, and `union`. The Sweep phase identifies garbage via `difference`.
-**Fate:** Merged
-**Lesson:** Relational algebra gracefully handles complex algorithms like Garbage Collection! By leveraging transitive closure to compute reachable sets and difference to identify unreferenced memory, we can declaratively specify Mark-and-Sweep.
