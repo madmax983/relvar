@@ -21,40 +21,13 @@
 //! storage references, maintaining the relational abstraction.
 
 use super::page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
+pub(crate) mod layout;
+pub(crate) use layout::*;
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
-use serde::{Deserialize, Serialize};
+
 use std::path::Path;
 use thiserror::Error;
-
-/// Helper for bounded deserialization to prevent allocation bombs.
-/// Limits allocation size to PAGE_SIZE (4KB), preventing DoS from malicious length prefixes.
-fn deserialize_bounded<'a, T>(data: &'a [u8]) -> Result<T, HeapError>
-where
-    T: Deserialize<'a>,
-{
-    postcard::from_bytes(data).map_err(|e| HeapError::Serialization(e.to_string()))
-}
-
-/// Helper for consistent serialization matching `deserialize_bounded`.
-fn serialize_compat<T: Serialize>(value: &T) -> Result<Vec<u8>, HeapError> {
-    postcard::to_allocvec(value).map_err(|e| HeapError::Serialization(e.to_string()))
-}
-
-/// Helper for calculating serialized size matching `serialize_compat`.
-fn serialized_size_compat<T: Serialize>(value: &T) -> Result<u64, HeapError> {
-    postcard::to_allocvec(value)
-        .map(|v| v.len() as u64)
-        .map_err(|e| HeapError::Serialization(e.to_string()))
-}
-
-/// Tuple ID: (page_id, slot_number)
-/// Internal to storage layer only (TTM Proscription 6)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(crate) struct TupleId {
-    pub(crate) page_id: PageId,
-    pub(crate) slot: u32,
-}
 
 /// Errors that can occur during heap file operations.
 #[derive(Debug, Error)]
@@ -132,91 +105,6 @@ pub struct HeapFile {
     /// The type of tuples stored in this heap file.
     relation_type: RelationType,
 }
-
-/// Slot directory entry
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SlotEntry {
-    offset: u32,
-    length: u32,
-}
-
-/// Versioned slot directory entry for MVCC.
-///
-/// Extends SlotEntry with transaction version metadata to support
-/// Multi-Version Concurrency Control (MVCC).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct VersionedSlotEntry {
-    /// Offset of tuple data in page
-    offset: u32,
-    /// Length of tuple data
-    length: u32,
-    /// Transaction that created this version
-    xmin: crate::wal::TransactionId,
-    /// Transaction that deleted/updated this version (None = still visible)
-    xmax: Option<crate::wal::TransactionId>,
-    /// Previous version in the version chain (for undo)
-    prev_version: Option<TupleId>,
-}
-
-impl SlotEntry {
-    fn offset(&self) -> u32 {
-        self.offset
-    }
-
-    fn length(&self) -> u32 {
-        self.length
-    }
-
-    fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-}
-
-impl VersionedSlotEntry {
-    fn offset(&self) -> u32 {
-        self.offset
-    }
-
-    fn length(&self) -> u32 {
-        self.length
-    }
-
-    fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-}
-
-/// Page layout: `[slot_count (4 bytes)] [slot_entries...] [free_space] [...tuple_data]`
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SlottedPage {
-    slot_count: u32,
-    slots: Vec<Option<SlotEntry>>,
-}
-
-/// Versioned page layout for MVCC
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct VersionedSlottedPage {
-    magic: u32, // Magic number to distinguish from SlottedPage: 0x4D564343 ("MVCC")
-    slot_count: u32,
-    slots: Vec<Option<VersionedSlotEntry>>,
-}
-
-const VERSIONED_PAGE_MAGIC: u32 = 0x4D564343; // "MVCC" in ASCII
-
-// Page format version to handle serialization changes
-const PAGE_FORMAT_VERSION: u8 = 2; // Version 2: length-prefixed slot directory
-
-const USABLE_PAGE_SIZE_V1: usize = PAGE_SIZE - 8;
-const USABLE_PAGE_SIZE_V2: usize = PAGE_SIZE - 8;
-const V2_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
 
 impl HeapFile {
     /// Creates a new heap file, truncating any existing file.
