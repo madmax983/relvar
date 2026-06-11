@@ -9,6 +9,39 @@ use relvar_core::{
 /// Models a spreadsheet where cells can contain raw values or formulas referencing
 /// other cells. Evaluation is performed purely using relational joins and extensions
 /// until all cell values are resolved (fixpoint).
+///
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType};
+/// use relvar::experimental::spreadsheet::Spreadsheet;
+/// use relvar_core::tuple;
+///
+/// // Create a relation for values
+/// let val_heading = TupleType::new()
+///     .with_attribute("id", ScalarType::String)
+///     .with_attribute("val", ScalarType::Float);
+/// let mut values = Relation::new(RelationType::new(val_heading));
+///
+/// // Insert an initial value: A1 = 10.0
+/// values.insert(tuple! { id: "A1".to_string(), val: 10.0f64 }).unwrap();
+///
+/// // Create a relation for formulas
+/// let form_heading = TupleType::new()
+///     .with_attribute("id", ScalarType::String)
+///     .with_attribute("op", ScalarType::String)
+///     .with_attribute("arg1", ScalarType::String)
+///     .with_attribute("arg2", ScalarType::String);
+/// let mut formulas = Relation::new(RelationType::new(form_heading));
+///
+/// // Insert a formula: B1 = A1 + A1
+/// formulas.insert(tuple! {
+///     id: "B1".to_string(), op: "ADD".to_string(), arg1: "A1".to_string(), arg2: "A1".to_string()
+/// }).unwrap();
+///
+/// // Initialize the spreadsheet
+/// let mut spreadsheet = Spreadsheet::new(values, formulas);
+/// ```
 pub struct Spreadsheet {
     /// Resolved values. Schema: `(id: String, val: Float)`
     pub values: Relation,
@@ -25,7 +58,21 @@ impl Spreadsheet {
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    /// use relvar_core::tuple;
+    ///
+    /// let val_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float);
+    /// let values = Relation::new(RelationType::new(val_heading));
+    ///
+    /// let form_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String);
+    /// let formulas = Relation::new(RelationType::new(form_heading));
+    ///
+    /// let spreadsheet = Spreadsheet::new(values, formulas);
     /// ```
     pub fn new(values: Relation, formulas: Relation) -> Self {
         Self { values, formulas }
@@ -38,7 +85,34 @@ impl Spreadsheet {
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    /// use relvar_core::tuple;
+    ///
+    /// // Initialize values: A1 = 10.0, A2 = 20.0
+    /// let mut values = Relation::new(RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::String)
+    ///         .with_attribute("val", ScalarType::Float)
+    /// ));
+    /// values.insert(tuple! { id: "A1".to_string(), val: 10.0f64 }).unwrap();
+    /// values.insert(tuple! { id: "A2".to_string(), val: 20.0f64 }).unwrap();
+    ///
+    /// // Initialize formulas: B1 = A1 + A2
+    /// let mut formulas = Relation::new(RelationType::new(
+    ///     TupleType::new()
+    ///         .with_attribute("id", ScalarType::String)
+    ///         .with_attribute("op", ScalarType::String)
+    ///         .with_attribute("arg1", ScalarType::String)
+    ///         .with_attribute("arg2", ScalarType::String)
+    /// ));
+    /// formulas.insert(tuple! {
+    ///     id: "B1".to_string(), op: "ADD".to_string(), arg1: "A1".to_string(), arg2: "A2".to_string()
+    /// }).unwrap();
+    ///
+    /// let spreadsheet = Spreadsheet::new(values, formulas);
+    /// let result = spreadsheet.evaluate().unwrap();
+    ///
+    /// // Result contains A1, A2, and B1
+    /// assert_eq!(result.cardinality(), 3);
     /// ```
     pub fn evaluate(&self) -> Result<Relation, DatabaseError> {
         let mut current_values = self.values.clone();
