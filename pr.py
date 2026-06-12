@@ -1,7 +1,6 @@
 import sys
-import os
 
-with open("pr_description.md") as f:
-    body = f.read()
-
-print(f"Submitting PR with title: ⚡ Bolt: Avoid cloning heading per tuple in ungroup\n\n{body}")
+print(f"""Submitting PR with title: 🎻 Bard: [documentation update]\n\n📖 Chapter: The `Spreadsheet` module.
+🔦 Insight: Explained how to initialize a spreadsheet and correctly execute formula evaluations using purely relational joins and extensions, replacing placeholder examples with functional, mathematical examples.
+🧪 Example: Added 3 executable doctests covering the main struct, `new`, and `evaluate`.
+🖼️ Preview: (Included locally during `cargo doc --open` review).""")
