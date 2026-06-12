@@ -41,6 +41,7 @@ pub mod circuit;
 pub mod ecs;
 pub mod enigma;
 pub mod expert_system;
+pub mod fourier;
 pub mod garbage_collector;
 pub mod gnn;
 pub mod graph;

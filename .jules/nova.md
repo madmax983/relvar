@@ -133,3 +133,7 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+## Relational Discrete Fourier Transform (DFT)
+**Concept:** Modeled the Discrete Fourier Transform (DFT) using purely relational algebra. The time-domain signal is represented as a relation and the frequency-domain spectrum is computed using Cartesian Products (Cross Joins), Extensions (Trigonometric functions), and Aggregations (Sum).
+**Fate:** TBD
+**Lesson:** Relational algebra gracefully handles complex mathematical transforms like the DFT! By cross joining the signal with frequency bins, extending with the complex multiplication terms, and summarizing by frequency, we can declaratively compute the spectrum without procedural loops.
