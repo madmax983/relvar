@@ -1,8 +1,4 @@
-#!/usr/bin/env python3
-import sys
-
-def main():
-    print(r'''Submitting PR with title: 🗺️ Atlas: Sub-modularize HeapFile Blob
+🗺️ Atlas: Sub-modularize HeapFile Blob
 
 🕸️ Tangle: `relvar-storage/src/storage/heap/mod.rs` was a massive Blob anti-pattern file containing both pure data structure definitions (like `TupleId`, `SlottedPage`, `HeapError`, etc.) and complex multi-version concurrency, indexing, and I/O logic.
 
@@ -11,7 +7,3 @@ def main():
 🧱 Stability: Reduced file bloat and improved module cohesion. Internal details stay private while the public API remains unchanged.
 
 🔬 Verification: Builds successfully, all tests pass, zero linter warnings.
-''')
-
-if __name__ == "__main__":
-    main()
