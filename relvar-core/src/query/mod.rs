@@ -63,6 +63,7 @@ use thiserror::Error;
 /// let q = Query::scan("users");
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "QueryUnchecked")]
 pub enum Query {
     /// Scan a relation variable (base table).
     ///
@@ -128,6 +129,74 @@ pub enum Query {
         /// Aggregations to perform.
         aggregations: Vec<Aggregation>,
     },
+}
+
+#[derive(Deserialize)]
+enum QueryUnchecked {
+    Scan(String),
+    Restrict {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        input: Box<QueryUnchecked>,
+        predicate: ConstraintExpression,
+    },
+    Project {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        input: Box<QueryUnchecked>,
+        attributes: Vec<String>,
+    },
+    Rename {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        input: Box<QueryUnchecked>,
+        mappings: Vec<(String, String)>,
+    },
+    Join {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        left: Box<QueryUnchecked>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        right: Box<QueryUnchecked>,
+    },
+    Summarize {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        input: Box<QueryUnchecked>,
+        group_by: Vec<String>,
+        aggregations: Vec<Aggregation>,
+    },
+}
+
+impl TryFrom<QueryUnchecked> for Query {
+    type Error = String;
+
+    fn try_from(unchecked: QueryUnchecked) -> Result<Self, Self::Error> {
+        let q = match unchecked {
+            QueryUnchecked::Scan(s) => Query::Scan(s),
+            QueryUnchecked::Restrict { input, predicate } => Query::Restrict {
+                input: Box::new(Query::try_from(*input)?),
+                predicate,
+            },
+            QueryUnchecked::Project { input, attributes } => Query::Project {
+                input: Box::new(Query::try_from(*input)?),
+                attributes,
+            },
+            QueryUnchecked::Rename { input, mappings } => Query::Rename {
+                input: Box::new(Query::try_from(*input)?),
+                mappings,
+            },
+            QueryUnchecked::Join { left, right } => Query::Join {
+                left: Box::new(Query::try_from(*left)?),
+                right: Box::new(Query::try_from(*right)?),
+            },
+            QueryUnchecked::Summarize {
+                input,
+                group_by,
+                aggregations,
+            } => Query::Summarize {
+                input: Box::new(Query::try_from(*input)?),
+                group_by,
+                aggregations,
+            },
+        };
+        Ok(q)
+    }
 }
 
 /// Errors that can occur during query execution.
