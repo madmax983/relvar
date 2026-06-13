@@ -663,6 +663,30 @@ impl Relation {
         self.body.retain(|tuple| predicate(tuple));
         self
     }
+
+    /// Consumes the relation and returns its underlying parts:
+    /// the `RelationType` and the `HashSet<Tuple>` body.
+    ///
+    /// This prevents an unnecessary heap allocation associated with
+    /// cloning the type information when the relation is being consumed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let mut relation = Relation::new(RelationType::new(heading));
+    /// relation.insert(tuple!{ id: 1i64 }).unwrap();
+    ///
+    /// let (rel_type, body) = relation.into_parts();
+    /// assert_eq!(body.len(), 1);
+    /// ```
+    pub fn into_parts(self) -> (RelationType, HashSet<Tuple>) {
+        (self.relation_type, self.body)
+    }
 }
 
 #[cfg(test)]
