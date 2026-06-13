@@ -132,3 +132,7 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+
+## 2024-06-13 - [Database Integrity Error Paths Coverage]
+**Learning:** Found uncovered error branches in `Database::delete` (foreign key violations), `Database::update` (type and check constraints), and `Database::create_relvar` (virtual relvar naming conflict) because error paths are often neglected during standard API usage tests.
+**Action:** Always create dedicated integration tests focusing purely on triggering specific error scenarios to ensure full branch coverage of validation logic.
