@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2025-05-18 - Avoid RelationType Cloning via Deconstruction
+**Learning:** DML update iteration in `relvar-core` unnecessarily clones `RelationType` to capture it, creating repeated heap allocations (`Arc` clones). Attempting to replace references or clones deeply embedded in algebra operations often causes lifetime conflicts, but consuming the outer struct safely bypasses this.
+**Action:** Implemented `Relation::into_parts(self) -> (RelationType, HashSet<Tuple>)` to dismantle the relation by value. This allows the inner fields to be owned without `relation_type.clone()`, providing a cleaner, zero-cost memory optimization in hot DML loops.

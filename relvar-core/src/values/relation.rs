@@ -164,6 +164,27 @@ impl IntoIterator for Relation {
 }
 
 impl Relation {
+    /// Consumes the relation, returning its underlying type and body (tuples).
+    ///
+    /// This prevents unnecessary heap allocations by avoiding the need to
+    /// clone the `RelationType` when breaking apart a relation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::values::Relation;
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let relation = Relation::new(RelationType::new(heading));
+    ///
+    /// let (rel_type, tuples) = relation.into_parts();
+    /// assert!(tuples.is_empty());
+    /// ```
+    pub fn into_parts(self) -> (RelationType, HashSet<Tuple>) {
+        (self.relation_type, self.body)
+    }
+
     /// Creates a new empty relation with the given type.
     ///
     /// The relation starts with zero tuples but has a defined structure
