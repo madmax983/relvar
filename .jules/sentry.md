@@ -132,3 +132,7 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+
+## 2025-06-13 - Database DML and Integrity Error Handling Tests
+**Learning:** Found coverage gaps in the core database module specifically related to edge-case errors during DML operations (TupleMismatch, constraint violations during bulk updates/inserts, interacting with virtual and nonexistent relvars).
+**Action:** Implemented targeted unit tests around error returns from `insert`, `update`, and `delete` to verify correctness and prevent unexpected panics. Ensure `validate_insert` and `validate_relation_constraints` logic remains heavily tested for database stability.

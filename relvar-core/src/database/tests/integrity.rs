@@ -589,3 +589,147 @@ fn test_update_constraint_violation_in_loop() {
         ))
     ));
 }
+
+#[test]
+fn test_insert_with_key_violation() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    use crate::constraints::{KeyConstraints, PrimaryKey};
+    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let constraints = KeyConstraints::new().with_primary_key(pk);
+    db.set_key_constraints("TEST", constraints).unwrap();
+
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+
+    let result = db.validate_insert("TEST", &tuple! { id: 1i64, name: "Bob" });
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            ConstraintManagerError::PrimaryKeyViolation
+        ))
+    ));
+}
+
+#[test]
+fn test_update_returns_type_constraint_violation() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("age", ScalarType::Int),
+    );
+
+    db.create_relvar("PERSONS", rel_type).unwrap();
+
+    use crate::constraints::{AttributeConstraints, TypeConstraint};
+    let attr_constraints = AttributeConstraints::new("age".to_string(), ScalarType::Int)
+        .with_constraint(TypeConstraint::Range {
+            min: ScalarValue::Int(0),
+            max: ScalarValue::Int(150),
+        });
+    db.set_type_constraints("PERSONS", "age", attr_constraints)
+        .unwrap();
+
+    db.insert("PERSONS", tuple! { id: 1i64, age: 30i64 })
+        .unwrap();
+
+    let result = db.update(
+        "PERSONS",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_| tuple! { id: 1i64, age: -5i64 },
+    );
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            ConstraintManagerError::TypeConstraintViolation(_)
+        ))
+    ));
+}
+
+#[test]
+fn test_update_returns_foreign_key_violation() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+    db.create_relvar("DEPT", test_rel_type()).unwrap();
+    db.insert("DEPT", tuple! { id: 1i64, name: "Engineering" })
+        .unwrap();
+
+    let emp_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("dept_id", ScalarType::Int),
+    );
+    db.create_relvar("EMP", emp_type).unwrap();
+    db.insert("EMP", tuple! { id: 100i64, dept_id: 1i64 })
+        .unwrap();
+
+    use crate::constraints::{ForeignKey, ForeignKeyConstraints};
+    let fk = ForeignKey::new(
+        vec!["dept_id".to_string()],
+        "DEPT".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("EMP", constraints).unwrap();
+
+    // Try to update dept_id to non-existent department
+    let result = db.update(
+        "EMP",
+        |t| t.get_typed::<i64>("id").unwrap() == 100,
+        |_| tuple! { id: 100i64, dept_id: 99i64 },
+    );
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            ConstraintManagerError::ForeignKeyViolation(_)
+        ))
+    ));
+}
+
+#[test]
+fn test_delete_returns_foreign_key_violation() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+
+    db.create_relvar("DEPT", test_rel_type()).unwrap();
+    db.insert("DEPT", tuple! { id: 1i64, name: "Engineering" })
+        .unwrap();
+
+    let emp_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("dept_id", ScalarType::Int),
+    );
+    db.create_relvar("EMP", emp_type).unwrap();
+    db.insert("EMP", tuple! { id: 100i64, dept_id: 1i64 })
+        .unwrap();
+
+    use crate::constraints::{ForeignKey, ForeignKeyConstraints};
+    let fk = ForeignKey::new(
+        vec!["dept_id".to_string()],
+        "DEPT".to_string(),
+        vec!["id".to_string()],
+    )
+    .unwrap();
+    let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("EMP", constraints).unwrap();
+
+    // Try to delete the department which is still referenced
+    let result = db.delete("DEPT", |t| t.get_typed::<i64>("id").unwrap() == 1);
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            ConstraintManagerError::ForeignKeyViolation(_)
+        ))
+    ));
+}

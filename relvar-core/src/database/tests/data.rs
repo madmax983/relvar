@@ -108,3 +108,118 @@ fn test_delete_no_matches_returns_zero() {
     let result = db.query("TEST").unwrap();
     assert_eq!(result.cardinality(), 1);
 }
+
+#[test]
+fn test_insert_into_nonexistent_relvar() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    let result = db.insert("NONEXISTENT", tuple! { id: 1i64, name: "Alice" });
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_insert_into_transaction_rollback() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    db.begin().unwrap();
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+    db.rollback().unwrap();
+
+    let result = db.query("TEST").unwrap();
+    assert_eq!(result.cardinality(), 0);
+}
+
+#[test]
+fn test_delete_from_nonexistent_relvar() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    let result = db.delete("NONEXISTENT", |_| true);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_update_nonexistent_relvar() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    let result = db.update("NONEXISTENT", |_| true, |t| t.clone());
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_update_tuple_mismatch() {
+    use crate::error::DatabaseError;
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_| tuple! { id: "not_an_int" }, // tuple mismatch!
+    );
+
+    assert!(matches!(result, Err(DatabaseError::TupleMismatch)));
+}
+
+#[test]
+fn test_update_no_matches_returns_zero() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+
+    let count = db
+        .update(
+            "TEST",
+            |t| t.get_typed::<i64>("id").unwrap() > 100,
+            |t| t.clone(),
+        )
+        .unwrap();
+
+    assert_eq!(count, 0);
+
+    let result = db.query("TEST").unwrap();
+    assert_eq!(result.cardinality(), 1);
+}
+
+#[test]
+fn test_ensure_not_virtual_insert() {
+    use crate::error::DatabaseError;
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("BASE", test_rel_type()).unwrap();
+    db.define_virtual_relvar("VIRTUAL", test_rel_type(), |db| db.query("BASE"))
+        .unwrap();
+
+    let result = db.ensure_not_virtual("VIRTUAL");
+    assert!(matches!(
+        result,
+        Err(DatabaseError::CannotModifyVirtualRelvar(_))
+    ));
+
+    let result = db.ensure_not_virtual("BASE");
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_query_virtual_relvar() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+
+    db.define_virtual_relvar("VIRTUAL", test_rel_type(), |db| db.query("TEST"))
+        .unwrap();
+
+    let result = db.query("VIRTUAL").unwrap();
+    assert_eq!(result.cardinality(), 1);
+}
+
+#[test]
+fn test_query_nonexistent_relvar() {
+    let db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    let result = db.query("NONEXISTENT");
+    assert!(result.is_err());
+}
