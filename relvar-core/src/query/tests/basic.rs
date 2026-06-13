@@ -110,3 +110,30 @@ fn test_query_error_propagation() {
     let err = q_bad_sum.execute(&db);
     assert!(matches!(err, Err(QueryError::Algebra(_))));
 }
+
+#[test]
+fn test_query_deserialization_depth_limit() {
+    let mut q = Query::Scan("test".to_string());
+    for _ in 0..100 {
+        q = Query::Project {
+            input: Box::new(q),
+            attributes: vec!["a".to_string()],
+        };
+    }
+
+    // Serialize with postcard
+    let bytes = postcard::to_stdvec(&q).unwrap();
+
+    // Deserialize
+    std::mem::forget(q); // Prevent Drop stack overflow
+    let result: Result<Query, _> = postcard::from_bytes(&bytes);
+
+    assert!(
+        result.is_err(),
+        "Deserialization should fail due to recursion limit"
+    );
+
+    if let Ok(q2) = result {
+        std::mem::forget(q2); // Should not reach here, but prevent Drop if it does
+    }
+}

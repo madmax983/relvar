@@ -102,11 +102,24 @@ pub enum ConstraintExpression {
     },
 
     /// Logical AND: both expressions must be true
-    And(Box<ConstraintExpression>, Box<ConstraintExpression>),
+    And(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
     /// Logical OR: at least one expression must be true
-    Or(Box<ConstraintExpression>, Box<ConstraintExpression>),
+    Or(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
     /// Logical NOT: inverts the expression
-    Not(Box<ConstraintExpression>),
+    Not(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
 
     /// Set membership: attribute IN (value1, value2, ...)
     In(String, std::collections::HashSet<ScalarValue>),
@@ -936,5 +949,38 @@ mod like_tests {
         let result = expr.evaluate(&tuple);
         assert!(result.is_err());
         assert!(matches!(result, Err(ExpressionError::TypeMismatch(_, _))));
+    }
+}
+
+#[cfg(test)]
+mod recursion_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_constraint_expression_deserialization_depth_limit() {
+        let mut q = ConstraintExpression::Not(Box::new(ConstraintExpression::In(
+            "test".to_string(),
+            HashSet::new(),
+        )));
+        for _ in 0..100 {
+            q = ConstraintExpression::Not(Box::new(q));
+        }
+
+        // Serialize with postcard
+        let bytes = postcard::to_stdvec(&q).unwrap();
+
+        // Deserialize
+        std::mem::forget(q); // Prevent Drop stack overflow
+        let result: Result<ConstraintExpression, _> = postcard::from_bytes(&bytes);
+
+        assert!(
+            result.is_err(),
+            "Deserialization should fail due to recursion limit"
+        );
+
+        if let Ok(q2) = result {
+            std::mem::forget(q2); // Should not reach here, but prevent Drop if it does
+        }
     }
 }
