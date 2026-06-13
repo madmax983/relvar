@@ -87,10 +87,6 @@
 //! - Tuple ordering is not guaranteed
 //! - Results are always valid relations
 
-/// Relational Delta operator.
-pub(crate) mod delta;
-pub use delta::Delta;
-
 /// Set difference operator (A MINUS B).
 pub(crate) mod difference;
 pub use difference::DifferenceError;

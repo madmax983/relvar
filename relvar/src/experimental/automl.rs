@@ -72,10 +72,6 @@ pub struct NaiveBayesClassifier {
     /// Key: (Feature Name, Feature Value, Class Value) -> Value: Log Probability
     conditionals: HashMap<(String, String, String), f64>,
 
-    /// Target attribute name
-    #[allow(dead_code)]
-    target_attr: String,
-
     /// Feature attribute names
     feature_attrs: Vec<String>,
 
@@ -134,7 +130,6 @@ impl NaiveBayesClassifier {
         Ok(NaiveBayesClassifier {
             priors,
             conditionals,
-            target_attr: target_attr.to_string(),
             feature_attrs,
             classes,
         })

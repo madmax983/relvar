@@ -1,5 +1,4 @@
-use relvar_core::DatabaseError;
-use relvar_core::algebra::{Delta, DivideError, ExtendError, IntersectError};
+use relvar_core::algebra::{DivideError, ExtendError, IntersectError};
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};
@@ -38,64 +37,6 @@ fn test_extend_into_type_mismatch() {
         ScalarValue::String("not an int".to_string())
     });
     assert!(matches!(result, Err(ExtendError::TupleCreation(_))));
-}
-
-#[test]
-fn test_delta_new_type_mismatch() {
-    let h1 = TupleType::new().with_attribute("A".to_string(), ScalarType::Int);
-    let h2 = TupleType::new().with_attribute("B".to_string(), ScalarType::Int);
-    let r1 = Relation::new(RelationType::new(h1));
-    let r2 = Relation::new(RelationType::new(h2));
-
-    let result = Delta::new(r1, r2);
-    assert!(matches!(result, Err(DatabaseError::AlgebraError(_))));
-}
-
-#[test]
-fn test_delta_between_type_mismatch() {
-    let h1 = TupleType::new().with_attribute("A".to_string(), ScalarType::Int);
-    let h2 = TupleType::new().with_attribute("B".to_string(), ScalarType::Int);
-    let r1 = Relation::new(RelationType::new(h1));
-    let r2 = Relation::new(RelationType::new(h2));
-
-    let result = Delta::between(&r1, &r2);
-    assert!(matches!(result, Err(DatabaseError::AlgebraError(_))));
-}
-
-#[test]
-fn test_delta_apply_type_mismatch() {
-    let h1 = TupleType::new().with_attribute("A".to_string(), ScalarType::Int);
-    let h2 = TupleType::new().with_attribute("B".to_string(), ScalarType::Int);
-    let r2 = Relation::new(RelationType::new(h2.clone()));
-
-    let delta = Delta::new(
-        Relation::new(RelationType::new(h1.clone())),
-        Relation::new(RelationType::new(h1.clone())),
-    )
-    .unwrap();
-    let result = delta.apply(&r2);
-
-    assert!(matches!(result, Err(DatabaseError::AlgebraError(_))));
-}
-
-#[test]
-fn test_delta_compose_type_mismatch() {
-    let h1 = TupleType::new().with_attribute("A".to_string(), ScalarType::Int);
-    let h2 = TupleType::new().with_attribute("B".to_string(), ScalarType::Int);
-
-    let d1 = Delta::new(
-        Relation::new(RelationType::new(h1.clone())),
-        Relation::new(RelationType::new(h1.clone())),
-    )
-    .unwrap();
-    let d2 = Delta::new(
-        Relation::new(RelationType::new(h2.clone())),
-        Relation::new(RelationType::new(h2.clone())),
-    )
-    .unwrap();
-
-    let result = d1.compose(&d2);
-    assert!(matches!(result, Err(DatabaseError::AlgebraError(_))));
 }
 
 #[test]
