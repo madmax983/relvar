@@ -152,11 +152,7 @@ impl<E: StorageEngine> Database<E> {
         let (new_relation, delete_count) =
             compute_relation_after_delete(current_relation, predicate)?;
 
-        self.constraints.validate_referencing_foreign_keys(
-            &mut self.engine,
-            relation_name,
-            &new_relation,
-        )?;
+        self.validate_delete_constraints(relation_name, &new_relation)?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -259,13 +255,7 @@ impl<E: StorageEngine> Database<E> {
         let (new_relation, update_count) =
             compute_relation_after_update(current_relation, predicate, updater)?;
 
-        self.validate_relation_constraints(relation_name, &new_relation)?;
-
-        self.constraints.validate_referencing_foreign_keys(
-            &mut self.engine,
-            relation_name,
-            &new_relation,
-        )?;
+        self.validate_update_constraints(relation_name, &new_relation)?;
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -330,6 +320,34 @@ impl<E: StorageEngine> Database<E> {
             relation,
         )?;
 
+        Ok(())
+    }
+
+    pub(crate) fn validate_update_constraints(
+        &mut self,
+        relation_name: &str,
+        new_relation: &Relation,
+    ) -> Result<(), DatabaseError> {
+        self.validate_relation_constraints(relation_name, new_relation)?;
+
+        self.constraints.validate_referencing_foreign_keys(
+            &mut self.engine,
+            relation_name,
+            new_relation,
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn validate_delete_constraints(
+        &mut self,
+        relation_name: &str,
+        new_relation: &Relation,
+    ) -> Result<(), DatabaseError> {
+        self.constraints.validate_referencing_foreign_keys(
+            &mut self.engine,
+            relation_name,
+            new_relation,
+        )?;
         Ok(())
     }
 }
