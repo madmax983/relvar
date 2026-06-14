@@ -1,7 +1,8 @@
 import sys
 import os
 
-with open("pr_description.md") as f:
-    body = f.read()
-
-print(f"Submitting PR with title: ⚡ Bolt: Avoid cloning heading per tuple in ungroup\n\n{body}")
+print(f"""Submitting PR with title: 🎻 Bard: [documentation update]\n\n📖 Chapter: The `Spreadsheet` module
+🔦 Insight: Replaced placeholder examples with executable doctests.
+🧪 Example: Added 3 executable doctests for `Spreadsheet`, `new`, and `evaluate`.
+🖼️ Preview: N/A
+""")
