@@ -363,6 +363,31 @@ impl Relation {
         }
     }
 
+    /// Consumes the relation and returns its underlying type and body parts.
+    ///
+    /// This avoids allocating a clone of the `RelationType` when you need both the
+    /// relation's type and its underlying tuples (e.g. during DML operations).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::Int);
+    ///
+    /// let rel_type = RelationType::new(heading.clone());
+    /// let relation = Relation::new(rel_type.clone());
+    ///
+    /// let (t, body) = relation.into_parts();
+    /// assert_eq!(t, rel_type);
+    /// assert!(body.is_empty());
+    /// ```
+    pub fn into_parts(self) -> (RelationType, HashSet<Tuple>) {
+        (self.relation_type, self.body)
+    }
+
     /// Retrieves the relation type (heading) defining this relation's structure.
     ///
     /// # Examples
