@@ -108,3 +108,46 @@ fn test_delete_no_matches_returns_zero() {
     let result = db.query("TEST").unwrap();
     assert_eq!(result.cardinality(), 1);
 }
+
+#[test]
+fn test_update_mismatch_returns_error() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+
+    // Update tuples
+    let result = db.update(
+        "TEST",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_| {
+            tuple! { id: "hello" }
+        },
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_update_no_matches_returns_zero() {
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+
+    // Update with no matches
+    let count = db
+        .update(
+            "TEST",
+            |t| t.get_typed::<i64>("id").unwrap() > 100,
+            |t| t.clone(),
+        )
+        .unwrap();
+    assert_eq!(count, 0);
+
+    // Relation should be unchanged
+    let result = db.query("TEST").unwrap();
+    assert_eq!(result.cardinality(), 1);
+}
