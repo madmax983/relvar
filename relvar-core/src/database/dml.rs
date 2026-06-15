@@ -69,3 +69,123 @@ where
 
     Ok((new_relation, update_count))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::values::ScalarValue;
+
+    fn setup_relation() -> Relation {
+        let heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("val", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+
+        let mut rel = Relation::new(rel_type);
+        rel.insert(tuple! { id: 1i64, val: 10i64 }).unwrap();
+        rel.insert(tuple! { id: 2i64, val: 20i64 }).unwrap();
+        rel.insert(tuple! { id: 3i64, val: 30i64 }).unwrap();
+        rel
+    }
+
+    #[test]
+    fn should_delete_matching_tuples() {
+        let rel = setup_relation();
+        let (new_rel, count) =
+            compute_relation_after_delete(rel, |t| t.get_typed::<i64>("id").unwrap() == 2).unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(new_rel.cardinality(), 2);
+    }
+
+    #[test]
+    fn should_delete_all_tuples() {
+        let rel = setup_relation();
+        let (new_rel, count) = compute_relation_after_delete(rel, |_| true).unwrap();
+
+        assert_eq!(count, 3);
+        assert_eq!(new_rel.cardinality(), 0);
+    }
+
+    #[test]
+    fn should_delete_no_tuples_if_no_match() {
+        let rel = setup_relation();
+        let (new_rel, count) =
+            compute_relation_after_delete(rel, |t| t.get_typed::<i64>("id").unwrap() == 99)
+                .unwrap();
+
+        assert_eq!(count, 0);
+        assert_eq!(new_rel.cardinality(), 3);
+    }
+
+    #[test]
+    fn should_update_matching_tuples() {
+        let rel = setup_relation();
+        let (new_rel, count) = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |t| {
+                let mut new_t = t.clone();
+                new_t.set("val".to_string(), ScalarValue::Int(200)).unwrap();
+                new_t
+            },
+        )
+        .unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(new_rel.cardinality(), 3);
+        let updated_tuple = new_rel
+            .into_iter()
+            .find(|t| t.get_typed::<i64>("id").unwrap() == 2)
+            .unwrap();
+        assert_eq!(updated_tuple.get_typed::<i64>("val").unwrap(), 200);
+    }
+
+    #[test]
+    fn should_update_no_tuples_if_no_match() {
+        let rel = setup_relation();
+        let (new_rel, count) = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap() == 99,
+            |t| t.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(count, 0);
+        assert_eq!(new_rel.cardinality(), 3);
+    }
+
+    #[test]
+    fn should_merge_identical_tuples_on_update() {
+        let rel = setup_relation();
+        // Update tuple 2 to look exactly like tuple 1
+        let (new_rel, count) = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |_| tuple! { id: 1i64, val: 10i64 },
+        )
+        .unwrap();
+
+        // 1 tuple was evaluated for update
+        assert_eq!(count, 1);
+        // The identical tuples merge, reducing total cardinality from 3 to 2
+        assert_eq!(new_rel.cardinality(), 2);
+    }
+
+    #[test]
+    fn should_return_error_on_type_mismatch() {
+        let rel = setup_relation();
+        let result = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap() == 2,
+            |_| {
+                // Return a tuple with a different schema
+                tuple! { wrong_col: 1i64 }
+            },
+        );
+
+        assert!(matches!(result, Err(DatabaseError::TupleMismatch)));
+    }
+}
