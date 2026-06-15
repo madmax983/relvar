@@ -23,7 +23,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Debug, Eq)]
 struct SemijoinKey<'t, 'a> {
     tuple: &'t Tuple,
-    attributes: &'a [String],
+    attributes: &'a [&'a str],
 }
 
 impl<'t, 'a> PartialEq for SemijoinKey<'t, 'a> {
@@ -32,7 +32,7 @@ impl<'t, 'a> PartialEq for SemijoinKey<'t, 'a> {
         // with the same common_attrs slice.
         for (i, attr) in self.attributes.iter().enumerate() {
             let v1 = self.tuple.get(attr);
-            let v2 = other.tuple.get(&other.attributes[i]);
+            let v2 = other.tuple.get(other.attributes[i]);
             if v1 != v2 {
                 return false;
             }
@@ -52,12 +52,12 @@ impl<'t, 'a> Hash for SemijoinKey<'t, 'a> {
 }
 
 /// Finds common attribute names between two relations' headings.
-fn common_attributes(a: &Relation, b: &Relation) -> Vec<String> {
+fn common_attributes<'a>(a: &'a Relation, b: &Relation) -> Vec<&'a str> {
     a.relation_type()
         .heading()
         .attribute_names()
         .filter(|attr| b.relation_type().heading().has_attribute(attr))
-        .cloned()
+        .map(|s| s.as_str())
         .collect()
 }
 
@@ -216,7 +216,14 @@ impl Relation {
     /// assert_eq!(result.cardinality(), 1); // Only emp 1 matches
     /// ```
     pub fn semijoin_into(self, other: &Relation) -> Self {
-        let common_attrs = common_attributes(&self, other);
+        // Clone the relation type to avoid borrowing self while filtering in-place
+        let self_rel_type = self.relation_type().clone();
+        let common_attrs: Vec<&str> = self_rel_type
+            .heading()
+            .attribute_names()
+            .filter(|attr| other.relation_type().heading().has_attribute(attr))
+            .map(|s| s.as_str())
+            .collect();
 
         // If no common attributes, we have a degenerate case (Cartesian product projection)
         if common_attrs.is_empty() {
@@ -440,7 +447,14 @@ impl Relation {
     /// assert_eq!(result.cardinality(), 1); // Bob (id 2) has no role
     /// ```
     pub fn semidifference_into(self, other: &Relation) -> Self {
-        let common_attrs = common_attributes(&self, other);
+        // Clone the relation type to avoid borrowing self while filtering in-place
+        let self_rel_type = self.relation_type().clone();
+        let common_attrs: Vec<&str> = self_rel_type
+            .heading()
+            .attribute_names()
+            .filter(|attr| other.relation_type().heading().has_attribute(attr))
+            .map(|s| s.as_str())
+            .collect();
 
         // Degenerate case handling
         if common_attrs.is_empty() {
@@ -1046,7 +1060,7 @@ mod tests {
         use std::hash::Hash;
 
         let t1 = tuple! { a: 1i64 };
-        let attributes = vec!["a".to_string(), "b".to_string()];
+        let attributes = vec!["a", "b"];
 
         let key1 = super::SemijoinKey {
             tuple: &t1,

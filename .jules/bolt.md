@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## $(date +%Y-%m-%d) - [Avoid .cloned().collect() into Vec<String> for common attributes]
+**Learning:** When finding common attributes between two relation headings, `filter(...).cloned().collect::<Vec<String>>()` unnecessarily clones the strings into a new vector. Since the strings are owned by the `TupleType` and their lifetime covers the execution of the operation, we can map to `&str` references to eliminate string heap allocations per join operation.
+**Action:** Change `compute_common_attributes` to map `&String` to `&str` and return `Vec<&str>`, propagating this to `JoinKey` and internal helpers.
