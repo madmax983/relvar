@@ -21,3 +21,8 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+
+## 2025-02-28 - [Reduction]
+**Bloat:** Duplicated experimental feature `KnowledgeGraph` between `relvar` and `relvar-core`.
+**Cut:** Deleted `relvar/src/experimental/knowledge_graph.rs` and retained the robust version in `relvar-core`.
+**Saved:** 363 lines of code / 1 Duplicate concept.

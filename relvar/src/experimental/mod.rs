@@ -46,7 +46,7 @@ pub mod gnn;
 pub mod graph;
 pub mod image;
 pub mod kmeans;
-pub mod knowledge_graph;
+
 pub mod matrix;
 pub mod mock;
 pub mod neural_network;
