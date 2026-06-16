@@ -122,8 +122,8 @@
 **Lesson:** Relational algebra maps exceptionally well to eigenvector centrality problems like PageRank! By expressing out-degree calculation as a summarization and rank distribution as a joined extension, graph analysis compiles neatly down into relational engine queries.
 ## Relational Build System
 **Concept:** Modeled a Build System (like Make/Ninja) using pure relational algebra. Dependencies are an edges relation, and file timestamps are a relation. Stale targets are resolved by finding files older than their dependencies via transitive closure (`tclose`), relational joins, and aggregations.
-**Fate:** TBD
-**Lesson:** TBD
+**Fate:** Merged
+**Lesson:** Relational algebra is a perfect match for Build Systems! `tclose` makes it trivial to compute the full dependency graph without manual traversal, and simple joins with `mtime` let us resolve out-of-date targets declaratively.
 ## Relational Garbage Collector
 **Concept:** Modeled a Mark-and-Sweep Garbage Collector using purely relational algebra. Represents `roots`, `heap`, and `references` as relations. The Mark phase computes reachability via `tclose`, `join`, and `union`. The Sweep phase identifies garbage via `difference`.
 **Fate:** TBD
