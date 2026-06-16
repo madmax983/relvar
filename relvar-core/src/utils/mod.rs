@@ -4,4 +4,3 @@
 //! logic but are used across the codebase, such as memory bounds checking or recursion limits.
 pub(crate) mod recursion;
 
-pub use recursion::RecursionGuard;

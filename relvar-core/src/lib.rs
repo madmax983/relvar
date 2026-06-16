@@ -104,7 +104,7 @@ pub mod error;
 pub mod query;
 pub mod storage_engine;
 pub mod types;
-pub mod utils;
+pub(crate) mod utils;
 
 #[cfg(feature = "nova")]
 /// Experimental features.

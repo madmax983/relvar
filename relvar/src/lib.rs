@@ -156,10 +156,7 @@ pub use tools::visualizer;
 
 /// Data import and export functionality.
 #[deprecated(note = "Use `relvar::tools` instead")]
-pub mod data {
-    pub use crate::tools::exporter;
-    pub use crate::tools::importer;
-}
+pub(crate) mod data {}
 
 /// Create an in-memory database.
 ///
