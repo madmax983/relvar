@@ -90,6 +90,7 @@ pub enum CmpOp {
 /// - **Set membership**: In
 /// - **Pattern matching**: Like
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(try_from = "ConstraintExpressionUnchecked")]
 pub enum ConstraintExpression {
     /// Comparison: left_attr op right_value_or_ref
     Cmp {
@@ -139,6 +140,57 @@ pub enum ConstraintExpression {
     /// assert!(!case_expr.evaluate(&tuple! { code: "abc" }).unwrap());
     /// ```
     Like(String, String),
+}
+
+#[derive(Debug, Deserialize)]
+enum ConstraintExpressionUnchecked {
+    Cmp {
+        left: String,
+        op: CmpOp,
+        right: ValueOrRef,
+    },
+    And(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
+    Or(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
+    Not(
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        Box<ConstraintExpression>,
+    ),
+    In(String, std::collections::HashSet<ScalarValue>),
+    Like(String, String),
+}
+
+impl TryFrom<ConstraintExpressionUnchecked> for ConstraintExpression {
+    type Error = String;
+    fn try_from(value: ConstraintExpressionUnchecked) -> Result<Self, Self::Error> {
+        match value {
+            ConstraintExpressionUnchecked::Cmp { left, op, right } => {
+                Ok(ConstraintExpression::Cmp { left, op, right })
+            }
+            ConstraintExpressionUnchecked::And(left, right) => {
+                Ok(ConstraintExpression::And(left, right))
+            }
+            ConstraintExpressionUnchecked::Or(left, right) => {
+                Ok(ConstraintExpression::Or(left, right))
+            }
+            ConstraintExpressionUnchecked::Not(expr) => Ok(ConstraintExpression::Not(expr)),
+            ConstraintExpressionUnchecked::In(left, values) => {
+                Ok(ConstraintExpression::In(left, values))
+            }
+            ConstraintExpressionUnchecked::Like(left, pattern) => {
+                Ok(ConstraintExpression::Like(left, pattern))
+            }
+        }
+    }
 }
 
 impl ConstraintExpression {

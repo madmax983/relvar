@@ -63,6 +63,7 @@ use thiserror::Error;
 /// let q = Query::scan("users");
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "QueryUnchecked")]
 pub enum Query {
     /// Scan a relation variable (base table).
     ///
@@ -144,6 +145,66 @@ pub enum QueryError {
     /// Error in relational algebra operation.
     #[error("Algebra error: {0}")]
     Algebra(String),
+}
+
+// Workaround for stack overflow on deep recursion.
+#[derive(Debug, Deserialize)]
+enum QueryUnchecked {
+    Scan(String),
+    Restrict {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        input: Box<Query>,
+        predicate: ConstraintExpression,
+    },
+    Project {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        input: Box<Query>,
+        attributes: Vec<String>,
+    },
+    Rename {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        input: Box<Query>,
+        mappings: Vec<(String, String)>,
+    },
+    Join {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        left: Box<Query>,
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        right: Box<Query>,
+    },
+    Summarize {
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        input: Box<Query>,
+        group_by: Vec<String>,
+        aggregations: Vec<Aggregation>,
+    },
+}
+
+impl TryFrom<QueryUnchecked> for Query {
+    type Error = String;
+
+    fn try_from(value: QueryUnchecked) -> Result<Self, Self::Error> {
+        match value {
+            QueryUnchecked::Scan(name) => Ok(Query::Scan(name)),
+            QueryUnchecked::Restrict { input, predicate } => {
+                Ok(Query::Restrict { input, predicate })
+            }
+            QueryUnchecked::Project { input, attributes } => {
+                Ok(Query::Project { input, attributes })
+            }
+            QueryUnchecked::Rename { input, mappings } => Ok(Query::Rename { input, mappings }),
+            QueryUnchecked::Join { left, right } => Ok(Query::Join { left, right }),
+            QueryUnchecked::Summarize {
+                input,
+                group_by,
+                aggregations,
+            } => Ok(Query::Summarize {
+                input,
+                group_by,
+                aggregations,
+            }),
+        }
+    }
 }
 
 impl Query {
