@@ -73,3 +73,6 @@ pub mod timeseries;
 pub mod turing;
 pub mod vcs;
 pub mod vm;
+
+/// Relational Ranked Choice Voting.
+pub mod voting;

@@ -133,3 +133,7 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+## Relational Ranked Choice Voting
+**Concept:** Modeled a Ranked Choice Voting (Instant-Runoff Voting) simulator purely with relational algebra. Uses relations for ballots (preferences) and eliminated candidates. The evaluation is done via repeated set difference, join, and summarization to transfer votes dynamically based on active preferences.
+**Fate:** Merged
+**Lesson:** Relational engines effortlessly map to ranked choice mechanics. By joining remaining valid preferences with dynamic aggregation (minimum rank to find the active vote), we can perform complex multi-round runoff voting logically and declaratively without modifying underlying structures.
