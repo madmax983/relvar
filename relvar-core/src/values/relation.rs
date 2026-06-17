@@ -663,6 +663,14 @@ impl Relation {
         self.body.retain(|tuple| predicate(tuple));
         self
     }
+
+    /// Deconstructs the relation into its constituent parts without allocating.
+    ///
+    /// This consumes the relation and returns its `RelationType` and inner `HashSet<Tuple>`,
+    /// bypassing the need to clone the type or create intermediate vectors.
+    pub fn into_parts(self) -> (RelationType, std::collections::HashSet<Tuple>) {
+        (self.relation_type, self.body)
+    }
 }
 
 #[cfg(test)]
