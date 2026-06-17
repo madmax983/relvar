@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## $(date +%Y-%m-%d) - Refactored compute_pairwise_forces God Function
+**Learning:** The `compute_pairwise_forces` function in `relvar/src/experimental/physics.rs` was an 81-line "God Function" that handled both cross-joining particles and calculating complex gravitational forces within large `.extend()` closures. This conflated relational data preparation with heavy mathematical computation, hurting readability.
+**Action:** Applied the 'Three-Phase Operator' pattern to extract the logic into two distinct helper functions: `compute_interaction_pairs` (handles renaming, joining, and filtering) and `compute_force_components` (handles the mathematical `extend` closures). This flattens the execution flow of the main method.
