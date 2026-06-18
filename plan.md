@@ -1,2 +1,6 @@
-1. **Submit the clean audit report.**
-   - Since no active vulnerabilities were found during the investigation of `unsafe` blocks, bounds checking, buffer limits, and data serialization (verifying that they either safely bounded or properly capped), I will submit the PR to confirm the codebase is secure under the given scope.
+1. **Analyze existing `pub mod` usage**: I noticed several modules are incorrectly defined as `pub mod` in the `relvar-core/src/query/tests/mod.rs` directory, specifically `pub mod basic;` and `pub mod common;`. Test modules should not leak as public modules.
+2. **Convert `pub mod` to `pub(crate) mod` or `mod` for test modules**: I will change `pub mod basic;` and `pub mod common;` in `relvar-core/src/query/tests/mod.rs` to just `mod basic;` and `pub(crate) mod common;`. Similarly for `relvar-core/src/database/tests/mod.rs`, `pub(crate) mod common;` can be `mod common;` (but `pub(crate)` is fine). The problem is `pub mod basic` and `pub mod common` leaking as public APIs.
+3. **Check test modules**: `relvar-core/src/query/tests/mod.rs` uses `pub mod`. It should just be `mod basic;` and `pub(crate) mod common;` (or just `mod`). `relvar-core/src/database/tests/mod.rs` uses `pub(crate) mod common;`.
+4. **Fix public module leaks**: I will rewrite `relvar-core/src/query/tests/mod.rs` to not use `pub mod`.
+5. **Compile and test**: Run `cargo check`, `cargo test`, and `cargo fmt`.
+6. **Pre-commit and PR**: Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done, then create the PR.
