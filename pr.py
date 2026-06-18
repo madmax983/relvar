@@ -1,7 +1,10 @@
 import sys
 import os
+import requests
 
 with open("pr_description.md") as f:
     body = f.read()
 
-print(f"Submitting PR with title: ⚡ Bolt: Avoid cloning heading per tuple in ungroup\n\n{body}")
+title = body.split("\n")[0].strip()
+
+print(f"Submitting PR with title: {title}\n\n{body}")
