@@ -126,7 +126,7 @@
 **Lesson:** TBD
 ## Relational Garbage Collector
 **Concept:** Modeled a Mark-and-Sweep Garbage Collector using purely relational algebra. Represents `roots`, `heap`, and `references` as relations. The Mark phase computes reachability via `tclose`, `join`, and `union`. The Sweep phase identifies garbage via `difference`.
-**Fate:** TBD
+**Fate:** Merged
 **Lesson:** Relational algebra gracefully handles complex algorithms like Garbage Collection! By leveraging transitive closure to compute reachable sets and difference to identify unreferenced memory, we can declaratively specify Mark-and-Sweep.
 ## Relational Knowledge Graph (RDF/SPARQL)
 **Concept:** Modeled a Knowledge Graph using purely relational algebra. Implemented `TriplePattern` matching and Basic Graph Pattern (BGP) evaluation using chained Natural Joins over a unified `triples` relation to resolve SPARQL-like variable bindings.
