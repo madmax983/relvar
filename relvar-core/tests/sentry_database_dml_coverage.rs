@@ -122,3 +122,93 @@ fn test_database_data_update_validation_uncovered() {
         Err(relvar_core::error::DatabaseError::Constraint(_))
     ));
 }
+
+#[test]
+fn test_database_data_delete_validation_uncovered_fk() {
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("PARENT", rel_type.clone()).unwrap();
+
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("parent_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type.clone()).unwrap();
+
+    db.insert("PARENT", tuple! { id: 1i64 }).unwrap();
+    db.insert("PARENT", tuple! { id: 2i64 }).unwrap();
+    db.insert("CHILD", tuple! { child_id: 10i64, parent_id: 1i64 })
+        .unwrap();
+
+    let mut fk = relvar_core::constraints::ForeignKeyConstraints::new();
+    fk = fk.with_foreign_key(
+        relvar_core::constraints::ForeignKey::new(
+            vec!["parent_id".to_string()],
+            "PARENT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap(),
+    );
+    db.set_foreign_key_constraints("CHILD", fk).unwrap();
+
+    // Trying to delete parent should fail due to FK referencing constraint
+    let result = db.delete("PARENT", |t| t.get_typed::<i64>("id").unwrap() == 1);
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(relvar_core::error::DatabaseError::Constraint(_))
+    ));
+}
+
+#[test]
+fn test_database_data_update_validation_uncovered_fk() {
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("PARENT", rel_type.clone()).unwrap();
+
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("parent_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type.clone()).unwrap();
+
+    db.insert("PARENT", tuple! { id: 1i64 }).unwrap();
+    db.insert("CHILD", tuple! { child_id: 10i64, parent_id: 1i64 })
+        .unwrap();
+
+    let mut fk = relvar_core::constraints::ForeignKeyConstraints::new();
+    fk = fk.with_foreign_key(
+        relvar_core::constraints::ForeignKey::new(
+            vec!["parent_id".to_string()],
+            "PARENT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap(),
+    );
+    db.set_foreign_key_constraints("CHILD", fk).unwrap();
+
+    // Try to update parent's id, which would break child's FK
+    let result = db.update(
+        "PARENT",
+        |t| t.get_typed::<i64>("id").unwrap() == 1,
+        |_t| tuple! { id: 2i64 },
+    );
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result,
+        Err(relvar_core::error::DatabaseError::Constraint(_))
+    ));
+}
