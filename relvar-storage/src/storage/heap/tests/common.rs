@@ -4,6 +4,8 @@ use crate::storage::heap::*;
 use crate::wal::Lsn;
 use relvar_core::tuple;
 use relvar_core::types::{ScalarType, TupleType};
+use relvar_core::values::Relation;
+use relvar_core::values::Tuple;
 use tempfile::NamedTempFile;
 
 pub(crate) fn create_test_relation_type() -> RelationType {

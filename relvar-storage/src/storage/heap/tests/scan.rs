@@ -5,6 +5,8 @@ use crate::storage::heap::*;
 use crate::wal::Lsn;
 use relvar_core::tuple;
 use relvar_core::types::{ScalarType, TupleType};
+use relvar_core::values::Relation;
+use relvar_core::values::Tuple;
 use std::collections::HashSet;
 use tempfile::NamedTempFile;
 
