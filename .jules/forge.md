@@ -631,3 +631,7 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## $(date +%Y-%m-%d) - Flattened Guard Clauses in Validation and Ungrouping
+**Learning:** Functions like `validate_type_constraints` and `validate_key_constraints_single_tuple` had deep `if let Some` nesting combined with `&&` condition logic which made them pyramids of doom. Similarly, `compute_ungrouped_tuples` nested RVA processing tightly.
+**Action:** Extract deeply nested blocks using early returns (Guard Clauses) via `let Some(...) = ... else { return/continue; }`. This flattens logic, making the main execution path the un-indented bottom level of the function.

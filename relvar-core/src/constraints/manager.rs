@@ -336,20 +336,26 @@ impl ConstraintManager {
         relation_name: &str,
         tuple: &Tuple,
     ) -> Result<(), ConstraintManagerError> {
-        if let Some(attr_constraints) = self.type_constraints.get(relation_name) {
-            for (attr_name, constraints) in attr_constraints {
-                if let Some(value) = tuple.get(attr_name)
-                    && !constraints.is_satisfied_by(value).map_err(|e| {
-                        ConstraintManagerError::TypeConstraintViolation(e.to_string())
-                    })?
-                {
-                    return Err(ConstraintManagerError::TypeConstraintViolation(format!(
-                        "Attribute {} violates constraint",
-                        attr_name
-                    )));
-                }
+        let Some(attr_constraints) = self.type_constraints.get(relation_name) else {
+            return Ok(());
+        };
+
+        for (attr_name, constraints) in attr_constraints {
+            let Some(value) = tuple.get(attr_name) else {
+                continue;
+            };
+
+            if !constraints
+                .is_satisfied_by(value)
+                .map_err(|e| ConstraintManagerError::TypeConstraintViolation(e.to_string()))?
+            {
+                return Err(ConstraintManagerError::TypeConstraintViolation(format!(
+                    "Attribute {} violates constraint",
+                    attr_name
+                )));
             }
         }
+
         Ok(())
     }
 
@@ -384,24 +390,27 @@ impl ConstraintManager {
         tuple: &Tuple,
         current_relation: &Relation,
     ) -> Result<(), ConstraintManagerError> {
-        if let Some(key_constraints) = self.key_constraints.get(relation_name) {
-            if let Some(pk) = key_constraints.primary_key()
-                && pk
-                    .would_violate(current_relation, tuple)
-                    .map_err(|e| ConstraintManagerError::TransactionError(e.to_string()))?
-            {
-                return Err(ConstraintManagerError::PrimaryKeyViolation);
-            }
+        let Some(key_constraints) = self.key_constraints.get(relation_name) else {
+            return Ok(());
+        };
 
-            for ck in key_constraints.candidate_keys() {
-                if ck
-                    .would_violate(current_relation, tuple)
-                    .map_err(|e| ConstraintManagerError::TransactionError(e.to_string()))?
-                {
-                    return Err(ConstraintManagerError::CandidateKeyViolation);
-                }
+        if let Some(pk) = key_constraints.primary_key()
+            && pk
+                .would_violate(current_relation, tuple)
+                .map_err(|e| ConstraintManagerError::TransactionError(e.to_string()))?
+        {
+            return Err(ConstraintManagerError::PrimaryKeyViolation);
+        }
+
+        for ck in key_constraints.candidate_keys() {
+            if ck
+                .would_violate(current_relation, tuple)
+                .map_err(|e| ConstraintManagerError::TransactionError(e.to_string()))?
+            {
+                return Err(ConstraintManagerError::CandidateKeyViolation);
             }
         }
+
         Ok(())
     }
 

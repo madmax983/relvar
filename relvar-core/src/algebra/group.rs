@@ -425,11 +425,12 @@ fn compute_ungrouped_tuples(
         let val = tuple
             .get(rva_name)
             .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
-        match val {
-            ScalarValue::Relation(rel) => total_capacity += rel.cardinality(),
-            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
-        }
+        let ScalarValue::Relation(rel) = val else {
+            return Err(UngroupError::NotRelationValued(rva_name.to_string()));
+        };
+        total_capacity += rel.cardinality();
     }
+
     let mut result_tuples = std::collections::HashSet::with_capacity(total_capacity);
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
@@ -438,17 +439,18 @@ fn compute_ungrouped_tuples(
         let val = tuple
             .get(rva_name)
             .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
-        let rva_relation = match val {
-            ScalarValue::Relation(rel) => rel,
-            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
+
+        let ScalarValue::Relation(rva_relation) = val else {
+            return Err(UngroupError::NotRelationValued(rva_name.to_string()));
         };
 
         // Pre-compute the invariant non-RVA attributes for this outer tuple
         let mut base_values = std::collections::BTreeMap::new();
         for (attr_name, val) in tuple.values().iter() {
-            if attr_name != rva_name {
-                base_values.insert(attr_name.clone(), val.clone());
+            if attr_name == rva_name {
+                continue;
             }
+            base_values.insert(attr_name.clone(), val.clone());
         }
 
         // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
