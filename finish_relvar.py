@@ -1,22 +1,17 @@
-import sys
-import glob
+import subprocess
 
-def process_file(path, replacements):
-    with open(path, 'r') as f:
-        content = f.read()
+def read_file(filepath):
+    with open(filepath, "r") as f:
+        return f.read()
 
-    for old, new in replacements:
-        content = content.replace(old, new)
+body = read_file("pr_description.md")
 
-    with open(path, 'w') as f:
-        f.write(content)
+title = ""
+for line in body.split("\n"):
+    if line.strip():
+        title = line.strip()
+        break
 
-process_file("relvar/src/lib.rs", [
-    ("pub mod experimental;", "pub(crate) mod experimental;"),
-    ("pub mod tools;", "pub(crate) mod tools;")
-])
-
-process_file("relvar-storage/src/lib.rs", [
-    ("pub mod persistent_engine;", "pub(crate) mod persistent_engine;"),
-    ("pub mod storage;", "pub(crate) mod storage;")
-])
+print(f"Using tool default_api:submit")
+print(f"Title: {title}")
+print(f"Description: {body}")

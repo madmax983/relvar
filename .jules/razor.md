@@ -21,3 +21,7 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+## [Reduction]
+**Bloat:** `KeyConstraints::would_violate_on_insert` returning `Result<Option<Vec<String>>, KeyConstraintError>` using `Ok(Some(...))` as an error condition.
+**Cut:** Refactored to return `Result<(), KeyConstraintError>` and directly returning `Err(KeyConstraintError::DuplicateKey(...))` on constraint violation.
+**Saved:** Unnecessary option unwrapping and conceptually confusing error handling.
