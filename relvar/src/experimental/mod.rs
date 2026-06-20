@@ -38,6 +38,7 @@ pub mod blockchain;
 pub mod build_system;
 pub mod cellular_automaton;
 pub mod circuit;
+pub mod crdt;
 pub mod ecs;
 pub mod enigma;
 pub mod expert_system;
