@@ -235,7 +235,10 @@ impl Query {
                     .iter()
                     .map(|(a, b)| (a.as_str(), b.as_str()))
                     .collect();
-                Ok(relation.rename(&mappings_ref))
+                // ⚡ Bolt Optimization: Use `rename_into` to consume the owned intermediate relation.
+                // This avoids O(N) string cloning and heap allocations for attributes that are not
+                // being renamed, by reusing the existing String allocations in the BTreeMap.
+                Ok(relation.rename_into(&mappings_ref))
             }
             Query::Join { left, right } => {
                 let left_rel = left.execute(db)?;
