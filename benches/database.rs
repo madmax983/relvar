@@ -478,6 +478,19 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
 }
 
 // CHECK constraint benchmarks (TTM RM Prescription 9)
+fn setup_db_with_constraints(constraints: Option<CheckConstraints>) -> (TempDir, Database) {
+    let temp_dir = TempDir::new().unwrap();
+    let mut db = Database::open(temp_dir.path()).unwrap();
+    let emp_type = create_employee_type();
+    db.create_relvar("EMP", emp_type).unwrap();
+
+    if let Some(c) = constraints {
+        db.set_check_constraints("EMP", c).unwrap();
+    }
+
+    (temp_dir, db)
+}
+
 fn bench_insert_with_check_constraint(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_with_check_constraint");
 
@@ -485,13 +498,6 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
     group.bench_function("simple_check", |b| {
         b.iter_batched(
             || {
-                // Setup: create database with CHECK constraint
-                let temp_dir = TempDir::new().unwrap();
-                let mut db = Database::open(temp_dir.path()).unwrap();
-                let emp_type = create_employee_type();
-                db.create_relvar("EMP", emp_type).unwrap();
-
-                // Add CHECK constraint: salary > 0
                 let constraints = CheckConstraints::new().with_constraint(
                     CheckConstraint::from_expression(
                         "positive_salary",
@@ -502,9 +508,7 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
                         ),
                     ),
                 );
-                db.set_check_constraints("EMP", constraints).unwrap();
-
-                (temp_dir, db)
+                setup_db_with_constraints(Some(constraints))
             },
             |(_temp_dir, mut db)| {
                 // Measured: insert with CHECK constraint
@@ -525,12 +529,6 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
     group.bench_function("complex_check", |b| {
         b.iter_batched(
             || {
-                let temp_dir = TempDir::new().unwrap();
-                let mut db = Database::open(temp_dir.path()).unwrap();
-                let emp_type = create_employee_type();
-                db.create_relvar("EMP", emp_type).unwrap();
-
-                // Add CHECK constraint: salary > 0 AND salary < 1000000
                 let constraints = CheckConstraints::new().with_constraint(
                     CheckConstraint::from_expression(
                         "valid_salary_range",
@@ -547,9 +545,7 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
                         ),
                     ),
                 );
-                db.set_check_constraints("EMP", constraints).unwrap();
-
-                (temp_dir, db)
+                setup_db_with_constraints(Some(constraints))
             },
             |(_temp_dir, mut db)| {
                 let tuple = tuple! {
@@ -568,13 +564,7 @@ fn bench_insert_with_check_constraint(c: &mut Criterion) {
     // Benchmark: Comparison baseline (no constraints)
     group.bench_function("no_check", |b| {
         b.iter_batched(
-            || {
-                let temp_dir = TempDir::new().unwrap();
-                let mut db = Database::open(temp_dir.path()).unwrap();
-                let emp_type = create_employee_type();
-                db.create_relvar("EMP", emp_type).unwrap();
-                (temp_dir, db)
-            },
+            || setup_db_with_constraints(None),
             |(_temp_dir, mut db)| {
                 let tuple = tuple! {
                     emp_id: 1i64,

@@ -631,3 +631,7 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## 2026-06-21 - Extract God Function in database benches
+**Learning:** The `bench_insert_with_check_constraint` method in `benches/database.rs` contained extensive duplicated code for setting up test databases and creating relations across all benchmark cases.
+**Action:** Extracted the boilerplate database setup logic into a new helper function `setup_db_with_constraints` to flatten the setup logic inside closures, vastly improving maintainability and clarity.
