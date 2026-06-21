@@ -619,10 +619,7 @@ impl Relation {
             // No grouping - all tuples in one group
             let mut map = HashMap::new();
             // Optimization: Pre-allocate Vec to avoid internal reallocations during collect
-            let mut all_tuples = Vec::with_capacity(self.cardinality());
-            for tuple in self.tuples() {
-                all_tuples.push(tuple);
-            }
+            let all_tuples: Vec<&'a Tuple> = self.tuples().collect();
             map.insert(Vec::new(), all_tuples);
             map
         } else {
