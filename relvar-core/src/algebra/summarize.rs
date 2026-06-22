@@ -402,7 +402,7 @@ impl Aggregation {
                 SummarizeError::AggregationError("Integer overflow in AVG".to_string())
             })?;
         }
-        let avg = sum as f64 / tuples.len() as f64;
+        let avg = sum as f64 / (tuples.len() as f64);
         Ok(ScalarValue::Float(avg))
     }
 

@@ -43,7 +43,7 @@ where
     let (body, update_count) = current_relation.into_iter().try_fold(
         (
             std::collections::HashSet::with_capacity(initial_cardinality),
-            0usize,
+            0,
         ),
         |(mut acc, count), tuple| {
             if !predicate(&tuple) {
@@ -58,10 +58,7 @@ where
             }
 
             acc.insert(updated_tuple);
-            let next_count = count.checked_add(1).ok_or(DatabaseError::AlgebraError(
-                "Update count overflow".to_string(),
-            ))?;
-            Ok((acc, next_count))
+            Ok((acc, count.saturating_add(1)))
         },
     )?;
 

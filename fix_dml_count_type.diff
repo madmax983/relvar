@@ -1,0 +1,10 @@
+--- relvar-core/src/database/dml.rs
++++ relvar-core/src/database/dml.rs
+@@ -45,7 +45,7 @@
+     // It evaluates the condition and applies the update mapping.
+     let (body, update_count) = relation.tuples().try_fold(
+-        (std::collections::HashSet::with_capacity(relation.cardinality()), 0),
++        (std::collections::HashSet::with_capacity(relation.cardinality()), 0usize),
+         |(mut acc, count), tuple| {
+             if !condition(&tuple) {
+                 acc.insert(tuple);

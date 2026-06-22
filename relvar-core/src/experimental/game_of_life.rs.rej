@@ -1,0 +1,19 @@
+--- relvar-core/src/experimental/game_of_life.rs
++++ relvar-core/src/experimental/game_of_life.rs
+@@ -76,14 +76,14 @@
+         .extend("nx", ScalarType::Int, |t: &Tuple| {
+             let x = t.get_typed::<i64>("x").unwrap();
+             let dx = t.get_typed::<i64>("dx").unwrap();
+-            ScalarValue::Int(x + dx)
++            ScalarValue::Int(x.saturating_add(dx))
+         })
+         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
+
+     let ext2 = ext1
+         .extend("ny", ScalarType::Int, |t: &Tuple| {
+             let y = t.get_typed::<i64>("y").unwrap();
+             let dy = t.get_typed::<i64>("dy").unwrap();
+-            ScalarValue::Int(y + dy)
++            ScalarValue::Int(y.saturating_add(dy))
+         })
+         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;

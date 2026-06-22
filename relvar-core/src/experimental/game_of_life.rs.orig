@@ -76,7 +76,7 @@ fn calculate_neighbor_counts(
         .extend("nx", ScalarType::Int, |t: &Tuple| {
             let x = t.get_typed::<i64>("x").unwrap();
             let dx = t.get_typed::<i64>("dx").unwrap();
-            ScalarValue::Int(x.checked_add(dx).unwrap_or(0)) // Prevent panic, return 0 if overflow for experimental algo
+            ScalarValue::Int(x + dx)
         })
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
@@ -84,7 +84,7 @@ fn calculate_neighbor_counts(
         .extend("ny", ScalarType::Int, |t: &Tuple| {
             let y = t.get_typed::<i64>("y").unwrap();
             let dy = t.get_typed::<i64>("dy").unwrap();
-            ScalarValue::Int(y.checked_add(dy).unwrap_or(0)) // Prevent panic, return 0 if overflow for experimental algo
+            ScalarValue::Int(y + dy)
         })
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 

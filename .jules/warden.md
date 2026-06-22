@@ -1,11 +1,6 @@
-## 2026-04-22 - [Prevent DoS in JSON Exporter]
-**Threat:** Memory exhaustion DoS when exporting large relations to JSON due to in-memory accumulation of all tuples and single large string allocation.
-**Defense:** Changed `to_json` to accept `std::io::Write` sink and stream serialized JSON iteratively using `SerializeSeq`.
-
-## 2026-04-23 - [Float Overflow in Aggregation]
-**Threat:** Floating point overflow during SUM/AVG operations yielding Infinity, potentially leading to logic bugs.
-**Defense:** Added a check to ensure the aggregated sum remains finite, returning an error on overflow.
-
-## 2026-04-24 - [Unsafe unwrap in StorageManager]
-**Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
-**Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
+## 2025-02-28 - Integer Overflow in Database DML and Algebra Operations
+**Threat:** Several database operations performed integer addition without bounds checking (`count + 1`, `sum += value`, `x + dx`), which could lead to integer overflow panics and a Denial of Service (DoS) when processing large datasets or extreme values.
+**Defense:** Replaced unchecked additions with `.saturating_add()` or `.checked_add()` to prevent panics and ensure safe execution even under extreme conditions.
+## $(date +%Y-%m-%d) - Integer Overflow in Database DML and Algebra Operations
+**Threat:** Several database operations performed integer addition without bounds checking (`count + 1`, `sum += value`, `x + dx`), which could lead to integer overflow panics and a Denial of Service (DoS) when processing large datasets or extreme values.
+**Defense:** Replaced unchecked additions with `.checked_add()` to safely handle boundaries and return explicit Errors where necessary (or default limits) to prevent crashes or upstream OOM issues.
