@@ -57,6 +57,68 @@ use relvar_core::values::{Relation, ScalarValue};
 /// use relvar::experimental::raytracer::Scene;
 /// // Note: This is a placeholder example
 /// ```
+/// Parameters for calculating ray-sphere intersections.
+pub struct RaySphereParams {
+    ox: f64,
+    oy: f64,
+    oz: f64,
+    dx: f64,
+    dy: f64,
+    dz: f64,
+    cx: f64,
+    cy: f64,
+    cz: f64,
+    radius: f64,
+}
+
+fn calculate_intersection_distance(params: &RaySphereParams) -> f64 {
+    let oc_x = params.ox - params.cx;
+    let oc_y = params.oy - params.cy;
+    let oc_z = params.oz - params.cz;
+
+    let a = params.dx * params.dx + params.dy * params.dy + params.dz * params.dz; // Should be ~1.0
+    let half_b = params.dx * oc_x + params.dy * oc_y + params.dz * oc_z;
+    let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - params.radius * params.radius;
+
+    let discriminant = half_b * half_b - a * c;
+
+    if discriminant < 0.0 {
+        -1.0
+    } else {
+        let sqrtd = discriminant.sqrt();
+        let t1 = (-half_b - sqrtd) / a;
+        let t2 = (-half_b + sqrtd) / a;
+
+        if t1 > 0.001 {
+            t1
+        } else if t2 > 0.001 {
+            t2
+        } else {
+            -1.0
+        }
+    }
+}
+
+fn create_ray(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    viewport_width: f64,
+    viewport_height: f64,
+) -> (f64, f64, f64) {
+    let ndc_x = (x + 0.5) / width * 2.0 - 1.0;
+    let ndc_y = 1.0 - (y + 0.5) / height * 2.0;
+
+    let dx = ndc_x * viewport_width / 2.0;
+    let dy = ndc_y * viewport_height / 2.0;
+    let dz = 1.0; // Looking down +Z
+
+    let len = (dx * dx + dy * dy + dz * dz).sqrt();
+    (dx / len, dy / len, dz / len)
+}
+
+/// A 3D scene containing spheres to be rendered.
 pub struct Scene {
     spheres: Relation,
     next_id: i64,
@@ -156,21 +218,14 @@ impl Scene {
 
         for y in 0..height {
             for x in 0..width {
-                // Map pixel to NDC (Normalized Device Coordinates) [-1, 1]
-                // Note: y is inverted so +y is up in world space
-                let ndc_x = (x as f64 + 0.5) / width as f64 * 2.0 - 1.0;
-                let ndc_y = 1.0 - (y as f64 + 0.5) / height as f64 * 2.0;
-
-                // Ray direction
-                let dx = ndc_x * viewport_width / 2.0;
-                let dy = ndc_y * viewport_height / 2.0;
-                let dz = 1.0; // Looking down +Z
-
-                // Normalize direction
-                let len = (dx * dx + dy * dy + dz * dz).sqrt();
-                let nx = dx / len;
-                let ny = dy / len;
-                let nz = dz / len;
+                let (nx, ny, nz) = create_ray(
+                    x as f64,
+                    y as f64,
+                    width as f64,
+                    height as f64,
+                    viewport_width,
+                    viewport_height,
+                );
 
                 rays.insert(tuple! {
                     x: x,
@@ -213,44 +268,21 @@ impl Scene {
         // discriminant = half_b^2 - a*c
         let intersections = combinations
             .extend("t", ScalarType::Float, |tup| {
-                let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
-                let oy = tup.get_typed::<f64>("oy").unwrap_or(0.0);
-                let oz = tup.get_typed::<f64>("oz").unwrap_or(0.0);
-                let dx = tup.get_typed::<f64>("dx").unwrap_or(0.0);
-                let dy = tup.get_typed::<f64>("dy").unwrap_or(0.0);
-                let dz = tup.get_typed::<f64>("dz").unwrap_or(0.0);
-                let cx = tup.get_typed::<f64>("cx").unwrap_or(0.0);
-                let cy = tup.get_typed::<f64>("cy").unwrap_or(0.0);
-                let cz = tup.get_typed::<f64>("cz").unwrap_or(0.0);
-                let radius = tup.get_typed::<f64>("radius").unwrap_or(0.0);
+                let params = RaySphereParams {
+                    ox: tup.get_typed::<f64>("ox").unwrap_or(0.0),
+                    oy: tup.get_typed::<f64>("oy").unwrap_or(0.0),
+                    oz: tup.get_typed::<f64>("oz").unwrap_or(0.0),
+                    dx: tup.get_typed::<f64>("dx").unwrap_or(0.0),
+                    dy: tup.get_typed::<f64>("dy").unwrap_or(0.0),
+                    dz: tup.get_typed::<f64>("dz").unwrap_or(0.0),
+                    cx: tup.get_typed::<f64>("cx").unwrap_or(0.0),
+                    cy: tup.get_typed::<f64>("cy").unwrap_or(0.0),
+                    cz: tup.get_typed::<f64>("cz").unwrap_or(0.0),
+                    radius: tup.get_typed::<f64>("radius").unwrap_or(0.0),
+                };
 
-                let oc_x = ox - cx;
-                let oc_y = oy - cy;
-                let oc_z = oz - cz;
-
-                let a = dx * dx + dy * dy + dz * dz; // Should be ~1.0
-                let half_b = dx * oc_x + dy * oc_y + dz * oc_z;
-                let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - radius * radius;
-
-                let discriminant = half_b * half_b - a * c;
-
-                if discriminant < 0.0 {
-                    // No intersection, return negative distance
-                    ScalarValue::Float(-1.0)
-                } else {
-                    // Two solutions, we want the smallest positive one
-                    let sqrtd = discriminant.sqrt();
-                    let t1 = (-half_b - sqrtd) / a;
-                    let t2 = (-half_b + sqrtd) / a;
-
-                    if t1 > 0.001 {
-                        ScalarValue::Float(t1)
-                    } else if t2 > 0.001 {
-                        ScalarValue::Float(t2)
-                    } else {
-                        ScalarValue::Float(-1.0)
-                    }
-                }
+                let t = calculate_intersection_distance(&params);
+                ScalarValue::Float(t)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
