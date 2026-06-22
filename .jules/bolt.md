@@ -61,3 +61,7 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+
+## 2026-06-22 - Use rename_into in Query execute
+**Learning:** The rename_into method consumes the Relation, reusing memory allocations, whereas rename borrows and clones tuples. Since Query::execute intermediate relations are owned and no longer needed, rename_into avoids unnecessary data cloning and heap allocations.
+**Action:** In relvar-core, when transforming an owned Relation instance, prefer consuming _into methods over borrowing methods to avoid unnecessary data cloning and heap allocations.
