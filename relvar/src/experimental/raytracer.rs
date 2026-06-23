@@ -257,17 +257,15 @@ impl Scene {
         Ok(intersections)
     }
 
-    fn calculate_visible_pixels(
-        &self,
-        rays: &Relation,
-        intersections: &Relation,
-    ) -> Result<Relation, DatabaseError> {
+    fn filter_hits(&self, intersections: &Relation) -> Relation {
         // 5. Filter Hits
-        let hits = intersections.restrict(|t| {
+        intersections.restrict(|t| {
             let dist = t.get_typed::<f64>("t").unwrap_or(-1.0);
             dist > 0.0
-        });
+        })
+    }
 
+    fn map_colors(&self, hits: &Relation) -> Result<Relation, DatabaseError> {
         // 6. Find Closest Hits (Z-Buffer)
         // If there are hits, group by (x, y) and find min(t)
         // We use min on 't' to find the closest intersection per ray.
@@ -295,11 +293,19 @@ impl Scene {
         // Note: Multiple spheres could theoretically be exactly at distance t.
         // Set semantics handle duplicates, but we could get multiple colors if
         // different spheres occupy the exact same spot. For a basic raytracer, this is fine.
-        let visible_pixels = closest_renamed.join(&hits)?;
+        let visible_pixels = closest_renamed.join(hits)?;
 
         // Project down to final image attributes
         let rendered_hits = visible_pixels.project(&["x", "y", "r", "g", "b"]);
 
+        Ok(rendered_hits)
+    }
+
+    fn combine_with_background(
+        &self,
+        rays: &Relation,
+        rendered_hits: &Relation,
+    ) -> Result<Relation, DatabaseError> {
         // 8. Background Color
         // Find rays that didn't hit anything: all rays MINUS rays that hit something
         let all_pixels = rays.project(&["x", "y"]);
@@ -319,11 +325,19 @@ impl Scene {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Combine hits and background
-        let final_image = rendered_hits
+        rendered_hits
             .union(&background_colored)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
-        Ok(final_image)
+    fn calculate_visible_pixels(
+        &self,
+        rays: &Relation,
+        intersections: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        let hits = self.filter_hits(intersections);
+        let rendered_hits = self.map_colors(&hits)?;
+        self.combine_with_background(rays, &rendered_hits)
     }
 
     /// Renders the scene to a relation of pixels.
