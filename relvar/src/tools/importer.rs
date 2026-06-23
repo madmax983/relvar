@@ -19,7 +19,7 @@
 //!
 //! ```
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
-//! use relvar::data::importer;
+//! use relvar::tools::{from_csv, from_json};
 //!
 //! let heading = TupleType::new()
 //!     .with_attribute("id", ScalarType::Int)
@@ -31,7 +31,7 @@
 //!     {"id": 2, "name": "Bob"}
 //! ]"#;
 //!
-//! let relation = importer::from_json(json_data.as_bytes(), rel_type).unwrap();
+//! let relation = from_json(json_data.as_bytes(), rel_type).unwrap();
 //! assert_eq!(relation.cardinality(), 2);
 //! ```
 
@@ -59,7 +59,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use relvar::tools::importer::ImporterError;
+/// use relvar::tools::ImporterError;
 ///
 /// // Example of a DoS protection limit triggering.
 /// // The user should be informed that their payload is too large, and they should chunk it.
@@ -116,7 +116,7 @@ const MAX_CSV_LINE_LEN: usize = 1_000_000; // 1MB
 ///
 /// ```
 /// use relvar::{TupleType, RelationType, ScalarType};
-/// use relvar::tools::importer;
+/// use relvar::tools::{from_csv, from_json};
 /// use std::io::Cursor;
 ///
 /// let rel_type = RelationType::new(
@@ -132,7 +132,7 @@ const MAX_CSV_LINE_LEN: usize = 1_000_000; // 1MB
 /// ]
 /// "#;
 ///
-/// let relation = importer::from_json(Cursor::new(json_data), rel_type).unwrap();
+/// let relation = from_json(Cursor::new(json_data), rel_type).unwrap();
 /// assert_eq!(relation.cardinality(), 2);
 /// ```
 pub fn from_json<R: std::io::Read>(
@@ -468,7 +468,7 @@ impl<'de> Visitor<'de> for ScalarValueVisitor {
 ///
 /// ```
 /// use relvar::{TupleType, RelationType, ScalarType};
-/// use relvar::tools::importer;
+/// use relvar::tools::{from_csv, from_json};
 /// use std::io::Cursor;
 ///
 /// let rel_type = RelationType::new(
@@ -479,7 +479,7 @@ impl<'de> Visitor<'de> for ScalarValueVisitor {
 ///
 /// let csv_data = "id,name\n1,Alice\n2,Bob\n";
 ///
-/// let relation = importer::from_csv(Cursor::new(csv_data), rel_type, ',').unwrap();
+/// let relation = from_csv(Cursor::new(csv_data), rel_type, ',').unwrap();
 /// assert_eq!(relation.cardinality(), 2);
 /// ```
 pub fn from_csv<R: std::io::Read>(

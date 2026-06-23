@@ -8,7 +8,7 @@
 //!
 //! ```
 //! use relvar::{Relation, RelationType, ScalarType, TupleType, ScalarValue, tuple};
-//! use relvar::experimental::graph::Graph;
+//! use relvar::experimental::Graph;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // 1. Define Nodes: {id}

@@ -1,4 +1,4 @@
-use relvar::tools::importer;
+use relvar::tools::*;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 
 #[test]
@@ -20,11 +20,11 @@ fn test_json_import_limit_rows() {
     }
     json.push(']');
 
-    let result = importer::from_json(json.as_bytes(), rel_type);
+    let result = from_json(json.as_bytes(), rel_type);
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        importer::ImporterError::LimitExceeded(msg) => {
+        ImporterError::LimitExceeded(msg) => {
             assert!(msg.contains("Max rows"));
         }
         // It might be wrapped in JsonError?
@@ -48,11 +48,11 @@ fn test_csv_import_limit_rows() {
         csv.push_str(&format!("{}\n", i));
     }
 
-    let result = importer::from_csv(csv.as_bytes(), rel_type, ',');
+    let result = from_csv(csv.as_bytes(), rel_type, ',');
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        importer::ImporterError::LimitExceeded(msg) => {
+        ImporterError::LimitExceeded(msg) => {
             assert!(msg.contains("Max rows"));
         }
         e => panic!("Expected LimitExceeded, got {:?}", e),
@@ -75,11 +75,11 @@ fn test_csv_line_length_limit() {
     csv.push('"');
     csv.push('\n');
 
-    let result = importer::from_csv(csv.as_bytes(), rel_type, ',');
+    let result = from_csv(csv.as_bytes(), rel_type, ',');
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        importer::ImporterError::LimitExceeded(msg) => {
+        ImporterError::LimitExceeded(msg) => {
             assert!(msg.contains("CSV Line too long"));
         }
         e => panic!("Expected LimitExceeded, got {:?}", e),
@@ -101,11 +101,11 @@ fn test_csv_line_length_limit_no_newline() {
     csv.push('"');
     // No newline
 
-    let result = importer::from_csv(csv.as_bytes(), rel_type, ',');
+    let result = from_csv(csv.as_bytes(), rel_type, ',');
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        importer::ImporterError::LimitExceeded(msg) => {
+        ImporterError::LimitExceeded(msg) => {
             assert!(msg.contains("CSV Line too long"));
         }
         e => panic!("Expected LimitExceeded, got {:?}", e),

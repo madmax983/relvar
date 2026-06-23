@@ -151,50 +151,21 @@ pub mod experimental;
 /// Developer tools and utilities.
 pub mod tools;
 
-#[deprecated(note = "Use `relvar::tools::visualizer` instead")]
-pub use tools::visualizer;
+/// Deprecated visualizer module
+#[deprecated(note = "Use `relvar::tools` instead")]
+pub mod visualizer {
+    pub use crate::tools::SchemaVisualizer;
+}
 
 /// Data import and export functionality.
 #[deprecated(note = "Use `relvar::tools` instead")]
 pub mod data {
-    pub use crate::tools::exporter;
-    pub use crate::tools::importer;
-}
-
-/// Create an in-memory database.
-///
-/// This is a convenience function for creating a database with an in-memory storage engine.
-///
-/// # Examples
-///
-/// ```
-/// use relvar;
-///
-/// let mut db = relvar::in_memory();
-/// ```
-pub fn in_memory() -> Database<InMemoryEngine> {
-    Database::new(InMemoryEngine::new())
-}
-
-/// Open or create a persistent database (requires "storage" feature).
-///
-/// This is a convenience function for creating a database with a persistent storage engine.
-///
-/// # Examples
-///
-/// ```
-/// # #[cfg(feature = "storage")]
-/// # {
-/// use relvar;
-/// use tempfile::TempDir;
-///
-/// let temp_dir = TempDir::new().unwrap();
-/// let mut db = relvar::open(temp_dir.path()).unwrap();
-/// # }
-/// ```
-#[cfg(feature = "storage")]
-pub fn open<P: AsRef<std::path::Path>>(
-    path: P,
-) -> Result<Database<PersistentEngine>, StorageError> {
-    Ok(Database::new(PersistentEngine::open(path)?))
+    /// Deprecated exporter module
+    pub mod exporter {
+        pub use crate::tools::{to_csv, to_json, to_ascii_table, ExporterError};
+    }
+    /// Deprecated importer module
+    pub mod importer {
+        pub use crate::tools::{from_csv, from_json, ImporterError};
+    }
 }

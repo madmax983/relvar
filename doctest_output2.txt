@@ -1,0 +1,224 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+   Doc-tests relvar
+
+running 165 tests
+test relvar/src/experimental/automl.rs - experimental::automl::NaiveBayesClassifier::train (line 100) ... ok
+test relvar/src/experimental/automl.rs - experimental::automl::NaiveBayesClassifier::predict (line 229) ... ok
+test relvar/src/experimental/automl.rs - experimental::automl::NaiveBayesClassifier (line 61) ... ok
+test relvar/src/experimental/blockchain.rs - experimental::blockchain::Blockchain (line 27) ... ok
+test relvar/src/experimental/blockchain.rs - experimental::blockchain::Blockchain::compute_balances (line 64) ... ok
+test relvar/src/experimental/blockchain.rs - experimental::blockchain::Blockchain::is_valid (line 112) ... ok
+test relvar/src/experimental/automl.rs - experimental::automl (line 16) ... ok
+test relvar/src/experimental/blockchain.rs - experimental::blockchain::Blockchain::new (line 43) ... ok
+test relvar/src/experimental/build_system.rs - experimental::build_system::BuildSystem (line 23) ... ok
+test relvar/src/experimental/build_system.rs - experimental::build_system::BuildSystem::compute_stale_targets (line 89) ... ok
+test relvar/src/experimental/cellular_automaton.rs - experimental::cellular_automaton::CellularAutomaton (line 29) ... ok
+test relvar/src/experimental/build_system.rs - experimental::build_system::BuildSystem::new (line 54) ... ok
+test relvar/src/experimental/cellular_automaton.rs - experimental::cellular_automaton::CellularAutomaton::new (line 47) ... ok
+test relvar/src/experimental/cellular_automaton.rs - experimental::cellular_automaton::CellularAutomaton::next_generation (line 59) ... ok
+test relvar/src/experimental/circuit.rs - experimental::circuit::LogicSimulator (line 28) ... ok
+test relvar/src/experimental/circuit.rs - experimental::circuit::LogicSimulator::new (line 46) ... ok
+test relvar/src/experimental/circuit.rs - experimental::circuit::LogicSimulator::run_until_stable (line 163) ... ok
+test relvar/src/experimental/circuit.rs - experimental::circuit::LogicSimulator::tick (line 66) ... ok
+test relvar/src/experimental/dom.rs - experimental::dom::RelationalDom (line 13) ... ok
+test relvar/src/experimental/dom.rs - experimental::dom::RelationalDom::new (line 49) ... ok
+test relvar/src/experimental/dom.rs - experimental::dom::RelationalDom::query_class (line 85) ... ok
+test relvar/src/experimental/dom.rs - experimental::dom::RelationalDom::query_descendant (line 132) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs::World (line 73) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs::World<E>::get_component (line 237) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs::World<E>::add_component (line 174) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs::World<E>::new (line 86) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs::World<E>::register_component (line 126) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs::World<E>::remove_component (line 213) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs (line 14) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs::World<E>::run_update_system (line 275) ... ok
+test relvar/src/experimental/ecs.rs - experimental::ecs::World<E>::spawn (line 105) ... ok
+test relvar/src/experimental/enigma.rs - experimental::enigma::EnigmaMachine (line 25) ... ok
+test relvar/src/experimental/expert_system.rs - experimental::expert_system::ExpertSystem (line 26) ... ok
+test relvar/src/experimental/expert_system.rs - experimental::expert_system::ExpertSystem::infer (line 61) ... ok
+test relvar/src/experimental/enigma.rs - experimental::enigma::EnigmaMachine::new (line 47) ... ok
+test relvar/src/experimental/expert_system.rs - experimental::expert_system::ExpertSystem::new (line 44) ... ok
+test relvar/src/experimental/genetic_algorithm.rs - experimental::genetic_algorithm::GeneticAlgorithm (line 27) ... ok
+test relvar/src/experimental/garbage_collector.rs - experimental::garbage_collector::GarbageCollector (line 23) ... ok
+test relvar/src/experimental/garbage_collector.rs - experimental::garbage_collector::GarbageCollector::new (line 70) ... ok
+test relvar/src/experimental/garbage_collector.rs - experimental::garbage_collector::GarbageCollector::mark_and_sweep (line 101) ... ok
+test relvar/src/experimental/genetic_algorithm.rs - experimental::genetic_algorithm::GeneticAlgorithm::new (line 48) ... ok
+test relvar/src/experimental/genetic_algorithm.rs - experimental::genetic_algorithm::GeneticAlgorithm::next_generation (line 64) ... ok
+test relvar/src/experimental/graph.rs - experimental::graph::Graph (line 54) ... ok
+test relvar/src/experimental/gnn.rs - experimental::gnn::GraphNeuralNetwork::forward (line 98) ... ok
+test relvar/src/experimental/gnn.rs - experimental::gnn::GraphNeuralNetwork (line 37) ... ok
+test relvar/src/experimental/graph.rs - experimental::graph (line 9) ... ok
+test relvar/src/experimental/graph.rs - experimental::graph::Graph::bfs (line 109) ... ok
+test relvar/src/experimental/graph.rs - experimental::graph::Graph::pagerank (line 216) ... ok
+test relvar/src/experimental/graph.rs - experimental::graph::Graph::new (line 78) ... ok
+test relvar/src/experimental/image.rs - experimental::image::KernelTap (line 20) ... ok
+test relvar/src/experimental/graph_neural_network.rs - experimental::graph_neural_network::RelationalGNN (line 28) ... ok
+test relvar/src/experimental/graph_neural_network.rs - experimental::graph_neural_network::RelationalGNN::aggregate_messages (line 98) ... ok
+test relvar/src/experimental/graph_neural_network.rs - experimental::graph_neural_network::RelationalGNN::new (line 62) ... ok
+test relvar/src/experimental/image.rs - experimental::image::apply_kernel (line 176) ... ok
+test relvar/src/experimental/image.rs - experimental::image::load (line 45) ... ok
+test relvar/src/experimental/kmeans.rs - experimental::kmeans::KMeans (line 28) ... ok
+test relvar/src/experimental/image.rs - experimental::image::save (line 96) ... ok
+test relvar/src/experimental/kmeans.rs - experimental::kmeans::KMeans::assign_clusters (line 60) ... ok
+test relvar/src/experimental/kmeans.rs - experimental::kmeans::KMeans::new (line 43) ... ok
+test relvar/src/experimental/kmeans.rs - experimental::kmeans::KMeans::step (line 121) ... ok
+test relvar/src/experimental/kmeans.rs - experimental::kmeans::KMeans::train (line 178) ... ok
+test relvar/src/experimental/knowledge_graph.rs - experimental::knowledge_graph::KnowledgeGraph (line 100) ... ok
+test relvar/src/experimental/knowledge_graph.rs - experimental::knowledge_graph::KnowledgeGraph::insert (line 142) ... ok
+test relvar/src/experimental/knowledge_graph.rs - experimental::knowledge_graph::KnowledgeGraph::query (line 248) ... ok
+test relvar/src/experimental/knowledge_graph.rs - experimental::knowledge_graph::KnowledgeGraph::new (line 122) ... ok
+test relvar/src/experimental/markov.rs - experimental::markov::MarkovChain (line 18) ... ok
+test relvar/src/experimental/knowledge_graph.rs - experimental::knowledge_graph::Term::val (line 50) ... ok
+test relvar/src/experimental/knowledge_graph.rs - experimental::knowledge_graph::TriplePattern::new (line 78) ... ok
+test relvar/src/experimental/knowledge_graph.rs - experimental::knowledge_graph::Term::var (line 36) ... ok
+test relvar/src/experimental/markov.rs - experimental::markov::MarkovChain::new (line 35) ... ok
+test relvar/src/experimental/markov.rs - experimental::markov::MarkovChain::next_step (line 51) ... ok
+test relvar/src/experimental/markov.rs - experimental::markov::MarkovChain::run (line 93) ... ok
+test relvar/src/experimental/matrix.rs - experimental::matrix::Matrix (line 27) ... ok
+test relvar/src/experimental/matrix.rs - experimental::matrix::Matrix::add (line 91) ... ok
+test relvar/src/experimental/matrix.rs - experimental::matrix::Matrix::from_relation (line 62) ... ok
+test relvar/src/experimental/matrix.rs - experimental::matrix::Matrix::multiply (line 150) ... ok
+test relvar/src/experimental/matrix.rs - experimental::matrix::Matrix::new (line 41) ... ok
+test relvar/src/experimental/mock.rs - experimental::mock::MockRelation::count (line 87) ... ok
+test relvar/src/experimental/mock.rs - experimental::mock::MockRelation::generate (line 113) ... ok
+test relvar/src/experimental/mock.rs - experimental::mock::MockRelation (line 40) ... ok
+test relvar/src/experimental/mock.rs - experimental::mock (line 9) ... ok
+test relvar/src/experimental/mock.rs - experimental::mock::MockRelation::new (line 67) ... ok
+test relvar/src/experimental/mock.rs - experimental::mock::MockRelation::seed (line 100) ... ok
+test relvar/src/experimental/neural_network.rs - experimental::neural_network::NeuralNetwork (line 30) ... ok
+test relvar/src/experimental/neural_network.rs - experimental::neural_network::NeuralNetwork::forward_layer (line 69) ... ok
+test relvar/src/experimental/neural_network.rs - experimental::neural_network::NeuralNetwork::get_layer_activations (line 161) ... ok
+test relvar/src/experimental/neural_network.rs - experimental::neural_network::NeuralNetwork::new (line 50) ... ok
+test relvar/src/experimental/parser.rs - experimental::parser::CykParser (line 37) ... ok
+test relvar/src/experimental/neural_network.rs - experimental::neural_network::NeuralNetwork::forward_pass (line 147) ... ok
+test relvar/src/experimental/parser.rs - experimental::parser::CykParser::new (line 53) ... ok
+test relvar/src/experimental/parser.rs - experimental::parser::CykParser::parse (line 72) ... ok
+test relvar/src/experimental/parser.rs - experimental::parser::CykParser::is_accepted (line 188) ... ok
+test relvar/src/experimental/petri_net.rs - experimental::petri_net::PetriNet (line 24) ... ok
+test relvar/src/experimental/petri_net.rs - experimental::petri_net::PetriNet::add_input_arc (line 119) ... ok
+test relvar/src/experimental/petri_net.rs - experimental::petri_net::PetriNet::add_place (line 85) ... ok
+test relvar/src/experimental/petri_net.rs - experimental::petri_net::PetriNet::add_output_arc (line 138) ... ok
+test relvar/src/experimental/petri_net.rs - experimental::petri_net::PetriNet::add_transition (line 102) ... ok
+test relvar/src/experimental/petri_net.rs - experimental::petri_net::PetriNet::enabled_transitions (line 165) ... ok
+test relvar/src/experimental/physics.rs - experimental::physics::PhysicsEngine (line 19) ... ok
+test relvar/src/experimental/petri_net.rs - experimental::petri_net::PetriNet::fire (line 201) ... ok
+test relvar/src/experimental/petri_net.rs - experimental::petri_net::PetriNet::new (line 51) ... ok
+test relvar/src/experimental/physics.rs - experimental::physics::PhysicsEngine::new (line 38) ... ok
+test relvar/src/experimental/physics.rs - experimental::physics::PhysicsEngine::next_step (line 50) ... ok
+test relvar/src/experimental/raytracer.rs - experimental::raytracer::Scene (line 55) ... ok
+test relvar/src/experimental/raytracer.rs - experimental::raytracer::Scene::add_sphere (line 100) ... ok
+test relvar/src/experimental/pivot.rs - experimental::pivot::pivot (line 62) ... ok
+test relvar/src/experimental/raytracer.rs - experimental::raytracer (line 11) ... ok
+test relvar/src/experimental/raytracer.rs - experimental::raytracer::Scene::new (line 69) ... ok
+test relvar/src/experimental/raytracer.rs - experimental::raytracer::Scene::render (line 334) ... ok
+test relvar/src/experimental/rbac.rs - experimental::rbac::RelationalRbac::check_access (line 98) ... ok
+test relvar/src/experimental/rbac.rs - experimental::rbac::RelationalRbac (line 26) ... ok
+test relvar/src/experimental/rbac.rs - experimental::rbac::RelationalRbac::effective_permissions (line 62) ... ok
+test relvar/src/experimental/rbac.rs - experimental::rbac::RelationalRbac::new (line 44) ... ok
+test relvar/src/experimental/recommend.rs - experimental::recommend::CollaborativeFilter (line 25) ... ok
+test relvar/src/experimental/recommend.rs - experimental::recommend::CollaborativeFilter::new (line 49) ... ok
+test relvar/src/experimental/recommend.rs - experimental::recommend::CollaborativeFilter::recommend_user_based (line 74) ... ok
+test relvar/src/experimental/search.rs - experimental::search::FullTextIndex::create (line 144) ... ok
+test relvar/src/experimental/search.rs - experimental::search::FullTextIndex::index_document (line 165) ... ok
+test relvar/src/experimental/search.rs - experimental::search::FullTextIndex::new (line 128) ... ok
+test relvar/src/experimental/search.rs - experimental::search::FullTextIndex (line 90) ... ok
+test relvar/src/experimental/search.rs - experimental::search::FullTextIndex::search (line 208) ... ok
+test relvar/src/experimental/search.rs - experimental::search (line 9) ... ok
+test relvar/src/experimental/search.rs - experimental::search::tokenize (line 67) ... ok
+test relvar/src/experimental/spreadsheet.rs - experimental::spreadsheet::Spreadsheet::evaluate (line 38) ... ok
+test relvar/src/experimental/spatial.rs - experimental::spatial::distance (line 94) ... ok
+test relvar/src/experimental/spatial.rs - experimental::spatial::point (line 60) ... ok
+test relvar/src/experimental/spatial.rs - experimental::spatial::within (line 125) ... ok
+test relvar/src/experimental/spreadsheet.rs - experimental::spreadsheet::Spreadsheet::new (line 25) ... ok
+test relvar/src/experimental/synth.rs - experimental::synth::Synth (line 28) ... ok
+test relvar/src/experimental/sudoku.rs - experimental::sudoku::SudokuSolver::new (line 59) ... ok
+test relvar/src/experimental/sudoku.rs - experimental::sudoku::SudokuSolver (line 28) ... ok
+test relvar/src/experimental/synth.rs - experimental::synth::Synth::create_timeline (line 59) ... ok
+test relvar/src/experimental/synth.rs - experimental::synth::Synth::new (line 44) ... ok
+test relvar/src/experimental/synth.rs - experimental::synth::Synth::synthesize (line 89) ... ok
+test relvar/src/experimental/turing.rs - experimental::turing::TuringMachine::new (line 44) ... ok
+test relvar/src/experimental/turing.rs - experimental::turing::TuringMachine (line 23) ... ok
+test relvar/src/experimental/turing.rs - experimental::turing::TuringMachine::run (line 164) ... ok
+test relvar/src/experimental/timeseries.rs - experimental::timeseries::moving_average (line 37) ... ok
+test relvar/src/experimental/vcs.rs - experimental::vcs::RelVcs (line 28) ... ok
+test relvar/src/experimental/turing.rs - experimental::turing::TuringMachine::step (line 67) ... ok
+test relvar/src/experimental/vcs.rs - experimental::vcs::RelVcs::diff (line 138) ... ok
+test relvar/src/experimental/vcs.rs - experimental::vcs::RelVcs::checkout (line 91) ... ok
+test relvar/src/experimental/vcs.rs - experimental::vcs::RelVcs::new (line 47) ... ok
+test relvar/src/experimental/vm.rs - experimental::vm::RelationalVM (line 28) ... ok
+test relvar/src/experimental/vm.rs - experimental::vm::RelationalVM::new (line 77) ... ok
+test relvar/src/experimental/vm.rs - experimental::vm::RelationalVM::step (line 122) ... ok
+test relvar/src/experimental/vm.rs - experimental::vm::RelationalVM::run (line 249) ... ok
+test relvar/src/lib.rs - (line 100) ... ok
+test relvar/src/lib.rs - (line 17) ... ok
+test relvar/src/lib.rs - (line 66) ... ok
+test relvar/src/tools/exporter.rs - tools::exporter::ExporterError (line 59) ... ok
+test relvar/src/lib.rs - (line 39) ... ok
+test relvar/src/tools/exporter.rs - tools::exporter (line 20) ... ok
+test relvar/src/lib.rs - tools (line 169) ... ok
+test relvar/src/tools/exporter.rs - tools::exporter::to_csv (line 113) ... ok
+test relvar/src/tools/exporter.rs - tools::exporter::to_ascii_table (line 245) ... ok
+test relvar/src/tools/exporter.rs - tools::exporter::to_json (line 188) ... ok
+test relvar/src/tools/importer.rs - tools::importer::ImporterError (line 61) ... ok
+test relvar/src/tools/importer.rs - tools::importer (line 20) ... ok
+test relvar/src/tools/importer.rs - tools::importer::from_csv (line 469) ... ok
+test relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer (line 59) ... FAILED
+test relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer<'a,E>::new (line 72) ... FAILED
+test relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer<'a,E>::to_dot (line 89) ... FAILED
+test relvar/src/tools/importer.rs - tools::importer::from_json (line 117) ... ok
+test relvar/src/tools/visualizer.rs - tools::visualizer (line 9) ... ok
+
+failures:
+
+---- relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer (line 59) stdout ----
+error[E0432]: unresolved import `relvar::SchemaVisualizer`
+  --> relvar/src/tools/visualizer.rs:61:40
+   |
+61 | use relvar::{Database, InMemoryEngine, SchemaVisualizer};
+   |                                        ^^^^^^^^^^^^^^^^ no `SchemaVisualizer` in the root
+   |
+   = help: consider importing this struct instead:
+           relvar::visualizer::SchemaVisualizer
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0432`.
+Couldn't compile the test.
+---- relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer<'a,E>::new (line 72) stdout ----
+error[E0432]: unresolved import `relvar::SchemaVisualizer`
+  --> relvar/src/tools/visualizer.rs:74:40
+   |
+74 | use relvar::{Database, InMemoryEngine, SchemaVisualizer};
+   |                                        ^^^^^^^^^^^^^^^^ no `SchemaVisualizer` in the root
+   |
+   = help: consider importing this struct instead:
+           relvar::visualizer::SchemaVisualizer
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0432`.
+Couldn't compile the test.
+---- relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer<'a,E>::to_dot (line 89) stdout ----
+error[E0432]: unresolved import `relvar::SchemaVisualizer`
+  --> relvar/src/tools/visualizer.rs:91:40
+   |
+91 | use relvar::{Database, InMemoryEngine, SchemaVisualizer};
+   |                                        ^^^^^^^^^^^^^^^^ no `SchemaVisualizer` in the root
+   |
+   = help: consider importing this struct instead:
+           relvar::visualizer::SchemaVisualizer
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0432`.
+Couldn't compile the test.
+
+failures:
+    relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer (line 59)
+    relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer<'a,E>::new (line 72)
+    relvar/src/tools/visualizer.rs - tools::visualizer::SchemaVisualizer<'a,E>::to_dot (line 89)
+
+test result: FAILED. 162 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.92s
+
+all doctests ran in 10.25s; merged doctests compilation took 0.32s
+error: doctest failed, to rerun pass `-p relvar --doc`

@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::experimental::search::FullTextIndex;
+//! use relvar::experimental::FullTextIndex;
 //! use relvar_core::Database;
 //! use relvar_core::storage_engine::InMemoryEngine;
 //! use relvar_core::types::ScalarType;
@@ -88,7 +88,7 @@ pub fn tokenize(text: &str) -> HashMap<String, i64> {
 /// # Examples
 ///
 /// ```
-/// use relvar::experimental::search::FullTextIndex;
+/// use relvar::experimental::FullTextIndex;
 /// use relvar_core::Database;
 /// use relvar_core::storage_engine::InMemoryEngine;
 /// use relvar_core::types::ScalarType;

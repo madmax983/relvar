@@ -24,7 +24,7 @@ use relvar_core::{error::DatabaseError, values::Relation};
 /// use relvar_core::tuple;
 /// use relvar_core::types::{RelationType, ScalarType, TupleType};
 /// use relvar_core::values::Relation;
-/// use relvar::experimental::garbage_collector::GarbageCollector;
+/// use relvar::experimental::GarbageCollector;
 ///
 /// let root_type = TupleType::new().with_attribute("address", ScalarType::Int);
 /// let mut roots = Relation::new(RelationType::new(root_type));
@@ -70,7 +70,7 @@ impl GarbageCollector {
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType, RelationType};
     /// use relvar_core::values::Relation;
-    /// use relvar::experimental::garbage_collector::GarbageCollector;
+    /// use relvar::experimental::GarbageCollector;
     ///
     /// // Example setup (assuming `roots`, `heap`, and `references` relations are defined)
     /// # let root_type = TupleType::new().with_attribute("address", ScalarType::Int);
@@ -102,7 +102,7 @@ impl GarbageCollector {
     /// use relvar_core::tuple;
     /// use relvar_core::types::{TupleType, ScalarType, RelationType};
     /// use relvar_core::values::Relation;
-    /// use relvar::experimental::garbage_collector::GarbageCollector;
+    /// use relvar::experimental::GarbageCollector;
     ///
     /// // See the struct-level documentation for full setup.
     /// # let root_type = TupleType::new().with_attribute("address", ScalarType::Int);

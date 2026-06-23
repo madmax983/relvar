@@ -3,9 +3,13 @@
 //! This module provides experimental implementations of complex algorithms using purely relational algebra.
 
 /// Cellular automata implementation.
-pub mod game_of_life;
+pub(crate) mod game_of_life;
 /// PageRank algorithm implementation.
-pub mod pagerank;
+pub(crate) mod pagerank;
 
 /// Knowledge Graph implementation.
-pub mod knowledge_graph;
+pub(crate) mod knowledge_graph;
+
+pub use game_of_life::*;
+pub use knowledge_graph::*;
+pub use pagerank::*;

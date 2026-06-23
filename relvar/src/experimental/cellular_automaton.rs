@@ -28,7 +28,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::cellular_automaton::CellularAutomaton;
+/// use relvar::experimental::CellularAutomaton;
 /// // Note: This is a placeholder example
 /// ```
 pub struct CellularAutomaton {
@@ -46,7 +46,7 @@ impl CellularAutomaton {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::cellular_automaton::CellularAutomaton;
+    /// use relvar::experimental::CellularAutomaton;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(cells: Relation) -> Self {
@@ -58,7 +58,7 @@ impl CellularAutomaton {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::cellular_automaton::CellularAutomaton;
+    /// use relvar::experimental::CellularAutomaton;
     /// // Note: This is a placeholder example
     /// ```
     pub fn next_generation(&self) -> Result<Relation, DatabaseError> {

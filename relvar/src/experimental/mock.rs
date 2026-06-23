@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::experimental::mock::MockRelation;
+//! use relvar::experimental::MockRelation;
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //!
 //! // 1. Define schema
@@ -38,7 +38,7 @@ use std::collections::BTreeMap;
 /// # Examples
 ///
 /// ```
-/// use relvar::experimental::mock::MockRelation;
+/// use relvar::experimental::MockRelation;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 ///
 /// let rel_type = RelationType::new(
@@ -66,7 +66,7 @@ impl MockRelation {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::mock::MockRelation;
+    /// use relvar::experimental::MockRelation;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(relation_type: RelationType) -> Self {
@@ -86,7 +86,7 @@ impl MockRelation {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::mock::MockRelation;
+    /// use relvar::experimental::MockRelation;
     /// // Note: This is a placeholder example
     /// ```
     pub fn count(mut self, count: usize) -> Self {
@@ -99,7 +99,7 @@ impl MockRelation {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::mock::MockRelation;
+    /// use relvar::experimental::MockRelation;
     /// // Note: This is a placeholder example
     /// ```
     pub fn seed(mut self, seed: u64) -> Self {
@@ -112,7 +112,7 @@ impl MockRelation {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::mock::MockRelation;
+    /// use relvar::experimental::MockRelation;
     /// // Note: This is a placeholder example
     /// ```
     pub fn generate(self) -> Relation {

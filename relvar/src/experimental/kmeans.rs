@@ -27,7 +27,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::kmeans::KMeans;
+/// use relvar::experimental::KMeans;
 /// // Note: This is a placeholder example
 /// ```
 pub struct KMeans {
@@ -42,7 +42,7 @@ impl KMeans {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::kmeans::KMeans;
+    /// use relvar::experimental::KMeans;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(initial_centroids: Relation) -> Self {
@@ -59,7 +59,7 @@ impl KMeans {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::kmeans::KMeans;
+    /// use relvar::experimental::KMeans;
     /// // Note: This is a placeholder example
     /// ```
     pub fn assign_clusters(&self, points: &Relation) -> Result<Relation, DatabaseError> {
@@ -120,7 +120,7 @@ impl KMeans {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::kmeans::KMeans;
+    /// use relvar::experimental::KMeans;
     /// // Note: This is a placeholder example
     /// ```
     pub fn step(&mut self, points: &Relation) -> Result<bool, DatabaseError> {
@@ -177,7 +177,7 @@ impl KMeans {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::kmeans::KMeans;
+    /// use relvar::experimental::KMeans;
     /// // Note: This is a placeholder example
     /// ```
     pub fn train(

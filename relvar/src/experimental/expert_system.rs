@@ -25,7 +25,7 @@ use relvar_core::{algebra::Aggregation, error::DatabaseError, values::Relation};
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::expert_system::ExpertSystem;
+/// use relvar::experimental::ExpertSystem;
 /// // Note: This is a placeholder example
 /// ```
 pub struct ExpertSystem {
@@ -43,7 +43,7 @@ impl ExpertSystem {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::expert_system::ExpertSystem;
+    /// use relvar::experimental::ExpertSystem;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(facts: Relation, rule_conditions: Relation, rule_conclusions: Relation) -> Self {
@@ -60,7 +60,7 @@ impl ExpertSystem {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::expert_system::ExpertSystem;
+    /// use relvar::experimental::ExpertSystem;
     /// // Note: This is a placeholder example
     /// ```
     pub fn infer(&self) -> Result<Relation, DatabaseError> {

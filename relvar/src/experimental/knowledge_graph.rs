@@ -34,7 +34,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::knowledge_graph::Term;
+    /// use relvar::experimental::Term;
     ///
     /// let variable = Term::var("person");
     /// assert_eq!(variable, Term::Variable("person".to_string()));
@@ -48,7 +48,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::knowledge_graph::Term;
+    /// use relvar::experimental::Term;
     ///
     /// let value = Term::val("Alice");
     /// assert_eq!(value, Term::Value("Alice".to_string()));
@@ -76,7 +76,7 @@ impl TriplePattern {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::knowledge_graph::{Term, TriplePattern};
+    /// use relvar::experimental::{Term, TriplePattern};
     ///
     /// let pattern = TriplePattern::new(
     ///     Term::var("person"),
@@ -98,7 +98,7 @@ impl TriplePattern {
 /// # Examples
 ///
 /// ```
-/// use relvar::experimental::knowledge_graph::{KnowledgeGraph, Term, TriplePattern};
+/// use relvar::experimental::{KnowledgeGraph, Term, TriplePattern};
 ///
 /// let mut kg = KnowledgeGraph::new();
 /// kg.insert("Alice", "knows", "Bob").unwrap();
@@ -120,7 +120,7 @@ impl KnowledgeGraph {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::knowledge_graph::KnowledgeGraph;
+    /// use relvar::experimental::KnowledgeGraph;
     ///
     /// let kg = KnowledgeGraph::new();
     /// assert_eq!(kg.triples.cardinality(), 0);
@@ -140,7 +140,7 @@ impl KnowledgeGraph {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::knowledge_graph::KnowledgeGraph;
+    /// use relvar::experimental::KnowledgeGraph;
     ///
     /// let mut kg = KnowledgeGraph::new();
     /// kg.insert("Alice", "type", "Artist").unwrap();
@@ -246,7 +246,7 @@ impl KnowledgeGraph {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::knowledge_graph::{KnowledgeGraph, Term, TriplePattern};
+    /// use relvar::experimental::{KnowledgeGraph, Term, TriplePattern};
     ///
     /// let mut kg = KnowledgeGraph::new();
     /// kg.insert("Alice", "knows", "Bob").unwrap();

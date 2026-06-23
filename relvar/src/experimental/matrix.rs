@@ -26,7 +26,7 @@ use relvar_core::values::{Relation, ScalarValue};
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::matrix::Matrix;
+/// use relvar::experimental::Matrix;
 /// // Note: This is a placeholder example
 /// ```
 pub struct Matrix {
@@ -40,7 +40,7 @@ impl Matrix {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::matrix::Matrix;
+    /// use relvar::experimental::Matrix;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new() -> Self {
@@ -61,7 +61,7 @@ impl Matrix {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::matrix::Matrix;
+    /// use relvar::experimental::Matrix;
     /// // Note: This is a placeholder example
     /// ```
     pub fn from_relation(relation: Relation) -> Result<Self, DatabaseError> {
@@ -90,7 +90,7 @@ impl Matrix {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::matrix::Matrix;
+    /// use relvar::experimental::Matrix;
     /// // Note: This is a placeholder example
     /// ```
     pub fn add(&self, other: &Matrix) -> Result<Matrix, DatabaseError> {
@@ -149,7 +149,7 @@ impl Matrix {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::matrix::Matrix;
+    /// use relvar::experimental::Matrix;
     /// // Note: This is a placeholder example
     /// ```
     pub fn multiply(&self, other: &Matrix) -> Result<Matrix, DatabaseError> {

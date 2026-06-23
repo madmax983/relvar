@@ -27,3 +27,6 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+## 2024-06-25 - Experimental and Tools Modules Facade
+**Tangle:** The experimental modules and tools modules leaked their internal implementations through `pub mod` declarations, creating a tangled dependency graph and breaking encapsulation.
+**Blueprint:** Demoted `pub mod` to `pub(crate) mod` in `relvar-core/src/experimental/mod.rs`, `relvar/src/experimental/mod.rs`, and `relvar/src/tools/mod.rs`. Implemented the Facade pattern by re-exporting only the necessary public API types and functions using `pub use module_name::*;` to enforce clean boundaries.

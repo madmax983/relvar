@@ -21,7 +21,7 @@
 //! use relvar_core::values::Relation;
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use relvar_core::tuple;
-//! use relvar::data::exporter;
+//! use relvar::tools::{to_csv, to_json, to_ascii_table};
 //!
 //! // Create a sample relation
 //! let heading = TupleType::new()
@@ -33,18 +33,18 @@
 //! relation.insert(tuple! { id: 2i64, name: "Bob" }).unwrap();
 //!
 //! // Export to CSV
-//! let csv = exporter::to_csv(&relation, ',').unwrap();
+//! let csv = to_csv(&relation, ',').unwrap();
 //! assert!(csv.contains("id,name"));
 //! assert!(csv.contains("1,\"Alice\""));
 //!
 //! // Export to JSON
 //! let mut json_buf = Vec::new();
-//! exporter::to_json(&relation, &mut json_buf).unwrap();
+//! to_json(&relation, &mut json_buf).unwrap();
 //! let json_str = String::from_utf8(json_buf).unwrap();
 //! assert!(json_str.contains("\"name\": \"Alice\""));
 //!
 //! // Export to ASCII Table
-//! let table = exporter::to_ascii_table(&relation);
+//! let table = to_ascii_table(&relation);
 //! println!("{}", table);
 //! ```
 
@@ -59,7 +59,7 @@ use thiserror::Error;
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::tools::exporter;
+/// use relvar::tools::{to_csv, to_json, to_ascii_table};
 /// // Example usage
 /// ```
 pub enum ExporterError {
@@ -114,7 +114,7 @@ impl<'a> Ord for SortableTuple<'a> {
 /// use relvar_core::values::Relation;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use relvar_core::tuple;
-/// use relvar::data::exporter::to_csv;
+/// use relvar::tools::to_csv;
 ///
 /// let heading = TupleType::new()
 ///     .with_attribute("col1", ScalarType::Int)
@@ -189,7 +189,7 @@ pub fn to_csv(relation: &Relation, delimiter: char) -> Result<String, ExporterEr
 /// use relvar_core::values::Relation;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use relvar_core::tuple;
-/// use relvar::data::exporter::to_json;
+/// use relvar::tools::to_json;
 ///
 /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
 /// let mut relation = Relation::new(RelationType::new(heading));
@@ -246,7 +246,7 @@ pub fn to_json<W: std::io::Write>(relation: &Relation, writer: W) -> Result<(), 
 /// use relvar_core::values::Relation;
 /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use relvar_core::tuple;
-/// use relvar::data::exporter::to_ascii_table;
+/// use relvar::tools::to_ascii_table;
 ///
 /// let heading = TupleType::new()
 ///     .with_attribute("name", ScalarType::String)

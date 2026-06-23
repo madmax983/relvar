@@ -10,7 +10,7 @@
 //! use relvar::{Database, InMemoryEngine};
 //! use relvar::{TupleType, RelationType, ScalarType};
 //! use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
-//! use relvar::tools::visualizer::SchemaVisualizer;
+//! use relvar::tools::SchemaVisualizer;
 //!
 //! let mut db = Database::new(InMemoryEngine::new());
 //!
@@ -57,7 +57,7 @@ use relvar_core::storage_engine::StorageEngine;
 /// # Examples
 ///
 /// ```
-/// use relvar::{Database, InMemoryEngine, visualizer::SchemaVisualizer};
+/// use relvar::{Database, InMemoryEngine, tools::SchemaVisualizer};
 /// // Example usage
 /// ```
 pub struct SchemaVisualizer<'a, E: StorageEngine> {
@@ -70,7 +70,7 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
     /// # Examples
     ///
     /// ```
-    /// use relvar::{Database, InMemoryEngine, visualizer::SchemaVisualizer};
+    /// use relvar::{Database, InMemoryEngine, tools::SchemaVisualizer};
     ///
     /// let db = Database::new(InMemoryEngine::new());
     /// let visualizer = SchemaVisualizer::new(&db);
@@ -87,7 +87,7 @@ impl<'a, E: StorageEngine> SchemaVisualizer<'a, E> {
     /// # Examples
     ///
     /// ```
-    /// use relvar::{Database, InMemoryEngine, visualizer::SchemaVisualizer};
+    /// use relvar::{Database, InMemoryEngine, tools::SchemaVisualizer};
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// // ... setup schema ...

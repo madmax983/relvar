@@ -24,7 +24,7 @@ use relvar_core::values::{Relation, ScalarValue};
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::recommend::CollaborativeFilter;
+/// use relvar::experimental::CollaborativeFilter;
 /// // Note: This is a placeholder example
 /// ```
 pub struct CollaborativeFilter {
@@ -48,7 +48,7 @@ impl CollaborativeFilter {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::recommend::CollaborativeFilter;
+    /// use relvar::experimental::CollaborativeFilter;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(
@@ -73,7 +73,7 @@ impl CollaborativeFilter {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::recommend::CollaborativeFilter;
+    /// use relvar::experimental::CollaborativeFilter;
     /// // Note: This is a placeholder example
     /// ```
     pub fn recommend_user_based(

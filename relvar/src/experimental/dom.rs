@@ -12,7 +12,7 @@ use relvar_core::{error::DatabaseError, values::Relation};
 ///
 /// ```
 /// use relvar_core::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::dom::RelationalDom;
+/// use relvar::experimental::RelationalDom;
 ///
 /// let node_type = TupleType::new()
 ///     .with_attribute("node_id", ScalarType::Int)
@@ -48,7 +48,7 @@ impl RelationalDom {
     ///
     /// ```
     /// use relvar_core::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::dom::RelationalDom;
+    /// use relvar::experimental::RelationalDom;
     ///
     /// let node_type = TupleType::new()
     ///     .with_attribute("node_id", ScalarType::Int)
@@ -84,7 +84,7 @@ impl RelationalDom {
     ///
     /// ```
     /// use relvar_core::{Relation, RelationType, ScalarType, TupleType, tuple};
-    /// use relvar::experimental::dom::RelationalDom;
+    /// use relvar::experimental::RelationalDom;
     ///
     /// let node_type = TupleType::new()
     ///     .with_attribute("node_id", ScalarType::Int)
@@ -131,7 +131,7 @@ impl RelationalDom {
     ///
     /// ```
     /// use relvar_core::{Relation, RelationType, ScalarType, TupleType, tuple};
-    /// use relvar::experimental::dom::RelationalDom;
+    /// use relvar::experimental::RelationalDom;
     ///
     /// let node_type = TupleType::new()
     ///     .with_attribute("node_id", ScalarType::Int)

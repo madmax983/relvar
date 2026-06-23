@@ -36,7 +36,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::parser::CykParser;
+/// use relvar::experimental::CykParser;
 /// // Placeholder example
 /// ```
 pub struct CykParser {
@@ -52,7 +52,7 @@ impl CykParser {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::parser::CykParser;
+    /// use relvar::experimental::CykParser;
     /// // Placeholder example
     /// ```
     pub fn new(terminals: Relation, non_terminals: Relation) -> Self {
@@ -71,7 +71,7 @@ impl CykParser {
     ///
     /// ```
     /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::parser::CykParser;
+    /// use relvar::experimental::CykParser;
     ///
     /// // 1. Setup a simple grammar: S -> "a"
     /// let term_type = RelationType::new(
@@ -187,7 +187,7 @@ impl CykParser {
     ///
     /// ```
     /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::parser::CykParser;
+    /// use relvar::experimental::CykParser;
     ///
     /// // Build a parse table entry representing successful parse of "S" from pos 0 length 1
     /// let parse_table_type = RelationType::new(

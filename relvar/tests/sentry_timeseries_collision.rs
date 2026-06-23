@@ -1,4 +1,4 @@
-use relvar::experimental::timeseries::moving_average;
+use relvar::experimental::moving_average;
 use relvar::tuple;
 use relvar::{Relation, RelationType, ScalarType, TupleType};
 

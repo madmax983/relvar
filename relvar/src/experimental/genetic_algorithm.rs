@@ -26,7 +26,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::genetic_algorithm::GeneticAlgorithm;
+/// use relvar::experimental::GeneticAlgorithm;
 /// // Note: This is a placeholder example
 /// ```
 pub struct GeneticAlgorithm {
@@ -47,7 +47,7 @@ impl GeneticAlgorithm {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::genetic_algorithm::GeneticAlgorithm;
+    /// use relvar::experimental::GeneticAlgorithm;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(population: Relation, target_sum: i64) -> Self {
@@ -63,7 +63,7 @@ impl GeneticAlgorithm {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::genetic_algorithm::GeneticAlgorithm;
+    /// use relvar::experimental::GeneticAlgorithm;
     /// // Note: This is a placeholder example
     /// ```
     pub fn next_generation(&self, elite_count: usize) -> Result<(Relation, i64), DatabaseError> {

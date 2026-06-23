@@ -1,4 +1,4 @@
-use relvar::tools::importer::{self, ImporterError};
+use relvar::tools::*;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use std::io::Cursor;
 
@@ -17,7 +17,7 @@ fn test_large_string_import() {
         huge_string
     );
 
-    let result = importer::from_json(Cursor::new(json.as_bytes()), rel_type);
+    let result = from_json(Cursor::new(json.as_bytes()), rel_type);
 
     assert!(result.is_err(), "Import of 10MB string should have failed");
 
@@ -53,7 +53,7 @@ fn test_large_bytes_import() {
     }
     json.push_str(r#"]}]"#);
 
-    let result = importer::from_json(Cursor::new(json.as_bytes()), rel_type);
+    let result = from_json(Cursor::new(json.as_bytes()), rel_type);
 
     assert!(
         result.is_err(),
@@ -90,7 +90,7 @@ fn test_recursion_limit() {
     }
     json.push_str("}]");
 
-    let result = importer::from_json(Cursor::new(json.as_bytes()), rel_type);
+    let result = from_json(Cursor::new(json.as_bytes()), rel_type);
 
     // With streaming and IgnoredAny, serde_json seems to handle deep nesting
     // without triggering recursion limit (it skips tokens efficiently).

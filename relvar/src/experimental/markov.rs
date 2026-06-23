@@ -18,7 +18,7 @@ use relvar_core::{
 /// ```
 /// use relvar_core::types::{RelationType, ScalarType, TupleType};
 /// use relvar_core::values::Relation;
-/// use relvar::experimental::markov::MarkovChain;
+/// use relvar::experimental::MarkovChain;
 /// // Note: This is a placeholder example
 /// ```
 pub struct MarkovChain {
@@ -35,7 +35,7 @@ impl MarkovChain {
     /// ```
     /// use relvar_core::types::{RelationType, ScalarType, TupleType};
     /// use relvar_core::values::Relation;
-    /// use relvar::experimental::markov::MarkovChain;
+    /// use relvar::experimental::MarkovChain;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(state_distribution: Relation, transitions: Relation) -> Self {
@@ -51,7 +51,7 @@ impl MarkovChain {
     /// ```
     /// use relvar_core::types::{RelationType, ScalarType, TupleType};
     /// use relvar_core::values::Relation;
-    /// use relvar::experimental::markov::MarkovChain;
+    /// use relvar::experimental::MarkovChain;
     /// // Note: This is a placeholder example
     /// ```
     pub fn next_step(&mut self) -> Result<(), DatabaseError> {
@@ -93,7 +93,7 @@ impl MarkovChain {
     /// ```
     /// use relvar_core::types::{RelationType, ScalarType, TupleType};
     /// use relvar_core::values::Relation;
-    /// use relvar::experimental::markov::MarkovChain;
+    /// use relvar::experimental::MarkovChain;
     /// // Note: This is a placeholder example
     /// ```
     pub fn run(&mut self, steps: usize) -> Result<(), DatabaseError> {

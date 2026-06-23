@@ -9,7 +9,7 @@
 //! # Example
 //!
 //! ```
-//! use relvar::experimental::raytracer::Scene;
+//! use relvar::experimental::Scene;
 //! use relvar_core::values::ScalarValue;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,7 +54,7 @@ use relvar_core::values::{Relation, ScalarValue};
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::raytracer::Scene;
+/// use relvar::experimental::Scene;
 /// // Note: This is a placeholder example
 /// ```
 pub struct Scene {
@@ -68,7 +68,7 @@ impl Scene {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::raytracer::Scene;
+    /// use relvar::experimental::Scene;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new() -> Self {
@@ -100,7 +100,7 @@ impl Scene {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::raytracer::Scene;
+    /// use relvar::experimental::Scene;
     /// // Note: This is a placeholder example
     /// ```
     pub fn add_sphere(
@@ -333,7 +333,7 @@ impl Scene {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::raytracer::Scene;
+    /// use relvar::experimental::Scene;
     /// // Note: This is a placeholder example
     /// ```
     pub fn render(&self, width: i64, height: i64) -> Result<Relation, DatabaseError> {

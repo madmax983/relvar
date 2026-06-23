@@ -13,7 +13,7 @@
 //!
 //! ```
 //! use relvar::{InMemoryEngine, ScalarType, tuple};
-//! use relvar::experimental::ecs::World;
+//! use relvar::experimental::World;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut world = World::new(InMemoryEngine::new());

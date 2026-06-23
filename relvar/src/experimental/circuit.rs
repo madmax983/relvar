@@ -27,7 +27,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::circuit::LogicSimulator;
+/// use relvar::experimental::LogicSimulator;
 /// // Note: This is a placeholder example
 /// ```
 pub struct LogicSimulator {
@@ -45,7 +45,7 @@ impl LogicSimulator {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::circuit::LogicSimulator;
+    /// use relvar::experimental::LogicSimulator;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(binary_gates: Relation, unary_gates: Relation) -> Self {
@@ -65,7 +65,7 @@ impl LogicSimulator {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::circuit::LogicSimulator;
+    /// use relvar::experimental::LogicSimulator;
     /// // Note: This is a placeholder example
     /// ```
     pub fn tick(
@@ -162,7 +162,7 @@ impl LogicSimulator {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::circuit::LogicSimulator;
+    /// use relvar::experimental::LogicSimulator;
     /// // Note: This is a placeholder example
     /// ```
     pub fn run_until_stable(

@@ -22,7 +22,7 @@ use relvar_core::{
 /// # Examples
 ///
 /// ```
-/// use relvar::experimental::petri_net::PetriNet;
+/// use relvar::experimental::PetriNet;
 ///
 /// let mut net = PetriNet::new();
 /// net.add_place("p_start", 1);
@@ -49,7 +49,7 @@ impl PetriNet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar::experimental::PetriNet;
     ///
     /// let net = PetriNet::new();
     /// assert_eq!(net.places.cardinality(), 0);
@@ -83,7 +83,7 @@ impl PetriNet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar::experimental::PetriNet;
     ///
     /// let mut net = PetriNet::new();
     /// net.add_place("p1", 5);
@@ -100,7 +100,7 @@ impl PetriNet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar::experimental::PetriNet;
     ///
     /// let mut net = PetriNet::new();
     /// net.add_transition("t1");
@@ -117,7 +117,7 @@ impl PetriNet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar::experimental::PetriNet;
     ///
     /// let mut net = PetriNet::new();
     /// net.add_place("p1", 1);
@@ -136,7 +136,7 @@ impl PetriNet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar::experimental::PetriNet;
     ///
     /// let mut net = PetriNet::new();
     /// net.add_transition("t1");
@@ -163,7 +163,7 @@ impl PetriNet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar::experimental::PetriNet;
     /// use relvar_core::tuple;
     ///
     /// let mut net = PetriNet::new();
@@ -199,7 +199,7 @@ impl PetriNet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::petri_net::PetriNet;
+    /// use relvar::experimental::PetriNet;
     /// use relvar_core::tuple;
     ///
     /// let mut net = PetriNet::new();

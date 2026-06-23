@@ -17,7 +17,7 @@
 //! use relvar::{Database, InMemoryEngine, tuple};
 //! use relvar::{RelationType, ScalarType, TupleType};
 //! use relvar::{ScalarValue, Relation};
-//! use relvar::experimental::automl::NaiveBayesClassifier;
+//! use relvar::experimental::NaiveBayesClassifier;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // 1. Setup Database
@@ -60,7 +60,7 @@ use std::collections::HashMap;
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType, Tuple};
-/// use relvar::experimental::automl::NaiveBayesClassifier;
+/// use relvar::experimental::NaiveBayesClassifier;
 /// // Note: This is a placeholder example
 /// ```
 pub struct NaiveBayesClassifier {
@@ -99,7 +99,7 @@ impl NaiveBayesClassifier {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType, Tuple};
-    /// use relvar::experimental::automl::NaiveBayesClassifier;
+    /// use relvar::experimental::NaiveBayesClassifier;
     /// // Note: This is a placeholder example
     /// ```
     pub fn train(relation: &Relation, target_attr: &str) -> Result<Self, DatabaseError> {
@@ -228,7 +228,7 @@ impl NaiveBayesClassifier {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType, Tuple};
-    /// use relvar::experimental::automl::NaiveBayesClassifier;
+    /// use relvar::experimental::NaiveBayesClassifier;
     /// // Note: This is a placeholder example
     /// ```
     pub fn predict(&self, tuple: &Tuple) -> ScalarValue {

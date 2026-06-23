@@ -28,7 +28,7 @@ use relvar_core::{
 /// ```
 /// use relvar_core::types::{RelationType, ScalarType, TupleType};
 /// use relvar_core::values::{Relation, ScalarValue, Tuple};
-/// use relvar::experimental::sudoku::SudokuSolver;
+/// use relvar::experimental::SudokuSolver;
 ///
 /// let solver = SudokuSolver::new().unwrap();
 /// let givens_type = RelationType::new(
@@ -57,7 +57,7 @@ impl SudokuSolver {
     /// # Examples
     ///
     /// ```
-    /// use relvar::experimental::sudoku::SudokuSolver;
+    /// use relvar::experimental::SudokuSolver;
     /// let solver = SudokuSolver::new().unwrap();
     /// ```
     pub fn new() -> Result<Self, DatabaseError> {

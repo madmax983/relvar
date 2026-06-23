@@ -1,4 +1,4 @@
-use relvar::tools::exporter;
+use relvar::tools::to_csv;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Relation;
@@ -32,7 +32,7 @@ fn test_csv_injection() {
         .insert(tuple! { id: 7i64, name: "\nSUM(1,1)" })
         .unwrap();
 
-    let csv = exporter::to_csv(&relation, ',').unwrap();
+    let csv = to_csv(&relation, ',').unwrap();
     println!("{}", csv);
     assert!(!csv.contains("\"=cmd"));
 }

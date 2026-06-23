@@ -63,7 +63,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// use relvar_core::types::{TupleType, RelationType, ScalarType};
 /// use relvar_core::values::{Relation, ScalarValue};
 /// use relvar_core::tuple;
-/// use relvar::experimental::pivot::pivot;
+/// use relvar::experimental::pivot;
 ///
 /// // Create a relation: (Item, Color, Count)
 /// let heading = TupleType::new()

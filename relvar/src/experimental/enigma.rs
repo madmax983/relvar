@@ -24,7 +24,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::enigma::EnigmaMachine;
+/// use relvar::experimental::EnigmaMachine;
 /// // Note: This is a placeholder example
 /// ```
 pub struct EnigmaMachine {
@@ -47,7 +47,7 @@ impl EnigmaMachine {
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
     /// use relvar_core::values::Relation;
-    /// use relvar::experimental::enigma::EnigmaMachine;
+    /// use relvar::experimental::EnigmaMachine;
     ///
     /// let rel_type = RelationType::new(TupleType::new().with_attribute("pin_in", ScalarType::Int).with_attribute("pin_out", ScalarType::Int));
     /// let empty = Relation::new(rel_type);

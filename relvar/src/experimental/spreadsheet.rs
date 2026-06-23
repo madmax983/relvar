@@ -24,7 +24,7 @@ impl Spreadsheet {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::spreadsheet::Spreadsheet;
+    /// use relvar::experimental::Spreadsheet;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(values: Relation, formulas: Relation) -> Self {
@@ -37,7 +37,7 @@ impl Spreadsheet {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::spreadsheet::Spreadsheet;
+    /// use relvar::experimental::Spreadsheet;
     /// // Note: This is a placeholder example
     /// ```
     pub fn evaluate(&self) -> Result<Relation, DatabaseError> {

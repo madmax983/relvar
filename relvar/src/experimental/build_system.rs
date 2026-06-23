@@ -22,7 +22,7 @@ use relvar_core::{error::DatabaseError, values::Relation};
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
-/// use relvar::experimental::build_system::BuildSystem;
+/// use relvar::experimental::BuildSystem;
 ///
 /// let file_type = TupleType::new()
 ///     .with_attribute("file", ScalarType::String)
@@ -53,7 +53,7 @@ impl BuildSystem {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
-    /// use relvar::experimental::build_system::BuildSystem;
+    /// use relvar::experimental::BuildSystem;
     ///
     /// let file_type = TupleType::new()
     ///     .with_attribute("file", ScalarType::String)
@@ -88,7 +88,7 @@ impl BuildSystem {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
-    /// use relvar::experimental::build_system::BuildSystem;
+    /// use relvar::experimental::BuildSystem;
     ///
     /// let file_type = TupleType::new()
     ///     .with_attribute("file", ScalarType::String)

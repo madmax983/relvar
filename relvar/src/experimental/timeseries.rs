@@ -36,7 +36,7 @@ use relvar_core::values::{Relation, ScalarValue};
 ///
 /// ```
 /// use relvar::{tuple, Relation, RelationType, TupleType, ScalarType};
-/// use relvar::experimental::timeseries::moving_average;
+/// use relvar::experimental::moving_average;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create a relation with (time, value)

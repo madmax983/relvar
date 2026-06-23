@@ -26,7 +26,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::blockchain::Blockchain;
+/// use relvar::experimental::Blockchain;
 /// // Note: This is a placeholder example
 /// ```
 pub struct Blockchain {
@@ -42,7 +42,7 @@ impl Blockchain {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::blockchain::Blockchain;
+    /// use relvar::experimental::Blockchain;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(blocks: Relation, transactions: Relation) -> Self {
@@ -63,7 +63,7 @@ impl Blockchain {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::blockchain::Blockchain;
+    /// use relvar::experimental::Blockchain;
     /// // Note: This is a placeholder example
     /// ```
     pub fn compute_balances(&self) -> Result<Relation, DatabaseError> {
@@ -111,7 +111,7 @@ impl Blockchain {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::blockchain::Blockchain;
+    /// use relvar::experimental::Blockchain;
     /// // Note: This is a placeholder example
     /// ```
     pub fn is_valid(&self) -> Result<bool, DatabaseError> {

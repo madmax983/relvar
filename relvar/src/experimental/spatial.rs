@@ -58,7 +58,7 @@ pub fn point_type() -> ScalarType {
 /// # Examples
 ///
 /// ```
-/// use relvar::experimental::spatial::point;
+/// use relvar::experimental::point;
 /// use relvar_core::values::ScalarValue;
 ///
 /// let p = point(3.0, 4.0);
@@ -92,7 +92,7 @@ pub fn point(x: f64, y: f64) -> ScalarValue {
 /// # Examples
 ///
 /// ```
-/// use relvar::experimental::spatial::{point, distance};
+/// use relvar::experimental::{point, distance};
 ///
 /// let p1 = point(0.0, 0.0);
 /// let p2 = point(3.0, 4.0);
@@ -123,7 +123,7 @@ pub fn distance(p1: &ScalarValue, p2: &ScalarValue) -> Result<f64, String> {
 /// # Examples
 ///
 /// ```
-/// use relvar::experimental::spatial::{point, within};
+/// use relvar::experimental::{point, within};
 ///
 /// let center = point(0.0, 0.0);
 /// let p = point(3.0, 4.0);

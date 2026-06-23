@@ -18,7 +18,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::physics::PhysicsEngine;
+/// use relvar::experimental::PhysicsEngine;
 /// // Note: This is a placeholder example
 /// ```
 pub struct PhysicsEngine {
@@ -37,7 +37,7 @@ impl PhysicsEngine {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::physics::PhysicsEngine;
+    /// use relvar::experimental::PhysicsEngine;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(particles: Relation, g: f64, dt: f64) -> Self {
@@ -49,7 +49,7 @@ impl PhysicsEngine {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::physics::PhysicsEngine;
+    /// use relvar::experimental::PhysicsEngine;
     /// // Note: This is a placeholder example
     /// ```
     pub fn next_step(&self) -> Result<Relation, DatabaseError> {

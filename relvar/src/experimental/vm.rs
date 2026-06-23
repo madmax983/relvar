@@ -27,7 +27,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::vm::RelationalVM;
+/// use relvar::experimental::RelationalVM;
 ///
 /// // Set up a minimal VM environment:
 /// let reg_type = RelationType::new(TupleType::new()
@@ -76,7 +76,7 @@ impl RelationalVM {
     ///
     /// ```
     /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::vm::RelationalVM;
+    /// use relvar::experimental::RelationalVM;
     ///
     /// let reg_type = RelationType::new(TupleType::new()
     ///     .with_attribute("reg_id", ScalarType::String)
@@ -121,7 +121,7 @@ impl RelationalVM {
     ///
     /// ```
     /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::vm::RelationalVM;
+    /// use relvar::experimental::RelationalVM;
     ///
     /// let reg_type = RelationType::new(TupleType::new()
     ///     .with_attribute("reg_id", ScalarType::String)
@@ -248,7 +248,7 @@ impl RelationalVM {
     ///
     /// ```
     /// use relvar_core::{tuple, Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::vm::RelationalVM;
+    /// use relvar::experimental::RelationalVM;
     ///
     /// let reg_type = RelationType::new(TupleType::new()
     ///     .with_attribute("reg_id", ScalarType::String)

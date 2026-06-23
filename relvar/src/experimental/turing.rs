@@ -22,7 +22,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::turing::TuringMachine;
+/// use relvar::experimental::TuringMachine;
 /// // Note: This is a placeholder example
 /// ```
 pub struct TuringMachine {
@@ -43,7 +43,7 @@ impl TuringMachine {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::turing::TuringMachine;
+    /// use relvar::experimental::TuringMachine;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(
@@ -66,7 +66,7 @@ impl TuringMachine {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::turing::TuringMachine;
+    /// use relvar::experimental::TuringMachine;
     /// // Note: This is a placeholder example
     /// ```
     pub fn step(&mut self) -> Result<bool, DatabaseError> {
@@ -163,7 +163,7 @@ impl TuringMachine {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::turing::TuringMachine;
+    /// use relvar::experimental::TuringMachine;
     /// // Note: This is a placeholder example
     /// ```
     pub fn run(&mut self, max_steps: usize) -> Result<usize, DatabaseError> {

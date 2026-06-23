@@ -36,7 +36,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
-/// use relvar::experimental::gnn::GraphNeuralNetwork;
+/// use relvar::experimental::GraphNeuralNetwork;
 ///
 /// // 1. Features: Node 1 has a value of 1.0, Node 3 has a value of 2.0.
 /// let mut features = Relation::new(RelationType::new(
@@ -97,7 +97,7 @@ impl GraphNeuralNetwork {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
-    /// use relvar::experimental::gnn::GraphNeuralNetwork;
+    /// use relvar::experimental::GraphNeuralNetwork;
     ///
     /// // Minimal example for a single node passing a value along an edge.
     /// let mut features = Relation::new(RelationType::new(TupleType::new()

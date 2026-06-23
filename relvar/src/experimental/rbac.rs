@@ -25,7 +25,7 @@ use relvar_core::{error::DatabaseError, values::Relation};
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::rbac::RelationalRbac;
+/// use relvar::experimental::RelationalRbac;
 /// // Note: This is a placeholder example
 /// ```
 pub struct RelationalRbac {
@@ -43,7 +43,7 @@ impl RelationalRbac {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::rbac::RelationalRbac;
+    /// use relvar::experimental::RelationalRbac;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(user_roles: Relation, role_hierarchy: Relation, permissions: Relation) -> Self {
@@ -61,7 +61,7 @@ impl RelationalRbac {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::rbac::RelationalRbac;
+    /// use relvar::experimental::RelationalRbac;
     /// // Note: This is a placeholder example
     /// ```
     pub fn effective_permissions(&self) -> Result<Relation, DatabaseError> {
@@ -97,7 +97,7 @@ impl RelationalRbac {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::rbac::RelationalRbac;
+    /// use relvar::experimental::RelationalRbac;
     /// // Note: This is a placeholder example
     /// ```
     pub fn check_access(

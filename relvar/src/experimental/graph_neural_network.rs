@@ -28,7 +28,7 @@ use relvar_core::{algebra::Aggregation, error::DatabaseError, values::Relation};
 /// ```
 /// use relvar_core::types::{RelationType, ScalarType, TupleType};
 /// use relvar_core::values::Relation;
-/// use relvar::experimental::graph_neural_network::RelationalGNN;
+/// use relvar::experimental::RelationalGNN;
 ///
 /// let features_type = RelationType::new(
 ///     TupleType::new()
@@ -62,7 +62,7 @@ impl RelationalGNN {
     /// ```
     /// use relvar_core::types::{RelationType, ScalarType, TupleType};
     /// use relvar_core::values::Relation;
-    /// use relvar::experimental::graph_neural_network::RelationalGNN;
+    /// use relvar::experimental::RelationalGNN;
     ///
     /// let features_type = RelationType::new(
     ///     TupleType::new()
@@ -99,7 +99,7 @@ impl RelationalGNN {
     /// use relvar_core::tuple;
     /// use relvar_core::types::{RelationType, ScalarType, TupleType};
     /// use relvar_core::values::Relation;
-    /// use relvar::experimental::graph_neural_network::RelationalGNN;
+    /// use relvar::experimental::RelationalGNN;
     ///
     /// let features_type = RelationType::new(
     ///     TupleType::new()

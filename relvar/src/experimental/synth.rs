@@ -27,7 +27,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-/// use relvar::experimental::synth::Synth;
+/// use relvar::experimental::Synth;
 /// // Note: This is a placeholder example
 /// ```
 pub struct Synth {
@@ -43,7 +43,7 @@ impl Synth {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::synth::Synth;
+    /// use relvar::experimental::Synth;
     /// // Note: This is a placeholder example
     /// ```
     pub fn new(timeline: Relation, oscillators: Relation) -> Self {
@@ -58,7 +58,7 @@ impl Synth {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::synth::Synth;
+    /// use relvar::experimental::Synth;
     /// // Note: This is a placeholder example
     /// ```
     pub fn create_timeline(
@@ -88,7 +88,7 @@ impl Synth {
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// use relvar::experimental::synth::Synth;
+    /// use relvar::experimental::Synth;
     /// // Note: This is a placeholder example
     /// ```
     pub fn synthesize(&self) -> Result<Relation, DatabaseError> {
