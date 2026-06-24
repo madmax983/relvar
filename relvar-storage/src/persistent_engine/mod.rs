@@ -131,7 +131,7 @@ impl PersistentEngine {
             if self
                 .storage_manager
                 .read()
-                .unwrap()
+                .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
                 .relation_exists(&relation_name)
             {
                 self.cleanup_relation_uncommitted_inserts(&relation_name)?;
@@ -161,7 +161,7 @@ impl PersistentEngine {
         let snapshot = self.get_snapshot_for_current_context()?;
 
         // scan_relation implicitly filters out uncommitted tuples because they are not in committed_txns
-        let relation = self.storage_manager.write().unwrap().scan_relation(
+        let relation = self.storage_manager.write().map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?.scan_relation(
             relation_name,
             &snapshot,
             &self.committed_txns,
@@ -197,7 +197,7 @@ impl PersistentEngine {
         self.flush_wal()?;
 
         // Now safe to flush heap files (dirty pages to disk)
-        self.storage_manager.write().unwrap().flush_heap_files()?;
+        self.storage_manager.write().map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?.flush_heap_files()?;
 
         // Determine minimum active LSN
         let min_active_lsn = self.get_checkpoint_lsn();
@@ -212,7 +212,7 @@ impl PersistentEngine {
         let gc_lsn = self.get_checkpoint_lsn();
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
             .garbage_collect_versions(gc_lsn, &self.committed_txns)?;
 
         Ok(())
@@ -293,27 +293,27 @@ impl StorageEngine for PersistentEngine {
     ) -> Result<(), StorageError> {
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
             .create_relation(name, relation_type)
     }
 
     fn drop_relation(&mut self, name: &str) -> Result<(), StorageError> {
-        self.storage_manager.write().unwrap().drop_relation(name)
+        self.storage_manager.write().map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?.drop_relation(name)
     }
 
     fn relation_exists(&self, name: &str) -> bool {
-        self.storage_manager.read().unwrap().relation_exists(name)
+        self.storage_manager.read().map(|l| l.relation_exists(name)).unwrap_or(false)
     }
 
     fn get_relation_metadata(&self, name: &str) -> Result<RelationMetadata, StorageError> {
         self.storage_manager
             .read()
-            .unwrap()
+            .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
             .get_relation_metadata(name)
     }
 
     fn list_relations(&self) -> Vec<String> {
-        self.storage_manager.read().unwrap().list_relations()
+        self.storage_manager.read().map(|l| l.list_relations()).unwrap_or_default()
     }
 
     fn load_relation(&self, name: &str) -> Result<Relation, StorageError> {
@@ -321,7 +321,7 @@ impl StorageEngine for PersistentEngine {
         let snapshot = self.get_snapshot_for_current_context()?;
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
             .scan_relation(name, &snapshot, &self.committed_txns)
     }
 
@@ -330,7 +330,7 @@ impl StorageEngine for PersistentEngine {
 
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
             .store_relation(name, relation, txn_id)?;
 
         if auto_commit {
@@ -359,7 +359,7 @@ impl StorageEngine for PersistentEngine {
 
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
             .insert_tuple(name, tuple, txn_id)?;
 
         if auto_commit {
@@ -395,7 +395,7 @@ impl StorageEngine for PersistentEngine {
             .flush()
             .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
 
-        self.storage_manager.write().unwrap().flush_heap_files()?;
+        self.storage_manager.write().map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?.flush_heap_files()?;
 
         self.committed_txns.insert(snapshot.txn_id);
         self.active_txns.commit(snapshot.txn_id);
@@ -448,7 +448,7 @@ impl PersistentEngine {
 
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
             .scan_relation(name, &snapshot, &self.committed_txns)
     }
 
@@ -473,7 +473,7 @@ impl PersistentEngine {
 
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::Other(format!("PoisonError: {}", e)))?
             .insert_tuple(name, tuple, txn_id)
     }
 }
