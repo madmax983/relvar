@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-06-24 - Handle panics caused by large aggregations and missing sets
+**Learning:** `Relation::summarize()` can panic or overflow when processing exceptionally large numeric sets (like averaging `f64::MAX`) and properly requires nested error handling.
+**Action:** Always structure aggregate coverage tests to verify safe error boundaries (like checked floating point `is_finite()`) and avoid using `.unwrap()` directly on aggregation results. Write specific tests forcing bounds verification via boundary constants.
