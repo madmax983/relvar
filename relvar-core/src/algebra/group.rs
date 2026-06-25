@@ -412,14 +412,10 @@ fn build_ungroup_result_heading(
     Ok(result_heading)
 }
 
-fn compute_ungrouped_tuples(
+fn calculate_ungrouped_capacity(
     relation: &Relation,
     rva_name: &str,
-    result_heading: &TupleType,
-    _rva_relation_type: &RelationType,
-) -> Result<std::collections::HashSet<Tuple>, UngroupError> {
-    // Perform an initial pass to sum the cardinality of the target RVAs
-    // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
+) -> Result<usize, UngroupError> {
     let mut total_capacity = 0;
     for tuple in relation.tuples() {
         let val = tuple
@@ -430,6 +426,18 @@ fn compute_ungrouped_tuples(
             _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
         }
     }
+    Ok(total_capacity)
+}
+
+fn compute_ungrouped_tuples(
+    relation: &Relation,
+    rva_name: &str,
+    result_heading: &TupleType,
+    _rva_relation_type: &RelationType,
+) -> Result<std::collections::HashSet<Tuple>, UngroupError> {
+    // Perform an initial pass to sum the cardinality of the target RVAs
+    // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
+    let total_capacity = calculate_ungrouped_capacity(relation, rva_name)?;
     let mut result_tuples = std::collections::HashSet::with_capacity(total_capacity);
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
