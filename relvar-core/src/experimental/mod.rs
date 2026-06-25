@@ -9,3 +9,5 @@ pub mod pagerank;
 
 /// Knowledge Graph implementation.
 pub mod knowledge_graph;
+/// Relational Turing Machine
+pub mod turing_machine;
