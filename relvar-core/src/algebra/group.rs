@@ -420,13 +420,17 @@ fn compute_ungrouped_tuples(
 ) -> Result<std::collections::HashSet<Tuple>, UngroupError> {
     // Perform an initial pass to sum the cardinality of the target RVAs
     // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
-    let mut total_capacity = 0;
+    let mut total_capacity: usize = 0;
     for tuple in relation.tuples() {
         let val = tuple
             .get(rva_name)
             .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
         match val {
-            ScalarValue::Relation(rel) => total_capacity += rel.cardinality(),
+            ScalarValue::Relation(rel) => {
+                total_capacity = total_capacity
+                    .checked_add(rel.cardinality())
+                    .expect("capacity overflow")
+            }
             _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
         }
     }

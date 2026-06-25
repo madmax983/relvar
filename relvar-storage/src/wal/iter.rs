@@ -25,7 +25,7 @@ impl<'a> WalRecordIter<'a> {
             .try_into()
             .unwrap(); // Length is checked above
         let lsn_u64 = u64::from_le_bytes(lsn_bytes);
-        self.offset += 8;
+        self.offset = self.offset.checked_add(8).expect("Offset overflow");
         Lsn::new(lsn_u64)
     }
 
@@ -43,7 +43,7 @@ impl<'a> WalRecordIter<'a> {
                 ));
             }
         };
-        self.offset += 8;
+        self.offset = self.offset.checked_add(8).expect("Offset overflow");
         Ok((record_len_u64, record_len))
     }
 }

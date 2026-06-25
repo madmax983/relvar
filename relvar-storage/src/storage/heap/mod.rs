@@ -439,7 +439,7 @@ impl HeapFile {
         } else {
             let new_slot = slots.len() as u32;
             slots.push(None);
-            *slot_count += 1;
+            *slot_count = slot_count.checked_add(1).expect("Slot count overflow");
             new_slot
         }
     }
@@ -535,7 +535,7 @@ impl HeapFile {
             match insert_fn(self, page_id) {
                 Ok(result) => return Ok(result),
                 Err(HeapError::PageFull) => {
-                    page_id += 1;
+                    page_id = page_id.checked_add(1).expect("PageId overflow");
                     continue;
                 }
                 Err(e) => return Err(e),
@@ -796,7 +796,7 @@ impl HeapFile {
                 );
             }
 
-            page_id += 1;
+            page_id = page_id.checked_add(1).expect("PageId overflow");
         }
 
         Ok(results)
@@ -1387,7 +1387,7 @@ impl HeapFile {
         oldest_active_lsn: crate::wal::Lsn,
         committed: &std::collections::HashSet<crate::wal::TransactionId>,
     ) -> Result<usize, HeapError> {
-        let mut removed_count = 0;
+        let mut removed_count: usize = 0;
         let mut page_id = 0;
 
         loop {
@@ -1398,13 +1398,15 @@ impl HeapFile {
             }
 
             if !self.is_versioned_page(&page) {
-                page_id += 1;
+                page_id = page_id.checked_add(1).expect("PageId overflow");
                 continue;
             }
 
-            removed_count += self.gc_process_page(page_id, &page, oldest_active_lsn, committed)?;
+            removed_count = removed_count
+                .checked_add(self.gc_process_page(page_id, &page, oldest_active_lsn, committed)?)
+                .expect("removed_count overflow");
 
-            page_id += 1;
+            page_id = page_id.checked_add(1).expect("PageId overflow");
         }
 
         Ok(removed_count)
@@ -1426,7 +1428,7 @@ impl HeapFile {
         // Extract existing tuple data
         let mut existing_tuples = self.extract_all_versioned_tuples(page, &versioned_page.slots)?;
 
-        let mut removed_count = 0;
+        let mut removed_count: usize = 0;
         let mut page_modified = false;
 
         // Check each slot for dead versions
@@ -1437,7 +1439,9 @@ impl HeapFile {
                 // This version is dead - remove it
                 *slot_option = None;
                 existing_tuples[idx] = Vec::new();
-                removed_count += 1;
+                removed_count = removed_count
+                    .checked_add(1)
+                    .expect("removed_count overflow");
                 page_modified = true;
             }
         }
@@ -1517,7 +1521,7 @@ impl HeapFile {
                 Ok(vp) => vp,
                 Err(_) => {
                     // Not a versioned page, skip
-                    page_id += 1;
+                    page_id = page_id.checked_add(1).expect("PageId overflow");
                     continue;
                 }
             };
@@ -1552,7 +1556,7 @@ impl HeapFile {
                 }
             }
 
-            page_id += 1;
+            page_id = page_id.checked_add(1).expect("PageId overflow");
         }
 
         Ok(results)
