@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 use relvar_core::DatabaseError;
-use relvar_core::algebra::{Delta, DivideError, ExtendError, IntersectError, DifferenceError};
+use relvar_core::algebra::{Delta, DifferenceError, DivideError, ExtendError, IntersectError};
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};
@@ -202,7 +202,6 @@ fn test_minus_type_mismatch() {
     assert!(matches!(result, Err(DifferenceError)));
 }
 
-
 #[test]
 fn test_divide_empty_remainder_attributes_2() {
     let heading1 = TupleType::new().with_attribute("A".to_string(), ScalarType::Int);
@@ -217,13 +216,14 @@ fn test_divide_empty_remainder_attributes_2() {
 
 #[test]
 fn test_divide_empty_divisor_returns_remainder() {
-
     let dividend_heading = TupleType::new()
         .with_attribute("supplier_id", ScalarType::String)
         .with_attribute("part_id", ScalarType::String);
     let mut supplies = Relation::new(RelationType::new(dividend_heading));
 
-    supplies.insert(tuple! { supplier_id: "S1", part_id: "P1" }).unwrap();
+    supplies
+        .insert(tuple! { supplier_id: "S1", part_id: "P1" })
+        .unwrap();
 
     let parts_heading = TupleType::new().with_attribute("part_id", ScalarType::String);
     let parts = Relation::new(RelationType::new(parts_heading));
