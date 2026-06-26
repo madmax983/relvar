@@ -22,6 +22,7 @@
 //! - **[`turing`](crate::experimental::turing)**: Relational Turing Machine.
 //! - **[`vcs`](crate::experimental::vcs)**: Relational Version Control System (RelGit).
 //! - **[`circuit`](crate::experimental::circuit)**: Relational Logic Circuit Simulator.
+//! - **[`dft`](crate::experimental::dft)**: Relational Discrete Fourier Transform (DFT).
 //! - **[`automata`](crate::experimental::automata)**: Relational Automata (NFA).
 //! - **[`gnn`](crate::experimental::gnn)**: Relational Graph Neural Network.
 //! - **[`enigma`](crate::experimental::enigma)**: Relational Enigma Machine.
@@ -38,6 +39,8 @@ pub mod blockchain;
 pub mod build_system;
 pub mod cellular_automaton;
 pub mod circuit;
+/// Relational Discrete Fourier Transform (DFT).
+pub mod dft;
 pub mod ecs;
 pub mod enigma;
 pub mod expert_system;
