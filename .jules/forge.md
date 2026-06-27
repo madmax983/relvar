@@ -631,3 +631,7 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## 2024-10-24 - [Guard Clauses for Flattening Deep Constraints]
+**Learning:** The `ConstraintManager` methods (`validate_type_constraints`, `validate_check_constraints`, `validate_key_constraints_single_tuple`) and `Tuple::new` contained deeply nested `if let Some` blocks and manual iterative checks, which increased cognitive load.
+**Action:** Used `let Some(...) = ... else { return ... };` guard clauses to invert conditionals and return early, significantly flattening the logic. Replaced manual `for` loop with `.find()` iterator pipeline for cleaner searching.

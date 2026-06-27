@@ -214,27 +214,27 @@ impl Tuple {
 
         // Validate values during collection to avoid double iteration and allocations on invalid data
         for (attr_name, value) in values {
-            if let Some(expected_type) = tuple_type.get_attribute_type(&attr_name) {
-                if !value.is_type(expected_type) {
-                    return Err(TupleError::TypeMismatch(
-                        attr_name,
-                        expected_type.name().to_string(),
-                        value.scalar_type().name().to_string(),
-                    ));
-                }
-                values_map.insert(attr_name, value);
-            } else {
+            let Some(expected_type) = tuple_type.get_attribute_type(&attr_name) else {
                 return Err(TupleError::AttributeNotFound(attr_name));
+            };
+
+            if !value.is_type(expected_type) {
+                return Err(TupleError::TypeMismatch(
+                    attr_name,
+                    expected_type.name().to_string(),
+                    value.scalar_type().name().to_string(),
+                ));
             }
+            values_map.insert(attr_name, value);
         }
 
         // Verify all attributes have values. Optimize by checking length first.
-        if values_map.len() != tuple_type.degree() {
-            for attr_name in tuple_type.attribute_names() {
-                if !values_map.contains_key(attr_name) {
-                    return Err(TupleError::MissingValue(attr_name.clone()));
-                }
-            }
+        if values_map.len() != tuple_type.degree()
+            && let Some(missing_attr) = tuple_type
+                .attribute_names()
+                .find(|attr_name| !values_map.contains_key(*attr_name))
+        {
+            return Err(TupleError::MissingValue(missing_attr.clone()));
         }
 
         Ok(Self {
