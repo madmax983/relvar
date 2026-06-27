@@ -247,17 +247,6 @@ impl PrimaryKey {
         self.key.attributes()
     }
 
-    /// Get the underlying candidate key
-    ///
-    /// # Examples
-    ///
-    /// ```text
-    /// // Example
-    /// ```
-    pub fn as_candidate_key(&self) -> &CandidateKey {
-        &self.key
-    }
-
     /// Check if this key is satisfied by a relation
     ///
     /// # Examples

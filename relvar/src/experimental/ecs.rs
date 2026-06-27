@@ -201,31 +201,6 @@ impl<E: StorageEngine> World<E> {
         self.db.insert(&rel_name, new_tuple)
     }
 
-    /// Removes a component from a specific entity.
-    ///
-    /// This deletes the entity's data for this component from the underlying relation.
-    ///
-    /// # Errors
-    ///
-    /// Yields a `DatabaseError` if the underlying database delete operation fails.
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar::{Database, InMemoryEngine};
-    /// // Note: This is a placeholder example
-    /// ```
-    pub fn remove_component(
-        &mut self,
-        entity: Entity,
-        component_name: &str,
-    ) -> Result<(), DatabaseError> {
-        let rel_name = self.component_rel_name(component_name);
-        self.db.delete(&rel_name, |t| {
-            t.get_typed::<Entity>(ENTITY_ID_ATTR) == Some(entity)
-        })?;
-        Ok(())
-    }
-
     /// Obtains the component data for a specific entity.
     ///
     /// # Errors

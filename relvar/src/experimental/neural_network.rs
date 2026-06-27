@@ -137,24 +137,6 @@ impl NeuralNetwork {
         Ok(())
     }
 
-    /// Computes the full forward pass through all layers.
-    ///
-    /// # Arguments
-    ///
-    /// * `num_layers` - The total number of layers to process.
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
-    /// // Note: This is a placeholder example
-    /// ```
-    pub fn forward_pass(&mut self, num_layers: i64) -> Result<(), DatabaseError> {
-        for i in 0..num_layers {
-            self.forward_layer(i)?;
-        }
-        Ok(())
-    }
-
     /// Retrieves the activations for a specific layer.
     /// # Examples
     ///
