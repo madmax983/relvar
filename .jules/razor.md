@@ -21,3 +21,7 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
+## [Reduction]
+**Bloat:** Empty namespace struct `GraphNeuralNetwork` used only to group a single static method `forward`.
+**Cut:** Removed the struct and `impl` block, un-nesting `forward` into a standalone module-level function `forward()`.
+**Saved:** Unnecessary indentation, cognitive load of "Enterprise FizzBuzz" namespace struct.
