@@ -1,0 +1,14 @@
+Scan Log
+
+Threats investigated:
+- Memory Safety & Unsafe
+- Input & Logic
+- Supply Chain
+
+Findings:
+- Ran cargo audit. No vulnerabilities found in dependencies.
+- No `unsafe` block found in the codebase.
+- Checked usages of math operations and panics. The system correctly limits payload in deserializers, and bounds input appropriately.
+
+Conclusion:
+- No security risks were found.
