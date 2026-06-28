@@ -13,8 +13,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
-//! use relvar_storage::storage::Catalog;
+//! ```text
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use std::path::PathBuf;
 //!
@@ -36,7 +35,7 @@
 //! // Look up relation metadata
 //! let metadata = catalog.get_relation("employees").unwrap();
 //! assert_eq!(metadata.relation_type, rel_type);
-//! ```
+//! ```text
 
 use relvar_core::types::RelationType;
 use serde::{Deserialize, Serialize};
@@ -48,7 +47,7 @@ use thiserror::Error;
 
 /// Errors that can occur during catalog operations.
 #[derive(Debug, Error)]
-pub enum CatalogError {
+pub(crate) enum CatalogError {
     /// An I/O error occurred while reading or writing the catalog.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -78,7 +77,7 @@ const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 /// - `relation_type` - The type (heading) defining attribute names and types
 /// - `heap_file_path` - Path to the heap file containing the relation's tuples
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RelationMetadata {
+pub(crate) struct CatalogEntry {
     /// The relation's type (heading).
     pub relation_type: RelationType,
     /// Path to the heap file storing the relation's data.
@@ -97,9 +96,8 @@ pub struct RelationMetadata {
 ///
 /// # Examples
 ///
-/// ```no_run
-/// use relvar_storage::storage::Catalog;
-/// use relvar_core::types::{RelationType, TupleType, ScalarType};
+/// ```text
+/// /// use relvar_core::types::{RelationType, TupleType, ScalarType};
 /// use std::path::PathBuf;
 ///
 /// // Create and populate catalog
@@ -123,11 +121,11 @@ pub struct RelationMetadata {
 /// // Later: load from disk
 /// let loaded = Catalog::load("catalog.json").unwrap();
 /// assert!(loaded.relation_exists("employees"));
-/// ```
+/// ```text
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Catalog {
+pub(crate) struct Catalog {
     /// Map from relation name to metadata.
-    relations: HashMap<String, RelationMetadata>,
+    relations: HashMap<String, CatalogEntry>,
 }
 
 impl Catalog {
@@ -135,13 +133,12 @@ impl Catalog {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use relvar_storage::storage::Catalog;
-    ///
+    /// ```text
+    ///     ///
     /// let catalog = Catalog::new();
     /// assert_eq!(catalog.relation_count(), 0);
-    /// ```
-    pub fn new() -> Self {
+    /// ```text
+    pub(crate) fn new() -> Self {
         Self {
             relations: HashMap::new(),
         }
@@ -157,17 +154,16 @@ impl Catalog {
     /// Returns [`CatalogError::Serialization`] if the JSON is invalid.
     ///
     /// # Examples
-    /// ```
-    /// use relvar_storage::storage::Catalog;
-    /// use tempfile::tempdir;
+    /// ```text
+    ///     /// use tempfile::tempdir;
     /// let dir = tempdir().unwrap();
     /// let path = dir.path().join("catalog.json");
     /// let catalog = Catalog::new();
     /// catalog.save(&path).unwrap();
     /// let loaded = Catalog::load(&path).unwrap();
     /// assert_eq!(loaded.relation_count(), 0);
-    /// ```
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, CatalogError> {
+    /// ```text
+    pub(crate) fn load<P: AsRef<Path>>(path: P) -> Result<Self, CatalogError> {
         Self::load_with_limit(path, MAX_CATALOG_SIZE)
     }
 
@@ -209,16 +205,15 @@ impl Catalog {
     /// Returns [`CatalogError::Serialization`] if serialization fails.
     ///
     /// # Examples
-    /// ```
-    /// use relvar_storage::storage::Catalog;
-    /// use tempfile::tempdir;
+    /// ```text
+    ///     /// use tempfile::tempdir;
     /// let dir = tempdir().unwrap();
     /// let path = dir.path().join("catalog.json");
     /// let catalog = Catalog::new();
     /// catalog.save(&path).unwrap();
     /// assert!(path.exists());
-    /// ```
-    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), CatalogError> {
+    /// ```text
+    pub(crate) fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), CatalogError> {
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -248,7 +243,7 @@ impl Catalog {
     ///
     /// Returns [`CatalogError::RelationExists`] if a relation with this
     /// name already exists.
-    pub fn create_relation(
+    pub(crate) fn create_relation(
         &mut self,
         name: String,
         relation_type: RelationType,
@@ -258,7 +253,7 @@ impl Catalog {
             return Err(CatalogError::RelationExists(name));
         }
 
-        let metadata = RelationMetadata {
+        let metadata = CatalogEntry {
             relation_type,
             heap_file_path,
         };
@@ -275,17 +270,16 @@ impl Catalog {
     /// this name exists.
     ///
     /// # Examples
-    /// ```
-    /// use relvar_storage::storage::Catalog;
-    /// use relvar_core::types::{RelationType, TupleType};
+    /// ```text
+    ///     /// use relvar_core::types::{RelationType, TupleType};
     /// use std::path::PathBuf;
     /// let mut catalog = Catalog::new();
     /// let rel_type = RelationType::new(TupleType::new());
     /// catalog.create_relation("my_table".to_string(), rel_type, PathBuf::from("my_table.heap")).unwrap();
     /// let meta = catalog.get_relation("my_table").unwrap();
     /// assert_eq!(meta.heap_file_path, PathBuf::from("my_table.heap"));
-    /// ```
-    pub fn get_relation(&self, name: &str) -> Result<&RelationMetadata, CatalogError> {
+    /// ```text
+    pub(crate) fn get_relation(&self, name: &str) -> Result<&CatalogEntry, CatalogError> {
         self.relations
             .get(name)
             .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))
@@ -294,12 +288,11 @@ impl Catalog {
     /// Checks if a relation with the given name exists.
     ///
     /// # Examples
-    /// ```
-    /// use relvar_storage::storage::Catalog;
-    /// let catalog = Catalog::new();
+    /// ```text
+    ///     /// let catalog = Catalog::new();
     /// assert!(!catalog.relation_exists("my_table"));
-    /// ```
-    pub fn relation_exists(&self, name: &str) -> bool {
+    /// ```text
+    pub(crate) fn relation_exists(&self, name: &str) -> bool {
         self.relations.contains_key(name)
     }
 
@@ -316,7 +309,7 @@ impl Catalog {
     ///
     /// Returns [`CatalogError::RelationNotFound`] if no relation with
     /// this name exists.
-    pub fn drop_relation(&mut self, name: &str) -> Result<RelationMetadata, CatalogError> {
+    pub(crate) fn drop_relation(&mut self, name: &str) -> Result<CatalogEntry, CatalogError> {
         self.relations
             .remove(name)
             .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))
@@ -325,7 +318,7 @@ impl Catalog {
     /// Retrieves a list of all relation names currently tracked by the catalog.
     ///
     /// The order of names is not guaranteed (hash map iteration order).
-    pub fn list_relations(&self) -> Vec<String> {
+    pub(crate) fn list_relations(&self) -> Vec<String> {
         self.relations.keys().cloned().collect()
     }
 
@@ -336,13 +329,13 @@ impl Catalog {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use relvar_storage::storage::Catalog;
-    ///
+    /// ```text
+    ///     ///
     /// let catalog = Catalog::new();
     /// assert_eq!(catalog.relation_count(), 0);
-    /// ```
-    pub fn relation_count(&self) -> usize {
+    /// ```text
+    #[allow(dead_code)]
+    pub(crate) fn relation_count(&self) -> usize {
         self.relations.len()
     }
 }

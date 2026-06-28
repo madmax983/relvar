@@ -8,7 +8,8 @@
 //! It abstracts the physical storage details from the transaction management layer.
 
 use crate::mvcc::TransactionSnapshot;
-use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
+use crate::storage::catalog::{Catalog, CatalogError};
+use crate::storage::{HeapError, HeapFile};
 use crate::wal::TransactionId;
 use relvar_core::storage_engine::{RelationMetadata, StorageError};
 use relvar_core::types::RelationType;

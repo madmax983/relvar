@@ -38,7 +38,8 @@
 //! - **Slotted Pages**: Allows variable-length tuples to be stored efficiently within fixed-size pages.
 //! - **Tuple IDs**: Tuples are identified internally by `(PageID, SlotIndex)`, but this is never exposed to the logical layer.
 //!
-//! ### 3. Catalog ([`storage::Catalog`])
+//! ### 3. Catalog
+//! Stores metadata about relations
 //! Stores metadata about relations (names, types, constraints).
 //! Currently implemented as a JSON file for simplicity, but designed to be replaced with a system relation.
 //!
@@ -140,4 +141,4 @@ pub(crate) mod mvcc;
 pub use persistent_engine::PersistentEngine;
 
 // Re-export key storage types
-pub use storage::{Catalog, CatalogError, HeapError, HeapFile, Page, PageError, PageFile};
+pub use storage::{HeapError, HeapFile, Page, PageError, PageFile};
