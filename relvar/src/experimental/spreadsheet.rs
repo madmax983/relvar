@@ -46,53 +46,10 @@ impl Spreadsheet {
         loop {
             let initial_count = current_values.cardinality();
 
-            // Find unresolved formulas by antijoining/difference with resolved values
-            // We only want formulas whose 'id' is NOT yet in current_values
-            let resolved_ids = current_values.project(&["id"]);
-            let formula_ids = self.formulas.project(&["id"]);
-
-            let unresolved_ids = formula_ids
-                .difference(&resolved_ids)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            let unresolved_formulas = self.formulas.join(&unresolved_ids)?;
-
-            // Rename current_values for arg1
-            let values_arg1 = current_values.rename(&[("id", "arg1"), ("val", "val1")]);
-            // Rename current_values for arg2
-            let values_arg2 = current_values.rename(&[("id", "arg2"), ("val", "val2")]);
-
-            // Join unresolved formulas with arg1 values
-            let with_arg1 = unresolved_formulas.join(&values_arg1)?;
-            // Join with arg2 values
-            let fully_resolved_args = with_arg1.join(&values_arg2)?;
-
-            // Evaluate the formula
-            let evaluated = fully_resolved_args
-                .extend("val", ScalarType::Float, |t| {
-                    let op = t.get_typed::<String>("op").unwrap();
-                    let val1 = t.get_typed::<f64>("val1").unwrap();
-                    let val2 = t.get_typed::<f64>("val2").unwrap();
-
-                    let result = match op.as_str() {
-                        "ADD" => val1 + val2,
-                        "SUB" => val1 - val2,
-                        "MUL" => val1 * val2,
-                        "DIV" => {
-                            if val2 != 0.0 {
-                                val1 / val2
-                            } else {
-                                f64::NAN
-                            }
-                        }
-                        _ => f64::NAN,
-                    };
-                    ScalarValue::Float(result)
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // Project back to (id, val)
-            let new_values = evaluated.project(&["id", "val"]);
+            let unresolved_formulas = self.get_unresolved_formulas(&current_values)?;
+            let fully_resolved_args =
+                self.resolve_formula_arguments(&unresolved_formulas, &current_values)?;
+            let new_values = self.compute_formula_results(&fully_resolved_args)?;
 
             // Union with current values
             current_values = current_values
@@ -105,6 +62,62 @@ impl Spreadsheet {
         }
 
         Ok(current_values)
+    }
+
+    fn get_unresolved_formulas(
+        &self,
+        current_values: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        let resolved_ids = current_values.project(&["id"]);
+        let formula_ids = self.formulas.project(&["id"]);
+
+        let unresolved_ids = formula_ids
+            .difference(&resolved_ids)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        self.formulas.join(&unresolved_ids)
+    }
+
+    fn resolve_formula_arguments(
+        &self,
+        unresolved_formulas: &Relation,
+        current_values: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        let values_arg1 = current_values.rename(&[("id", "arg1"), ("val", "val1")]);
+        let values_arg2 = current_values.rename(&[("id", "arg2"), ("val", "val2")]);
+
+        let with_arg1 = unresolved_formulas.join(&values_arg1)?;
+        with_arg1.join(&values_arg2)
+    }
+
+    fn compute_formula_results(
+        &self,
+        fully_resolved_args: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        let evaluated = fully_resolved_args
+            .extend("val", ScalarType::Float, |t| {
+                let op = t.get_typed::<String>("op").unwrap();
+                let val1 = t.get_typed::<f64>("val1").unwrap();
+                let val2 = t.get_typed::<f64>("val2").unwrap();
+
+                let result = match op.as_str() {
+                    "ADD" => val1 + val2,
+                    "SUB" => val1 - val2,
+                    "MUL" => val1 * val2,
+                    "DIV" => {
+                        if val2 != 0.0 {
+                            val1 / val2
+                        } else {
+                            f64::NAN
+                        }
+                    }
+                    _ => f64::NAN,
+                };
+                ScalarValue::Float(result)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        Ok(evaluated.project(&["id", "val"]))
     }
 }
 
