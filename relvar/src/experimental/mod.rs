@@ -31,6 +31,8 @@
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
+//!
+//! - **[`mrp`](crate::experimental::mrp)**: Relational Material Requirements Planning (MRP).
 
 pub mod automata;
 pub mod automl;
@@ -55,6 +57,8 @@ pub mod dom;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;
 pub mod markov;
+/// Relational Material Requirements Planning (MRP) Simulator.
+pub mod mrp;
 pub mod parser;
 /// Relational Petri Net Simulator.
 pub mod petri_net;

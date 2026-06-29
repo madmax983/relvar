@@ -133,3 +133,8 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+
+## Relational Material Requirements Planning (MRP)
+**Concept:** Modeled a Supply Chain Bill of Materials (BOM) explosion and MRP simulator using purely relational algebra. The BOM, product demand, and inventory are relations. By iterating through relational semi-joins, semi-differences, extensions, joins, and summations, the simulator dynamically breaks assemblies into raw materials and calculates total requirements across the supply chain, resolving final shortages against inventory stock.
+**Fate:** TBD
+**Lesson:** TBD
