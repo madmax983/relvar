@@ -9,3 +9,7 @@
 ## 2026-04-24 - [Unsafe unwrap in StorageManager]
 **Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
 **Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
+
+## 2026-06-29 - [Update anyhow for RUSTSEC-2026-0190]
+**Threat:** Unsoundness in `Error::downcast_mut()` in `anyhow` version 1.0.102.
+**Defense:** Updated `anyhow` to 1.0.103.
