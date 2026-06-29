@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2025-05-24 - Join missing attribute coverage path
+**Learning:** In the `join.rs` file, iterating through tuples during the build or probe phase has a `.ok_or_else()` if an attribute is missing. This path was missing test coverage since standard Relation APIs prevent creating tuples with missing attributes, so we needed to construct corrupted tuples using `Tuple::new_unchecked` and `Relation::from_tuples_unchecked`.
+**Action:** Always write explicit tests that mock corrupted tuple representations and pass them via `_unchecked` APIs when we want to test attribute-level iteration fallbacks in algebraic operations.
