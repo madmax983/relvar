@@ -133,3 +133,7 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+## Relational Turing Machine
+**Concept:** Modeled a Turing Machine purely using relational algebra (`join`, `project`, `extend`, `difference`, `union`). The tape, transitions, and read/write head are relations. Computing a machine step compiles down into natural joins to find matching rules, set differences to remove old tape cells, unions to write new ones, and extensions to move the head!
+**Fate:** Merged
+**Lesson:** Turing-completeness verified! Relational engines can intrinsically emulate a Turing Machine step without recursion. Set difference and union effectively act as memory assignment for tape cells, while join acts as pattern matching for state transitions.
