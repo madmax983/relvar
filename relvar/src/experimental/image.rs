@@ -126,8 +126,28 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         }
     }
 
-    let width = (max_x.saturating_sub(min_x).saturating_add(1)) as usize;
-    let height = (max_y.saturating_sub(min_y).saturating_add(1)) as usize;
+    if min_x > max_x || min_y > max_y {
+        return (0, 0, Vec::new());
+    }
+
+    let diff_x = max_x.saturating_sub(min_x);
+    let diff_y = max_y.saturating_sub(min_y);
+
+    let width = match diff_x.checked_add(1) {
+        Some(w) => match usize::try_from(w) {
+            Ok(w_usize) => w_usize,
+            Err(_) => return (0, 0, Vec::new()),
+        },
+        None => return (0, 0, Vec::new()),
+    };
+
+    let height = match diff_y.checked_add(1) {
+        Some(h) => match usize::try_from(h) {
+            Ok(h_usize) => h_usize,
+            Err(_) => return (0, 0, Vec::new()),
+        },
+        None => return (0, 0, Vec::new()),
+    };
 
     if width.saturating_mul(height) > 10_000_000 {
         return (0, 0, Vec::new());
@@ -142,8 +162,14 @@ pub fn save(relation: &Relation) -> (usize, usize, Vec<u8>) {
         let g = tuple.get_typed::<i64>("g").unwrap_or(0).clamp(0, 255) as u8;
         let b = tuple.get_typed::<i64>("b").unwrap_or(0).clamp(0, 255) as u8;
 
-        let img_x = (x - min_x) as usize;
-        let img_y = (y - min_y) as usize;
+        let img_x = match usize::try_from(x.saturating_sub(min_x)) {
+            Ok(val) => val,
+            Err(_) => continue,
+        };
+        let img_y = match usize::try_from(y.saturating_sub(min_y)) {
+            Ok(val) => val,
+            Err(_) => continue,
+        };
 
         if img_x < width && img_y < height {
             let idx = (img_y * width + img_x) * 3;
