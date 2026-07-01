@@ -31,6 +31,7 @@
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
+//! - **[`crdt`](crate::experimental::crdt)**: Relational Conflict-Free Replicated Data Types (CRDTs).
 
 pub mod automata;
 pub mod automl;
@@ -38,6 +39,7 @@ pub mod blockchain;
 pub mod build_system;
 pub mod cellular_automaton;
 pub mod circuit;
+pub mod crdt;
 pub mod ecs;
 pub mod enigma;
 pub mod expert_system;

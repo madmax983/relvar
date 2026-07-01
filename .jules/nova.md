@@ -133,3 +133,7 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+## Relational CRDTs
+**Concept:** Modeled Conflict-Free Replicated Data Types (ORSet and LWWRegister) purely using relational algebra. Merging replicas elegantly compiles down to Relational Union, while evaluation relies on Set Difference (for sets) and Summarization/Join (for registers).
+**Fate:** TBD
+**Lesson:** Relational sets naturally support convergent distributed systems! Commutative, associative union operations ensure eventual consistency with minimal custom code.
