@@ -35,6 +35,16 @@
 //! assert!(csv.contains("1,\"Alice\""));
 //! ```
 
-pub mod exporter;
-pub mod importer;
-pub mod visualizer;
+pub(crate) mod exporter;
+pub(crate) mod importer;
+pub(crate) mod visualizer;
+
+// --- Facade Re-exports ---
+pub use exporter::ExporterError;
+pub use exporter::to_ascii_table;
+pub use exporter::to_csv;
+pub use exporter::to_json;
+pub use importer::ImporterError;
+pub use importer::from_csv;
+pub use importer::from_json;
+pub use visualizer::SchemaVisualizer;
