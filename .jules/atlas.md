@@ -27,3 +27,7 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+
+## 2024-05-19 - Fixing Public Query Test Module Leaks
+**Tangle:** The `relvar-core/src/query/tests/mod.rs` file was exposing its sub-modules (`basic` and `common`) publicly via `pub mod`, leaking test implementation details.
+**Blueprint:** Changed the sub-module declarations from `pub mod` to private `mod` in `relvar-core/src/query/tests/mod.rs` to enforce strict module boundaries and prevent test details from leaking.
