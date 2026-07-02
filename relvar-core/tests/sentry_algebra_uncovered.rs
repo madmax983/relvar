@@ -287,3 +287,79 @@ fn test_union_into_type_mismatch() {
     let result = rel1.union_into(&rel2);
     assert!(result.is_err());
 }
+
+#[test]
+fn test_intersect_optimization_empty() {
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    let rel_type = RelationType::new(heading);
+    let r1 = Relation::new(rel_type.clone());
+    let r2 = Relation::new(rel_type);
+
+    let result = r1.intersect(&r2).unwrap();
+    assert_eq!(result.cardinality(), 0);
+}
+
+#[test]
+fn test_difference_optimization_empty() {
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    let rel_type = RelationType::new(heading);
+    let r1 = Relation::new(rel_type.clone());
+    let r2 = Relation::new(rel_type);
+
+    let result = r1.difference(&r2).unwrap();
+    assert_eq!(result.cardinality(), 0);
+}
+
+#[test]
+fn test_union_optimization_empty() {
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    let rel_type = RelationType::new(heading);
+    let r1 = Relation::new(rel_type.clone());
+    let r2 = Relation::new(rel_type);
+
+    let result = r1.union(&r2).unwrap();
+    assert_eq!(result.cardinality(), 0);
+}
+
+#[test]
+fn test_group_no_attributes_specified() {
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    let r = Relation::new(RelationType::new(heading));
+
+    let result = r.group(&[], "my_rva");
+    assert!(matches!(result, Err(GroupError::NoAttributesSpecified)));
+}
+
+#[test]
+fn test_difference_optimization_empty_again() {
+    let heading1 = TupleType::new().with_attribute("id", ScalarType::Int);
+    let heading2 = TupleType::new().with_attribute("id", ScalarType::String);
+    let r1 = Relation::new(RelationType::new(heading1));
+    let r2 = Relation::new(RelationType::new(heading2));
+
+    // type mismatch in difference
+    let result = r1.clone().difference(&r2);
+    assert!(matches!(result, Err(relvar_core::algebra::DifferenceError)));
+
+    let result = r1.difference_into(&r2);
+    assert!(matches!(result, Err(relvar_core::algebra::DifferenceError)));
+}
+
+#[test]
+fn test_semijoin_edge_cases() {
+    // cover empty returns
+    let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    let rel_type = RelationType::new(heading);
+    let mut r1 = Relation::new(rel_type.clone());
+    r1.insert(relvar_core::tuple! { id: 1i64 }).unwrap();
+    let r_empty = Relation::new(rel_type);
+
+    let result = r1.clone().semijoin_into(&r_empty);
+    assert_eq!(result.cardinality(), 0);
+
+    let result = r1.clone().semidifference_into(&r_empty);
+    assert_eq!(result.cardinality(), 1);
+
+    let result = r_empty.clone().semidifference_into(&r1);
+    assert_eq!(result.cardinality(), 0);
+}
