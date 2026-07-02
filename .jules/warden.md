@@ -9,3 +9,7 @@
 ## 2026-04-24 - [Unsafe unwrap in StorageManager]
 **Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
 **Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
+
+## $(date +%Y-%m-%d) - [Integer Overflows in Image and Memory exhaustion in Heap/WAL]
+**Threat:** Boundless DoS memory allocation due to out-of-bounds inputs propagating integer overflows during coordinate shifts for Image creation, alongside deserialization issues allowing length bounds bypassing with u32/u64 casts in `relvar-storage`.
+**Defense:** Replaced blindly trusted casting `as usize` and silent bounds checking with explicitly checked math mapping down and truncating integer lengths appropriately by preventing memory scaling.

@@ -1064,7 +1064,10 @@ impl HeapFile {
         header_size: usize,
         usable_size: usize,
     ) -> Result<(), HeapError> {
-        if slot_dir.len() > u32::MAX as usize {
+        if usize::try_from(u32::MAX)
+            .map(|max| slot_dir.len() > max)
+            .unwrap_or(false)
+        {
             return Err(HeapError::Serialization(
                 "Slot directory too large to be represented by u32 length prefix".to_string(),
             ));
@@ -1155,7 +1158,11 @@ impl HeapFile {
                     "Invalid slot directory length prefix in versioned page header".to_string(),
                 )
             })?;
-            let slot_dir_len = u32::from_le_bytes(len_bytes) as usize;
+            let slot_dir_len = usize::try_from(u32::from_le_bytes(len_bytes)).map_err(|_| {
+                HeapError::Serialization(
+                    "Slot directory length prefix exceeds usize::MAX".to_string(),
+                )
+            })?;
 
             // Ensure the declared slot directory length fits within the page data
             // Header is 5 bytes (1 byte version + 4 bytes length)

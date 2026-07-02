@@ -78,7 +78,7 @@ pub enum PageError {
 /// A fixed-size block of data stored on disk.
 ///
 /// Pages are the fundamental unit of I/O between disk and memory. Each page
-/// has a unique ID and can hold up to [`PAGE_SIZE`] bytes of data. The actual
+/// has a unique ID and can hold up to PAGE_SIZE bytes of data. The actual
 /// data is stored along with its length to handle variable-size content.
 ///
 /// # Examples
