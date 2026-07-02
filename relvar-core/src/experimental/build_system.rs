@@ -58,8 +58,9 @@ pub fn find_stale_targets(
     let all_deps = dependencies.tclose("target", "dependency")?;
 
     // 2. Union direct and transitive dependencies
-    let full_deps = dependencies.union(&all_deps)
-       .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+    let full_deps = dependencies
+        .union(&all_deps)
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
     // 3. Join with timestamps to get dependency timestamps
     // We rename 'file' to 'dependency' in timestamps
@@ -72,7 +73,11 @@ pub fn find_stale_targets(
     let max_dep_times = deps_with_times
         .summarize(
             &["target"],
-            &[Aggregation::max("max_dep_timestamp", "timestamp", ScalarType::Int)]
+            &[Aggregation::max(
+                "max_dep_timestamp",
+                "timestamp",
+                ScalarType::Int,
+            )],
         )
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
@@ -105,14 +110,19 @@ mod tests {
             .with_attribute("target", ScalarType::String)
             .with_attribute("dependency", ScalarType::String);
         let mut deps = Relation::new(RelationType::new(dep_heading));
-        deps.insert(tuple! { target: "a.o", dependency: "a.c" }).unwrap();
+        deps.insert(tuple! { target: "a.o", dependency: "a.c" })
+            .unwrap();
 
         let time_heading = TupleType::new()
             .with_attribute("file", ScalarType::String)
             .with_attribute("timestamp", ScalarType::Int);
         let mut times = Relation::new(RelationType::new(time_heading));
-        times.insert(tuple! { file: "a.c", timestamp: 100i64 }).unwrap();
-        times.insert(tuple! { file: "a.o", timestamp: 50i64 }).unwrap();
+        times
+            .insert(tuple! { file: "a.c", timestamp: 100i64 })
+            .unwrap();
+        times
+            .insert(tuple! { file: "a.o", timestamp: 50i64 })
+            .unwrap();
 
         let stale = find_stale_targets(&deps, &times).unwrap();
         assert_eq!(stale.cardinality(), 1);
@@ -125,8 +135,10 @@ mod tests {
             .with_attribute("target", ScalarType::String)
             .with_attribute("dependency", ScalarType::String);
         let mut deps = Relation::new(RelationType::new(dep_heading));
-        deps.insert(tuple! { target: "app", dependency: "a.o" }).unwrap();
-        deps.insert(tuple! { target: "a.o", dependency: "a.c" }).unwrap();
+        deps.insert(tuple! { target: "app", dependency: "a.o" })
+            .unwrap();
+        deps.insert(tuple! { target: "a.o", dependency: "a.c" })
+            .unwrap();
 
         let time_heading = TupleType::new()
             .with_attribute("file", ScalarType::String)
@@ -134,11 +146,17 @@ mod tests {
         let mut times = Relation::new(RelationType::new(time_heading));
 
         // a.c was just modified (time=200)
-        times.insert(tuple! { file: "a.c", timestamp: 200i64 }).unwrap();
+        times
+            .insert(tuple! { file: "a.c", timestamp: 200i64 })
+            .unwrap();
         // a.o is up to date with its old a.c (time=100)
-        times.insert(tuple! { file: "a.o", timestamp: 100i64 }).unwrap();
+        times
+            .insert(tuple! { file: "a.o", timestamp: 100i64 })
+            .unwrap();
         // app is up to date with a.o (time=150)
-        times.insert(tuple! { file: "app", timestamp: 150i64 }).unwrap();
+        times
+            .insert(tuple! { file: "app", timestamp: 150i64 })
+            .unwrap();
 
         // BOTH a.o and app should be stale, because app transitively depends on a.c (time 200) which is > app's time (150)
         let stale = find_stale_targets(&deps, &times).unwrap();
@@ -153,14 +171,19 @@ mod tests {
             .with_attribute("target", ScalarType::String)
             .with_attribute("dependency", ScalarType::String);
         let mut deps = Relation::new(RelationType::new(dep_heading));
-        deps.insert(tuple! { target: "a.o", dependency: "a.c" }).unwrap();
+        deps.insert(tuple! { target: "a.o", dependency: "a.c" })
+            .unwrap();
 
         let time_heading = TupleType::new()
             .with_attribute("file", ScalarType::String)
             .with_attribute("timestamp", ScalarType::Int);
         let mut times = Relation::new(RelationType::new(time_heading));
-        times.insert(tuple! { file: "a.c", timestamp: 50i64 }).unwrap();
-        times.insert(tuple! { file: "a.o", timestamp: 100i64 }).unwrap();
+        times
+            .insert(tuple! { file: "a.c", timestamp: 50i64 })
+            .unwrap();
+        times
+            .insert(tuple! { file: "a.o", timestamp: 100i64 })
+            .unwrap();
 
         let stale = find_stale_targets(&deps, &times).unwrap();
         assert_eq!(stale.cardinality(), 0);
