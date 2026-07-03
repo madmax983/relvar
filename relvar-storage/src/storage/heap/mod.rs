@@ -1561,3 +1561,72 @@ impl HeapFile {
 
 #[cfg(test)]
 mod tests;
+
+#[test]
+fn test_deserialize_versioned_page_errors() {
+    use crate::storage::Page;
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("test.heap");
+    use relvar_core::types::{RelationType, TupleType};
+    let rel_type = RelationType::new(TupleType::new());
+    let heap_file = HeapFile::create(&path, rel_type).unwrap();
+
+    // Error: Versioned page too short to contain header
+    let page_too_short = Page::from_data(0, vec![PAGE_FORMAT_VERSION, 1, 2]).unwrap();
+    let result = heap_file.deserialize_versioned_page(&page_too_short);
+    assert!(matches!(result, Err(HeapError::Serialization(_))));
+
+    // Error: Slot directory length overflow
+    // Length prefix is massive (u32::MAX)
+    let mut data = vec![PAGE_FORMAT_VERSION];
+    data.extend_from_slice(&u32::MAX.to_le_bytes());
+    let page_overflow = Page::from_data(1, data).unwrap();
+    let result = heap_file.deserialize_versioned_page(&page_overflow);
+    assert!(matches!(result, Err(HeapError::Serialization(_))));
+
+    // Error: Slot directory length exceeds page size
+    // Length prefix is larger than available data but not overflowing
+    let mut data2 = vec![PAGE_FORMAT_VERSION];
+    data2.extend_from_slice(&1000u32.to_le_bytes());
+    data2.extend_from_slice(&[0u8; 10]); // Only provide 10 bytes
+    let page_exceeds = Page::from_data(2, data2).unwrap();
+    let result = heap_file.deserialize_versioned_page(&page_exceeds);
+    assert!(matches!(result, Err(HeapError::Serialization(_))));
+}
+
+#[test]
+fn test_read_tuple_corrupted_slot() {
+    use crate::storage::{Page, PageFile};
+    use relvar_core::types::{RelationType, TupleType};
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("test.heap");
+    let rel_type = RelationType::new(TupleType::new());
+    let mut heap_file = HeapFile::create(&path, rel_type).unwrap();
+
+    // Create a page with a slotted page structure but the slot points outside the data
+    let slotted_page = SlottedPage {
+        slots: vec![Some(SlotEntry {
+            offset: 1000,
+            length: 10,
+        })],
+        slot_count: 1,
+    };
+
+    // Serialize the slotted page
+    let page_data = postcard::to_allocvec(&slotted_page).unwrap();
+    let page = Page::from_data(0, page_data.clone()).unwrap();
+
+    // Write it to file so heap_file can read it
+    let mut page_file = PageFile::open(&path).unwrap();
+    page_file.write_page(&page).unwrap();
+
+    let tuple_id = TupleId {
+        page_id: 0,
+        slot: 0,
+    };
+    // The slot says data is at offset 1000, but the page data is much smaller
+    let result = heap_file.read_tuple(tuple_id);
+
+    assert!(matches!(result, Err(HeapError::Serialization(_))));
+}

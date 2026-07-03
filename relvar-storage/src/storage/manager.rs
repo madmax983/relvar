@@ -416,3 +416,53 @@ mod tests {
         assert!(loaded.contains(&tuple! { id: 100i64, name: "Charlie" }));
     }
 }
+
+#[test]
+fn test_storage_manager_new_error() {
+    // Pointing to a file, not a directory
+    let temp_file = tempfile::NamedTempFile::new().unwrap();
+    let result = StorageManager::new(temp_file.path().join("subdir"));
+    assert!(result.is_err());
+    match result {
+        Err(crate::storage::manager::StorageError::Other(_)) => {}
+        _ => panic!("Expected StorageError::Other"),
+    }
+}
+
+#[test]
+fn test_convert_catalog_error() {
+    use crate::storage::catalog::CatalogError;
+    use crate::storage::manager::StorageError;
+    use std::io::Error;
+
+    let io_err = CatalogError::Io(Error::other("test io err"));
+    assert!(matches!(
+        StorageManager::convert_catalog_error(io_err),
+        StorageError::Other(_)
+    ));
+
+    let ser_err = CatalogError::Serialization("test ser err".to_string());
+    assert!(matches!(
+        StorageManager::convert_catalog_error(ser_err),
+        StorageError::Other(_)
+    ));
+
+    let not_found_err = CatalogError::RelationNotFound("test_rel".to_string());
+    assert!(matches!(
+        StorageManager::convert_catalog_error(not_found_err),
+        StorageError::RelationNotFound(_)
+    ));
+
+    let exists_err = CatalogError::RelationExists("test_rel".to_string());
+    assert!(matches!(
+        StorageManager::convert_catalog_error(exists_err),
+        StorageError::RelationAlreadyExists(_)
+    ));
+
+    use crate::storage::heap::HeapError;
+    let heap_err = HeapError::TupleNotFound;
+    assert!(matches!(
+        StorageManager::convert_heap_error(heap_err),
+        StorageError::Other(_)
+    ));
+}

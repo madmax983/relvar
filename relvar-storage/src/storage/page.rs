@@ -882,3 +882,50 @@ mod tests {
         }
     }
 }
+
+#[test]
+#[allow(unused_mut, unused_variables)]
+    fn test_write_page_too_large() {
+    use crate::storage::{PAGE_SIZE, Page, PageFile};
+    use tempfile::NamedTempFile;
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path();
+    let mut page_file = PageFile::create(path).unwrap();
+
+    let data = vec![0u8; PAGE_SIZE + 1];
+    let mut page = Page::new(0);
+    let result_set = page.set_data(data);
+    assert!(result_set.is_err());
+    assert!(matches!(
+        result_set.unwrap_err(),
+        crate::storage::page::PageError::PageTooLarge
+    ));
+}
+
+#[test]
+fn test_parse_page_data_too_short() {
+    use crate::storage::{PageFile, PageId};
+    let buffer = vec![0u8; 7];
+    let result = PageFile::parse_page_data(0 as PageId, &buffer);
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        crate::storage::page::PageError::Serialization(_)
+    ));
+}
+
+#[test]
+fn test_parse_page_data_corrupted_length() {
+    use crate::storage::{PageFile, PageId};
+    // Setup a buffer where the length is valid (e.g. 100), but the buffer is only 50 bytes long.
+    let mut buffer = vec![0u8; 50];
+    let len = 100u64;
+    buffer[0..8].copy_from_slice(&len.to_le_bytes());
+
+    let result = PageFile::parse_page_data(0 as PageId, &buffer);
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        crate::storage::page::PageError::Serialization(_)
+    ));
+}
