@@ -6,6 +6,7 @@
 //! # Included Features
 //!
 //! - **[`automl`](crate::experimental::automl)**: Relational Machine Learning (Naive Bayes).
+//! - **[`decision_tree`](crate::experimental::decision_tree)**: Relational Decision Tree Inference.
 //! - **[`ecs`](crate::experimental::ecs)**: Relational Entity Component System (ECS) pattern.
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
@@ -73,3 +74,5 @@ pub mod timeseries;
 pub mod turing;
 pub mod vcs;
 pub mod vm;
+
+pub mod decision_tree;
