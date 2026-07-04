@@ -397,7 +397,7 @@ fn test_delete_already_deleted_sets_xmax_again() {
     let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
-    let slot = versioned_page.slots[tuple_id.slot as usize]
+    let slot = versioned_page.slots[usize::try_from(tuple_id.slot).unwrap()]
         .as_ref()
         .unwrap();
 

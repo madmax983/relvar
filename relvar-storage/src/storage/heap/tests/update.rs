@@ -55,7 +55,7 @@ fn test_update_marks_old_xmax() {
     let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
-    let slot = versioned_page.slots[tuple_id.slot as usize]
+    let slot = versioned_page.slots[usize::try_from(tuple_id.slot).unwrap()]
         .as_ref()
         .unwrap();
 
@@ -84,7 +84,7 @@ fn test_update_new_version_has_correct_xmin() {
     let page = heap.page_file.read_page(new_tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
-    let slot = versioned_page.slots[new_tuple_id.slot as usize]
+    let slot = versioned_page.slots[usize::try_from(new_tuple_id.slot).unwrap()]
         .as_ref()
         .unwrap();
 
@@ -114,7 +114,7 @@ fn test_update_links_versions() {
     let page = heap.page_file.read_page(new_tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
-    let new_slot = versioned_page.slots[new_tuple_id.slot as usize]
+    let new_slot = versioned_page.slots[usize::try_from(new_tuple_id.slot).unwrap()]
         .as_ref()
         .unwrap();
 
@@ -208,12 +208,16 @@ fn test_update_multiple_times_creates_chain() {
     // Verify chain: tid3 -> tid2 -> tid1
     let page3 = heap.page_file.read_page(tid3.page_id).unwrap();
     let vpage3: VersionedSlottedPage = deserialize_versioned_page_for_test(page3.data()).unwrap();
-    let slot3 = vpage3.slots[tid3.slot as usize].as_ref().unwrap();
+    let slot3 = vpage3.slots[usize::try_from(tid3.slot).unwrap()]
+        .as_ref()
+        .unwrap();
     assert_eq!(slot3.prev_version, Some(tid2));
 
     let page2 = heap.page_file.read_page(tid2.page_id).unwrap();
     let vpage2: VersionedSlottedPage = deserialize_versioned_page_for_test(page2.data()).unwrap();
-    let slot2 = vpage2.slots[tid2.slot as usize].as_ref().unwrap();
+    let slot2 = vpage2.slots[usize::try_from(tid2.slot).unwrap()]
+        .as_ref()
+        .unwrap();
     assert_eq!(slot2.prev_version, Some(tid1));
 }
 
@@ -283,7 +287,7 @@ fn test_update_old_version_xmin_unchanged() {
     let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
-    let slot = versioned_page.slots[tuple_id.slot as usize]
+    let slot = versioned_page.slots[usize::try_from(tuple_id.slot).unwrap()]
         .as_ref()
         .unwrap();
 

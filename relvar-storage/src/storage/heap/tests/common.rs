@@ -17,11 +17,12 @@ pub(crate) fn deserialize_versioned_page_for_test(
     page_data: &[u8],
 ) -> Result<VersionedSlottedPage, postcard::Error> {
     if page_data.len() >= 5 && page_data[0] == PAGE_FORMAT_VERSION {
-        let slot_dir_len = u32::from_le_bytes(
+        let slot_dir_len = usize::try_from(u32::from_le_bytes(
             page_data[1..5]
                 .try_into()
                 .map_err(|_| postcard::Error::DeserializeUnexpectedEnd)?,
-        ) as usize;
+        ))
+        .map_err(|_| postcard::Error::DeserializeUnexpectedEnd)?;
         postcard::from_bytes(&page_data[5..5 + slot_dir_len])
     } else {
         postcard::from_bytes(page_data)
