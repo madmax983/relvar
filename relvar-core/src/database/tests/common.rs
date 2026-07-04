@@ -3,7 +3,7 @@ use crate::storage_engine::InMemoryEngine;
 use crate::types::RelationType;
 use crate::types::{ScalarType, TupleType};
 
-pub(crate) fn test_rel_type() -> RelationType {
+pub fn test_rel_type() -> RelationType {
     RelationType::new(
         TupleType::new()
             .with_attribute("id", ScalarType::Int)
@@ -11,7 +11,7 @@ pub(crate) fn test_rel_type() -> RelationType {
     )
 }
 
-pub(crate) fn setup_parent_child_db() -> Database<InMemoryEngine> {
+pub fn setup_parent_child_db() -> Database<InMemoryEngine> {
     use crate::constraints::{KeyConstraints, PrimaryKey};
     let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
 
