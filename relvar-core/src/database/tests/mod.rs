@@ -1,4 +1,4 @@
-pub(crate) mod common;
+mod common;
 mod data;
 mod integrity;
 mod schema;

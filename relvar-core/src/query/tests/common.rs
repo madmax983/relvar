@@ -4,7 +4,7 @@ use crate::tuple;
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue};
 
-pub fn setup_db() -> Database<InMemoryEngine> {
+pub(crate) fn setup_db() -> Database<InMemoryEngine> {
     let mut db = Database::new(InMemoryEngine::new());
 
     let users_heading = TupleType::new()
