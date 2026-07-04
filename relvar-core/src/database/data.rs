@@ -150,7 +150,7 @@ impl<E: StorageEngine> Database<E> {
 
         // Filter out tuples to delete
         let (new_relation, delete_count) =
-            compute_relation_after_delete(current_relation, predicate)?;
+            compute_relation_after_delete(current_relation, predicate);
 
         self.constraints.validate_referencing_foreign_keys(
             &mut self.engine,

@@ -577,3 +577,122 @@ fn test_database_update_parent_violates_referencing_foreign_key() {
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
 }
+
+#[test]
+fn test_database_update_validate_referencing_fks_error() {
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::constraints::{ForeignKeyConstraints, ForeignKey};
+    let mut db = Database::new(InMemoryEngine::new());
+
+    // PARENT table
+    let parent_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("PARENT", parent_type.clone()).unwrap();
+    db.insert("PARENT", tuple! { id: 1i64 }).unwrap();
+
+    // CHILD table
+    let child_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("parent_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD", child_type.clone()).unwrap();
+    db.insert("CHILD", tuple! { child_id: 10i64, parent_id: 1i64 }).unwrap();
+
+    let fk = ForeignKey::new(
+        vec!["parent_id".to_string()],
+        "PARENT".to_string(),
+        vec!["id".to_string()],
+    ).unwrap();
+    let fk_cons = ForeignKeyConstraints::new().with_foreign_key(fk);
+    db.set_foreign_key_constraints("CHILD", fk_cons).unwrap();
+
+    // Trigger update error due to FK validation failing
+    let result = db.update("PARENT", |t| t.get_typed::<i64>("id").unwrap() == 1, |_| tuple! { id: 2i64 });
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_database_validate_insert_errors() {
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::constraints::{KeyConstraints, PrimaryKey, AttributeConstraints, TypeConstraint, CheckConstraints, CheckConstraint, ConstraintExpression, CmpOp, ValueOrRef};
+    use relvar_core::values::ScalarValue;
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int).with_attribute("val", ScalarType::Int));
+    db.create_relvar("TEST", rel_type).unwrap();
+
+    // 1. Type constraints validation failure
+    let attr_cons = AttributeConstraints::new("val".to_string(), ScalarType::Int)
+        .with_constraint(TypeConstraint::Range { min: ScalarValue::Int(1), max: ScalarValue::Int(10) });
+    db.set_type_constraints("TEST", "val", attr_cons).unwrap();
+
+    let res = db.insert("TEST", tuple! { id: 1i64, val: 20i64 });
+    assert!(res.is_err());
+
+    db.set_type_constraints("TEST", "val", AttributeConstraints::new("val".to_string(), ScalarType::Int)).unwrap();
+
+    // 2. Tuple content constraints (CHECK) failure
+    let check_cons = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        "valid", "valid".to_string(),
+        ConstraintExpression::Cmp {
+            left: "val".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Value(ScalarValue::Int(0))
+        }
+    ));
+    db.set_check_constraints("TEST", check_cons).unwrap();
+
+    let res = db.insert("TEST", tuple! { id: 2i64, val: -5i64 });
+    assert!(res.is_err());
+
+    db.set_check_constraints("TEST", CheckConstraints::new()).unwrap();
+
+    // 3. Key constraint failure
+    db.insert("TEST", tuple! { id: 3i64, val: 3i64 }).unwrap();
+    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    db.set_key_constraints("TEST", KeyConstraints::new().with_primary_key(pk)).unwrap();
+
+    let res = db.insert("TEST", tuple! { id: 3i64, val: 4i64 });
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_database_validate_relation_constraints_bulk_error() {
+    use relvar_core::database::Database;
+    use relvar_core::storage_engine::InMemoryEngine;
+    use relvar_core::tuple;
+    use relvar_core::types::{RelationType, ScalarType, TupleType};
+    use relvar_core::constraints::{KeyConstraints, PrimaryKey, CheckConstraints, CheckConstraint, ConstraintExpression, CmpOp, ValueOrRef};
+    use relvar_core::values::ScalarValue;
+
+    let mut db = Database::new(InMemoryEngine::new());
+
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("TEST", rel_type).unwrap();
+    db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+    db.insert("TEST", tuple! { id: 2i64 }).unwrap();
+
+    // Add primary key
+    let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    db.set_key_constraints("TEST", KeyConstraints::new().with_primary_key(pk)).unwrap();
+
+    let check_cons = CheckConstraints::new().with_constraint(CheckConstraint::new(
+        "valid", "valid".to_string(),
+        ConstraintExpression::Cmp {
+            left: "id".to_string(),
+            op: CmpOp::Gt,
+            right: ValueOrRef::Value(ScalarValue::Int(0))
+        }
+    ));
+    db.set_check_constraints("TEST", check_cons).unwrap();
+
+    // Cause update to violate check constraint in bulk
+    let result = db.update("TEST", |_| true, |_t| tuple! { id: -1i64 });
+    assert!(result.is_err());
+}

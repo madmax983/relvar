@@ -132,3 +132,10 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-07-04 - Untested error propagation paths via `?` macro
+**Learning:** Functions that return a `Result` type when they only ever produce an `Ok` result cause artificial test coverage gaps because the `Err` branch of the caller's `?` macro can never be taken. `compute_relation_after_delete` in `relvar-core/src/database/dml.rs` was such a function.
+**Action:** Remove unnecessary `Result` return types for pure functions that cannot fail, such as `compute_relation_after_delete`, to avoid un-testable branch permutations from `?` macro expansion.
+
+## 2026-07-04 - `tarpaulin` and `cargo fmt` interaction with `?` macro
+**Learning:** `cargo tarpaulin` evaluates coverage on the line where the `?` macro resides. However, `cargo fmt` splits lengthy function calls across multiple lines. This can confuse coverage mappers or humans reading the missing lines output, making it look like argument evaluations are missing rather than the `?` branch.
+**Action:** When debugging missing coverage for `?` macro expansions, recognize that `tarpaulin` maps the missing `Err` path hit count to the specific line the `?` lands on, even if split. Write explicit tests hitting constraints (e.g. FK violations) to cover these generated `Err` paths properly instead of trying to trick tarpaulin by squashing lines on one line, which `cargo fmt` will undo.

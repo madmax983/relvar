@@ -10,7 +10,7 @@ use crate::values::{Relation, Tuple};
 pub(crate) fn compute_relation_after_delete<F>(
     current_relation: Relation,
     predicate: F,
-) -> Result<(Relation, usize), DatabaseError>
+) -> (Relation, usize)
 where
     F: Fn(&Tuple) -> bool,
 {
@@ -24,7 +24,7 @@ where
 
     let delete_count = initial_cardinality - new_relation.cardinality();
 
-    Ok((new_relation, delete_count))
+    (new_relation, delete_count)
 }
 
 pub(crate) fn compute_relation_after_update<F, U>(

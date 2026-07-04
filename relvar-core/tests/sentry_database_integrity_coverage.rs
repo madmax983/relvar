@@ -568,3 +568,38 @@ fn test_constraint_manager_validate_referencing_fks_error() {
         );
     }
 }
+
+#[test]
+fn test_database_set_constraints_on_missing_relation() {
+    let mut db = Database::new(InMemoryEngine::new());
+
+    // KeyConstraints on non-existent relvar
+    let pk = relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    let key_cons = relvar_core::constraints::KeyConstraints::new().with_primary_key(pk);
+    assert!(db.set_key_constraints("MISSING", key_cons).is_err());
+
+    // ForeignKeyConstraints on non-existent relvar
+    let fk = relvar_core::constraints::ForeignKey::new(
+        vec!["ref_id".to_string()],
+        "OTHER".to_string(),
+        vec!["id".to_string()]
+    ).unwrap();
+    let fk_cons = relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    assert!(db.set_foreign_key_constraints("MISSING", fk_cons).is_err());
+
+    // TypeConstraints on non-existent relvar
+    let attr_cons = relvar_core::constraints::AttributeConstraints::new("count".to_string(), ScalarType::Int)
+        .with_constraint(relvar_core::constraints::TypeConstraint::Range { min: relvar_core::values::ScalarValue::Int(1), max: relvar_core::values::ScalarValue::Int(10) });
+    assert!(db.set_type_constraints("MISSING", "count", attr_cons).is_err());
+
+    // CheckConstraints on non-existent relvar
+    let check_cons = relvar_core::constraints::CheckConstraints::new().with_constraint(relvar_core::constraints::CheckConstraint::new(
+        "valid", "valid".to_string(),
+        relvar_core::constraints::ConstraintExpression::Cmp {
+            left: "id".to_string(),
+            op: relvar_core::constraints::CmpOp::Gt,
+            right: relvar_core::constraints::ValueOrRef::Value(relvar_core::values::ScalarValue::Int(0))
+        }
+    ));
+    assert!(db.set_check_constraints("MISSING", check_cons).is_err());
+}
