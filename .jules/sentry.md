@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## $(date +%Y-%m-%d) - Added missing test coverage for constraints and DML updates
+**Learning:** The integrity and dml modules were missing some edge case coverage (like getters when relations don't exist or setting check constraints, as well as mismatched tuple updates). And the scalar type comparison lacked test cases for user-defined variants.
+**Action:** Created dedicated sentry tests to ensure these API paths and data structures are tested thoroughly.
