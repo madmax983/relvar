@@ -269,16 +269,18 @@ impl Graph {
         let joined_edges = ranks_renamed.join(&self.edges)?;
         let with_degrees = joined_edges.join(out_degrees)?;
 
+        let compute_contribution = |t: &relvar_core::Tuple| -> ScalarValue {
+            let r = t.get_typed::<f64>("rank").unwrap();
+            let d = t.get_typed::<i64>("out_degree").unwrap();
+            if d == 0 {
+                ScalarValue::Float(0.0)
+            } else {
+                ScalarValue::Float(r / (d as f64))
+            }
+        };
+
         let contributions = with_degrees
-            .extend("contribution", ScalarType::Float, |t| {
-                let r = t.get_typed::<f64>("rank").unwrap();
-                let d = t.get_typed::<i64>("out_degree").unwrap();
-                if d == 0 {
-                    ScalarValue::Float(0.0)
-                } else {
-                    ScalarValue::Float(r / (d as f64))
-                }
-            })
+            .extend("contribution", ScalarType::Float, compute_contribution)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         let incoming = contributions.project(&[self.to_attr.as_str(), "contribution"]);

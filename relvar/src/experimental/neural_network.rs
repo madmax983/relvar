@@ -89,9 +89,10 @@ impl NeuralNetwork {
         // 4. Extend to multiply `val` * `weight`
         let with_products = joined
             .extend("product", ScalarType::Float, |t| {
-                let val = t.get_typed::<f64>("val").unwrap_or(0.0);
-                let weight = t.get_typed::<f64>("weight").unwrap_or(0.0);
-                ScalarValue::Float(val * weight)
+                ScalarValue::Float(
+                    t.get_typed::<f64>("val").unwrap_or(0.0)
+                        * t.get_typed::<f64>("weight").unwrap_or(0.0),
+                )
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
@@ -118,12 +119,9 @@ impl NeuralNetwork {
         // 7. Extend to add bias and apply ReLU
         let new_activations = joined_biases
             .extend("val", ScalarType::Float, |t| {
-                let sum_prod = t.get_typed::<f64>("sum_prod").unwrap_or(0.0);
-                let bias = t.get_typed::<f64>("bias").unwrap_or(0.0);
-                let x = sum_prod + bias;
-                // ReLU activation
-                let relu = if x > 0.0 { x } else { 0.0 };
-                ScalarValue::Float(relu)
+                let x = t.get_typed::<f64>("sum_prod").unwrap_or(0.0)
+                    + t.get_typed::<f64>("bias").unwrap_or(0.0);
+                ScalarValue::Float(x.max(0.0)) // ReLU
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["layer", "node", "val"]);

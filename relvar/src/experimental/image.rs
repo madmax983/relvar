@@ -211,39 +211,27 @@ fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Ve
         // Source (x,y) contributes to Target (x+dx, y+dy).
         // So let's name the new coordinates `tx` and `ty`.
 
-        // Extend 1: Calculate target coordinates
-        let with_coords = relation
-            .extend("tx", ScalarType::Int, move |t| {
-                let x = t.get_typed::<i64>("x").unwrap();
-                ScalarValue::Int(x + dx)
-            })
-            .unwrap()
-            .extend("ty", ScalarType::Int, move |t| {
-                let y = t.get_typed::<i64>("y").unwrap();
-                ScalarValue::Int(y + dy)
-            })
-            .unwrap();
+        let compute_target = move |t: &relvar_core::Tuple, is_x: bool| -> ScalarValue {
+            let val = t.get_typed::<i64>(if is_x { "x" } else { "y" }).unwrap();
+            ScalarValue::Int(val + if is_x { dx } else { dy })
+        };
 
-        // Extend 2: Calculate weighted color components
-        let with_weights = with_coords
-            .extend("wr", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("r").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap()
-            .extend("wg", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("g").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap()
-            .extend("wb", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("b").unwrap();
-                ScalarValue::Int(v * weight)
-            })
-            .unwrap();
+        let compute_weighted = move |t: &relvar_core::Tuple, attr: &str| -> ScalarValue {
+            let val = t.get_typed::<i64>(attr).unwrap();
+            ScalarValue::Int(val * weight)
+        };
 
-        // Extend 3: Add kernel index (to prevent set deduplication of values)
-        let with_idx = with_weights
+        let with_idx = relation
+            .extend("tx", ScalarType::Int, move |t| compute_target(t, true))
+            .unwrap()
+            .extend("ty", ScalarType::Int, move |t| compute_target(t, false))
+            .unwrap()
+            .extend("wr", ScalarType::Int, move |t| compute_weighted(t, "r"))
+            .unwrap()
+            .extend("wg", ScalarType::Int, move |t| compute_weighted(t, "g"))
+            .unwrap()
+            .extend("wb", ScalarType::Int, move |t| compute_weighted(t, "b"))
+            .unwrap()
             .extend("k_idx", ScalarType::Int, move |_| ScalarValue::Int(k_idx))
             .unwrap();
 

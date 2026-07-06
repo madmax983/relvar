@@ -174,49 +174,51 @@ impl KnowledgeGraph {
 
     /// Evaluates a single triple pattern and returns the resulting relation.
     /// The resulting relation has attributes corresponding to the variables in the pattern.
+    fn evaluate_term<'a>(
+        result: Relation,
+        term: &'a Term,
+        attr_name: &'static str,
+        rename_map: &mut Vec<(&'static str, &'a str)>,
+        to_project: &mut Vec<&'a str>,
+    ) -> Relation {
+        match term {
+            Term::Value(v) => {
+                let v_clone = v.clone();
+                result.restrict(move |t| t.get_typed::<String>(attr_name).unwrap() == v_clone)
+            }
+            Term::Variable(var) => {
+                rename_map.push((attr_name, var.as_str()));
+                to_project.push(var.as_str());
+                result
+            }
+        }
+    }
+
     fn match_pattern(&self, pattern: &TriplePattern) -> Result<Relation, DatabaseError> {
-        let mut result = self.triples.clone();
         let mut rename_map = Vec::new();
         let mut to_project = Vec::new();
 
-        // Evaluate Subject
-        match &pattern.subject {
-            Term::Value(v) => {
-                let v_clone = v.clone();
-                result =
-                    result.restrict(move |t| t.get_typed::<String>("subject").unwrap() == v_clone);
-            }
-            Term::Variable(var) => {
-                rename_map.push(("subject", var.as_str()));
-                to_project.push(var.as_str());
-            }
-        }
-
-        // Evaluate Predicate
-        match &pattern.predicate {
-            Term::Value(v) => {
-                let v_clone = v.clone();
-                result = result
-                    .restrict(move |t| t.get_typed::<String>("predicate").unwrap() == v_clone);
-            }
-            Term::Variable(var) => {
-                rename_map.push(("predicate", var.as_str()));
-                to_project.push(var.as_str());
-            }
-        }
-
-        // Evaluate Object
-        match &pattern.object {
-            Term::Value(v) => {
-                let v_clone = v.clone();
-                result =
-                    result.restrict(move |t| t.get_typed::<String>("object").unwrap() == v_clone);
-            }
-            Term::Variable(var) => {
-                rename_map.push(("object", var.as_str()));
-                to_project.push(var.as_str());
-            }
-        }
+        let result = Self::evaluate_term(
+            self.triples.clone(),
+            &pattern.subject,
+            "subject",
+            &mut rename_map,
+            &mut to_project,
+        );
+        let result = Self::evaluate_term(
+            result,
+            &pattern.predicate,
+            "predicate",
+            &mut rename_map,
+            &mut to_project,
+        );
+        let mut result = Self::evaluate_term(
+            result,
+            &pattern.object,
+            "object",
+            &mut rename_map,
+            &mut to_project,
+        );
 
         // Apply renames
         if !rename_map.is_empty() {

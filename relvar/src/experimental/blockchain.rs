@@ -144,11 +144,13 @@ impl Blockchain {
             ("hash", "p_hash"),
         ]);
 
-        let joined = current_blocks.theta_join(&prev_blocks, |curr, prev| {
+        let check_links = |curr: &relvar_core::Tuple, prev: &relvar_core::Tuple| -> bool {
             let curr_id = curr.get_typed::<i64>("curr_id").unwrap();
             let prev_id = prev.get_typed::<i64>("prev_id").unwrap();
             curr_id == prev_id.saturating_add(1)
-        });
+        };
+
+        let joined = current_blocks.theta_join(&prev_blocks, check_links);
 
         // Ensure chain is contiguous
         let expected_links = self.blocks.cardinality().saturating_sub(1);
@@ -156,18 +158,15 @@ impl Blockchain {
             return Ok(false);
         }
 
-        // Restrict to where the hashes DO NOT match
-        let invalid_links = joined.restrict(|t| {
+        let is_invalid_link = |t: &relvar_core::Tuple| -> bool {
             let curr_prev_hash = t.get_typed::<String>("curr_prev_hash").unwrap();
             let p_hash = t.get_typed::<String>("p_hash").unwrap();
             curr_prev_hash != p_hash
-        });
+        };
 
-        if invalid_links.cardinality() > 0 {
-            return Ok(false);
-        }
+        let invalid_links = joined.restrict(is_invalid_link);
 
-        Ok(true)
+        Ok(invalid_links.cardinality() == 0)
     }
 }
 

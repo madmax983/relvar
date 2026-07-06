@@ -193,28 +193,33 @@ impl GeneticAlgorithm {
         // Relational algebra lacks a global stateful generator, so we deterministically derive IDs
         let offspring = valid_pairs
             .extend("new_id", ScalarType::Int, |t| {
-                let id1 = t.get_typed::<i64>("id1").unwrap();
-                let id2 = t.get_typed::<i64>("id2").unwrap();
-                // Deterministic pseudo-random ID
-                ScalarValue::Int(id1.saturating_mul(100).saturating_add(id2))
+                ScalarValue::Int(
+                    t.get_typed::<i64>("id1")
+                        .unwrap()
+                        .saturating_mul(100)
+                        .saturating_add(t.get_typed::<i64>("id2").unwrap()),
+                )
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("new_gene_a", ScalarType::Int, |t| {
-                let a1 = t.get_typed::<i64>("a1").unwrap();
-                let a2 = t.get_typed::<i64>("a2").unwrap();
-                let avg = (a1 + a2) / 2;
-                // Simple deterministic mutation based on id
-                let id1 = t.get_typed::<i64>("id1").unwrap();
-                let mutation = if id1 % 2 == 0 { 1 } else { -1 };
+                let avg =
+                    (t.get_typed::<i64>("a1").unwrap() + t.get_typed::<i64>("a2").unwrap()) / 2;
+                let mutation = if t.get_typed::<i64>("id1").unwrap() % 2 == 0 {
+                    1
+                } else {
+                    -1
+                };
                 ScalarValue::Int(avg + mutation)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("new_gene_b", ScalarType::Int, |t| {
-                let b1 = t.get_typed::<i64>("b1").unwrap();
-                let b2 = t.get_typed::<i64>("b2").unwrap();
-                let avg = (b1 + b2) / 2;
-                let id2 = t.get_typed::<i64>("id2").unwrap();
-                let mutation = if id2 % 3 == 0 { -1 } else { 1 };
+                let avg =
+                    (t.get_typed::<i64>("b1").unwrap() + t.get_typed::<i64>("b2").unwrap()) / 2;
+                let mutation = if t.get_typed::<i64>("id2").unwrap() % 3 == 0 {
+                    -1
+                } else {
+                    1
+                };
                 ScalarValue::Int(avg + mutation)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?

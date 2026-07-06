@@ -67,28 +67,30 @@ impl Spreadsheet {
             // Join with arg2 values
             let fully_resolved_args = with_arg1.join(&values_arg2)?;
 
+            let evaluate_formula = |t: &relvar_core::Tuple| -> ScalarValue {
+                let op = t.get_typed::<String>("op").unwrap();
+                let val1 = t.get_typed::<f64>("val1").unwrap();
+                let val2 = t.get_typed::<f64>("val2").unwrap();
+
+                let result = match op.as_str() {
+                    "ADD" => val1 + val2,
+                    "SUB" => val1 - val2,
+                    "MUL" => val1 * val2,
+                    "DIV" => {
+                        if val2 != 0.0 {
+                            val1 / val2
+                        } else {
+                            f64::NAN
+                        }
+                    }
+                    _ => f64::NAN,
+                };
+                ScalarValue::Float(result)
+            };
+
             // Evaluate the formula
             let evaluated = fully_resolved_args
-                .extend("val", ScalarType::Float, |t| {
-                    let op = t.get_typed::<String>("op").unwrap();
-                    let val1 = t.get_typed::<f64>("val1").unwrap();
-                    let val2 = t.get_typed::<f64>("val2").unwrap();
-
-                    let result = match op.as_str() {
-                        "ADD" => val1 + val2,
-                        "SUB" => val1 - val2,
-                        "MUL" => val1 * val2,
-                        "DIV" => {
-                            if val2 != 0.0 {
-                                val1 / val2
-                            } else {
-                                f64::NAN
-                            }
-                        }
-                        _ => f64::NAN,
-                    };
-                    ScalarValue::Float(result)
-                })
+                .extend("val", ScalarType::Float, evaluate_formula)
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
             // Project back to (id, val)

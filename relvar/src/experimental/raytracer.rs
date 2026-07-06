@@ -211,47 +211,47 @@ impl Scene {
         // Let half_b = D \cdot (O - C)
         // Let c = (O - C) \cdot (O - C) - r^2
         // discriminant = half_b^2 - a*c
+        let compute_intersection = |tup: &relvar_core::Tuple| -> ScalarValue {
+            let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
+            let oy = tup.get_typed::<f64>("oy").unwrap_or(0.0);
+            let oz = tup.get_typed::<f64>("oz").unwrap_or(0.0);
+            let dx = tup.get_typed::<f64>("dx").unwrap_or(0.0);
+            let dy = tup.get_typed::<f64>("dy").unwrap_or(0.0);
+            let dz = tup.get_typed::<f64>("dz").unwrap_or(0.0);
+            let cx = tup.get_typed::<f64>("cx").unwrap_or(0.0);
+            let cy = tup.get_typed::<f64>("cy").unwrap_or(0.0);
+            let cz = tup.get_typed::<f64>("cz").unwrap_or(0.0);
+            let radius = tup.get_typed::<f64>("radius").unwrap_or(0.0);
+
+            let oc_x = ox - cx;
+            let oc_y = oy - cy;
+            let oc_z = oz - cz;
+
+            let a = dx * dx + dy * dy + dz * dz; // Should be ~1.0
+            let half_b = dx * oc_x + dy * oc_y + dz * oc_z;
+            let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - radius * radius;
+
+            let discriminant = half_b * half_b - a * c;
+
+            if discriminant < 0.0 {
+                return ScalarValue::Float(-1.0);
+            }
+
+            let sqrtd = discriminant.sqrt();
+            let t1 = (-half_b - sqrtd) / a;
+            let t2 = (-half_b + sqrtd) / a;
+
+            if t1 > 0.001 {
+                ScalarValue::Float(t1)
+            } else if t2 > 0.001 {
+                ScalarValue::Float(t2)
+            } else {
+                ScalarValue::Float(-1.0)
+            }
+        };
+
         let intersections = combinations
-            .extend("t", ScalarType::Float, |tup| {
-                let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
-                let oy = tup.get_typed::<f64>("oy").unwrap_or(0.0);
-                let oz = tup.get_typed::<f64>("oz").unwrap_or(0.0);
-                let dx = tup.get_typed::<f64>("dx").unwrap_or(0.0);
-                let dy = tup.get_typed::<f64>("dy").unwrap_or(0.0);
-                let dz = tup.get_typed::<f64>("dz").unwrap_or(0.0);
-                let cx = tup.get_typed::<f64>("cx").unwrap_or(0.0);
-                let cy = tup.get_typed::<f64>("cy").unwrap_or(0.0);
-                let cz = tup.get_typed::<f64>("cz").unwrap_or(0.0);
-                let radius = tup.get_typed::<f64>("radius").unwrap_or(0.0);
-
-                let oc_x = ox - cx;
-                let oc_y = oy - cy;
-                let oc_z = oz - cz;
-
-                let a = dx * dx + dy * dy + dz * dz; // Should be ~1.0
-                let half_b = dx * oc_x + dy * oc_y + dz * oc_z;
-                let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - radius * radius;
-
-                let discriminant = half_b * half_b - a * c;
-
-                if discriminant < 0.0 {
-                    // No intersection, return negative distance
-                    ScalarValue::Float(-1.0)
-                } else {
-                    // Two solutions, we want the smallest positive one
-                    let sqrtd = discriminant.sqrt();
-                    let t1 = (-half_b - sqrtd) / a;
-                    let t2 = (-half_b + sqrtd) / a;
-
-                    if t1 > 0.001 {
-                        ScalarValue::Float(t1)
-                    } else if t2 > 0.001 {
-                        ScalarValue::Float(t2)
-                    } else {
-                        ScalarValue::Float(-1.0)
-                    }
-                }
-            })
+            .extend("t", ScalarType::Float, compute_intersection)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         Ok(intersections)
@@ -312,10 +312,8 @@ impl Scene {
         // Extend background with default sky blue color (135, 206, 235)
         let background_colored = background_pixels
             .extend("r", ScalarType::Int, |_| ScalarValue::Int(135))
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .extend("g", ScalarType::Int, |_| ScalarValue::Int(206))
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .extend("b", ScalarType::Int, |_| ScalarValue::Int(235))
+            .and_then(|r| r.extend("g", ScalarType::Int, |_| ScalarValue::Int(206)))
+            .and_then(|r| r.extend("b", ScalarType::Int, |_| ScalarValue::Int(235)))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Combine hits and background

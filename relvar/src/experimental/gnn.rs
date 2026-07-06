@@ -154,9 +154,10 @@ impl GraphNeuralNetwork {
         // Step 6: Multiply aggregated values by weights.
         let multiplied = transformed
             .extend("product", ScalarType::Float, |t: &Tuple| {
-                let v = t.get_typed::<f64>("agg_value").unwrap();
-                let w = t.get_typed::<f64>("weight").unwrap();
-                ScalarValue::Float(v * w)
+                ScalarValue::Float(
+                    t.get_typed::<f64>("agg_value").unwrap()
+                        * t.get_typed::<f64>("weight").unwrap(),
+                )
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
