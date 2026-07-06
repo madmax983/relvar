@@ -19,7 +19,7 @@ use std::collections::HashMap;
 ///
 /// ## Examples
 ///
-/// ```ignore
+/// ```text
 /// use relvar_storage::mvcc::ActiveTransactionTable;
 /// use relvar_storage::wal::{Lsn, TransactionId};
 ///
@@ -43,7 +43,7 @@ use std::collections::HashMap;
 /// let snapshot3 = att.begin(t3, Lsn::new(200));
 /// assert!(!snapshot3.is_active(t1)); // T1 committed, so it's no longer active
 /// assert!(snapshot3.is_active(t2));  // T2 is still running
-/// ```ignore
+/// ```text
 #[derive(Debug)]
 pub struct ActiveTransactionTable {
     transactions: HashMap<TransactionId, TransactionSnapshot>,
@@ -83,7 +83,7 @@ impl ActiveTransactionTable {
     ///
     /// ## Examples
     ///
-    /// ```ignore
+    /// ```text
     /// use relvar_storage::mvcc::ActiveTransactionTable;
     /// use relvar_storage::wal::{Lsn, TransactionId};
     ///
@@ -92,7 +92,7 @@ impl ActiveTransactionTable {
     ///
     /// assert_eq!(snapshot.txn_id, TransactionId::new(42));
     /// assert_eq!(snapshot.snapshot_lsn, Lsn::new(100));
-    /// ```ignore
+    /// ```text
     pub fn begin(&mut self, txn_id: TransactionId, lsn: Lsn) -> TransactionSnapshot {
         // Update current LSN
         self.current_lsn = lsn;
@@ -119,7 +119,7 @@ impl ActiveTransactionTable {
     ///
     /// ## Examples
     ///
-    /// ```ignore
+    /// ```text
     /// use relvar_storage::mvcc::ActiveTransactionTable;
     /// use relvar_storage::wal::{Lsn, TransactionId};
     ///
@@ -129,7 +129,7 @@ impl ActiveTransactionTable {
     /// att.begin(t1, Lsn::new(100));
     /// // T1 does some work...
     /// att.commit(t1); // T1's changes are now universally visible to new txns
-    /// ```ignore
+    /// ```text
     pub fn commit(&mut self, txn_id: TransactionId) {
         self.transactions.remove(&txn_id);
     }
@@ -160,7 +160,7 @@ impl ActiveTransactionTable {
     ///
     /// ## Examples
     ///
-    /// ```ignore
+    /// ```text
     /// use relvar_storage::mvcc::ActiveTransactionTable;
     /// use relvar_storage::wal::{Lsn, TransactionId};
     ///
@@ -172,7 +172,7 @@ impl ActiveTransactionTable {
     ///
     /// // The oldest transaction started at LSN 100
     /// assert_eq!(att.oldest_active_lsn(), Some(Lsn::new(100)));
-    /// ```ignore
+    /// ```text
     pub fn oldest_active_lsn(&self) -> Option<Lsn> {
         self.transactions
             .values()
