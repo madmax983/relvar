@@ -36,8 +36,7 @@ use relvar_core::{
 ///
 /// ```
 /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
-/// use relvar::experimental::gnn::GraphNeuralNetwork;
-///
+/// use relvar::experimental::gnn::forward;
 /// // 1. Features: Node 1 has a value of 1.0, Node 3 has a value of 2.0.
 /// let mut features = Relation::new(RelationType::new(
 ///     TupleType::new()
@@ -67,119 +66,112 @@ use relvar_core::{
 /// weights.insert(tuple! { in_idx: 0i64, out_idx: 0i64, weight: 0.5 }).unwrap();
 ///
 /// // Perform the forward pass.
-/// let output = GraphNeuralNetwork::forward(&features, &edges, &weights).unwrap();
+/// let output = forward(&features, &edges, &weights).unwrap();
 ///
 /// // Node 2 receives aggregated sum (1.0 + 2.0) = 3.0.
 /// // Applied weight (3.0 * 0.5) = 1.5.
 /// assert_eq!(output.cardinality(), 1);
 /// assert!(output.contains(&tuple! { node_id: 2i64, in_idx: 0i64, value: 1.5 }));
 /// ```
-pub struct GraphNeuralNetwork;
+/// Computes a single forward pass of the GNN.
+///
+/// This applies a relational interpretation of Message Passing:
+/// 1. Joins the feature vectors with edge relationships.
+/// 2. Summarizes the values across incoming edges (aggregation).
+/// 3. Computes the linear transformation using a join with layer weights.
+///
+/// # Arguments
+/// * `features` - Relation with schema `(node_id: Int, in_idx: Int, value: Float)`
+/// * `edges` - Relation with schema `(src: Int, dst: Int)`
+/// * `weights` - Relation with schema `(in_idx: Int, out_idx: Int, weight: Float)`
+///
+/// # Returns
+/// * A new Relation with schema `(node_id: Int, in_idx: Int, value: Float)` representing
+///   the computed output features.
+///
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
+/// use relvar::experimental::gnn::forward;
+/// // Minimal example for a single node passing a value along an edge.
+/// let mut features = Relation::new(RelationType::new(TupleType::new()
+///     .with_attribute("node_id", ScalarType::Int).with_attribute("in_idx", ScalarType::Int).with_attribute("value", ScalarType::Float)));
+/// features.insert(tuple! { node_id: 10i64, in_idx: 0i64, value: 5.0 }).unwrap();
+///
+/// let mut edges = Relation::new(RelationType::new(TupleType::new()
+///     .with_attribute("src", ScalarType::Int).with_attribute("dst", ScalarType::Int)));
+/// edges.insert(tuple! { src: 10i64, dst: 20i64 }).unwrap();
+///
+/// let mut weights = Relation::new(RelationType::new(TupleType::new()
+///     .with_attribute("in_idx", ScalarType::Int).with_attribute("out_idx", ScalarType::Int).with_attribute("weight", ScalarType::Float)));
+/// weights.insert(tuple! { in_idx: 0i64, out_idx: 0i64, weight: 2.0 }).unwrap();
+///
+/// // Compute the forward step.
+/// let output = forward(&features, &edges, &weights).unwrap();
+///
+/// // Node 20 aggregated value 5.0 * weight 2.0 = 10.0
+/// assert!(output.contains(&tuple! { node_id: 20i64, in_idx: 0i64, value: 10.0 }));
+/// ```
+pub fn forward(
+    features: &Relation,
+    edges: &Relation,
+    weights: &Relation,
+) -> Result<Relation, DatabaseError> {
+    // Step 1: Prepare features for message passing. Rename 'node_id' to 'src'.
+    let features_src = features.rename(&[("node_id", "src")]);
 
-impl GraphNeuralNetwork {
-    /// Computes a single forward pass of the GNN.
-    ///
-    /// This applies a relational interpretation of Message Passing:
-    /// 1. Joins the feature vectors with edge relationships.
-    /// 2. Summarizes the values across incoming edges (aggregation).
-    /// 3. Computes the linear transformation using a join with layer weights.
-    ///
-    /// # Arguments
-    /// * `features` - Relation with schema `(node_id: Int, in_idx: Int, value: Float)`
-    /// * `edges` - Relation with schema `(src: Int, dst: Int)`
-    /// * `weights` - Relation with schema `(in_idx: Int, out_idx: Int, weight: Float)`
-    ///
-    /// # Returns
-    /// * A new Relation with schema `(node_id: Int, in_idx: Int, value: Float)` representing
-    ///   the computed output features.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
-    /// use relvar::experimental::gnn::GraphNeuralNetwork;
-    ///
-    /// // Minimal example for a single node passing a value along an edge.
-    /// let mut features = Relation::new(RelationType::new(TupleType::new()
-    ///     .with_attribute("node_id", ScalarType::Int).with_attribute("in_idx", ScalarType::Int).with_attribute("value", ScalarType::Float)));
-    /// features.insert(tuple! { node_id: 10i64, in_idx: 0i64, value: 5.0 }).unwrap();
-    ///
-    /// let mut edges = Relation::new(RelationType::new(TupleType::new()
-    ///     .with_attribute("src", ScalarType::Int).with_attribute("dst", ScalarType::Int)));
-    /// edges.insert(tuple! { src: 10i64, dst: 20i64 }).unwrap();
-    ///
-    /// let mut weights = Relation::new(RelationType::new(TupleType::new()
-    ///     .with_attribute("in_idx", ScalarType::Int).with_attribute("out_idx", ScalarType::Int).with_attribute("weight", ScalarType::Float)));
-    /// weights.insert(tuple! { in_idx: 0i64, out_idx: 0i64, weight: 2.0 }).unwrap();
-    ///
-    /// // Compute the forward step.
-    /// let output = GraphNeuralNetwork::forward(&features, &edges, &weights).unwrap();
-    ///
-    /// // Node 20 aggregated value 5.0 * weight 2.0 = 10.0
-    /// assert!(output.contains(&tuple! { node_id: 20i64, in_idx: 0i64, value: 10.0 }));
-    /// ```
-    pub fn forward(
-        features: &Relation,
-        edges: &Relation,
-        weights: &Relation,
-    ) -> Result<Relation, DatabaseError> {
-        // Step 1: Prepare features for message passing. Rename 'node_id' to 'src'.
-        let features_src = features.rename(&[("node_id", "src")]);
+    // Step 2: Message Passing - Propagate features along edges.
+    let messages = edges
+        .join(&features_src)
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Step 2: Message Passing - Propagate features along edges.
-        let messages = edges
-            .join(&features_src)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+    // Step 3: Aggregate messages for each destination node.
+    let aggregated = messages
+        .summarize(
+            &["dst", "in_idx"],
+            &[Aggregation {
+                result_name: "agg_value".to_string(),
+                result_type: ScalarType::Float,
+                function: AggregationFn::Sum("value".to_string()),
+            }],
+        )
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Step 3: Aggregate messages for each destination node.
-        let aggregated = messages
-            .summarize(
-                &["dst", "in_idx"],
-                &[Aggregation {
-                    result_name: "agg_value".to_string(),
-                    result_type: ScalarType::Float,
-                    function: AggregationFn::Sum("value".to_string()),
-                }],
-            )
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+    // Step 4: Rename back to 'node_id' for linear transformation.
+    let agg_renamed = aggregated.rename(&[("dst", "node_id")]);
 
-        // Step 4: Rename back to 'node_id' for linear transformation.
-        let agg_renamed = aggregated.rename(&[("dst", "node_id")]);
+    // Step 5: Linear Transformation - Join aggregated features with layer weights.
+    let transformed = agg_renamed
+        .join(weights)
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Step 5: Linear Transformation - Join aggregated features with layer weights.
-        let transformed = agg_renamed
-            .join(weights)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+    // Step 6: Multiply aggregated values by weights.
+    let multiplied = transformed
+        .extend("product", ScalarType::Float, |t: &Tuple| {
+            let v = t.get_typed::<f64>("agg_value").unwrap();
+            let w = t.get_typed::<f64>("weight").unwrap();
+            ScalarValue::Float(v * w)
+        })
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Step 6: Multiply aggregated values by weights.
-        let multiplied = transformed
-            .extend("product", ScalarType::Float, |t: &Tuple| {
-                let v = t.get_typed::<f64>("agg_value").unwrap();
-                let w = t.get_typed::<f64>("weight").unwrap();
-                ScalarValue::Float(v * w)
-            })
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+    // Step 7: Sum the products over 'out_idx' to complete the matrix multiplication.
+    let out_features = multiplied
+        .summarize(
+            &["node_id", "out_idx"],
+            &[Aggregation {
+                result_name: "sum_product".to_string(),
+                result_type: ScalarType::Float,
+                function: AggregationFn::Sum("product".to_string()),
+            }],
+        )
+        .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // Step 7: Sum the products over 'out_idx' to complete the matrix multiplication.
-        let out_features = multiplied
-            .summarize(
-                &["node_id", "out_idx"],
-                &[Aggregation {
-                    result_name: "sum_product".to_string(),
-                    result_type: ScalarType::Float,
-                    function: AggregationFn::Sum("product".to_string()),
-                }],
-            )
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+    // Step 8: Standardize the schema for the next layer.
+    let final_features = out_features.rename(&[("out_idx", "in_idx"), ("sum_product", "value")]);
 
-        // Step 8: Standardize the schema for the next layer.
-        let final_features =
-            out_features.rename(&[("out_idx", "in_idx"), ("sum_product", "value")]);
-
-        Ok(final_features)
-    }
+    Ok(final_features)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,7 +225,7 @@ mod tests {
             .unwrap();
 
         // Run Forward Pass
-        let output = GraphNeuralNetwork::forward(&features, &edges, &weights).unwrap();
+        let output = forward(&features, &edges, &weights).unwrap();
 
         // Node 2 receives messages from Node 1 (1.0) and Node 3 (2.0).
         // Sum = 3.0.
