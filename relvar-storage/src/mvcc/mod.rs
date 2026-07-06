@@ -30,7 +30,7 @@
 //! │ xmax: 105    │       │ xmax: 110    │       │ xmax: None   │
 //! │ Value: "A"   │       │ Value: "B"   │       │ Value: "C"   │
 //! └──────────────┘       └──────────────┘       └──────────────┘
-//! ```text
+//! ```ignore
 //!
 //! ## 3. Visibility Rules
 //!

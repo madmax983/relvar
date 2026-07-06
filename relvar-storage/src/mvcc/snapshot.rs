@@ -19,7 +19,7 @@ use std::collections::HashSet;
 ///
 /// ## Examples
 ///
-/// ```text
+/// ```ignore
 /// use relvar_storage::mvcc::TransactionSnapshot;
 /// use relvar_storage::wal::{Lsn, TransactionId};
 ///
@@ -36,7 +36,7 @@ use std::collections::HashSet;
 /// // Txn 39 is NOT in the active list, meaning it committed before we started.
 /// // We ARE allowed to see its changes.
 /// assert!(!snapshot.is_active(TransactionId::new(39)));
-/// ```text
+/// ```ignore
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionSnapshot {
     /// The transaction ID this snapshot belongs to
@@ -60,7 +60,7 @@ impl TransactionSnapshot {
     ///
     /// ## Examples
     ///
-    /// ```text
+    /// ```ignore
     /// use relvar_storage::mvcc::TransactionSnapshot;
     /// use relvar_storage::wal::{Lsn, TransactionId};
     ///
@@ -71,7 +71,7 @@ impl TransactionSnapshot {
     /// );
     ///
     /// assert_eq!(snapshot.txn_id, TransactionId::new(10));
-    /// ```text
+    /// ```ignore
     pub fn new(txn_id: TransactionId, snapshot_lsn: Lsn, active: Vec<TransactionId>) -> Self {
         Self {
             txn_id,
@@ -94,7 +94,7 @@ impl TransactionSnapshot {
     ///
     /// ## Examples
     ///
-    /// ```text
+    /// ```ignore
     /// use relvar_storage::mvcc::TransactionSnapshot;
     /// use relvar_storage::wal::{Lsn, TransactionId};
     ///
@@ -105,7 +105,7 @@ impl TransactionSnapshot {
     ///
     /// assert!(snapshot.is_active(t1)); // T1 was running
     /// assert!(!snapshot.is_active(TransactionId::new(0))); // T0 was not running
-    /// ```text
+    /// ```ignore
     pub fn is_active(&self, txn_id: TransactionId) -> bool {
         self.active_txns.contains(&txn_id)
     }

@@ -1,0 +1,44 @@
+--- benches/algebra.rs
++++ benches/algebra.rs
+@@ -107,6 +107,35 @@
+     group.finish();
+ }
+
++fn bench_difference(c: &mut Criterion) {
++    let mut group = c.benchmark_group("difference_extreme");
++
++    let large = create_employee_relation(100000);
++    let mut small = create_employee_relation(100);
++
++    group.bench_function("large.difference(small)", |b| {
++        b.iter(|| black_box(large.difference(&small).unwrap()))
++    });
++
++    group.bench_function("small.difference(large)", |b| {
++        b.iter(|| black_box(small.difference(&large).unwrap()))
++    });
++
++    // Compare with empty
++    let empty = Relation::new(large.relation_type().clone());
++
++    group.bench_function("large.difference(empty)", |b| {
++        b.iter(|| black_box(large.difference(&empty).unwrap()))
++    });
++
++    group.bench_function("empty.difference(large)", |b| {
++        b.iter(|| black_box(empty.difference(&large).unwrap()))
++    });
++
++    group.finish();
++}
++
++
+ criterion_group!(
+     benches,
+     bench_project,
+     bench_join,
+     bench_group,
+     bench_union,
+     bench_intersect,
+     bench_difference
+ );
