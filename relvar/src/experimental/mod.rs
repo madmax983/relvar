@@ -55,6 +55,7 @@ pub mod dom;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;
 pub mod markov;
+pub mod mdp;
 pub mod parser;
 /// Relational Petri Net Simulator.
 pub mod petri_net;
