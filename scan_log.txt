@@ -1,0 +1,9 @@
+Scan Log
+
+- Ran `cargo audit`. Found RUSTSEC-2026-0190 for anyhow, and upgraded it to the patched version.
+- Verified absence of `unsafe` blocks.
+- Checked `.unwrap()` occurrences. Verified that instances in `relvar-storage/src/storage/heap/mod.rs` were either test code, documentation examples, or properly contained.
+- Checked integer conversions (e.g. `as usize`). Verified bounds checks and saturating logic were in place.
+- Addressed unbounded `width * height` integer truncation in `relvar/src/experimental/image.rs` that bypassed the 10,000,000 threshold using `saturating_mul`.
+- Addressed unbounded loop parsing in `relvar/src/tools/importer.rs` (CSV row DoS prevention) by restricting the maximum processed rows.
+- Re-exported required symbols in `relvar-storage/src/storage/mod.rs` to maintain the integrity of public APIs and correct compilation errors.

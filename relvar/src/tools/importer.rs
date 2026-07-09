@@ -598,6 +598,11 @@ pub fn from_csv<R: std::io::Read>(
             .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
 
         line_idx += 1;
+        if line_idx > 100_000 {
+            return Err(ImporterError::LimitExceeded(
+                "Maximum number of rows (100,000) exceeded".to_string(),
+            ));
+        }
     }
 
     if capped_reader.limit() == 0 {
