@@ -31,6 +31,11 @@ pub struct PhysicsEngine {
     pub dt: f64,
 }
 
+enum Axis {
+    X,
+    Y,
+}
+
 impl PhysicsEngine {
     /// Creates a new PhysicsEngine.
     /// # Examples
@@ -92,52 +97,39 @@ impl PhysicsEngine {
         let g = self.g;
         interactions
             .extend("fx", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                // Avoid division by zero
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fx = f * (dx / dist);
-
-                ScalarValue::Float(fx)
+                ScalarValue::Float(Self::compute_force_component(t, g, Axis::X))
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("fy", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fy = f * (dy / dist);
-
-                ScalarValue::Float(fy)
+                ScalarValue::Float(Self::compute_force_component(t, g, Axis::Y))
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
+
+    fn compute_force_component(t: &relvar_core::values::Tuple, g: f64, axis: Axis) -> f64 {
+        let x1 = t.get_typed::<f64>("x1").unwrap();
+        let y1 = t.get_typed::<f64>("y1").unwrap();
+        let x2 = t.get_typed::<f64>("x2").unwrap();
+        let y2 = t.get_typed::<f64>("y2").unwrap();
+        let m1 = t.get_typed::<f64>("m1").unwrap();
+        let m2 = t.get_typed::<f64>("m2").unwrap();
+
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let dist_sq = dx * dx + dy * dy;
+
+        // Avoid division by zero
+        if dist_sq < 1e-10 {
+            return 0.0;
+        }
+
+        let dist = dist_sq.sqrt();
+        let f = g * m1 * m2 / dist_sq;
+
+        match axis {
+            Axis::X => f * (dx / dist),
+            Axis::Y => f * (dy / dist),
+        }
     }
 
     fn summarize_net_forces(&self, with_forces: &Relation) -> Result<Relation, DatabaseError> {
