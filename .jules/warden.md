@@ -1,11 +1,7 @@
-## 2026-04-22 - [Prevent DoS in JSON Exporter]
-**Threat:** Memory exhaustion DoS when exporting large relations to JSON due to in-memory accumulation of all tuples and single large string allocation.
-**Defense:** Changed `to_json` to accept `std::io::Write` sink and stream serialized JSON iteratively using `SerializeSeq`.
+## 2024-07-08 - [Unsafe Type Cast Fix]
+**Threat:** Integer limits from coordinates can be used to cause an DoS panic due to saturating operations that result in large length limits overflowing on usize conversion causing panics. `as usize` operations may silently truncate limits or allocate invalid limits.
+**Defense:** Replaced `as usize` casts with safe `usize::try_from` operations.
 
-## 2026-04-23 - [Float Overflow in Aggregation]
-**Threat:** Floating point overflow during SUM/AVG operations yielding Infinity, potentially leading to logic bugs.
-**Defense:** Added a check to ensure the aggregated sum remains finite, returning an error on overflow.
-
-## 2026-04-24 - [Unsafe unwrap in StorageManager]
-**Threat:** Potential panic and crash if `get_or_open_heap_file` fails to retrieve or map a file correctly, resulting in an unhandled `.unwrap()` failure.
-**Defense:** Replaced `.unwrap()` with `HashMap::entry` to ensure safe, graceful error propagation rather than crashing the system without unreachable branches.
+## 2024-07-08 - [Dependency Vulnerability Fix]
+**Threat:** The `anyhow` crate version 1.0.102 has an unsoundness vulnerability in `Error::downcast_mut()` and `crossbeam-epoch` version 0.9.18 has an invalid pointer dereference vulnerability.
+**Defense:** Upgraded `anyhow` to 1.0.103 and `crossbeam-epoch` to 0.9.20.

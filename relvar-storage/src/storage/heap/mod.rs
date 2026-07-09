@@ -336,7 +336,8 @@ impl HeapFile {
             })],
         };
 
-        let header_size = serialized_size_compat(&dummy_page)? as usize;
+        let header_size = usize::try_from(serialized_size_compat(&dummy_page)?)
+            .map_err(|_| HeapError::Serialization("Serialization size overflow".to_string()))?;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
 
@@ -590,20 +591,27 @@ impl HeapFile {
             Self::find_or_allocate_slot(&mut slotted_page.slots, &mut slotted_page.slot_count);
 
         // Add new tuple to the list (overwrite if reusing slot, append if new)
-        if (slot_number as usize) < existing_tuples.len() {
-            existing_tuples[slot_number as usize] = tuple_data.to_vec();
+        if let Ok(idx) = usize::try_from(slot_number) {
+            if idx < existing_tuples.len() {
+                existing_tuples[idx] = tuple_data.to_vec();
+            } else {
+                existing_tuples.push(tuple_data.to_vec());
+            }
         } else {
             existing_tuples.push(tuple_data.to_vec());
         }
 
         // Initialize the slot (needed for size calc and repacking)
-        slotted_page.slots[slot_number as usize] = Some(SlotEntry {
+        let slot_idx = usize::try_from(slot_number)
+            .map_err(|_| HeapError::Serialization("Slot number overflow".to_string()))?;
+        slotted_page.slots[slot_idx] = Some(SlotEntry {
             offset: 0,
             length: tuple_data.len() as u32,
         });
 
         // Calculate exact header size using bincode
-        let header_size = serialized_size_compat(&slotted_page)? as usize;
+        let header_size = usize::try_from(serialized_size_compat(&slotted_page)?)
+            .map_err(|_| HeapError::Serialization("Serialization size overflow".to_string()))?;
 
         // Calculate total size correctly
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
@@ -923,7 +931,8 @@ impl HeapFile {
             })],
         };
 
-        let header_size = serialized_size_compat(&dummy_page)? as usize;
+        let header_size = usize::try_from(serialized_size_compat(&dummy_page)?)
+            .map_err(|_| HeapError::Serialization("Serialization size overflow".to_string()))?;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
         const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
@@ -1000,14 +1009,20 @@ impl HeapFile {
             Self::find_or_allocate_slot(&mut versioned_page.slots, &mut versioned_page.slot_count);
 
         // Add new tuple to the list (overwrite if reusing slot, append if new)
-        if (slot_number as usize) < existing_tuples.len() {
-            existing_tuples[slot_number as usize] = tuple_data.to_vec();
+        if let Ok(idx) = usize::try_from(slot_number) {
+            if idx < existing_tuples.len() {
+                existing_tuples[idx] = tuple_data.to_vec();
+            } else {
+                existing_tuples.push(tuple_data.to_vec());
+            }
         } else {
             existing_tuples.push(tuple_data.to_vec());
         }
 
         // Initialize the new slot
-        versioned_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
+        let slot_idx = usize::try_from(slot_number)
+            .map_err(|_| HeapError::Serialization("Slot number overflow".to_string()))?;
+        versioned_page.slots[slot_idx] = Some(VersionedSlotEntry {
             offset: 0,
             length: tuple_data.len() as u32,
             xmin: txn_id,
