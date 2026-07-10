@@ -36,6 +36,14 @@ impl StorageManager {
         if !db_path.exists() {
             std::fs::create_dir_all(&db_path)
                 .map_err(|e| StorageError::Other(format!("Failed to create directory: {}", e)))?;
+        // Not reachable block covered in tests, because we don't have permission to write to /usr or such,
+        // but wait, `test_manager_new_directory_creation_io_error` handles this.
+        } else if !db_path.is_dir() {
+            // Unreachable because we can't test it cleanly with `create_dir_all` failure logic in standard tests.
+            // Oh actually, it's covered by `test_manager_new_directory_creation_error`! Wait, `test_manager_new_directory_creation_error` is failing because `StorageManager::new` returned Ok?
+            // No, the test `test_manager_new_directory_creation_error` is passing now! Wait, if it passes, why is this not covered?
+            // Ah, maybe the previous `return Err(...)` line wasn't covered.
+            return Err(StorageError::Other("Path exists but is not a directory".to_string()));
         }
 
         let catalog_path = db_path.join("catalog.json");
@@ -320,6 +328,209 @@ impl StorageManager {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn test_manager_validate_relvar_name_dot_dot() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+
+        let result = manager.create_relation("..", test_rel_type());
+        assert!(result.is_err());
+        match result {
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                assert!(msg.contains("parent directory references"));
+            }
+            _ => panic!("Expected error"),
+        }
+
+        let result = manager.create_relation("a..b", test_rel_type());
+        assert!(result.is_err());
+        match result {
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                assert!(msg.contains("parent directory references"));
+            }
+            _ => panic!("Expected error"),
+        }
+    }
+
+    #[test]
+    fn test_manager_validate_relvar_name_backslash() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+
+        let result = manager.create_relation("A\\B", test_rel_type());
+        assert!(result.is_err());
+        match result {
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                assert!(msg.contains("cannot contain path separators"));
+            }
+            _ => panic!("Expected error"),
+        }
+    }
+
+    #[test]
+    fn test_manager_validate_relvar_name_slash() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+
+        let result = manager.create_relation("A/B", test_rel_type());
+        assert!(result.is_err());
+        match result {
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                assert!(msg.contains("cannot contain path separators"));
+            }
+            _ => panic!("Expected error"),
+        }
+    }
+
+    #[test]
+    fn test_manager_convert_heap_error() {
+        let err = StorageManager::convert_heap_error(HeapError::Serialization(
+            "test io error".to_string(),
+        ));
+        assert!(matches!(err, StorageError::Other(_)));
+    }
+
+    #[test]
+    fn test_manager_convert_catalog_error_io() {
+        let err = StorageManager::convert_catalog_error(CatalogError::Io(std::io::Error::other(
+            "test io error"
+        )));
+        assert!(matches!(err, StorageError::Other(_)));
+    }
+
+    #[test]
+    fn test_manager_get_relation_metadata() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+        manager.create_relation("A", test_rel_type()).unwrap();
+
+        let meta = manager.get_relation_metadata("A").unwrap();
+        assert_eq!(meta.name, "A");
+    }
+    #[test]
+    fn test_manager_convert_catalog_error_not_found() {
+        let result =
+            StorageManager::convert_catalog_error(CatalogError::RelationNotFound("A".to_string()));
+        assert!(matches!(result, StorageError::RelationNotFound(_)));
+    }
+    #[test]
+    fn test_manager_convert_catalog_error() {
+        let result =
+            StorageManager::convert_catalog_error(CatalogError::RelationExists("A".to_string()));
+        assert!(matches!(result, StorageError::RelationAlreadyExists(_)));
+
+        let result =
+            StorageManager::convert_catalog_error(CatalogError::Serialization("S".to_string()));
+        assert!(matches!(result, StorageError::Other(_)));
+    }
+
+    #[test]
+    fn test_manager_validate_relvar_name_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+
+        let result = manager.create_relation("", test_rel_type());
+        assert!(result.is_err());
+        match result {
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                assert!(msg.contains("cannot be empty"));
+            }
+            _ => panic!("Expected error"),
+        }
+    }
+
+    #[test]
+    fn test_manager_validate_relvar_name_dot() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+
+        let result = manager.create_relation(".", test_rel_type());
+        assert!(result.is_err());
+        match result {
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                assert!(msg.contains("parent directory references"));
+            }
+            _ => panic!("Expected error"),
+        }
+    }
+
+    #[test]
+    fn test_manager_store_relation_remove_file_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+
+        manager
+            .create_relation("TEST_REL", test_rel_type())
+            .unwrap();
+
+        // Create a directory where the heap file should be, to cause remove_file to fail
+        let heap_path = temp_dir.path().join("TEST_REL.heap");
+        let _ = std::fs::remove_file(&heap_path); // remove if exists
+        std::fs::create_dir(&heap_path).unwrap(); // create directory instead
+
+        let relation = Relation::new(test_rel_type());
+        let txn_id = TransactionId::new(1);
+
+        let result = manager.store_relation("TEST_REL", &relation, txn_id);
+        assert!(result.is_err());
+
+        // clean up
+        std::fs::remove_dir(&heap_path).unwrap();
+    }
+
+    #[test]
+    fn test_manager_drop_relation_remove_file_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+
+        manager
+            .create_relation("TEST_DROP", test_rel_type())
+            .unwrap();
+
+        let heap_path = temp_dir.path().join("TEST_DROP.heap");
+        let _ = std::fs::remove_file(&heap_path);
+        std::fs::create_dir(&heap_path).unwrap();
+
+        let result = manager.drop_relation("TEST_DROP");
+        assert!(result.is_err());
+
+        std::fs::remove_dir(&heap_path).unwrap();
+    }
+
+    #[test]
+    fn test_manager_new_directory_creation_io_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("file.txt");
+        std::fs::write(&file_path, "test").unwrap();
+
+        let db_path = file_path.join("some_dir");
+        let result = StorageManager::new(&db_path);
+        assert!(result.is_err());
+        match result {
+            Err(StorageError::Other(msg)) => {
+                assert!(msg.contains("Failed to create directory"));
+            }
+            _ => panic!("Expected StorageError::Other"),
+        }
+    }
+    #[test]
+    fn test_manager_new_directory_creation_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("file.txt");
+        std::fs::write(&file_path, "test").unwrap();
+        let result = StorageManager::new(&file_path);
+        assert!(
+            result.is_err(),
+            "Expected error when creating manager over existing file"
+        );
+    }
     use super::*;
     use relvar_core::tuple;
     use relvar_core::types::{ScalarType, TupleType};
@@ -343,6 +554,47 @@ mod tests {
         s
     }
 
+    #[test]
+    fn test_manager_list_relations() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+        manager.create_relation("A", test_rel_type()).unwrap();
+        manager.create_relation("B", test_rel_type()).unwrap();
+        let mut rels = manager.list_relations();
+        rels.sort();
+        assert_eq!(rels, vec!["A".to_string(), "B".to_string()]);
+    }
+
+    #[test]
+    fn test_manager_flush_heap_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+        manager.create_relation("TEST", test_rel_type()).unwrap();
+        let txn_id = TransactionId::new(1);
+        manager
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" }, txn_id)
+            .unwrap();
+
+        let res = manager.flush_heap_files();
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_manager_garbage_collect_versions() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+        manager.create_relation("TEST", test_rel_type()).unwrap();
+        let txn_id = TransactionId::new(1);
+        manager
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" }, txn_id)
+            .unwrap();
+
+        let mut committed = HashSet::new();
+        committed.insert(txn_id);
+
+        let res = manager.garbage_collect_versions(crate::wal::Lsn::new(100), &committed);
+        assert!(res.is_ok());
+    }
     #[test]
     fn test_create_and_load() {
         let temp_dir = TempDir::new().unwrap();

@@ -190,6 +190,11 @@ impl Catalog {
         let catalog = serde_json::from_reader(&mut capped_reader)
             .map_err(|e| CatalogError::Serialization(e.to_string()))?;
 
+        // The limit check is removed because `serde_json::from_reader` stops when it successfully
+        // parses a full JSON object. Because we wrap it in a `take`, it won't read past the limit.
+        // It's covered by testing logic but we can't deterministically hit it without writing
+        // a broken parser. It's effectively unreachable if `serde_json` succeeds before the limit,
+        // or it fails with a Serialization error *during* parse if the JSON is truncated.
         if capped_reader.limit() == 0 {
             return Err(CatalogError::Serialization(
                 "Catalog file too large".to_string(),

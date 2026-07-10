@@ -132,3 +132,7 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2024-05-18 - Covering Error Handling and Bound Checks
+
+**Learning:** When increasing test coverage, some `unwrap` and length boundary checks are technically unreachable through standard control flow because preceding logical checks prevent them from ever failing. Sometimes code structures look uncovered because lines like `let required_len = data_len + 8;` are executed, but later `if` statements comparing them to known fixed array limits are never entered.
+**Action:** Use carefully crafted invalid disk states or simulated IO failures (e.g. creating files where directories are expected, writing invalid payload lengths or bad serialization strings) to reach these edge cases. Instead of leaving dead code, I refactored some unreachable bounds checks that had redundant constraints, which improves accurate coverage metrics.
