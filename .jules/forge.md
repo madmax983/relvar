@@ -631,3 +631,11 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## 2023-11-20 - Extract Force Computation in Physics Engine
+**Learning:** The `compute_pairwise_forces` method in `PhysicsEngine` duplicated the exact same mathematical logic (calculating distance and force components) twice, once for `fx` and once for `fy`, leading to a long, hard-to-read "God Function".
+**Action:** Extracted the force calculation into a private static helper function `compute_force_component`, which takes a boolean flag to determine whether to compute the X or Y component. This flattens the nested calculation blocks and removes duplication, satisfying DRY and keeping the logic focused.
+
+## 2023-11-20 - Extract Force Computation in Physics Engine (V2)
+**Learning:** Returning a tuple of calculated components `(ScalarValue, ScalarValue)` from a helper function prevents "Boolean Blindness" (passing an arbitrary bool `is_x` to compute components separately) and computes both X/Y components in a single clean pass, keeping execution more concise.
+**Action:** Used a tuple return type when extracting the force calculation in `compute_pairwise_forces` to improve both DRYness and type clarity.
