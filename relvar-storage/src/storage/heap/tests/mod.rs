@@ -10,3 +10,4 @@ mod other;
 mod scan;
 mod update;
 mod version;
+mod sentry_coverage;

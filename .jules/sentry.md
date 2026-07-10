@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-07-10 - Storage Heap Slot and Bounds Size Error Branches
+**Learning:** Many internal error boundary paths for `HeapError::Serialization` and `HeapError::PageFull` relating to `check_tuple_size_limit`, `verify_versioned_page_size` and various size accumulation methods were unexercised.
+**Action:** Implemented explicit negative-testing coverage tests in `sentry_coverage.rs` triggering slice overflow values, max integer limits on lengths, and space capacity constraints using raw boundary integer structures.
