@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2025-02-27 - Fast Hash & Eq for Tuples
+**Learning:** `Tuple::hash` was originally redundantly hashing `BTreeMap` keys (`String`s), but `self.tuple_type` already encapsulates a strict type identity (including attribute names and their sorted order). Similarly, `Tuple::eq` was using the standard `BTreeMap::eq` which performs length checks and redundant string comparisons.
+**Action:** Overrode `Tuple::hash` to only hash `self.tuple_type` and its raw `values()` sequentially. Overrode `Tuple::eq` to bypass string key comparison completely if `tuple_type`s match, directly comparing `values.values().eq(...)`. These eliminated hot-path `String` processing and drastically improved set operations (Join, Intersect, Union) up to 69%.

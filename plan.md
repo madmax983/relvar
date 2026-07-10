@@ -1,2 +1,2 @@
-1. **Submit the clean audit report.**
-   - Since no active vulnerabilities were found during the investigation of `unsafe` blocks, bounds checking, buffer limits, and data serialization (verifying that they either safely bounded or properly capped), I will submit the PR to confirm the codebase is secure under the given scope.
+1. Complete pre commit steps to ensure proper testing, verification, review, and reflection are done.
+2. Submit using the PR script and finish script.

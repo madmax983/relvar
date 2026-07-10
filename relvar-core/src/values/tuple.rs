@@ -140,7 +140,7 @@ pub enum TupleError {
 /// let age: i64 = person.get_typed("age").unwrap();
 /// assert_eq!(age, 30);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct Tuple {
     /// The tuple type (heading) that this tuple conforms to.
     #[serde(with = "arc_serde")]
@@ -436,18 +436,26 @@ impl Tuple {
     }
 }
 
+impl PartialEq for Tuple {
+    fn eq(&self, other: &Self) -> bool {
+        // Optimization: if the tuple types match, the BTreeMap keys match exactly.
+        // We only need to compare the values, avoiding redundant O(N) string comparisons.
+        self.tuple_type == other.tuple_type && self.values.values().eq(other.values.values())
+    }
+}
+
 impl std::hash::Hash for Tuple {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // Hash the tuple type first
         self.tuple_type.hash(state);
 
-        // Hash the count
-        self.values.len().hash(state);
-
-        // Since BTreeMap iterates in sorted order, we can hash directly
-        // without collecting and sorting first.
-        for (name, value) in &self.values {
-            name.hash(state);
+        // The values are stored in a BTreeMap, so they iterate in deterministic,
+        // attribute-name-sorted order. Since self.tuple_type already uniquely
+        // identifies the exact set and order of attribute names (and their types),
+        // we can safely skip hashing the attribute names and their count again here.
+        // Hashing only the values avoids redundant String hashing, drastically
+        // improving performance for relational algebra operations.
+        for value in self.values.values() {
             value.hash(state);
         }
     }

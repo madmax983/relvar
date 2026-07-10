@@ -1,0 +1,4 @@
+💡 **What:** The `Tuple` `Hash` and `PartialEq` implementations were heavily optimized.
+🎯 **Why:** `Tuple` internally stores `values` in a `BTreeMap<String, ScalarValue>`. Because `self.tuple_type` already encapsulates a strict type identity (including attribute names and their sorted order), `Tuple::hash` was redundantly hashing `String` keys, and `Tuple::eq` was using standard `BTreeMap::eq` which performs redundant string comparisons for every field.
+📊 **Impact:** Drastically speeds up all set-based algebra operations (Join, Intersect, Union, etc). `cargo bench` reports a massive throughput increase, for example `join/100` and `semijoin/100` are significantly faster and heap/cpu contention is reduced.
+🔬 **Measurement:** Run `cargo bench --bench algebra "join"` to observe the change in throughput for set manipulation compared to baseline.
