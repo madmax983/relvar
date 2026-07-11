@@ -152,11 +152,13 @@ impl<E: StorageEngine> Database<E> {
         let (new_relation, delete_count) =
             compute_relation_after_delete(current_relation, predicate)?;
 
-        self.constraints.validate_referencing_foreign_keys(
+        if let Err(e) = self.constraints.validate_referencing_foreign_keys(
             &mut self.engine,
             relation_name,
             &new_relation,
-        )?;
+        ) {
+            return Err(crate::error::DatabaseError::Constraint(e));
+        }
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -261,11 +263,13 @@ impl<E: StorageEngine> Database<E> {
 
         self.validate_relation_constraints(relation_name, &new_relation)?;
 
-        self.constraints.validate_referencing_foreign_keys(
+        if let Err(e) = self.constraints.validate_referencing_foreign_keys(
             &mut self.engine,
             relation_name,
             &new_relation,
-        )?;
+        ) {
+            return Err(crate::error::DatabaseError::Constraint(e));
+        }
 
         // Store the new relation
         self.engine.store_relation(relation_name, &new_relation)?;
@@ -290,22 +294,30 @@ impl<E: StorageEngine> Database<E> {
         tuple: &Tuple,
     ) -> Result<(), DatabaseError> {
         // Pure checks and Type validations
-        self.constraints
-            .validate_tuple_type(&self.engine, relation_name, tuple)?;
+        if let Err(e) = self
+            .constraints
+            .validate_tuple_type(&self.engine, relation_name, tuple)
+        {
+            return Err(crate::error::DatabaseError::Constraint(e));
+        }
 
-        self.constraints.validate_tuple_content_constraints(
+        if let Err(e) = self.constraints.validate_tuple_content_constraints(
             &mut self.engine,
             relation_name,
             tuple,
-        )?;
+        ) {
+            return Err(crate::error::DatabaseError::Constraint(e));
+        }
 
         // Load current relation to check key constraints
         let current_relation = self.query(relation_name)?;
-        self.constraints.validate_key_constraints_single_tuple(
+        if let Err(e) = self.constraints.validate_key_constraints_single_tuple(
             relation_name,
             tuple,
             &current_relation,
-        )?;
+        ) {
+            return Err(crate::error::DatabaseError::Constraint(e));
+        }
 
         Ok(())
     }
@@ -318,17 +330,20 @@ impl<E: StorageEngine> Database<E> {
         // Validate key constraints on new relation
         if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
             self.constraints
-                .validate_key_constraints_bulk(relation, key_constraints)?;
+                .validate_key_constraints_bulk(relation, key_constraints)
+                .map_err(crate::error::DatabaseError::Constraint)?;
         }
 
         // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
         // NOTE: In a production system we'd only validate changed tuples, but for now
         // we validate everything to ensure total consistency.
-        self.constraints.validate_tuple_content_constraints_bulk(
+        if let Err(e) = self.constraints.validate_tuple_content_constraints_bulk(
             &mut self.engine,
             relation_name,
             relation,
-        )?;
+        ) {
+            return Err(crate::error::DatabaseError::Constraint(e));
+        }
 
         Ok(())
     }
