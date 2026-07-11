@@ -61,10 +61,10 @@
 //! let tuples = heap.scan().unwrap();
 //! ```
 
-pub(crate) mod catalog;
+pub mod catalog;
 pub(crate) mod heap;
 pub(crate) mod manager;
-pub(crate) mod page;
+pub mod page;
 
 pub use catalog::{Catalog, CatalogError, RelationMetadata};
 pub use heap::{HeapError, HeapFile};
