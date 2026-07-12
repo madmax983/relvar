@@ -33,3 +33,6 @@
 ## 2025-05-06 - [The Ghost Knowledge Graph]
 **Confusion:** The experimental `KnowledgeGraph` module was completely undocumented, leaving users to guess how it connects to the relational model.
 **Clarification:** Wrote comprehensive module-level documentation and executable doctests for `KnowledgeGraph` and `TriplePattern` explaining the "Relational Semantic Web" concept.
+## 2026-10-24 - The "Spreadsheet" Examples
+**Confusion:** The experimental `Spreadsheet` module had a placeholder example for its methods (`new`, `evaluate`) and lacked executable doc-tests for the main struct, making it difficult to understand how to construct the values and formulas relations or perform evaluation.
+**Clarification:** Replaced the placeholders and added comprehensive executable `/// # Examples` doc-tests for `Spreadsheet` and all its methods to clearly demonstrate how to model a spreadsheet and evaluate formulas using relational algebra.
