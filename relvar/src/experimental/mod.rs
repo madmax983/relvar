@@ -51,6 +51,8 @@ pub mod matrix;
 pub mod mock;
 pub mod neural_network;
 
+/// Relational Decision Tree Inference Engine.
+pub mod decision_tree;
 pub mod dom;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;
