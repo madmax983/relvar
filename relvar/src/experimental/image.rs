@@ -182,7 +182,10 @@ pub fn apply_kernel(relation: &Relation, kernel: &[KernelTap]) -> Relation {
         return relation.clone();
     }
 
-    let total_weight: i64 = kernel.iter().map(|k| k.weight).sum();
+    let total_weight: i64 = kernel
+        .iter()
+        .map(|k| k.weight)
+        .fold(0i64, |acc, w| acc.saturating_add(w));
     if total_weight == 0 {
         return relation.clone(); // Avoid division by zero
     }
@@ -215,12 +218,12 @@ fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Ve
         let with_coords = relation
             .extend("tx", ScalarType::Int, move |t| {
                 let x = t.get_typed::<i64>("x").unwrap();
-                ScalarValue::Int(x + dx)
+                ScalarValue::Int(x.saturating_add(dx))
             })
             .unwrap()
             .extend("ty", ScalarType::Int, move |t| {
                 let y = t.get_typed::<i64>("y").unwrap();
-                ScalarValue::Int(y + dy)
+                ScalarValue::Int(y.saturating_add(dy))
             })
             .unwrap();
 
@@ -228,17 +231,17 @@ fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Ve
         let with_weights = with_coords
             .extend("wr", ScalarType::Int, move |t| {
                 let v = t.get_typed::<i64>("r").unwrap();
-                ScalarValue::Int(v * weight)
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap()
             .extend("wg", ScalarType::Int, move |t| {
                 let v = t.get_typed::<i64>("g").unwrap();
-                ScalarValue::Int(v * weight)
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap()
             .extend("wb", ScalarType::Int, move |t| {
                 let v = t.get_typed::<i64>("b").unwrap();
-                ScalarValue::Int(v * weight)
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap();
 
@@ -298,17 +301,29 @@ fn summarize_and_normalize(unioned: &Relation, total_weight: i64) -> Relation {
     let normalized = summarized
         .extend("final_r", ScalarType::Int, move |t| {
             let s = t.get_typed::<i64>("sum_r").unwrap();
-            ScalarValue::Int(s / total_weight)
+            ScalarValue::Int(if total_weight == -1 && s == i64::MIN {
+                i64::MAX
+            } else {
+                s / total_weight
+            })
         })
         .unwrap()
         .extend("final_g", ScalarType::Int, move |t| {
             let s = t.get_typed::<i64>("sum_g").unwrap();
-            ScalarValue::Int(s / total_weight)
+            ScalarValue::Int(if total_weight == -1 && s == i64::MIN {
+                i64::MAX
+            } else {
+                s / total_weight
+            })
         })
         .unwrap()
         .extend("final_b", ScalarType::Int, move |t| {
             let s = t.get_typed::<i64>("sum_b").unwrap();
-            ScalarValue::Int(s / total_weight)
+            ScalarValue::Int(if total_weight == -1 && s == i64::MIN {
+                i64::MAX
+            } else {
+                s / total_weight
+            })
         })
         .unwrap();
 
