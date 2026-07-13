@@ -133,3 +133,7 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+## Relational Q-Learning
+**Concept:** Modeled a Q-Learning agent purely with relational algebra. Uses relations for the Q-table and experiences. Evaluates the Bellman equation across batches via chained Joins, Summarizations (Max), Extensions, Differences, and Unions to declaratively train a Reinforcement Learning agent.
+**Fate:** Merged
+**Lesson:** Relational databases are surprisingly adept at serving as ML training backends! The Bellman equation evaluates flawlessly using relational join/extend semantics over state-action tables, essentially treating Q-value updates as a bulk ETL task.
