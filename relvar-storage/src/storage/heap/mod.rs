@@ -336,7 +336,8 @@ impl HeapFile {
             })],
         };
 
-        let header_size = serialized_size_compat(&dummy_page)? as usize;
+        let header_size = usize::try_from(serialized_size_compat(&dummy_page)?)
+            .map_err(|_| HeapError::Serialization("Dummy size overflow".to_string()))?;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
 
@@ -397,7 +398,7 @@ impl HeapFile {
         // 3. Verify no overlap between the downward-growing tuples and the upward-growing header.
         for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
             if let Some(entry) = slot_entry {
-                let offset = entry.offset as usize;
+                let offset = usize::try_from(entry.offset).unwrap_or(usize::MAX);
                 if idx < tuples.len() && !tuples[idx].is_empty() && offset < header_size {
                     return Err(HeapError::PageFull);
                 }
@@ -590,20 +591,22 @@ impl HeapFile {
             Self::find_or_allocate_slot(&mut slotted_page.slots, &mut slotted_page.slot_count);
 
         // Add new tuple to the list (overwrite if reusing slot, append if new)
-        if (slot_number as usize) < existing_tuples.len() {
-            existing_tuples[slot_number as usize] = tuple_data.to_vec();
+        if usize::try_from(slot_number).unwrap_or(usize::MAX) < existing_tuples.len() {
+            existing_tuples[usize::try_from(slot_number).unwrap_or(usize::MAX)] =
+                tuple_data.to_vec();
         } else {
             existing_tuples.push(tuple_data.to_vec());
         }
 
         // Initialize the slot (needed for size calc and repacking)
-        slotted_page.slots[slot_number as usize] = Some(SlotEntry {
+        slotted_page.slots[usize::try_from(slot_number).unwrap_or(usize::MAX)] = Some(SlotEntry {
             offset: 0,
             length: tuple_data.len() as u32,
         });
 
         // Calculate exact header size using bincode
-        let header_size = serialized_size_compat(&slotted_page)? as usize;
+        let header_size = usize::try_from(serialized_size_compat(&slotted_page)?)
+            .map_err(|_| HeapError::Serialization("Slotted size overflow".to_string()))?;
 
         // Calculate total size correctly
         let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
@@ -645,8 +648,8 @@ impl HeapFile {
         // Copy each tuple at its designated offset
         for (idx, slot_entry) in slotted_page.slots.iter().enumerate() {
             if let Some(entry) = slot_entry {
-                let offset = entry.offset as usize;
-                let length = entry.length as usize;
+                let offset = usize::try_from(entry.offset).unwrap_or(usize::MAX);
+                let length = usize::try_from(entry.length).unwrap_or(usize::MAX);
                 if idx < tuples.len() && !tuples[idx].is_empty() {
                     data[offset..offset + length].copy_from_slice(&tuples[idx]);
                 }
@@ -671,14 +674,14 @@ impl HeapFile {
 
         let slot_entry = slotted_page
             .slots
-            .get(tuple_id.slot as usize)
+            .get(usize::try_from(tuple_id.slot).unwrap_or(usize::MAX))
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
 
         // Extract tuple data from page
-        let start = slot_entry.offset as usize;
+        let start = usize::try_from(slot_entry.offset).unwrap_or(usize::MAX);
         let end = start
-            .checked_add(slot_entry.length as usize)
+            .checked_add(usize::try_from(slot_entry.length).unwrap_or(usize::MAX))
             .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
 
         if end > page.data().len() {
@@ -710,14 +713,14 @@ impl HeapFile {
 
         let slot_entry = versioned_page
             .slots
-            .get(tuple_id.slot as usize)
+            .get(usize::try_from(tuple_id.slot).unwrap_or(usize::MAX))
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
 
         // Extract tuple data from page
-        let start = slot_entry.offset as usize;
+        let start = usize::try_from(slot_entry.offset).unwrap_or(usize::MAX);
         let end = start
-            .checked_add(slot_entry.length as usize)
+            .checked_add(usize::try_from(slot_entry.length).unwrap_or(usize::MAX))
             .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
 
         if end > page.data().len() {
@@ -923,7 +926,8 @@ impl HeapFile {
             })],
         };
 
-        let header_size = serialized_size_compat(&dummy_page)? as usize;
+        let header_size = usize::try_from(serialized_size_compat(&dummy_page)?)
+            .map_err(|_| HeapError::Serialization("Dummy size overflow".to_string()))?;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
         const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
@@ -1000,20 +1004,22 @@ impl HeapFile {
             Self::find_or_allocate_slot(&mut versioned_page.slots, &mut versioned_page.slot_count);
 
         // Add new tuple to the list (overwrite if reusing slot, append if new)
-        if (slot_number as usize) < existing_tuples.len() {
-            existing_tuples[slot_number as usize] = tuple_data.to_vec();
+        if usize::try_from(slot_number).unwrap_or(usize::MAX) < existing_tuples.len() {
+            existing_tuples[usize::try_from(slot_number).unwrap_or(usize::MAX)] =
+                tuple_data.to_vec();
         } else {
             existing_tuples.push(tuple_data.to_vec());
         }
 
         // Initialize the new slot
-        versioned_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
-            offset: 0,
-            length: tuple_data.len() as u32,
-            xmin: txn_id,
-            xmax: None,
-            prev_version,
-        });
+        versioned_page.slots[usize::try_from(slot_number).unwrap_or(usize::MAX)] =
+            Some(VersionedSlotEntry {
+                offset: 0,
+                length: tuple_data.len() as u32,
+                xmin: txn_id,
+                xmax: None,
+                prev_version,
+            });
 
         Self::repack_and_verify_space(versioned_page, existing_tuples, USABLE_PAGE_SIZE_V2)?;
 
@@ -1064,7 +1070,7 @@ impl HeapFile {
         header_size: usize,
         usable_size: usize,
     ) -> Result<(), HeapError> {
-        if slot_dir.len() > u32::MAX as usize {
+        if u32::try_from(slot_dir.len()).is_err() {
             return Err(HeapError::Serialization(
                 "Slot directory too large to be represented by u32 length prefix".to_string(),
             ));
@@ -1094,8 +1100,8 @@ impl HeapFile {
     ) -> Result<(), HeapError> {
         for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
             if let Some(entry) = slot_entry {
-                let offset = entry.offset as usize;
-                let length = entry.length as usize;
+                let offset = usize::try_from(entry.offset).unwrap_or(usize::MAX);
+                let length = usize::try_from(entry.length).unwrap_or(usize::MAX);
                 if idx < tuples.len() && !tuples[idx].is_empty() {
                     let end_offset = offset.checked_add(length).ok_or_else(|| {
                         HeapError::Serialization("Tuple offset + length overflow".to_string())
@@ -1155,7 +1161,8 @@ impl HeapFile {
                     "Invalid slot directory length prefix in versioned page header".to_string(),
                 )
             })?;
-            let slot_dir_len = u32::from_le_bytes(len_bytes) as usize;
+            let slot_dir_len = usize::try_from(u32::from_le_bytes(len_bytes))
+                .map_err(|_| HeapError::Serialization("Slot dir len overflow".to_string()))?;
 
             // Ensure the declared slot directory length fits within the page data
             // Header is 5 bytes (1 byte version + 4 bytes length)
@@ -1189,9 +1196,9 @@ impl HeapFile {
         offset: u32,
         length: u32,
     ) -> Result<(usize, usize), HeapError> {
-        let start = offset as usize;
+        let start = usize::try_from(offset).unwrap_or(usize::MAX);
         let end = start
-            .checked_add(length as usize)
+            .checked_add(usize::try_from(length).unwrap_or(usize::MAX))
             .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
 
         if end > page.data().len() {
@@ -1222,9 +1229,9 @@ impl HeapFile {
         offset: u32,
         length: u32,
     ) -> Result<Vec<u8>, HeapError> {
-        let start = offset as usize;
+        let start = usize::try_from(offset).unwrap_or(usize::MAX);
         let end = start
-            .checked_add(length as usize)
+            .checked_add(usize::try_from(length).unwrap_or(usize::MAX))
             .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
 
         if end <= page.data().len() {
@@ -1277,7 +1284,7 @@ impl HeapFile {
         // Find the old slot
         let old_slot = versioned_page
             .slots
-            .get_mut(old_tuple_id.slot as usize)
+            .get_mut(usize::try_from(old_tuple_id.slot).unwrap_or(usize::MAX))
             .and_then(|s| s.as_mut())
             .ok_or(HeapError::TupleNotFound)?;
 
@@ -1347,7 +1354,7 @@ impl HeapFile {
         // Find and mark the tuple
         let slot = versioned_page
             .slots
-            .get_mut(tuple_id.slot as usize)
+            .get_mut(usize::try_from(tuple_id.slot).unwrap_or(usize::MAX))
             .and_then(|s| s.as_mut())
             .ok_or(HeapError::TupleNotFound)?;
 
@@ -1533,9 +1540,9 @@ impl HeapFile {
                 // Check visibility
                 if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
                     // Extract tuple data from page
-                    let start = slot_entry.offset as usize;
+                    let start = usize::try_from(slot_entry.offset).unwrap_or(usize::MAX);
                     let end = start
-                        .checked_add(slot_entry.length as usize)
+                        .checked_add(usize::try_from(slot_entry.length).unwrap_or(usize::MAX))
                         .ok_or_else(|| {
                             HeapError::Serialization("Tuple end offset overflow".to_string())
                         })?;

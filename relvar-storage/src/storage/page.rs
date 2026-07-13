@@ -354,7 +354,8 @@ impl PageFile {
             )));
         }
 
-        let data_len = data_len_u64 as usize;
+        let data_len = usize::try_from(data_len_u64)
+            .map_err(|_| PageError::Serialization("Length overflowed usize".to_string()))?;
         let required_len = data_len + 8; // No overflow possible (checked above)
 
         if required_len > buffer.len() {

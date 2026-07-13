@@ -1,0 +1,4 @@
+🦠 Threat: Integer overflows leading to silent truncation via `as usize` casts in page length parsing, tuple slot indexing, and image dimension calculation. Additionally, unpatched `anyhow` and `crossbeam-epoch` crates contained known memory/unsoundness CVE advisories (RUSTSEC-2026-0190, RUSTSEC-2026-0204).
+🛡️ Defense: Enforced `usize::try_from` with appropriate safe fallbacks (`usize::MAX`) or explicit error propagation (`PageError`, `HeapError`) for unconstrained `as usize` casts. Upgraded dependencies via `cargo update` to neutralize known advisories.
+💥 Severity: Critical - could lead to DoS, silent memory truncation, or unhandled panics via unbound memory allocations or invalid memory bounds checking.
+🧪 Verification: Executed `cargo audit` locally to ensure no additional advisories were discovered and ran `cargo check` and `cargo test` across all targets to verify memory boundary checks function safely.
