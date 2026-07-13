@@ -69,6 +69,80 @@ impl<E: StorageEngine> Database<E> {
         self.constraints.get_foreign_key_constraints(relation_name)
     }
 
+
+    /// Get the type constraints for an attribute.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::constraints::{AttributeConstraints, TypeConstraint};
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new().with_attribute("count", ScalarType::Int)
+    /// );
+    /// db.create_relvar("TEST", rel_type).unwrap();
+    ///
+    /// let attr_constraints = AttributeConstraints::new("count".to_string(), ScalarType::Int)
+    ///     .with_constraint(TypeConstraint::Range { min: ScalarValue::Int(1), max: ScalarValue::Int(100) });
+    ///
+    /// db.set_type_constraints("TEST", "count", attr_constraints).unwrap();
+    ///
+    /// let current_constraints = db.get_type_constraints("TEST", "count").unwrap();
+    /// assert_eq!(current_constraints.constraints().len(), 1);
+    /// ```
+    pub fn get_type_constraints(
+        &self,
+        relation_name: &str,
+        attribute_name: &str,
+    ) -> Option<&AttributeConstraints> {
+        self.constraints.get_type_constraints(relation_name, attribute_name)
+    }
+
+    /// Get the check constraints for a relation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::constraints::{CheckConstraints, CheckConstraint, ConstraintExpression, CmpOp, ValueOrRef};
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(
+    ///     TupleType::new().with_attribute("age", ScalarType::Int)
+    /// );
+    /// db.create_relvar("PEOPLE", rel_type).unwrap();
+    ///
+    /// let constraints = CheckConstraints::new()
+    ///     .with_constraint(CheckConstraint::new(
+    ///         "valid_age",
+    ///         "Age must be non-negative",
+    ///         ConstraintExpression::Cmp {
+    ///             left: "age".to_string(),
+    ///             op: CmpOp::Gt,
+    ///             right: ValueOrRef::Value(ScalarValue::Int(-1))
+    ///         }
+    ///     ));
+    ///
+    /// db.set_check_constraints("PEOPLE", constraints).unwrap();
+    ///
+    /// let current_checks = db.get_check_constraints("PEOPLE").unwrap();
+    /// assert_eq!(current_checks.constraints().len(), 1);
+    /// ```
+    pub fn get_check_constraints(
+        &self,
+        relation_name: &str,
+    ) -> Option<&CheckConstraints> {
+        self.constraints.get_check_constraints(relation_name)
+    }
+
     /// Set key constraints for a relation.
     ///
     /// # Examples

@@ -163,6 +163,14 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// let db = Database::new(InMemoryEngine::new());
     /// ```
+
+    /// Get an active transaction snapshot, if any.
+    /// Gets the current transaction snapshot.
+    pub fn get_transaction_snapshot(&self) -> Option<&E::Snapshot> {
+        self.transaction_snapshot.as_ref()
+    }
+
+    /// Creates a new Database instance.
     pub fn new(engine: E) -> Self {
         Self {
             engine,

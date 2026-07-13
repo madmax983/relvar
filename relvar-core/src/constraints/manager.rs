@@ -519,6 +519,24 @@ impl ConstraintManager {
     /// ```text
     /// // Example
     /// ```
+
+    /// Gets the type constraints for an attribute in a relation.
+    pub fn get_type_constraints(
+        &self,
+        relation_name: &str,
+        attribute_name: &str,
+    ) -> Option<&AttributeConstraints> {
+        self.type_constraints
+            .get(relation_name)
+            .and_then(|attrs| attrs.get(attribute_name))
+    }
+
+    /// Gets the check constraints for a relation.
+    pub fn get_check_constraints(&self, relation_name: &str) -> Option<&CheckConstraints> {
+        self.check_constraints.get(relation_name)
+    }
+
+    /// Gets the key constraints for a relation.
     pub fn get_key_constraints(&self, relation_name: &str) -> Option<&KeyConstraints> {
         self.key_constraints.get(relation_name)
     }
@@ -530,6 +548,7 @@ impl ConstraintManager {
     /// ```text
     /// // Example
     /// ```
+    /// Gets the foreign key constraints for a relation.
     pub fn get_foreign_key_constraints(
         &self,
         relation_name: &str,
