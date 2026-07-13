@@ -132,3 +132,7 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+
+## 2025-05-22 - Storage Heap Extraction Error Paths II
+**Learning:** Additional serialization paths (`extract_tuple_from_page`, `extract_all_tuples`, `extract_raw_tuple_data`, `deserialize_slotted_page`, `extract_tuples_from_versioned_slots`) mapping exactly to `HeapError::Serialization` limits were not covered, which masks potential bounds bypass on corrupted on-disk pages.
+**Action:** Write explicitly failing invalid bounds tests to trigger inner boundary logic specifically in these functions and map correctly to `HeapError::Serialization`.
