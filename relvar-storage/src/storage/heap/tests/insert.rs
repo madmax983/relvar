@@ -88,7 +88,7 @@ fn test_insert_versioned_sets_xmin() {
     let tuple_id = heap.insert_tuple_versioned(&tuple, txn_id).unwrap();
 
     // Verify TupleId was returned
-    assert_eq!(tuple_id.page_id, 0);
+    assert_eq!(tuple_id.page_id, PageId(0));
     assert_eq!(tuple_id.slot, 0);
 }
 
@@ -127,9 +127,9 @@ fn test_insert_versioned_multiple_versions_same_page() {
     let tid3 = heap.insert_tuple_versioned(&tuple3, test_txn(3)).unwrap();
 
     // All should be on page 0 (small tuples)
-    assert_eq!(tid1.page_id, 0);
-    assert_eq!(tid2.page_id, 0);
-    assert_eq!(tid3.page_id, 0);
+    assert_eq!(tid1.page_id, PageId(0));
+    assert_eq!(tid2.page_id, PageId(0));
+    assert_eq!(tid3.page_id, PageId(0));
 
     // Different slots
     assert_eq!(tid1.slot, 0);
@@ -154,7 +154,7 @@ fn test_insert_versioned_returns_tuple_id() {
     let tuple_id = result.unwrap();
 
     // Verify we got a valid TupleId
-    assert!(tuple_id.page_id < 1000); // Reasonable page number
+    assert!(tuple_id.page_id < PageId(1000)); // Reasonable page number
     assert!(tuple_id.slot < 1000); // Reasonable slot number
 }
 
@@ -194,8 +194,8 @@ fn test_insert_versioned_page_overflow() {
     let tid2 = heap.insert_tuple_versioned(&tuple, test_txn(2)).unwrap();
 
     // Should go to different pages
-    assert_eq!(tid1.page_id, 0);
-    assert_eq!(tid2.page_id, 1);
+    assert_eq!(tid1.page_id, PageId(0));
+    assert_eq!(tid2.page_id, PageId(1));
 }
 
 #[test]
@@ -252,7 +252,7 @@ fn test_insert_versioned_sequential_slots() {
             .insert_tuple_versioned(&tuple, test_txn(i + 1))
             .unwrap();
 
-        assert_eq!(tid.page_id, 0);
+        assert_eq!(tid.page_id, PageId(0));
         assert_eq!(tid.slot, i as u32);
     }
 }
@@ -317,7 +317,7 @@ fn test_heap_insert_on_corrupted_page_fails() {
     let mut page_data = vec![0u8; PAGE_SIZE - 8];
     page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
-    let page = Page::from_data(0, page_data).unwrap();
+    let page = Page::from_data(PageId(0), page_data).unwrap();
     heap.page_file.write_page(&page).unwrap();
 
     // 2. Try to insert a new tuple
@@ -377,7 +377,7 @@ fn test_heap_insert_versioned_on_corrupted_page_fails() {
     // Copy slot directory after header
     page_data[5..5 + slot_dir.len()].copy_from_slice(&slot_dir);
 
-    let page = Page::from_data(0, page_data).unwrap();
+    let page = Page::from_data(PageId(0), page_data).unwrap();
     heap.page_file.write_page(&page).unwrap();
 
     // 2. Try to insert a new versioned tuple

@@ -43,7 +43,7 @@ fn test_heap_gc_on_corrupted_page_fails() {
     // Copy slot directory after header
     page_data[5..5 + slot_dir.len()].copy_from_slice(&slot_dir);
 
-    let page = Page::from_data(0, page_data).unwrap();
+    let page = Page::from_data(PageId(0), page_data).unwrap();
     heap.page_file.write_page(&page).unwrap();
 
     // 2. Run GC

@@ -532,7 +532,7 @@ impl HeapFile {
     {
         let mut page_id = 0;
         loop {
-            match insert_fn(self, page_id) {
+            match insert_fn(self, PageId(page_id)) {
                 Ok(result) => return Ok(result),
                 Err(HeapError::PageFull) => {
                     page_id += 1;
@@ -774,7 +774,7 @@ impl HeapFile {
 
         // Scan pages until we hit an empty one
         loop {
-            let page = self.page_file.read_page(page_id)?;
+            let page = self.page_file.read_page(PageId(page_id))?;
 
             if page.is_empty() {
                 // Empty page means no more data
@@ -914,7 +914,7 @@ impl HeapFile {
                 xmax: None,
                 prev_version: if is_update {
                     Some(TupleId {
-                        page_id: 0,
+                        page_id: PageId(0),
                         slot: 0,
                     })
                 } else {
@@ -1391,7 +1391,7 @@ impl HeapFile {
         let mut page_id = 0;
 
         loop {
-            let page = self.page_file.read_page(page_id)?;
+            let page = self.page_file.read_page(PageId(page_id))?;
 
             if page.is_empty() {
                 break;
@@ -1402,7 +1402,8 @@ impl HeapFile {
                 continue;
             }
 
-            removed_count += self.gc_process_page(page_id, &page, oldest_active_lsn, committed)?;
+            removed_count +=
+                self.gc_process_page(PageId(page_id), &page, oldest_active_lsn, committed)?;
 
             page_id += 1;
         }
@@ -1505,7 +1506,7 @@ impl HeapFile {
         let mut page_id = 0;
 
         loop {
-            let page = self.page_file.read_page(page_id)?;
+            let page = self.page_file.read_page(PageId(page_id))?;
 
             if page.is_empty() {
                 // Empty page means no more data

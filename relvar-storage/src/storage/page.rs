@@ -21,17 +21,17 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar_storage::storage::{Page, PageFile, PAGE_SIZE};
+//! use relvar_storage::storage::{Page, PageFile, PAGE_SIZE, PageId};
 //!
 //! // Create a page file
 //! let mut pf = PageFile::create("data.pages").unwrap();
 //!
 //! // Create and write a page
-//! let page = Page::from_data(0, vec![1, 2, 3, 4, 5]).unwrap();
+//! let page = Page::from_data(PageId(0), vec![1, 2, 3, 4, 5]).unwrap();
 //! pf.write_page(&page).unwrap();
 //!
 //! // Read it back
-//! let loaded = pf.read_page(0).unwrap();
+//! let loaded = pf.read_page(PageId(0)).unwrap();
 //! assert_eq!(loaded.data(), &[1, 2, 3, 4, 5]);
 //! ```
 
@@ -57,7 +57,14 @@ pub const PAGE_SIZE: usize = 4096;
 ///
 /// Pages are numbered sequentially starting from 0. The page ID determines
 /// the byte offset in the file: `offset = page_id * PAGE_SIZE`.
-pub type PageId = u64;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageId(pub u64);
+
+impl std::fmt::Display for PageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Errors that can occur during page operations.
 #[derive(Debug, Error)]
@@ -84,15 +91,15 @@ pub enum PageError {
 /// # Examples
 ///
 /// ```
-/// use relvar_storage::storage::{Page, PAGE_SIZE};
+/// use relvar_storage::storage::{Page, PAGE_SIZE, PageId};
 ///
 /// // Create an empty page
-/// let mut page = Page::new(0);
+/// let mut page = Page::new(PageId(0));
 /// assert!(page.is_empty());
 /// assert_eq!(page.available_space(), PAGE_SIZE);
 ///
 /// // Create a page with data
-/// let page = Page::from_data(1, vec![1, 2, 3, 4, 5]).unwrap();
+/// let page = Page::from_data(PageId(1), vec![1, 2, 3, 4, 5]).unwrap();
 /// assert_eq!(page.data().len(), 5);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,10 +120,10 @@ impl Page {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Page;
+    /// use relvar_storage::storage::{Page, PageId};
     ///
-    /// let page = Page::new(0);
-    /// assert_eq!(page.id(), 0);
+    /// let page = Page::new(PageId(0));
+    /// assert_eq!(page.id(), PageId(0));
     /// assert!(page.is_empty());
     /// ```
     pub fn new(id: PageId) -> Self {
@@ -140,10 +147,10 @@ impl Page {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Page;
+    /// use relvar_storage::storage::{Page, PageId};
     ///
-    /// let page = Page::from_data(42, vec![1, 2, 3]).unwrap();
-    /// assert_eq!(page.id(), 42);
+    /// let page = Page::from_data(PageId(42), vec![1, 2, 3]).unwrap();
+    /// assert_eq!(page.id(), PageId(42));
     /// assert_eq!(page.data(), &[1, 2, 3]);
     /// ```
     pub fn from_data(id: PageId, data: Vec<u8>) -> Result<Self, PageError> {
@@ -164,10 +171,10 @@ impl Page {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Page;
+    /// use relvar_storage::storage::{Page, PageId};
     ///
-    /// let page = Page::new(42);
-    /// assert_eq!(page.id(), 42);
+    /// let page = Page::new(PageId(42));
+    /// assert_eq!(page.id(), PageId(42));
     /// ```
     pub fn id(&self) -> PageId {
         self.id
@@ -200,9 +207,9 @@ impl Page {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::{Page, PAGE_SIZE};
+    /// use relvar_storage::storage::{Page, PAGE_SIZE, PageId};
     ///
-    /// let page = Page::new(1);
+    /// let page = Page::new(PageId(1));
     /// // A new page starts completely empty (data length is 0).
     /// assert_eq!(page.available_space(), PAGE_SIZE);
     /// ```
@@ -238,18 +245,18 @@ impl Page {
 /// # Examples
 ///
 /// ```no_run
-/// use relvar_storage::storage::{Page, PageFile};
+/// use relvar_storage::storage::{Page, PageFile, PageId};
 ///
 /// // Create a new page file
 /// let mut pf = PageFile::create("data.pages").unwrap();
 ///
 /// // Write pages (can write in any order)
-/// pf.write_page(&Page::from_data(0, vec![1, 2, 3]).unwrap()).unwrap();
-/// pf.write_page(&Page::from_data(5, vec![4, 5, 6]).unwrap()).unwrap();
+/// pf.write_page(&Page::from_data(PageId(0), vec![1, 2, 3]).unwrap()).unwrap();
+/// pf.write_page(&Page::from_data(PageId(5), vec![4, 5, 6]).unwrap()).unwrap();
 ///
 /// // Read pages back
-/// let page0 = pf.read_page(0).unwrap();
-/// let page5 = pf.read_page(5).unwrap();
+/// let page0 = pf.read_page(PageId(0)).unwrap();
+/// let page5 = pf.read_page(PageId(5)).unwrap();
 /// ```
 pub struct PageFile {
     /// The underlying file handle.
@@ -325,6 +332,7 @@ impl PageFile {
 
     fn read_raw_page(&mut self, page_id: PageId, buffer: &mut [u8]) -> Result<usize, PageError> {
         let offset = page_id
+            .0
             .checked_mul(PAGE_SIZE as u64)
             .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
@@ -385,6 +393,7 @@ impl PageFile {
         // Seek to the page offset
         let offset = page
             .id()
+            .0
             .checked_mul(PAGE_SIZE as u64)
             .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
@@ -439,6 +448,7 @@ impl PageFile {
         // Seek to the page offset
         let offset = page
             .id()
+            .0
             .checked_mul(PAGE_SIZE as u64)
             .ok_or(PageError::PageTooLarge)?;
         self.file.seek(SeekFrom::Start(offset))?;
@@ -489,8 +499,8 @@ mod tests {
 
     #[test]
     fn test_page_creation() {
-        let page = Page::new(0);
-        assert_eq!(page.id(), 0);
+        let page = Page::new(PageId(0));
+        assert_eq!(page.id(), PageId(0));
         assert!(page.is_empty());
         assert_eq!(page.available_space(), PAGE_SIZE);
     }
@@ -498,9 +508,9 @@ mod tests {
     #[test]
     fn test_page_from_data() {
         let data = vec![1, 2, 3, 4, 5];
-        let page = Page::from_data(42, data.clone()).unwrap();
+        let page = Page::from_data(PageId(42), data.clone()).unwrap();
 
-        assert_eq!(page.id(), 42);
+        assert_eq!(page.id(), PageId(42));
         assert_eq!(page.data(), &data);
         assert_eq!(page.available_space(), PAGE_SIZE - 5);
     }
@@ -508,7 +518,7 @@ mod tests {
     #[test]
     fn test_page_too_large() {
         let data = vec![0u8; PAGE_SIZE + 1];
-        let result = Page::from_data(0, data);
+        let result = Page::from_data(PageId(0), data);
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), PageError::PageTooLarge));
@@ -516,7 +526,7 @@ mod tests {
 
     #[test]
     fn test_page_set_data() {
-        let mut page = Page::new(0);
+        let mut page = Page::new(PageId(0));
         let data = vec![1, 2, 3];
 
         page.set_data(data.clone()).unwrap();
@@ -532,7 +542,7 @@ mod tests {
         {
             let mut page_file = PageFile::create(path).unwrap();
             let data = vec![1, 2, 3, 4, 5];
-            let page = Page::from_data(0, data.clone()).unwrap();
+            let page = Page::from_data(PageId(0), data.clone()).unwrap();
 
             page_file.write_page(&page).unwrap();
         }
@@ -540,9 +550,9 @@ mod tests {
         // Read it back
         {
             let mut page_file = PageFile::open(path).unwrap();
-            let page = page_file.read_page(0).unwrap();
+            let page = page_file.read_page(PageId(0)).unwrap();
 
-            assert_eq!(page.id(), 0);
+            assert_eq!(page.id(), PageId(0));
             assert_eq!(page.data(), &[1, 2, 3, 4, 5]);
         }
     }
@@ -558,7 +568,7 @@ mod tests {
 
             for i in 0..5 {
                 let data = vec![i as u8; 10];
-                let page = Page::from_data(i, data).unwrap();
+                let page = Page::from_data(PageId(i), data).unwrap();
                 page_file.write_page(&page).unwrap();
             }
         }
@@ -568,8 +578,8 @@ mod tests {
             let mut page_file = PageFile::open(path).unwrap();
 
             for i in 0..5 {
-                let page = page_file.read_page(i).unwrap();
-                assert_eq!(page.id(), i);
+                let page = page_file.read_page(PageId(i)).unwrap();
+                assert_eq!(page.id(), PageId(i));
                 assert_eq!(page.data().len(), 10);
                 assert!(page.data().iter().all(|&b| b == i as u8));
             }
@@ -584,12 +594,12 @@ mod tests {
         let mut page_file = PageFile::create(path).unwrap();
 
         // Write an empty page
-        let page = Page::new(0);
+        let page = Page::new(PageId(0));
         page_file.write_page(&page).unwrap();
 
         // Read it back
-        let read_page = page_file.read_page(0).unwrap();
-        assert_eq!(read_page.id(), 0);
+        let read_page = page_file.read_page(PageId(0)).unwrap();
+        assert_eq!(read_page.id(), PageId(0));
         assert!(read_page.is_empty());
     }
 
@@ -601,15 +611,15 @@ mod tests {
         let mut page_file = PageFile::create(path).unwrap();
 
         // Write initial data
-        let page1 = Page::from_data(0, vec![1, 2, 3]).unwrap();
+        let page1 = Page::from_data(PageId(0), vec![1, 2, 3]).unwrap();
         page_file.write_page(&page1).unwrap();
 
         // Overwrite with new data
-        let page2 = Page::from_data(0, vec![4, 5, 6, 7]).unwrap();
+        let page2 = Page::from_data(PageId(0), vec![4, 5, 6, 7]).unwrap();
         page_file.write_page(&page2).unwrap();
 
         // Read it back
-        let read_page = page_file.read_page(0).unwrap();
+        let read_page = page_file.read_page(PageId(0)).unwrap();
         assert_eq!(read_page.data(), &[4, 5, 6, 7]);
     }
 
@@ -620,7 +630,7 @@ mod tests {
 
         {
             let mut page_file = PageFile::create(&path).unwrap();
-            let page = Page::from_data(0, vec![1, 2, 3, 4, 5]).unwrap();
+            let page = Page::from_data(PageId(0), vec![1, 2, 3, 4, 5]).unwrap();
 
             // Write buffered - data may not be on disk yet
             page_file.write_page_buffered(&page).unwrap();
@@ -633,7 +643,7 @@ mod tests {
         // After closing and reopening, data should be there (OS flushes on close)
         {
             let mut page_file = PageFile::open(&path).unwrap();
-            let read_page = page_file.read_page(0).unwrap();
+            let read_page = page_file.read_page(PageId(0)).unwrap();
             assert_eq!(read_page.data(), &[1, 2, 3, 4, 5]);
         }
     }
@@ -645,7 +655,7 @@ mod tests {
 
         {
             let mut page_file = PageFile::create(&path).unwrap();
-            let page = Page::from_data(0, vec![42, 43, 44]).unwrap();
+            let page = Page::from_data(PageId(0), vec![42, 43, 44]).unwrap();
 
             // Write buffered then explicitly sync
             page_file.write_page_buffered(&page).unwrap();
@@ -655,7 +665,7 @@ mod tests {
         // Data should survive reopen
         {
             let mut page_file = PageFile::open(&path).unwrap();
-            let read_page = page_file.read_page(0).unwrap();
+            let read_page = page_file.read_page(PageId(0)).unwrap();
             assert_eq!(read_page.data(), &[42, 43, 44]);
         }
     }
@@ -669,7 +679,7 @@ mod tests {
 
         {
             let mut page_file = PageFile::create(&path).unwrap();
-            let page = Page::from_data(0, vec![99, 98, 97]).unwrap();
+            let page = Page::from_data(PageId(0), vec![99, 98, 97]).unwrap();
 
             // Write buffered without sync
             page_file.write_page_buffered(&page).unwrap();
@@ -684,7 +694,7 @@ mod tests {
         // recovery test would require actual power-off simulation.
         // For now, we just verify the file can be opened and read.
         let mut page_file = PageFile::open(&path).unwrap();
-        let _read_page = page_file.read_page(0);
+        let _read_page = page_file.read_page(PageId(0));
         // Don't assert on data content - might or might not be there
     }
 
@@ -710,7 +720,7 @@ mod tests {
         }
 
         // Now read it back - should error
-        let result = page_file.read_page(0);
+        let result = page_file.read_page(PageId(0));
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {
@@ -739,7 +749,7 @@ mod tests {
         }
 
         // Now read it back - should error
-        let result = page_file.read_page(0);
+        let result = page_file.read_page(PageId(0));
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {
@@ -771,7 +781,7 @@ mod tests {
         }
 
         // Now read it back - should error cleanly without panic
-        let result = page_file.read_page(0);
+        let result = page_file.read_page(PageId(0));
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {
@@ -814,7 +824,7 @@ mod tests {
         }
 
         // Should succeed
-        let result = page_file.read_page(0);
+        let result = page_file.read_page(PageId(0));
         assert!(result.is_ok());
         let page = result.unwrap();
         assert_eq!(page.data().len(), max_data);
@@ -836,7 +846,7 @@ mod tests {
         }
 
         // Should fail
-        let result = page_file.read_page(0);
+        let result = page_file.read_page(PageId(0));
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {
@@ -865,7 +875,7 @@ mod tests {
         }
 
         // Should fail cleanly with our new check
-        let result = page_file.read_page(0);
+        let result = page_file.read_page(PageId(0));
         assert!(result.is_err());
         match result {
             Err(PageError::Serialization(msg)) => {

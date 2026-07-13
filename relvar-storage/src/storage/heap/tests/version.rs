@@ -44,7 +44,7 @@ fn test_versioned_slot_with_xmax() {
 #[test]
 fn test_versioned_slot_with_prev_version() {
     let prev = TupleId {
-        page_id: 5,
+        page_id: PageId(5),
         slot: 10,
     };
 
@@ -126,7 +126,7 @@ fn test_versioned_slot_roundtrip_multiple() {
             xmin: test_txn(2),
             xmax: Some(test_txn(3)),
             prev_version: Some(TupleId {
-                page_id: 0,
+                page_id: PageId(0),
                 slot: 0,
             }),
         },
@@ -136,7 +136,7 @@ fn test_versioned_slot_roundtrip_multiple() {
             xmin: test_txn(4),
             xmax: Some(test_txn(5)),
             prev_version: Some(TupleId {
-                page_id: 1,
+                page_id: PageId(1),
                 slot: 1,
             }),
         },
@@ -216,7 +216,7 @@ fn test_sentry_extract_tuples_from_versioned_slots() {
     let page_data = heap
         .serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)
         .unwrap();
-    let page = Page::from_data(0, page_data).unwrap();
+    let page = Page::from_data(PageId(0), page_data).unwrap();
 
     let slots = [versioned_page.slots[0].clone().unwrap()];
     let extracted = heap
@@ -254,7 +254,7 @@ fn test_sentry_extract_tuples_from_versioned_slots_corrupted_length() {
     let page_data = heap
         .serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)
         .unwrap();
-    let page = Page::from_data(0, page_data).unwrap();
+    let page = Page::from_data(PageId(0), page_data).unwrap();
 
     let mut slots = [versioned_page.slots[0].clone().unwrap()];
     // Now intentionally corrupt the page entry for extract
@@ -275,7 +275,7 @@ fn test_sentry_validate_slot_bounds_offset_overflow() {
     let temp_file = NamedTempFile::new().unwrap();
     let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
-    let page = Page::new(0);
+    let page = Page::new(PageId(0));
 
     // Test the extract_tuple_from_page missing bound limit branch, where offset is fine but we exceed page data bounds
     // to trigger "Corrupted slot on page ... points outside page data"

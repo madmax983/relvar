@@ -226,7 +226,7 @@ fn test_update_nonexistent_tuple_fails() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     let bogus_id = TupleId {
-        page_id: 999,
+        page_id: PageId(999),
         slot: 0,
     };
     let updated = tuple! { id: 1i64, name: "Updated" };

@@ -113,7 +113,7 @@ fn test_heap_scan_large_volume() {
             .serialize_slotted_page_with_tuples(&slotted_page, &[tuple_data])
             .unwrap();
 
-        let page = Page::from_data(i, page_data).unwrap();
+        let page = Page::from_data(PageId(i), page_data).unwrap();
         heap.page_file.write_page(&page).unwrap();
     }
 
@@ -426,7 +426,7 @@ fn test_heap_scan_corrupted_slot() {
     let mut page_data = vec![0u8; PAGE_SIZE - 8];
     page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
-    let page = Page::from_data(0, page_data).unwrap();
+    let page = Page::from_data(PageId(0), page_data).unwrap();
     heap.page_file.write_page(&page).unwrap();
 
     // Scan should fail
@@ -520,7 +520,7 @@ fn test_heap_scan_offset_overflow() {
     let mut page_data = vec![0u8; PAGE_SIZE - 8];
     page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
-    let page = Page::from_data(0, page_data).unwrap();
+    let page = Page::from_data(PageId(0), page_data).unwrap();
     heap.page_file.write_page(&page).unwrap();
 
     // Scan should fail cleanly
@@ -570,7 +570,7 @@ mod offset_overflow_tests {
         // PAGE_FORMAT_VERSION (1 byte) + 4 bytes length = 5 bytes needed
         // We write 3 bytes: [PAGE_FORMAT_VERSION, 0, 0]
         let data = vec![PAGE_FORMAT_VERSION, 0, 0];
-        let page = Page::from_data(0, data).unwrap();
+        let page = Page::from_data(PageId(0), data).unwrap();
 
         // Call private method directly to verify protection
         // (update_tuple_versioned calls this without is_versioned_page check)
@@ -605,7 +605,7 @@ mod offset_overflow_tests {
             heap.insert_tuple(&t).unwrap();
 
             // Read page 0
-            let page = heap.page_file.read_page(0).unwrap();
+            let page = heap.page_file.read_page(PageId(0)).unwrap();
             // Try to deserialize
             let res = heap.deserialize_slotted_page(&page);
             if res.is_err() {
@@ -632,7 +632,7 @@ mod offset_overflow_tests {
                 }
             }
 
-            if page.id() > 0 {
+            if page.id() > PageId(0) {
                 println!("Page split happened at insert {}", i);
                 break;
             }
@@ -686,7 +686,7 @@ mod offset_overflow_tests {
         // 2. Manually simulate deletion of B (slot 1) to force reuse
         // We do this by modifying the page directly since we don't have a public delete yet
         {
-            let page = heap.page_file.read_page(0).unwrap();
+            let page = heap.page_file.read_page(PageId(0)).unwrap();
             let mut sp = heap.deserialize_slotted_page(&page).unwrap();
 
             // Delete slot 1 (B)
@@ -708,7 +708,7 @@ mod offset_overflow_tests {
             let new_page_data = heap
                 .serialize_slotted_page_with_tuples(&sp, &existing_tuples)
                 .unwrap();
-            let new_page = Page::from_data(0, new_page_data).unwrap();
+            let new_page = Page::from_data(PageId(0), new_page_data).unwrap();
             heap.page_file.write_page(&new_page).unwrap();
         }
 
@@ -912,7 +912,7 @@ fn test_read_tuple_integer_overflow() {
     // Re-open and try to get tuple
     let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
     let result = heap.read_tuple(TupleId {
-        page_id: 0,
+        page_id: PageId(0),
         slot: 0,
     });
 
@@ -971,7 +971,7 @@ fn test_read_tuple_out_of_bounds() {
     // Re-open and try to get tuple
     let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
     let result = heap.read_tuple(TupleId {
-        page_id: 0,
+        page_id: PageId(0),
         slot: 0,
     });
 
@@ -1031,7 +1031,7 @@ fn test_read_tuple_versioned_integer_overflow() {
     // Test
     let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
     let result = heap.read_tuple_versioned(TupleId {
-        page_id: 0,
+        page_id: PageId(0),
         slot: 0,
     });
 
@@ -1090,7 +1090,7 @@ fn test_read_tuple_versioned_out_of_bounds() {
     // Test
     let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
     let result = heap.read_tuple_versioned(TupleId {
-        page_id: 0,
+        page_id: PageId(0),
         slot: 0,
     });
 
