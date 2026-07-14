@@ -337,6 +337,17 @@ mod tests {
     }
 
     #[test]
+    fn test_wal_record_error_display() {
+        let err1 = WalRecordError::Serialization(postcard::Error::SerializeBufferFull);
+        let msg1 = err1.to_string();
+        assert!(msg1.contains("Failed to serialize WAL record"));
+
+        let err2 = WalRecordError::RecordTooLarge(2000, 1000);
+        let msg2 = err2.to_string();
+        assert!(msg2.contains("WAL record too large: 2000 bytes (max: 1000)"));
+    }
+
+    #[test]
     fn test_record_size_bounded() {
         // Small record should succeed
         let small_record = WalRecord::Begin {
