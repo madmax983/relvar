@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2024-10-24 - BTreeMap::from_iter over .collect()
+**Learning:** For ordered mappings like creating a `BTreeMap` from sorted data streams (like zipped values from previously ordered maps), `BTreeMap::from_iter` constructs the result linearly rather than `BTreeMap::collect()` sorting it internally.
+**Action:** Use `BTreeMap::from_iter` over `.collect()` to remove intermediate data structure overhead during collection when creating maps from sorted pairs.

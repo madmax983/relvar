@@ -105,11 +105,12 @@ impl Relation {
             // Both iterators follow the sorted order of old attribute names.
             // - new_names_arc was built by iterating heading().attributes() (sorted by old_name)
             // - tuple.values().values() iterates values sorted by old_name (BTreeMap keys)
-            let values_map: BTreeMap<String, _> = new_names_arc
-                .iter()
-                .zip(tuple.values().values())
-                .map(|(new_name, value)| (new_name.clone(), value.clone()))
-                .collect();
+            let values_map: BTreeMap<String, _> = BTreeMap::from_iter(
+                new_names_arc
+                    .iter()
+                    .zip(tuple.values().values())
+                    .map(|(new_name, value)| (new_name.clone(), value.clone())),
+            );
 
             // Safety:
             // 1. We constructed new_heading directly from old_heading with renames applied.
@@ -165,19 +166,18 @@ impl Relation {
             // Both iterators follow the sorted order of old attribute names.
             // By keeping the old key string, we can reuse its memory allocation
             // if the name didn't actually change, avoiding String cloning.
-            let values_map: BTreeMap<String, _> = new_names
-                .iter()
-                .zip(tuple.into_values())
-                .map(|(new_name, (old_name, value))| {
-                    if new_name == &old_name {
-                        // Reuse the existing string allocation
-                        (old_name, value)
-                    } else {
-                        // Must allocate a new string for the changed name
-                        (new_name.clone(), value)
-                    }
-                })
-                .collect();
+            let values_map: BTreeMap<String, _> =
+                BTreeMap::from_iter(new_names.iter().zip(tuple.into_values()).map(
+                    |(new_name, (old_name, value))| {
+                        if new_name == &old_name {
+                            // Reuse the existing string allocation
+                            (old_name, value)
+                        } else {
+                            // Must allocate a new string for the changed name
+                            (new_name.clone(), value)
+                        }
+                    },
+                ));
 
             // Safety:
             // Same as rename: new names and types are guaranteed to match
