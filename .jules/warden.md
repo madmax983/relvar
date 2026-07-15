@@ -16,3 +16,7 @@
 ## 2026-05-24 - [RwLock Poisoning DoS in PersistentEngine]
 **Threat:** Application panic due to `.unwrap()` calls on `storage_manager.read()` and `storage_manager.write()`. If a thread panics while holding the lock, it poisons the `RwLock`, causing subsequent threads to panic, resulting in a denial-of-service (DoS) cascade.
 **Defense:** Replaced `.unwrap()` with safe error handling on lock acquisition in `PersistentEngine`. Used `.map_err()` to propagate `StorageError::Other` for operations returning a `Result`, and used `.unwrap_or_else(|e| e.into_inner())` for read-only methods returning non-Results, safely extracting the guard without propagating a panic.
+
+## 2026-10-24 - Integer Overflow DoS in Image Parsing
+**Threat:** Denial of Service (DoS) via integer overflow in image bounds calculation. Calculating bounding box with unchecked arithmetic (`max_x - min_x` over max range of `i64`) caused overflow leading to panic, and using `as usize` cast directly with user controlled negative data corrupted dimensions leading to crashes/panics.
+**Defense:** Used `abs_diff` and safe `usize::try_from` with `saturating_add` to prevent overflow and unbound memory allocation. Upgraded `crossbeam-epoch` to fix RUSTSEC-2026-0204.
