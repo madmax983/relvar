@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-05-18 - [Facade Logic Coverage]
+**Learning:** `relvar/src/lib.rs` and `relvar-core/src/database/schema.rs` had facade and orchestration functions (`in_memory()`, `open()`, `drop_base_relvar`, `drop_virtual_relvar`) that were fully valid but bypassed missing standard test suite integration coverage. This leads to gaps where 0/3 lines report in the root library facade.
+**Action:** Created dedicated module tests to initialize and trigger these top-level entry points cleanly to improve API boundary confidence.

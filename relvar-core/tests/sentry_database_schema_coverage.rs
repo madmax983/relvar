@@ -170,3 +170,30 @@ fn test_database_define_virtual_relvar_already_exists() {
 
     assert!(matches!(err, DatabaseError::RelationAlreadyExists(_)));
 }
+
+#[test]
+fn test_database_drop_virtual_relvar_success() {
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.define_virtual_relvar("VIRT_TEST", rel_type.clone(), |_| {
+        Ok(relvar_core::values::Relation::new(
+            relvar_core::types::RelationType::new(relvar_core::types::TupleType::new()),
+        ))
+    })
+    .unwrap();
+
+    assert!(db.relvar_exists("VIRT_TEST"));
+    db.drop_virtual_relvar("VIRT_TEST").unwrap();
+    assert!(!db.relvar_exists("VIRT_TEST"));
+}
+
+#[test]
+fn test_database_drop_base_relvar_success() {
+    let mut db = Database::new(InMemoryEngine::new());
+    let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    db.create_relvar("TEST", rel_type.clone()).unwrap();
+
+    assert!(db.relvar_exists("TEST"));
+    db.drop_relvar("TEST").unwrap();
+    assert!(!db.relvar_exists("TEST"));
+}

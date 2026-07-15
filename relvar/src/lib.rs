@@ -146,10 +146,10 @@ pub use relvar_core::constraints;
 pub use relvar_core::tuple;
 
 /// Experimental features that may be unstable or subject to change.
-pub mod experimental;
+pub(crate) mod experimental;
 
 /// Developer tools and utilities.
-pub mod tools;
+pub(crate) mod tools;
 
 #[deprecated(note = "Use `relvar::tools::visualizer` instead")]
 pub use tools::visualizer;
@@ -197,4 +197,22 @@ pub fn open<P: AsRef<std::path::Path>>(
     path: P,
 ) -> Result<Database<PersistentEngine>, StorageError> {
     Ok(Database::new(PersistentEngine::open(path)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_in_memory_facade() {
+        let _db = in_memory();
+    }
+
+    #[cfg(feature = "storage")]
+    #[test]
+    fn test_open_facade() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let _db = open(temp_dir.path()).unwrap();
+    }
 }
