@@ -1,0 +1,4 @@
+💡 **The Spark:** I noticed we have `tclose` to resolve transitive paths and time-based metrics, but we don't have anything using it for determining stale targets based on dependency times like a Make or Ninja build system.
+🚀 **The Feature:** Implemented `BuildSystem` in `src/experimental/build_system.rs`. It models files and dependency edges purely as relations. Stale targets are derived completely declaratively using transitive closure, natural joins, and restriction based on float comparison!
+🔮 **The Potential:** Relational engines could natively parse `Makefile` configurations and calculate the absolute minimum execution plan via SQL, optimizing task execution dynamically!
+⚠️ **Risk:** Low. The feature is completely isolated in `src/experimental/build_system.rs` and doesn't modify any core logic!
