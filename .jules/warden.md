@@ -16,3 +16,6 @@
 ## 2026-05-24 - [RwLock Poisoning DoS in PersistentEngine]
 **Threat:** Application panic due to `.unwrap()` calls on `storage_manager.read()` and `storage_manager.write()`. If a thread panics while holding the lock, it poisons the `RwLock`, causing subsequent threads to panic, resulting in a denial-of-service (DoS) cascade.
 **Defense:** Replaced `.unwrap()` with safe error handling on lock acquisition in `PersistentEngine`. Used `.map_err()` to propagate `StorageError::Other` for operations returning a `Result`, and used `.unwrap_or_else(|e| e.into_inner())` for read-only methods returning non-Results, safely extracting the guard without propagating a panic.
+## 2026-07-15 - [Prevent Denial of Service in Image Processing via Memory Allocation Exhaustion]
+**Threat:** Application DoS due to unbounded buffer allocation in `experimental::image::save` triggered by integer truncation and arithmetic bugs leading to unsafe casting when calculating dimensions via `(max_x - min_x) as usize`.
+**Defense:** Replaced unsafe casting and `saturating_sub()` with `max_x.abs_diff(min_x)` and safe integer conversion using `usize::try_from()` to accurately track the area and return empty data via existing size threshold limits.
