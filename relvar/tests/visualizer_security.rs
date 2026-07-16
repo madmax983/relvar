@@ -1,4 +1,4 @@
-use relvar::tools::visualizer::SchemaVisualizer;
+use relvar::visualizer::SchemaVisualizer;
 use relvar::{Database, InMemoryEngine, RelationType, ScalarType, TupleType};
 
 #[test]
