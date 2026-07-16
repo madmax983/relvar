@@ -93,7 +93,12 @@ impl RelVcs {
     /// // Note: This is a placeholder example
     /// ```
     pub fn checkout(&self, branch_name: &str) -> Result<Relation, DatabaseError> {
-        // 1. Restrict branches to the given branch_name
+        let commit = self.get_branch_commit(branch_name)?;
+        let tree = self.get_commit_tree(&commit)?;
+        self.resolve_working_directory(&tree)
+    }
+
+    fn get_branch_commit(&self, branch_name: &str) -> Result<Relation, DatabaseError> {
         let branch = self
             .branches
             .restrict(|t| t.get_typed::<String>("name").unwrap() == branch_name);
@@ -105,29 +110,22 @@ impl RelVcs {
             )));
         }
 
-        // 2. Join Branches ⨝ Commits to get the target commit
-        // Commits: (commit_hash, parent_hash, tree_hash, message)
-        // Branch: (name, commit_hash)
-        let commit = branch.join(&self.commits)?;
+        branch.join(&self.commits)
+    }
 
-        // 3. Join Commit ⨝ Trees to get the files in the commit
-        // Tree: (tree_hash, path, blob_hash)
-        let tree = commit
+    fn get_commit_tree(&self, commit: &Relation) -> Result<Relation, DatabaseError> {
+        commit
             .join(&self.trees)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
 
-        // 4. Join Tree ⨝ Blobs to get the file contents
-        // Blob: (hash, content)
-        // Wait, Trees has 'blob_hash' and Blobs has 'hash'. We need to rename.
+    fn resolve_working_directory(&self, tree: &Relation) -> Result<Relation, DatabaseError> {
         let blobs_renamed = self.blobs.rename(&[("hash", "blob_hash")]);
         let working_dir_full = tree
             .join(&blobs_renamed)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // 5. Project to just (path, content)
-        let working_dir = working_dir_full.project(&["path", "content"]);
-
-        Ok(working_dir)
+        Ok(working_dir_full.project(&["path", "content"]))
     }
 
     /// Computes the diff between two commits.
@@ -154,15 +152,21 @@ impl RelVcs {
         let removed = self.compute_removed_files(&paths_a, &paths_b)?;
         let modified = self.compute_modified_files(&tree_a, &tree_b)?;
 
-        // 6. Union all differences
-        let diff1 = added
-            .union(&removed)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-        let full_diff = diff1
-            .union(&modified)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        self.combine_diffs(&added, &removed, &modified)
+    }
 
-        Ok(full_diff)
+    fn combine_diffs(
+        &self,
+        added: &Relation,
+        removed: &Relation,
+        modified: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        let diff1 = added
+            .union(removed)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+        diff1
+            .union(modified)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 
     fn get_tree_for_commit(&self, commit_hash: &str) -> Result<Relation, DatabaseError> {

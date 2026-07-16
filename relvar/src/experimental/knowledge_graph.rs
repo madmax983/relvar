@@ -179,56 +179,35 @@ impl KnowledgeGraph {
         let mut rename_map = Vec::new();
         let mut to_project = Vec::new();
 
-        // Evaluate Subject
-        match &pattern.subject {
-            Term::Value(v) => {
-                let v_clone = v.clone();
-                result =
-                    result.restrict(move |t| t.get_typed::<String>("subject").unwrap() == v_clone);
-            }
-            Term::Variable(var) => {
-                rename_map.push(("subject", var.as_str()));
-                to_project.push(var.as_str());
-            }
-        }
+        result = self.evaluate_term(
+            result,
+            &pattern.subject,
+            "subject",
+            &mut rename_map,
+            &mut to_project,
+        );
+        result = self.evaluate_term(
+            result,
+            &pattern.predicate,
+            "predicate",
+            &mut rename_map,
+            &mut to_project,
+        );
+        result = self.evaluate_term(
+            result,
+            &pattern.object,
+            "object",
+            &mut rename_map,
+            &mut to_project,
+        );
 
-        // Evaluate Predicate
-        match &pattern.predicate {
-            Term::Value(v) => {
-                let v_clone = v.clone();
-                result = result
-                    .restrict(move |t| t.get_typed::<String>("predicate").unwrap() == v_clone);
-            }
-            Term::Variable(var) => {
-                rename_map.push(("predicate", var.as_str()));
-                to_project.push(var.as_str());
-            }
-        }
-
-        // Evaluate Object
-        match &pattern.object {
-            Term::Value(v) => {
-                let v_clone = v.clone();
-                result =
-                    result.restrict(move |t| t.get_typed::<String>("object").unwrap() == v_clone);
-            }
-            Term::Variable(var) => {
-                rename_map.push(("object", var.as_str()));
-                to_project.push(var.as_str());
-            }
-        }
-
-        // Apply renames
         if !rename_map.is_empty() {
             result = result.rename(&rename_map);
         }
 
-        // Project to only keep variables (removes columns with concrete values)
         if !to_project.is_empty() {
             result = result.project(&to_project);
         } else {
-            // Edge case: no variables in pattern, we just return an empty relation if there are no matches,
-            // or a relation with no attributes (DUM/DEE) if it matches.
             let empty_heading = TupleType::new();
             let mut dees_dums = Relation::new(RelationType::new(empty_heading.clone()));
             if result.cardinality() > 0 {
@@ -238,6 +217,27 @@ impl KnowledgeGraph {
         }
 
         Ok(result)
+    }
+
+    fn evaluate_term<'a>(
+        &self,
+        result: Relation,
+        term: &'a Term,
+        column_name: &'static str,
+        rename_map: &mut Vec<(&'static str, &'a str)>,
+        to_project: &mut Vec<&'a str>,
+    ) -> Relation {
+        match term {
+            Term::Value(v) => {
+                let v_clone = v.clone();
+                result.restrict(move |t| t.get_typed::<String>(column_name).unwrap() == v_clone)
+            }
+            Term::Variable(var) => {
+                rename_map.push((column_name, var.as_str()));
+                to_project.push(var.as_str());
+                result
+            }
+        }
     }
 
     /// Evaluates a Basic Graph Pattern (a list of triple patterns ANDed together).

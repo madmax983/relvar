@@ -167,29 +167,17 @@ impl RelationalDom {
         ancestor_nodes: &Relation,
         target_nodes: &Relation,
     ) -> Result<Relation, DatabaseError> {
-        // Compute all paths in the tree using transitive closure.
-        // edges schema: (parent_id, child_id)
         let all_paths = self.edges.tclose("parent_id", "child_id")?;
-
-        // Rename ancestor_nodes to match the parent_id column
-        // ancestor_nodes schema: (node_id) -> (parent_id)
         let ancestors_renamed = ancestor_nodes.rename(&[("node_id", "parent_id")]);
-
-        // Find all descendants of the specified ancestors
         let valid_paths = all_paths.join(&ancestors_renamed)?;
 
-        // Extract the child IDs (descendants)
-        // schema: (parent_id, child_id) -> (child_id) -> (node_id)
         let descendants = valid_paths
             .project(&["child_id"])
             .rename(&[("child_id", "node_id")]);
 
-        // Intersect with the target nodes to filter out nodes that don't match the target selector
-        let result = descendants
+        descendants
             .intersect(target_nodes)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-        Ok(result)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 }
 
