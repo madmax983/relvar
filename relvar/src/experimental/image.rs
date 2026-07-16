@@ -215,12 +215,12 @@ fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Ve
         let with_coords = relation
             .extend("tx", ScalarType::Int, move |t| {
                 let x = t.get_typed::<i64>("x").unwrap();
-                ScalarValue::Int(x + dx)
+                ScalarValue::Int(x.saturating_add(dx))
             })
             .unwrap()
             .extend("ty", ScalarType::Int, move |t| {
                 let y = t.get_typed::<i64>("y").unwrap();
-                ScalarValue::Int(y + dy)
+                ScalarValue::Int(y.saturating_add(dy))
             })
             .unwrap();
 
@@ -228,17 +228,17 @@ fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Ve
         let with_weights = with_coords
             .extend("wr", ScalarType::Int, move |t| {
                 let v = t.get_typed::<i64>("r").unwrap();
-                ScalarValue::Int(v * weight)
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap()
             .extend("wg", ScalarType::Int, move |t| {
                 let v = t.get_typed::<i64>("g").unwrap();
-                ScalarValue::Int(v * weight)
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap()
             .extend("wb", ScalarType::Int, move |t| {
                 let v = t.get_typed::<i64>("b").unwrap();
-                ScalarValue::Int(v * weight)
+                ScalarValue::Int(v.saturating_mul(weight))
             })
             .unwrap();
 
