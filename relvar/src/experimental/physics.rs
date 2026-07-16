@@ -91,52 +91,9 @@ impl PhysicsEngine {
         // 3. Compute forces for each pair
         let g = self.g;
         interactions
-            .extend("fx", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                // Avoid division by zero
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fx = f * (dx / dist);
-
-                ScalarValue::Float(fx)
-            })
+            .extend("fx", ScalarType::Float, create_force_calculator(g, true))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .extend("fy", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                if dist_sq < 1e-10 {
-                    return ScalarValue::Float(0.0);
-                }
-
-                let dist = dist_sq.sqrt();
-                let f = g * m1 * m2 / dist_sq;
-                let fy = f * (dy / dist);
-
-                ScalarValue::Float(fy)
-            })
+            .extend("fy", ScalarType::Float, create_force_calculator(g, false))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
     }
 
@@ -229,6 +186,38 @@ impl PhysicsEngine {
             ]);
 
         Ok(next_state)
+    }
+}
+
+fn create_force_calculator(
+    g: f64,
+    is_x: bool,
+) -> impl Fn(&relvar_core::values::Tuple) -> ScalarValue {
+    move |t| {
+        let x1 = t.get_typed::<f64>("x1").unwrap();
+        let y1 = t.get_typed::<f64>("y1").unwrap();
+        let x2 = t.get_typed::<f64>("x2").unwrap();
+        let y2 = t.get_typed::<f64>("y2").unwrap();
+        let m1 = t.get_typed::<f64>("m1").unwrap();
+        let m2 = t.get_typed::<f64>("m2").unwrap();
+
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let dist_sq = dx * dx + dy * dy;
+
+        if dist_sq < 1e-10 {
+            return ScalarValue::Float(0.0);
+        }
+
+        let dist = dist_sq.sqrt();
+        let f = g * m1 * m2 / dist_sq;
+        let component = if is_x {
+            f * (dx / dist)
+        } else {
+            f * (dy / dist)
+        };
+
+        ScalarValue::Float(component)
     }
 }
 
