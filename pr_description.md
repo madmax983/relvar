@@ -1,4 +1,4 @@
-🎯 Target: Consuming and Borrowing `TryFrom<ScalarValue>` implementations for `i64`, `f64`, `String`, `bool`, and `Vec<u8>` in `relvar-core/src/values/tuple.rs`.
-💣 Risk: Success conversions for both consuming and borrowing were entirely untested. This ensures `std::mem::take` and direct value unwraps inside conversions behave correctly, closing coverage gaps for fundamental extraction traits.
-🧪 Strategy: Added direct success assertions for both consuming `TryFrom<ScalarValue>` and borrowing `TryFrom<&ScalarValue>` implementations.
-🔬 Verification: `cargo test -p relvar-core --test sentry_tuple_coverage`
+🎯 Target: Consuming and Borrowing `TryFrom<ScalarValue>` implementations for `i64`, `f64`, `String`, `bool`, and `Vec<u8>` in `relvar-core/src/values/tuple.rs`. Also fixes unread attributes warning and unused methods/structs to satisfy CI.
+💣 Risk: Success conversions for both consuming and borrowing were entirely untested. This ensures `std::mem::take` and direct value unwraps inside conversions behave correctly, closing coverage gaps for fundamental extraction traits. CI failed due to `experimental` / `tools` access limits in tests which is resolved.
+🧪 Strategy: Added direct success assertions for both consuming `TryFrom<ScalarValue>` and borrowing `TryFrom<&ScalarValue>` implementations. Adjusted tests to fix unused errors and made test-only modules public correctly.
+🔬 Verification: `cargo test -p relvar-core --test sentry_tuple_coverage` and `cargo check --all-targets --all-features`.
