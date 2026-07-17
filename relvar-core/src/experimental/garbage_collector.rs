@@ -97,8 +97,8 @@ pub fn mark_and_sweep(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{RelationType, ScalarType, TupleType};
     use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
 
     #[test]
     fn test_mark_and_sweep() {
