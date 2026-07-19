@@ -1,0 +1,7 @@
+💡 **The Spark:** Build systems (like Make or Ninja) fundamentally solve a relational graph problem: identifying nodes (targets) that are out of date with respect to their dependencies based on timestamps. I wanted to see if our purely relational algebra engine could model this dependency resolution logic seamlessly.
+
+🚀 **The Feature:** Implemented `find_stale_targets` in a new `build_system` module under the `experimental` feature flag. It computes outdated build targets by evaluating a directed acyclic graph of dependencies alongside a relation of file modification timestamps. It uses relational projections, differences, joins (with restrictions for timestamp comparisons), unions, and transitive closure (`tclose`) to declaratively find any targets that either don't exist, have missing dependencies, are older than a direct dependency, or are transitively outdated by out-of-date ancestors.
+
+🔮 **The Potential:** This proves our relational algebra engine is capable of executing graph analysis and constraint propagation workloads declaratively, serving as a powerful demonstration of TTM's theoretical flexibility beyond standard data retrieval. It paves the way for evaluating distributed data flows or dependency-tracking caches natively in the DB!
+
+⚠️ **Risk:** Low. Completely isolated within the `relvar_core::experimental::build_system` module and requires the `nova` feature flag for inclusion. Standard core logic remains untouched.
