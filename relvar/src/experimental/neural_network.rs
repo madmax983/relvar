@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Neural Network
 //!
 //! This module demonstrates how a simple feedforward neural network can be modeled

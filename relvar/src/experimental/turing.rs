@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Turing Machine
 //!
 //! This module demonstrates how a Turing Machine can be modeled using purely relational
