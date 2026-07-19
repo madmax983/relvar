@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Genetic Algorithm
 //!
 //! This module demonstrates how a Genetic Algorithm can be implemented using purely

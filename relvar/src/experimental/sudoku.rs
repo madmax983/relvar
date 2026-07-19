@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Sudoku Solver
 //!
 //! This module demonstrates how a Sudoku puzzle can be solved using purely

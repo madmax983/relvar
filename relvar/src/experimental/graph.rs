@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Graph Analytics.
 //!
 //! This module demonstrates how graph algorithms can be implemented using
