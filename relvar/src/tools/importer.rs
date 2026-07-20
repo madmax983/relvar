@@ -494,38 +494,6 @@ pub fn from_csv<R: std::io::Read>(
     let heading = relation_type.heading();
     let mut reader = std::io::BufReader::new(&mut capped_reader);
 
-    // Helper for safe line reading
-    fn read_line_safe<B: BufRead>(
-        reader: &mut B,
-        buf: &mut String,
-    ) -> Result<usize, ImporterError> {
-        buf.clear();
-        // Use reader.take() directly on the mutable reference.
-        // B implements BufRead, so &mut B implements BufRead + Read.
-        // We use take() from the Read trait on the reference itself to avoid moving B.
-        let mut taker = std::io::Read::take(&mut *reader, MAX_CSV_LINE_LEN as u64);
-        let n = taker.read_line(buf)?;
-
-        if n == 0 {
-            return Ok(0);
-        }
-
-        if buf.ends_with('\n') {
-            return Ok(n);
-        }
-
-        // Check if there is more data (meaning we hit the limit)
-        let available = reader.fill_buf()?;
-        if !available.is_empty() {
-            return Err(ImporterError::LimitExceeded(format!(
-                "CSV Line too long: > {}",
-                MAX_CSV_LINE_LEN
-            )));
-        }
-
-        Ok(n)
-    }
-
     // 1. Read Header
     let mut header_line = String::new();
     if read_line_safe(&mut reader, &mut header_line)? == 0 {
@@ -533,18 +501,10 @@ pub fn from_csv<R: std::io::Read>(
     }
     // Trim newline for parsing
     let header_line_trimmed = header_line.trim_end();
-
     let headers: Vec<String> = parse_csv_line(header_line_trimmed, delimiter);
 
     // Validate headers
-    for attr_name in heading.attribute_names() {
-        if !headers.contains(attr_name) {
-            return Err(ImporterError::MissingValue(format!(
-                "Header missing attribute '{}'",
-                attr_name
-            )));
-        }
-    }
+    validate_csv_headers(heading, &headers)?;
 
     // 2. Read Rows
     let mut line_buf = String::new();
@@ -573,25 +533,7 @@ pub fn from_csv<R: std::io::Read>(
             )));
         }
 
-        let mut values = BTreeMap::new();
-
-        for (i, field) in fields.iter().enumerate() {
-            let attr_name = &headers[i];
-
-            if let Some(attr_type) = heading.get_attribute_type(attr_name) {
-                let scalar_val = str_to_scalar(field, attr_type).map_err(|e| {
-                    ImporterError::TypeError(
-                        attr_name.clone(),
-                        format!("{:?}", attr_type),
-                        e.to_string(),
-                    )
-                })?;
-                values.insert(attr_name.clone(), scalar_val);
-            }
-        }
-
-        let tuple = Tuple::new(heading.clone(), values)
-            .map_err(|e| ImporterError::RelvarError(e.to_string()))?;
+        let tuple = build_tuple_from_csv_row(&fields, &headers, heading)?;
 
         let _ = relation
             .insert(tuple)
@@ -607,6 +549,71 @@ pub fn from_csv<R: std::io::Read>(
     }
 
     Ok(relation)
+}
+
+fn read_line_safe<B: BufRead>(reader: &mut B, buf: &mut String) -> Result<usize, ImporterError> {
+    buf.clear();
+    // Use reader.take() directly on the mutable reference.
+    // B implements BufRead, so &mut B implements BufRead + Read.
+    // We use take() from the Read trait on the reference itself to avoid moving B.
+    let mut taker = std::io::Read::take(&mut *reader, MAX_CSV_LINE_LEN as u64);
+    let n = taker.read_line(buf)?;
+
+    if n == 0 {
+        return Ok(0);
+    }
+
+    if buf.ends_with('\n') {
+        return Ok(n);
+    }
+
+    // Check if there is more data (meaning we hit the limit)
+    let available = reader.fill_buf()?;
+    if !available.is_empty() {
+        return Err(ImporterError::LimitExceeded(format!(
+            "CSV Line too long: > {}",
+            MAX_CSV_LINE_LEN
+        )));
+    }
+
+    Ok(n)
+}
+
+fn validate_csv_headers(heading: &TupleType, headers: &[String]) -> Result<(), ImporterError> {
+    for attr_name in heading.attribute_names() {
+        if !headers.contains(attr_name) {
+            return Err(ImporterError::MissingValue(format!(
+                "Header missing attribute '{}'",
+                attr_name
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn build_tuple_from_csv_row(
+    fields: &[String],
+    headers: &[String],
+    heading: &TupleType,
+) -> Result<Tuple, ImporterError> {
+    let mut values = BTreeMap::new();
+
+    for (i, field) in fields.iter().enumerate() {
+        let attr_name = &headers[i];
+
+        if let Some(attr_type) = heading.get_attribute_type(attr_name) {
+            let scalar_val = str_to_scalar(field, attr_type).map_err(|e| {
+                ImporterError::TypeError(
+                    attr_name.clone(),
+                    format!("{:?}", attr_type),
+                    e.to_string(),
+                )
+            })?;
+            values.insert(attr_name.clone(), scalar_val);
+        }
+    }
+
+    Tuple::new(heading.clone(), values).map_err(|e| ImporterError::RelvarError(e.to_string()))
 }
 
 /// Simple CSV line parser handling quotes.
