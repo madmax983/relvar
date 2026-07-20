@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2024-07-21 - Tuple Coverage Improvement
+**Learning:** The `tuple.rs` implementation in `relvar-core` was missing significant test coverage for standard type conversions (like `TryFrom<ScalarValue>` for primitives), specific error paths (such as `TupleError::AttributeNotFound` when trying to set non-existent values), and `std::hash::Hash` implementations.
+**Action:** Created dedicated test suites to ensure these foundational operations (which are critical for correctness) are explicitly exercised and prevent any panics or logical errors when dynamic typing mechanisms are used.

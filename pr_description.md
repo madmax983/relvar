@@ -1,0 +1,4 @@
+🎯 Target: `relvar-core/src/values/tuple.rs` (specifically `ScalarValue` trait conversions, `Hash`, and `Tuple::set` error paths)
+💣 Risk: Type conversions between `ScalarValue` variants and Rust primitives lacked explicit test coverage, risking subtle conversion bugs or panics on mismatched types. Furthermore, bounds checking and error handling paths in `Tuple::set` were untested, potentially masking improper usage of the API.
+🧪 Strategy: Added a new test file `sentry_tuple_type_conversion_coverage.rs` that explicitly validates consuming and borrowing `TryFrom` conversions for all `ScalarValue` primitive types. Added tests to verify `conforms_to` behavior with schema mismatches and explicitly test both `AttributeNotFound` and `TypeMismatch` error branches in `Tuple::set`. Also tested the `Hash` trait implementation for consistency.
+🔬 Verification: `cargo test --test sentry_tuple_type_conversion_coverage`
