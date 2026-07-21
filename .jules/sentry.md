@@ -132,7 +132,3 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
-
-## 2026-07-21 - Uncovered Enum and Struct Methods in relvar-core
-**Learning:** Type nesting limits (`depth() + 1 > MAX_TYPE_DEPTH`) were enforced correctly but some constructor boundaries (`TupleType::with_attribute`, `RelationType::new`) missed isolated doc tests for the panic limit. `ScalarType::cmp` needed extra tests for UserDefined branches. Internal module types (like `SemijoinKey`) that derive `PartialEq` often need targeted inner module tests to hit early return branches (`return false;`).
-**Action:** Always verify that both sides of `cmp`, `eq`, and boundary panics are tested directly, especially for nested user-defined enum structures and private structs. Create isolated `#[cfg(test)] mod tests` in the same file to access internal structs.

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Version Control System (RelGit)
 //!
 //! This module demonstrates how a version control system similar to Git can be implemented using purely

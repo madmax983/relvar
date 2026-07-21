@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Enigma Machine
 //!
 //! This module models an Enigma machine using purely relational algebra.

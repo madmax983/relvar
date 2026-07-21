@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Entity Component System (ECS).
 //!
 //! This module demonstrates how a relational database can be used as the backend for

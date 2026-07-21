@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Cellular Automaton (Conway's Game of Life)
 //!
 //! This module demonstrates how Conway's Game of Life can be implemented using purely

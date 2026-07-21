@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Experimental Relational Time Series Analysis.
 //!
 //! This module demonstrates how to implement time series operations like
@@ -97,7 +96,7 @@ fn generate_non_colliding_suffix(relation: &Relation) -> String {
     let mut suffix_idx = 1;
     loop {
         let mut collision = false;
-        for (attr_name, _) in original_heading.attributes().iter() {
+        for attr_name in original_heading.attributes().keys() {
             let candidate_name = format!("{}{}", attr_name, prev_attr_suffix);
             if original_heading.has_attribute(&candidate_name) {
                 collision = true;
@@ -118,7 +117,7 @@ fn prepare_previous_relation(relation: &Relation, prev_attr_suffix: String) -> (
     let mut rename_map = Vec::new();
 
     // Iterate over attributes to build rename map
-    for (attr_name, _) in original_heading.attributes().iter() {
+    for attr_name in original_heading.attributes().keys() {
         rename_map.push((
             attr_name.as_str(),
             format!("{}{}", attr_name, prev_attr_suffix),

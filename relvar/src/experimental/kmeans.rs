@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational K-Means Clustering
 //!
 //! This module demonstrates how K-Means clustering can be implemented using purely

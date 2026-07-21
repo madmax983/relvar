@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Physics Engine
 //!
 //! This module implements an N-body physics simulation using pure relational

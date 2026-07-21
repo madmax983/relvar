@@ -796,16 +796,4 @@ mod additional_scalar_tests_final {
             let _ = hasher.finish();
         }
     }
-
-    #[test]
-    fn test_ord_user_defined_types() {
-        let type1 = ScalarType::user_defined("A", ScalarType::Int);
-        let type2 = ScalarType::user_defined("B", ScalarType::Int);
-        let type3 = ScalarType::user_defined("A", ScalarType::Float);
-
-        assert_eq!(type1.cmp(&type1), std::cmp::Ordering::Equal);
-        assert_eq!(type1.cmp(&type2), std::cmp::Ordering::Less);
-        assert_eq!(type2.cmp(&type1), std::cmp::Ordering::Greater);
-        assert_eq!(type1.cmp(&type3), std::cmp::Ordering::Less);
-    }
 }

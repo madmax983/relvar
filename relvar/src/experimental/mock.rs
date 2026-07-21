@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Mock data generation module.
 //!
 //! This module provides tools to generate random relations for testing and prototyping.
