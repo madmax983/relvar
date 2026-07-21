@@ -295,4 +295,25 @@ mod tests {
 
         assert_eq!(rel_type.degree(), 0);
     }
+
+    // Sentry coverage additions
+
+    use crate::types::TupleType;
+
+    #[test]
+    #[should_panic(expected = "Type nesting too deep: 65 (limit: 64)")]
+    fn test_relation_type_new_depth_limit() {
+        let mut ty = ScalarType::Int;
+        // Limit is 64. RelationType adds 1, TupleType adds 1.
+        // So we need heading.depth() to be 64.
+        // TupleType depth = 1 + max(attr_depths). So we need attr_depth to be 63.
+        for i in 0..62 {
+            ty = ScalarType::user_defined(format!("Nested{}", i), ty);
+        }
+
+        let heading = TupleType::new().with_attribute("a", ty);
+        // Heading depth is 1 + 63 = 64.
+        // RelationType::new does heading.depth() + 1 = 65 > 64, which will panic.
+        let _ = RelationType::new(heading);
+    }
 }

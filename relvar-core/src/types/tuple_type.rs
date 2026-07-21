@@ -500,4 +500,17 @@ mod tests {
             "TupleTypes with same attributes but different insertion order must hash identically"
         );
     }
+
+    // Sentry coverage additions
+
+    #[test]
+    #[should_panic(expected = "Type nesting too deep: 65 (limit: 64)")]
+    fn test_with_attribute_depth_limit() {
+        let mut ty = ScalarType::Int;
+        for i in 0..63 {
+            ty = ScalarType::user_defined(format!("Nested{}", i), ty);
+        }
+
+        let _ = TupleType::new().with_attribute("a", ty);
+    }
 }
