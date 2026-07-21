@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Recommender System.
 //!
 //! This module implements Collaborative Filtering using purely relational algebra

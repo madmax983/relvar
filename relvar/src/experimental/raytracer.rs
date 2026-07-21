@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Raytracer
 //!
 //! This module implements a basic raytracer using pure relational algebra.
