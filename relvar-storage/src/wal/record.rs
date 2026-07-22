@@ -514,6 +514,32 @@ mod tests {
             assert_eq!(tuple_data, recovered_data);
         }
     }
+
+    #[test]
+    fn test_is_txn_end_other_variants() {
+        let txn_id = TransactionId::new(1);
+
+        let page_write = WalRecord::PageWrite {
+            txn_id,
+            relation_name: "test".to_string(),
+            page_id: 1,
+            page_data: vec![],
+        };
+        assert!(!page_write.is_txn_end());
+
+        let delete = WalRecord::Delete {
+            txn_id,
+            relation_name: "test".to_string(),
+            key_values: vec![],
+        };
+        assert!(!delete.is_txn_end());
+
+        let checkpoint = WalRecord::Checkpoint {
+            min_active_lsn: crate::wal::lsn::Lsn::new(1),
+            dirty_pages: std::collections::HashMap::new(),
+        };
+        assert!(!checkpoint.is_txn_end());
+    }
 }
 
 #[cfg(test)]

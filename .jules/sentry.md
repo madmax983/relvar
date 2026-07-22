@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-07-22 - WAL Record Coverage Gaps
+**Learning:** The `is_txn_end` method on `WalRecord` evaluates `matches!(self, WalRecord::Commit { .. } | WalRecord::Abort { .. })`. However, variants like `PageWrite`, `Delete`, and `Checkpoint` were never checked, leading to uncovered branches in the match arm execution paths.
+**Action:** Always write explicit tests that verify non-matching variants for critical state-check methods like `is_txn_end` to guarantee they don't accidentally match and to cover the hidden `_ => false` execution path.
