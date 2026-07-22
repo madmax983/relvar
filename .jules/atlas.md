@@ -27,3 +27,6 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+## 2026-05-20 - Sub-modularizing Operator Blobs
+**Tangle:** The `relvar-core/src/algebra/summarize.rs`, `relvar-core/src/algebra/semijoin.rs`, and `relvar-core/src/values/scalar.rs` files had grown back into huge 'God Files' containing large blocks of implementation code intertwined with hundreds of lines of inline tests, hindering readability and violating modular separation of concerns.
+**Blueprint:** Refactored these files into sub-modules (e.g., `relvar-core/src/algebra/summarize/`, `relvar-core/src/algebra/semijoin/`, `relvar-core/src/values/scalar/`) using the `#[cfg(test)] mod tests;` extraction pattern, effectively reducing the main implementation file size and moving tests to dedicated `tests.rs` files without altering public semantics.
