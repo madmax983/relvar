@@ -1111,3 +1111,151 @@ mod float_ord_tests {
         assert_eq!(nan.cmp(&nan2), Ordering::Equal);
     }
 }
+
+#[cfg(test)]
+mod sentry_scalar_value_tests {
+    use super::*;
+
+    #[test]
+    fn test_scalar_value_hash() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        fn calculate_hash<T: Hash>(t: &T) -> u64 {
+            let mut s = DefaultHasher::new();
+            t.hash(&mut s);
+            s.finish()
+        }
+
+        let bool_val = ScalarValue::Bool(true);
+        let bytes_val = ScalarValue::Bytes(vec![1, 2, 3]);
+
+        let t = crate::types::TupleType::new();
+        let rt = crate::types::RelationType::new(t);
+        let rel = crate::values::Relation::new(rt);
+        let rel_val = ScalarValue::Relation(rel);
+
+        let h1 = calculate_hash(&bool_val);
+        let h2 = calculate_hash(&bytes_val);
+        let h3 = calculate_hash(&rel_val);
+
+        assert_ne!(h1, h2);
+        assert_ne!(h2, h3);
+        assert_ne!(h1, h3);
+    }
+
+    #[test]
+    fn test_scalar_value_partial_ord_different_types() {
+        let val1 = ScalarValue::Int(10);
+        let val2 = ScalarValue::Float(10.0);
+        // They should have different type orders
+        assert_ne!(val1.partial_cmp(&val2), Some(std::cmp::Ordering::Equal));
+    }
+
+    #[test]
+    fn test_scalar_value_partial_ord_same_type() {
+        let b1 = ScalarValue::Bool(false);
+        let b2 = ScalarValue::Bool(true);
+        assert_eq!(b1.partial_cmp(&b2), Some(std::cmp::Ordering::Less));
+
+        let by1 = ScalarValue::Bytes(vec![1]);
+        let by2 = ScalarValue::Bytes(vec![2]);
+        assert_eq!(by1.partial_cmp(&by2), Some(std::cmp::Ordering::Less));
+    }
+
+    #[test]
+    fn test_scalar_value_cmp_relations() {
+        let t1 = crate::types::TupleType::new()
+            .with_attribute("a".to_string(), crate::types::ScalarType::Int);
+        let rt1 = crate::types::RelationType::new(t1.clone());
+        let mut rel1 = crate::values::Relation::new(rt1.clone());
+        let _ = rel1.insert(
+            crate::values::Tuple::new(t1.clone(), vec![("a".to_string(), ScalarValue::Int(1))])
+                .unwrap(),
+        );
+
+        let mut rel2 = crate::values::Relation::new(rt1);
+        let _ = rel2.insert(
+            crate::values::Tuple::new(t1.clone(), vec![("a".to_string(), ScalarValue::Int(1))])
+                .unwrap(),
+        );
+        let _ = rel2.insert(
+            crate::values::Tuple::new(t1.clone(), vec![("a".to_string(), ScalarValue::Int(2))])
+                .unwrap(),
+        );
+
+        let v1 = ScalarValue::Relation(rel1);
+        let v2 = ScalarValue::Relation(rel2);
+
+        // Cardinality different
+        assert_eq!(v1.partial_cmp(&v2), Some(std::cmp::Ordering::Less));
+
+        let t2 = crate::types::TupleType::new();
+        let rt2 = crate::types::RelationType::new(t2);
+        let rel3 = crate::values::Relation::new(rt2); // degree 0
+
+        let t3 = crate::types::TupleType::new()
+            .with_attribute("a".to_string(), crate::types::ScalarType::Int);
+        let rt3 = crate::types::RelationType::new(t3);
+        let rel4 = crate::values::Relation::new(rt3); // degree 1
+
+        let v3 = ScalarValue::Relation(rel3);
+        let v4 = ScalarValue::Relation(rel4);
+        assert_eq!(v3.partial_cmp(&v4), Some(std::cmp::Ordering::Less));
+    }
+
+    #[test]
+    fn test_user_defined_nested() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        fn calculate_hash<T: Hash>(t: &T) -> u64 {
+            let mut s = DefaultHasher::new();
+            t.hash(&mut s);
+            s.finish()
+        }
+
+        let ud_type1 = crate::types::ScalarType::String;
+        let ud_type2 = crate::types::ScalarType::UserDefined {
+            name: "MyType".to_string(),
+            representation: Box::new(ud_type1.clone()),
+        };
+
+        let val1 = ScalarValue::UserDefined {
+            type_def: ud_type1.clone(),
+            value: Box::new(ScalarValue::String("hello".to_string())),
+        };
+
+        let val2 = ScalarValue::UserDefined {
+            type_def: ud_type2.clone(),
+            value: Box::new(val1.clone()),
+        };
+
+        let val3 = ScalarValue::UserDefined {
+            type_def: ud_type2.clone(),
+            value: Box::new(val1.clone()),
+        };
+
+        // Eq
+        assert_eq!(val2, val3);
+
+        // Hash
+        let h1 = calculate_hash(&val2);
+        let h2 = calculate_hash(&val3);
+        assert_eq!(h1, h2);
+
+        // Cmp
+        assert_eq!(val2.partial_cmp(&val3), Some(std::cmp::Ordering::Equal));
+
+        // Test cmp different nested values
+        let val1_diff = ScalarValue::UserDefined {
+            type_def: ud_type1.clone(),
+            value: Box::new(ScalarValue::String("world".to_string())),
+        };
+        let val4 = ScalarValue::UserDefined {
+            type_def: ud_type2.clone(),
+            value: Box::new(val1_diff),
+        };
+        assert_eq!(val2.partial_cmp(&val4), Some(std::cmp::Ordering::Less));
+    }
+}
