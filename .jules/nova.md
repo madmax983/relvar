@@ -133,3 +133,7 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+## Relational Decision Tree
+**Concept:** Modeled a Decision Tree inference engine using purely relational algebra (Join, Restrict, Extend, Union). Represents datasets and tree nodes as relations. Evaluating prediction paths works iteratively via relation joins and split condition evaluations until all dataset rows reach their leaf values.
+**Fate:** Merged
+**Lesson:** Iterative tree traversal over discrete feature conditions perfectly translates to Relational Joins! Mapping an inference algorithm into relational queries avoids recursive functions entirely.
