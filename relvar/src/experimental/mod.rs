@@ -72,4 +72,5 @@ pub mod synth;
 pub mod timeseries;
 pub mod turing;
 pub mod vcs;
+pub mod vector_search;
 pub mod vm;

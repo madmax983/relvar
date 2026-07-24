@@ -133,3 +133,8 @@
 **Fate:** Merged
 **Lesson:** Relational algebra maps exceptionally well to evaluating basic graph patterns. By projecting and renaming bound variables and running Natural Joins, the relational engine seamlessly resolves complex graph queries.
 ## Relational Spreadsheet Simulator\n**Concept:** Modeled a Spreadsheet Simulator purely using relational algebra. Cells and formulas are represented as relations. The spreadsheet is iteratively evaluated using relation differences, joins, and extensions until all cell formulas are fully resolved to their final float values.\n**Fate:** Merged\n**Lesson:** Relational engines can model constraint propagation like a spreadsheet! By continually computing the difference between resolved values and formula arguments, we can declaratively resolve dependencies without constructing explicit dependency graphs or recursion.
+
+## Relational Vector Database
+**Concept:** Modeled a Vector Database using purely relational algebra. Embeddings and queries are relations. Evaluates dot product similarity via relational Joins, Extensions, and Aggregation sum.
+**Fate:** TBD
+**Lesson:** Relational algebra gracefully handles AI tasks like vector similarity search! By representing embeddings as dimension-indexed tuples, dense vector multiplication naturally compiles down to `join` and `summarize` queries.
