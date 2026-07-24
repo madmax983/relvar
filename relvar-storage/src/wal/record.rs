@@ -224,6 +224,7 @@ impl WalRecord {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
@@ -514,10 +515,18 @@ mod tests {
             assert_eq!(tuple_data, recovered_data);
         }
     }
+
+    #[test]
+    fn test_wal_record_deserialize_errors() {
+        let invalid_bytes = vec![255, 255, 255, 255]; // Invalid postcard data
+        let result = WalRecord::deserialize(&invalid_bytes);
+        assert!(matches!(result, Err(WalRecordError::Serialization(_))));
+    }
 }
 
 #[cfg(test)]
 mod security_tests {
+
     use super::*;
 
     #[test]

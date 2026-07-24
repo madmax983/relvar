@@ -132,3 +132,7 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+
+## $(date +%Y-%m-%d) - WAL Record Deserialization Security
+**Learning:** `WalRecord::deserialize` needs to be robust against corrupted postcard binary sequences, especially when reading from raw disk buffers.
+**Action:** Always ensure that data structures expected to be read from unreliable external sources (like files on disk) handle `serde` deserialization failures gracefully without unrolling panics.
