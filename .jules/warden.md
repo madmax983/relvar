@@ -16,3 +16,6 @@
 ## 2026-05-24 - [RwLock Poisoning DoS in PersistentEngine]
 **Threat:** Application panic due to `.unwrap()` calls on `storage_manager.read()` and `storage_manager.write()`. If a thread panics while holding the lock, it poisons the `RwLock`, causing subsequent threads to panic, resulting in a denial-of-service (DoS) cascade.
 **Defense:** Replaced `.unwrap()` with safe error handling on lock acquisition in `PersistentEngine`. Used `.map_err()` to propagate `StorageError::Other` for operations returning a `Result`, and used `.unwrap_or_else(|e| e.into_inner())` for read-only methods returning non-Results, safely extracting the guard without propagating a panic.
+## $(date +%Y-%m-%d) - [Integer Overflow & Negative Transactions in Blockchain]
+**Threat:** Integer overflow via `i64::MIN.saturating_neg()` returning `i64::MAX`, leading to logic errors in balance calculation. Additionally, a logic flaw allowed processing of negative transaction amounts, potentially enabling unauthorized creation of funds (e.g. Alice sending -100 to Bob increases Alice's balance by 100).
+**Defense:** Replaced `saturating_neg()` with `checked_neg().unwrap_or(0)` to prevent wrapping at `i64::MIN`. Added a validation step in `is_valid()` to restrict and reject any transaction with an amount less than 0.
