@@ -1,4 +1,4 @@
-💡 What: Replaced `.rename()` with `.rename_into()` during `Query::Rename` execution.
-🎯 Why: The `Query::Rename` execution branch receives an owned relation from the input expression, but was needlessly using the borrowing `.rename()` operator. This caused unnecessary heap allocations as every string and tuple inside the entire relation was cloned into a newly allocated Relation structure.
-📊 Impact: Completely eliminates O(N*M) string and tuple cloning (where N is the number of tuples and M is the degree) during rename operations on intermediate tables in a query pipeline. It directly consumes the relation instead, reusing existing structures where attribute names are unchanged.
-🔬 Measurement: Verify with `cargo bench` looking at memory profiling (fewer string/tuple allocations in complex query execution), and run `cargo test` to ensure semantics are preserved.
+💡 What: Replaced `.rename()` with `.rename_into()` during `Query::Rename` execution, and fixed missing experimental features export visibility causing unused code issues on CI test runs.
+🎯 Why: `Query::Rename` execution branch receives an owned relation but was cloning it entirely with `.rename()`. Also, `finish_relvar.py` improperly switched out visibility modifiers which caused CI build failures across experimental modules.
+📊 Impact: Completely eliminates O(N*M) string and tuple cloning during rename operations on intermediate tables in a query pipeline. Fixes GitHub CI build failures that were cancelling execution on test runs.
+🔬 Measurement: Verify with `cargo bench` looking at memory profiling, and run `cargo clippy --all-targets --all-features -- -D warnings` and `cargo test` to ensure semantics are preserved and CI compiles cleanly.
