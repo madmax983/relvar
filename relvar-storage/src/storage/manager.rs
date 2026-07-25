@@ -205,7 +205,7 @@ impl StorageManager {
     }
 
     /// Scan a relation with visibility filtering (MVCC).
-    pub(crate) fn scan_relation(
+    pub fn scan_relation(
         &mut self,
         name: &str,
         snapshot: &TransactionSnapshot,
@@ -234,7 +234,7 @@ impl StorageManager {
     }
 
     /// Insert a tuple into a relation with versioning.
-    pub(crate) fn insert_tuple(
+    pub fn insert_tuple(
         &mut self,
         name: &str,
         tuple: Tuple,
@@ -249,7 +249,7 @@ impl StorageManager {
 
     /// Replace a relation entirely (store_relation).
     /// Used for bulk updates or initialization.
-    pub(crate) fn store_relation(
+    pub fn store_relation(
         &mut self,
         name: &str,
         relation: &Relation,
@@ -304,7 +304,7 @@ impl StorageManager {
     }
 
     /// Garbage collect old versions.
-    pub(crate) fn garbage_collect_versions(
+    pub fn garbage_collect_versions(
         &mut self,
         gc_lsn: crate::wal::Lsn,
         committed_txns: &HashSet<TransactionId>,

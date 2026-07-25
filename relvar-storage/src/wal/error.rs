@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Errors that can occur during WAL operations.
 #[derive(Debug, Error)]
-pub(crate) enum WalError {
+pub enum WalError {
     /// I/O error during WAL operations.
     #[error("WAL I/O error: {0}")]
     Io(#[from] std::io::Error),

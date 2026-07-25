@@ -27,7 +27,3 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
-
-## 2026-07-25 - Enforcing WAL Visibility Boundary
-**Tangle:** Broad visibility (`pub`) on internal types in `relvar-storage/src/wal` (like `TransactionId`, `Lsn`, `WalManager`) and `relvar-storage/src/mvcc` (like `TransactionSnapshot`) leaked implementation details and created "leaky abstractions", triggering compiler warnings (`private_interfaces`).
-**Blueprint:** Downgraded visibility of `relvar-storage/src/wal` types and functions to `pub(crate)` to strictly encapsulate the Write-Ahead Logging implementation within the crate boundary, adjusting corresponding references in `mvcc` and `storage` modules to align visibility.

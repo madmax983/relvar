@@ -39,11 +39,11 @@ use std::collections::HashSet;
 /// };
 /// ```ignore
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct VersionMetadata {
+pub struct VersionMetadata {
     /// Transaction that created this version
-    pub(crate) xmin: TransactionId,
+    pub xmin: TransactionId,
     /// Transaction that deleted/updated this version (None = still visible)
-    pub(crate) xmax: Option<TransactionId>,
+    pub xmax: Option<TransactionId>,
 }
 
 /// Determines if a tuple version is visible to a transaction.
@@ -89,7 +89,7 @@ pub(crate) struct VersionMetadata {
 /// // T2 can see T1's insert because T1 is committed and wasn't active during T2's start
 /// assert!(is_visible(&version, &snapshot, &committed));
 /// ```ignore
-pub(crate) fn is_visible(
+pub fn is_visible(
     version: &VersionMetadata,
     snapshot: &TransactionSnapshot,
     committed: &HashSet<TransactionId>,

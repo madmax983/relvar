@@ -16,7 +16,7 @@ use std::sync::RwLock;
 #[derive(Debug, Clone)]
 pub struct PersistentSnapshot {
     /// The transaction ID.
-    pub(crate) txn_id: TransactionId,
+    pub txn_id: TransactionId,
 }
 
 /// Persistent storage engine using heap files and JSON catalog.

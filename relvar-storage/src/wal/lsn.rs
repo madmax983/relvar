@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// assert_eq!(lsn1.next(), lsn2);
 /// ```ignore
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub(crate) struct Lsn(u64);
+pub struct Lsn(u64);
 
 /// Unique identifier for a transaction.
 ///
@@ -43,13 +43,13 @@ pub(crate) struct Lsn(u64);
 /// assert_ne!(txn1, txn2);
 /// ```ignore
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub(crate) struct TransactionId(u64);
+pub struct TransactionId(u64);
 
 /// Generates unique transaction IDs using atomic operations.
 ///
 /// This generator is thread-safe and guarantees that each transaction
 /// receives a unique identifier.
-pub(crate) struct TransactionIdGenerator {
+pub struct TransactionIdGenerator {
     next_id: AtomicU64,
 }
 
