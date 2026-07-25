@@ -45,14 +45,14 @@ use std::collections::HashMap;
 /// assert!(snapshot3.is_active(t2));  // T2 is still running
 /// ```ignore
 #[derive(Debug)]
-pub struct ActiveTransactionTable {
+pub(crate) struct ActiveTransactionTable {
     transactions: HashMap<TransactionId, TransactionSnapshot>,
     current_lsn: Lsn,
 }
 
 impl ActiveTransactionTable {
     /// Creates a new empty transaction table.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             transactions: HashMap::new(),
             current_lsn: Lsn::new(0),
@@ -93,7 +93,7 @@ impl ActiveTransactionTable {
     /// assert_eq!(snapshot.txn_id, TransactionId::new(42));
     /// assert_eq!(snapshot.snapshot_lsn, Lsn::new(100));
     /// ```ignore
-    pub fn begin(&mut self, txn_id: TransactionId, lsn: Lsn) -> TransactionSnapshot {
+    pub(crate) fn begin(&mut self, txn_id: TransactionId, lsn: Lsn) -> TransactionSnapshot {
         // Update current LSN
         self.current_lsn = lsn;
 
@@ -130,7 +130,7 @@ impl ActiveTransactionTable {
     /// // T1 does some work...
     /// att.commit(t1); // T1's changes are now universally visible to new txns
     /// ```ignore
-    pub fn commit(&mut self, txn_id: TransactionId) {
+    pub(crate) fn commit(&mut self, txn_id: TransactionId) {
         self.transactions.remove(&txn_id);
     }
 
@@ -143,7 +143,7 @@ impl ActiveTransactionTable {
     ///
     /// # Arguments
     /// * `txn_id` - The transaction that is rolling back.
-    pub fn abort(&mut self, txn_id: TransactionId) {
+    pub(crate) fn abort(&mut self, txn_id: TransactionId) {
         self.transactions.remove(&txn_id);
     }
 
@@ -173,7 +173,7 @@ impl ActiveTransactionTable {
     /// // The oldest transaction started at LSN 100
     /// assert_eq!(att.oldest_active_lsn(), Some(Lsn::new(100)));
     /// ```ignore
-    pub fn oldest_active_lsn(&self) -> Option<Lsn> {
+    pub(crate) fn oldest_active_lsn(&self) -> Option<Lsn> {
         self.transactions
             .values()
             .map(|snapshot| snapshot.snapshot_lsn)
@@ -188,7 +188,7 @@ impl ActiveTransactionTable {
     /// # Returns
     /// * `Some(&TransactionSnapshot)` - The snapshot if the transaction is currently active.
     /// * `None` - If the transaction has committed, aborted, or never existed.
-    pub fn get_snapshot(&self, txn_id: TransactionId) -> Option<&TransactionSnapshot> {
+    pub(crate) fn get_snapshot(&self, txn_id: TransactionId) -> Option<&TransactionSnapshot> {
         self.transactions.get(&txn_id)
     }
 }

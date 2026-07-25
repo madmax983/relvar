@@ -38,13 +38,13 @@ use std::collections::HashSet;
 /// assert!(!snapshot.is_active(TransactionId::new(39)));
 /// ```ignore
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransactionSnapshot {
+pub(crate) struct TransactionSnapshot {
     /// The transaction ID this snapshot belongs to
-    pub txn_id: TransactionId,
+    pub(crate) txn_id: TransactionId,
     /// LSN at the time this snapshot was taken
-    pub snapshot_lsn: Lsn,
+    pub(crate) snapshot_lsn: Lsn,
     /// Set of transactions that were active (uncommitted) when snapshot was taken
-    pub active_txns: HashSet<TransactionId>,
+    pub(crate) active_txns: HashSet<TransactionId>,
 }
 
 impl TransactionSnapshot {
@@ -72,7 +72,11 @@ impl TransactionSnapshot {
     ///
     /// assert_eq!(snapshot.txn_id, TransactionId::new(10));
     /// ```ignore
-    pub fn new(txn_id: TransactionId, snapshot_lsn: Lsn, active: Vec<TransactionId>) -> Self {
+    pub(crate) fn new(
+        txn_id: TransactionId,
+        snapshot_lsn: Lsn,
+        active: Vec<TransactionId>,
+    ) -> Self {
         Self {
             txn_id,
             snapshot_lsn,
@@ -106,7 +110,7 @@ impl TransactionSnapshot {
     /// assert!(snapshot.is_active(t1)); // T1 was running
     /// assert!(!snapshot.is_active(TransactionId::new(0))); // T0 was not running
     /// ```ignore
-    pub fn is_active(&self, txn_id: TransactionId) -> bool {
+    pub(crate) fn is_active(&self, txn_id: TransactionId) -> bool {
         self.active_txns.contains(&txn_id)
     }
 }

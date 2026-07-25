@@ -10,7 +10,7 @@ use thiserror::Error;
 
 /// Errors that can occur during WAL record operations.
 #[derive(Debug, Error)]
-pub enum WalRecordError {
+pub(crate) enum WalRecordError {
     /// Serialization error.
     #[error("Failed to serialize WAL record: {0}")]
     Serialization(#[from] postcard::Error),
@@ -24,7 +24,7 @@ pub enum WalRecordError {
 ///
 /// This is set to 1MB to allow for reasonable tuple sizes while preventing
 /// unbounded memory usage.
-pub const MAX_RECORD_SIZE: usize = 1024 * 1024; // 1MB
+pub(crate) const MAX_RECORD_SIZE: usize = 1024 * 1024; // 1MB
 
 /// A log record in the Write-Ahead Log.
 ///
@@ -37,7 +37,7 @@ pub const MAX_RECORD_SIZE: usize = 1024 * 1024; // 1MB
 /// data, never physical TupleId values. This maintains physical data
 /// independence - the logical layer has no knowledge of physical storage.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum WalRecord {
+pub(crate) enum WalRecord {
     /// Transaction begin marker.
     Begin {
         /// The transaction ID.

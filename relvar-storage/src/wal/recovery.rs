@@ -35,7 +35,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 /// Result of the analysis pass.
 #[derive(Debug)]
-pub struct AnalysisResult {
+pub(crate) struct AnalysisResult {
     /// Transactions that committed.
     pub committed: HashSet<TransactionId>,
     /// Transactions that aborted.
@@ -54,7 +54,7 @@ pub struct AnalysisResult {
 /// # Errors
 ///
 /// Returns `WalError` if WAL cannot be read or is corrupted.
-pub fn analyze(wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
+pub(crate) fn analyze(wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
     // Scan all records from WAL
     let records = wal.scan()?;
 
@@ -90,7 +90,7 @@ pub fn analyze(wal: &mut WalManager) -> Result<AnalysisResult, WalError> {
 
 /// Uncommitted insert information.
 #[derive(Debug)]
-pub struct UncommittedInsert {
+pub(crate) struct UncommittedInsert {
     /// Relation name.
     pub relation_name: String,
     /// Serialized tuple data.
@@ -99,7 +99,7 @@ pub struct UncommittedInsert {
 
 /// Result of recovery process.
 #[derive(Debug)]
-pub struct RecoveryResult {
+pub(crate) struct RecoveryResult {
     /// Set of committed transaction IDs (for MVCC visibility).
     pub committed_txns: HashSet<TransactionId>,
     /// List of uncommitted inserts that need to be undone.
@@ -122,7 +122,7 @@ pub struct RecoveryResult {
 /// # Errors
 ///
 /// Returns `WalError` if analysis fails.
-pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
+pub(crate) fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     // Analysis pass
     let analysis = analyze(wal)?;
 

@@ -14,10 +14,10 @@ use std::path::Path;
 /// Default WAL buffer size (1MB).
 ///
 /// This allows batching many small records before flushing to disk.
-pub const DEFAULT_BUFFER_SIZE: usize = 1024 * 1024;
+pub(crate) const DEFAULT_BUFFER_SIZE: usize = 1024 * 1024;
 
 /// Maximum allowed WAL file size (2GB) before rotation is required to prevent OOM.
-pub const MAX_WAL_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+pub(crate) const MAX_WAL_SIZE: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Header written at the start of each WAL file.
 ///
@@ -46,7 +46,7 @@ const WAL_MAGIC: &[u8; 8] = b"RELVAR01";
 /// // Flush ensures durability
 /// wal.flush().unwrap();
 /// ```ignore
-pub struct WalManager {
+pub(crate) struct WalManager {
     /// The log file.
     log_file: File,
 
