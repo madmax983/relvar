@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2026-07-25 - [Use consuming operators over borrowing for owned query structures]
+**Learning:** Found an opportunity where an owned relation was unnecessarily cloned by using `.rename()` instead of the consuming `.rename_into()`. The query system `input.execute(db)` already hands over ownership of the intermediate relation. By using a borrowing operator, it performed unnecessary clones.
+**Action:** Always verify if an intermediate data structure in a query evaluation pipeline is owned, and if so, use consuming operations like `.rename_into()`, `.project_into()`, `.restrict_into()` to avoid superfluous heap allocations and string copying.

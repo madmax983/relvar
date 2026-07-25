@@ -1,0 +1,4 @@
+💡 What: Replaced `.rename()` with `.rename_into()` during `Query::Rename` execution.
+🎯 Why: The `Query::Rename` execution branch receives an owned relation from the input expression, but was needlessly using the borrowing `.rename()` operator. This caused unnecessary heap allocations as every string and tuple inside the entire relation was cloned into a newly allocated Relation structure.
+📊 Impact: Completely eliminates O(N*M) string and tuple cloning (where N is the number of tuples and M is the degree) during rename operations on intermediate tables in a query pipeline. It directly consumes the relation instead, reusing existing structures where attribute names are unchanged.
+🔬 Measurement: Verify with `cargo bench` looking at memory profiling (fewer string/tuple allocations in complex query execution), and run `cargo test` to ensure semantics are preserved.
