@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > relvar/src/experimental/spreadsheet.rs
 use relvar_core::{
     error::DatabaseError,
     types::ScalarType,
@@ -203,3 +204,4 @@ mod tests {
         assert_eq!(c1.get_typed::<f64>("val").unwrap(), 600.0); // 30 * 20
     }
 }
+INNER_EOF
