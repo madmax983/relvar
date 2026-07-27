@@ -33,3 +33,6 @@
 ## 2025-05-06 - [The Ghost Knowledge Graph]
 **Confusion:** The experimental `KnowledgeGraph` module was completely undocumented, leaving users to guess how it connects to the relational model.
 **Clarification:** Wrote comprehensive module-level documentation and executable doctests for `KnowledgeGraph` and `TriplePattern` explaining the "Relational Semantic Web" concept.
+## 2026-07-27 - Missing Documentation Example in Spreadsheet
+**Confusion:** The `Spreadsheet::new` and `Spreadsheet::evaluate` functions had placeholder examples instead of actual executable examples.
+**Clarification:** Replaced placeholder examples with actual executable examples for `Spreadsheet::new` and `Spreadsheet::evaluate` and updated rust codeblocks in `relvar-core/src/utils/recursion.rs` to text.
