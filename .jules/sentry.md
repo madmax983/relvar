@@ -1,3 +1,6 @@
+## 2026-04-18 - Missing DML Validation and Algebra Into Branch Tests
+**Learning:** `Database::update` error paths during `validate_referencing_foreign_keys` validation and various `_into` algebra operations (`extend_into`, `union_into`, `intersect_into`) error paths and basic branch execution handling were entirely missing test coverage. Also `Database::list_relvars` was entirely unexercised.
+**Action:** When working on APIs containing DML operations like `update` and `delete`, ensure the error paths for constraints propagation to children referential relations are thoroughly tested. Always ensure the `_into` fast-path consuming operations mirror standard coverage.
 ## 2025-02-18 - Arbitrary Limits in Loops
 **Learning:** Found a hardcoded `if page_id > 1000` break in `HeapFile::scan`, intended as a safety guard but acting as a severe data truncation bug for datasets > 4MB.
 **Action:** Always scrutinize "magic numbers" in loop termination conditions. Test boundaries explicitly (e.g., if limit is 1000, test 1001).
