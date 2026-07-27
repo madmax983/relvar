@@ -412,6 +412,18 @@ fn build_ungroup_result_heading(
     Ok(result_heading)
 }
 
+fn get_rva_relation<'a>(tuple: &'a Tuple, rva_name: &str) -> Result<&'a Relation, UngroupError> {
+    let val = tuple
+        .get(rva_name)
+        .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
+
+    let ScalarValue::Relation(rel) = val else {
+        return Err(UngroupError::NotRelationValued(rva_name.to_string()));
+    };
+
+    Ok(rel)
+}
+
 fn compute_ungrouped_tuples(
     relation: &Relation,
     rva_name: &str,
@@ -422,45 +434,35 @@ fn compute_ungrouped_tuples(
     // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
     let mut total_capacity = 0;
     for tuple in relation.tuples() {
-        let val = tuple
-            .get(rva_name)
-            .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
-        match val {
-            ScalarValue::Relation(rel) => total_capacity += rel.cardinality(),
-            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
-        }
+        total_capacity += get_rva_relation(tuple, rva_name)?.cardinality();
     }
+
     let mut result_tuples = std::collections::HashSet::with_capacity(total_capacity);
     let result_heading_arc = std::sync::Arc::new(result_heading.clone());
 
     for tuple in relation.tuples() {
-        // Get the RVA relation
-        let val = tuple
-            .get(rva_name)
-            .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
-        let rva_relation = match val {
-            ScalarValue::Relation(rel) => rel,
-            _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
-        };
+        let rva_relation = get_rva_relation(tuple, rva_name)?;
 
         // Pre-compute the invariant non-RVA attributes for this outer tuple
-        let mut base_values = std::collections::BTreeMap::new();
-        for (attr_name, val) in tuple.values().iter() {
-            if attr_name != rva_name {
-                base_values.insert(attr_name.clone(), val.clone());
-            }
-        }
+        let base_values: std::collections::BTreeMap<_, _> = tuple
+            .values()
+            .iter()
+            .filter(|(k, _)| *k != rva_name)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
         // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
-        let heading_arc = result_heading_arc.clone();
         for rva_tuple in rva_relation.tuples() {
             let mut values = base_values.clone();
-            for (attr_name, val) in rva_tuple.values().iter() {
-                values.insert(attr_name.clone(), val.clone());
-            }
+            values.extend(
+                rva_tuple
+                    .values()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
 
             // Re-use the cloned heading_arc
-            let result_tuple = Tuple::new_unchecked(heading_arc.clone(), values);
+            let result_tuple = Tuple::new_unchecked(result_heading_arc.clone(), values);
             result_tuples.insert(result_tuple);
         }
     }
