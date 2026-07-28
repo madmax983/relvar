@@ -36,3 +36,6 @@
 ## 2026-07-28 - Document Spreadsheet Engine
 **Confusion:** The `Spreadsheet` engine had placeholder examples for `Spreadsheet::new` and `Spreadsheet::evaluate`, leaving users without concrete examples of how to construct relations and invoke evaluation.
 **Clarification:** Replaced placeholder examples with executable doctests that clearly demonstrate relation initialization, tuple insertion, and evaluating mathematical formulas like 'A1 + A2'.
+## $(date +%Y-%m-%d) - Clippy Iterator Warning in Timeseries
+**Confusion:** The `experimental::timeseries` module was triggering `clippy::for_kv_map` warnings during CI because it iterated over `original_heading.attributes().iter()` but only used the `attr_name` (the key) and discarded the value `_`.
+**Clarification:** Replaced the `.iter()` calls with `.keys()` in `generate_non_colliding_suffix` and `prepare_previous_relation` to iterate more efficiently and silence the warning.
