@@ -1494,52 +1494,6 @@ impl HeapFile {
     /// Returns [`HeapError::Serialization`] if tuples cannot be deserialized.
     /// Returns [`HeapError::Page`] if page I/O error occurs.
     ///
-    fn extract_visible_tuple(
-        &self,
-        page: &Page,
-        slot_entry: &VersionedSlotEntry,
-    ) -> Result<Tuple, HeapError> {
-        let start = slot_entry.offset as usize;
-        let end = start
-            .checked_add(slot_entry.length as usize)
-            .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
-
-        if end > page.data().len() {
-            return Err(HeapError::Serialization(
-                "Corrupted slot points outside page data".to_string(),
-            ));
-        }
-
-        let tuple_data = &page.data()[start..end];
-        let tuple: Tuple = deserialize_bounded(tuple_data)?;
-        Ok(tuple)
-    }
-
-    fn scan_visible_page(
-        &self,
-        page: &Page,
-        snapshot: &crate::mvcc::TransactionSnapshot,
-        committed: &std::collections::HashSet<crate::wal::TransactionId>,
-        results: &mut Vec<Tuple>,
-    ) -> Result<(), HeapError> {
-        let versioned_page = match self.deserialize_versioned_page(page) {
-            Ok(vp) => vp,
-            Err(_) => return Ok(()), // Not a versioned page, skip
-        };
-
-        for slot_entry in versioned_page.slots.iter().flatten() {
-            let version_metadata = crate::mvcc::VersionMetadata {
-                xmin: slot_entry.xmin,
-                xmax: slot_entry.xmax,
-            };
-
-            if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
-                results.push(self.extract_visible_tuple(page, slot_entry)?);
-            }
-        }
-        Ok(())
-    }
-
     /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
     #[allow(dead_code)]
     pub(crate) fn scan_visible(
@@ -1554,10 +1508,50 @@ impl HeapFile {
             let page = self.page_file.read_page(page_id)?;
 
             if page.is_empty() {
+                // Empty page means no more data
                 break;
             }
 
-            self.scan_visible_page(&page, snapshot, committed, &mut results)?;
+            // Try to deserialize as VersionedSlottedPage
+            let versioned_page = match self.deserialize_versioned_page(&page) {
+                Ok(vp) => vp,
+                Err(_) => {
+                    // Not a versioned page, skip
+                    page_id += 1;
+                    continue;
+                }
+            };
+
+            // Check each slot for visibility
+            for slot_entry in versioned_page.slots.iter().flatten() {
+                // Create version metadata
+                let version_metadata = crate::mvcc::VersionMetadata {
+                    xmin: slot_entry.xmin,
+                    xmax: slot_entry.xmax,
+                };
+
+                // Check visibility
+                if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
+                    // Extract tuple data from page
+                    let start = slot_entry.offset as usize;
+                    let end = start
+                        .checked_add(slot_entry.length as usize)
+                        .ok_or_else(|| {
+                            HeapError::Serialization("Tuple end offset overflow".to_string())
+                        })?;
+
+                    if end > page.data().len() {
+                        return Err(HeapError::Serialization(
+                            "Corrupted slot points outside page data".to_string(),
+                        ));
+                    }
+
+                    let tuple_data = &page.data()[start..end];
+                    let tuple: Tuple = deserialize_bounded(tuple_data)?;
+                    results.push(tuple);
+                }
+            }
+
             page_id += 1;
         }
 
