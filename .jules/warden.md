@@ -16,3 +16,7 @@
 ## 2026-05-24 - [RwLock Poisoning DoS in PersistentEngine]
 **Threat:** Application panic due to `.unwrap()` calls on `storage_manager.read()` and `storage_manager.write()`. If a thread panics while holding the lock, it poisons the `RwLock`, causing subsequent threads to panic, resulting in a denial-of-service (DoS) cascade.
 **Defense:** Replaced `.unwrap()` with safe error handling on lock acquisition in `PersistentEngine`. Used `.map_err()` to propagate `StorageError::Other` for operations returning a `Result`, and used `.unwrap_or_else(|e| e.into_inner())` for read-only methods returning non-Results, safely extracting the guard without propagating a panic.
+
+## 2026-07-28 - [Upgrade vulnerable dependencies]
+**Threat:** Invalid pointer dereference in crossbeam-epoch (RUSTSEC-2026-0204) and unsoundness in anyhow (RUSTSEC-2026-0190) crates allowed Undefined Behavior or security vulnerabilities.
+**Defense:** Upgraded `crossbeam-epoch` to >=0.9.20 and `anyhow` to v1.0.104 in Cargo.lock to pull in secure versions.
