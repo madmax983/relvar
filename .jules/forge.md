@@ -631,3 +631,9 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2026-05-19 - Refactor `recover` God Function
+**Learning:** `relvar-storage/src/wal/recovery.rs` contained a "God Function" `recover` (61 lines) which combined analyzing the WAL, identifying active and max transaction IDs, and collecting uncommitted inserts. This mixed responsibilities and made the logic harder to follow.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting `identify_active_and_max_txns` and `collect_uncommitted_inserts` into separate helper functions to drastically improve readability without changing behavior.
+## 2026-05-19 - Refactor `scan_visible` God Function
+**Learning:** `relvar-storage/src/storage/heap/mod.rs` contained a "God Function" `scan_visible` (61 lines) which mixed scanning all pages, deserializing versioned pages, checking MVCC visibility, and extracting tuples. This deep nesting made the logic hard to follow.
+**Action:** Applied the "Three-Phase Operator" pattern by extracting `scan_visible_page` and `extract_visible_tuple` into separate helper functions to flatten the structure and drastically improve readability without changing behavior.

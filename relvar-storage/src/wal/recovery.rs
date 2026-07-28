@@ -122,19 +122,14 @@ pub struct RecoveryResult {
 /// # Errors
 ///
 /// Returns `WalError` if analysis fails.
-pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
-    // Analysis pass
-    let analysis = analyze(wal)?;
-
-    // Find uncommitted transactions (those with BEGIN but no COMMIT/ABORT)
-    // Also track maximum transaction ID seen
+fn identify_active_and_max_txns(
+    analysis: &AnalysisResult,
+) -> (HashSet<TransactionId>, TransactionId) {
     let mut active_txns = HashSet::new();
     let mut max_txn_id = TransactionId::new(0);
 
     for (_, record) in &analysis.records {
-        // Extract transaction ID from record
-        let txn_id = record.txn_id();
-        if let Some(tid) = txn_id
+        if let Some(tid) = record.txn_id()
             && tid.value() > max_txn_id.value()
         {
             max_txn_id = tid;
@@ -145,21 +140,20 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
         }
     }
 
-    // Remove committed and aborted transactions from active set
-    for txn_id in &analysis.committed {
-        active_txns.remove(txn_id);
-        if txn_id.value() > max_txn_id.value() {
-            max_txn_id = *txn_id;
-        }
-    }
-    for txn_id in &analysis.aborted {
+    for txn_id in analysis.committed.iter().chain(analysis.aborted.iter()) {
         active_txns.remove(txn_id);
         if txn_id.value() > max_txn_id.value() {
             max_txn_id = *txn_id;
         }
     }
 
-    // Collect uncommitted inserts
+    (active_txns, max_txn_id)
+}
+
+fn collect_uncommitted_inserts(
+    analysis: &AnalysisResult,
+    active_txns: &HashSet<TransactionId>,
+) -> Vec<UncommittedInsert> {
     let mut uncommitted_inserts = Vec::new();
 
     for (_, record) in &analysis.records {
@@ -176,6 +170,15 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
             });
         }
     }
+
+    uncommitted_inserts
+}
+
+pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
+    let analysis = analyze(wal)?;
+
+    let (active_txns, max_txn_id) = identify_active_and_max_txns(&analysis);
+    let uncommitted_inserts = collect_uncommitted_inserts(&analysis, &active_txns);
 
     Ok(RecoveryResult {
         committed_txns: analysis.committed,
