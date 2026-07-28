@@ -23,9 +23,25 @@ impl Spreadsheet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    ///
+    /// let val_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float);
+    /// let mut values = Relation::new(RelationType::new(val_heading));
+    /// values.insert(tuple! { id: "A1".to_string(), val: 10.0f64 }).unwrap();
+    ///
+    /// let form_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String);
+    /// let formulas = Relation::new(RelationType::new(form_heading));
+    ///
+    /// let spreadsheet = Spreadsheet::new(values, formulas);
+    /// assert_eq!(spreadsheet.values.cardinality(), 1);
+    /// assert_eq!(spreadsheet.formulas.cardinality(), 0);
     /// ```
     pub fn new(values: Relation, formulas: Relation) -> Self {
         Self { values, formulas }
@@ -36,9 +52,34 @@ impl Spreadsheet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    ///
+    /// let val_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float);
+    /// let mut values = Relation::new(RelationType::new(val_heading));
+    /// values.insert(tuple! { id: "A1".to_string(), val: 10.0f64 }).unwrap();
+    /// values.insert(tuple! { id: "A2".to_string(), val: 20.0f64 }).unwrap();
+    ///
+    /// let form_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String);
+    /// let mut formulas = Relation::new(RelationType::new(form_heading));
+    /// // B1 = A1 + A2
+    /// formulas.insert(tuple! {
+    ///     id: "B1".to_string(), op: "ADD".to_string(), arg1: "A1".to_string(), arg2: "A2".to_string()
+    /// }).unwrap();
+    ///
+    /// let spreadsheet = Spreadsheet::new(values, formulas);
+    /// let result = spreadsheet.evaluate().unwrap();
+    ///
+    /// assert_eq!(result.cardinality(), 3);
+    ///
+    /// let b1 = result.tuples().find(|t| t.get_typed::<String>("id").unwrap() == "B1").unwrap();
+    /// assert_eq!(b1.get_typed::<f64>("val").unwrap(), 30.0);
     /// ```
     pub fn evaluate(&self) -> Result<Relation, DatabaseError> {
         let mut current_values = self.values.clone();
