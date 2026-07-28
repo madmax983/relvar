@@ -27,3 +27,6 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
+## 2026-07-28 - Extraction of Massive Files Across Core and Storage
+**Tangle:** Numerous core domain files (e.g., `relvar-core/src/algebra/summarize.rs`, `relvar-core/src/values/scalar.rs`, `relvar-core/src/constraints/manager.rs`, etc.) and `relvar-storage/src/storage/page.rs` had grown into the "Blob" anti-pattern, merging 500-1000 lines of inline tests with domain logic, making them dense and difficult to navigate.
+**Blueprint:** Replaced monolithic `.rs` files with module directories containing `mod.rs` (production code) and `tests.rs` (extracted inline tests). This adheres to the previously established pattern for massive files, significantly reducing module size and isolating test dependencies without altering semantics or public APIs.

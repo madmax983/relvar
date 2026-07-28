@@ -1,0 +1,5 @@
+Title: 🗺️ Atlas: [Massive Test Extraction across Core/Storage]
+🕸️ Tangle: Numerous core domain logic files (`summarize.rs`, `scalar.rs`, `manager.rs`, `page.rs`, etc.) had grown into unwieldy "God Files" (the Blob anti-pattern), tightly coupling hundreds of lines of inline tests with core structural code, harming navigability and separation of concerns.
+📐 Blueprint: Extracted inline `mod tests { ... }` blocks from 14 oversized Rust files into dedicated `tests.rs` sibling files (e.g., converting `summarize.rs` into `summarize/mod.rs` and `summarize/tests.rs`). This purely structural refactor breaks apart massive files and adheres to the project's established precedent for managing test bloat.
+🧱 Stability: Vastly improves code navigability and strictly isolates test logic from production logic. No runtime behavior, logic, or public APIs were modified.
+🔬 Verification: Ran full `cargo test` suite to ensure all extracted tests continue to pass and `cargo clippy --all-targets --all-features` to guarantee no warnings were introduced by the module restructures.
