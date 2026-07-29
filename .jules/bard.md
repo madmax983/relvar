@@ -33,3 +33,6 @@
 ## 2025-05-06 - [The Ghost Knowledge Graph]
 **Confusion:** The experimental `KnowledgeGraph` module was completely undocumented, leaving users to guess how it connects to the relational model.
 **Clarification:** Wrote comprehensive module-level documentation and executable doctests for `KnowledgeGraph` and `TriplePattern` explaining the "Relational Semantic Web" concept.
+## 2026-07-29 - Documenting Spreadsheet Engine
+**Confusion:** The experimental `Spreadsheet` had missing module-level documentation and placeholder doc-tests for the main struct's methods (`new` and `evaluate`), making it confusing to understand how to initialize the values and formulas, and execute evaluation.
+**Clarification:** Added module-level documentation and executable `/// # Examples` doc-tests for `Spreadsheet` and its methods, demonstrating how to construct the necessary relations and perform evaluation.
