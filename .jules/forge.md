@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2026-07-29 - Extract God Function in compute_ungrouped_tuples
+**Learning:** The `compute_ungrouped_tuples` function in `relvar-core/src/algebra/group.rs` was over 50 lines long, combining capacity calculation with the generation of ungrouped tuples. This hurt readability by conflating two logically distinct operations.
+**Action:** Applied the 'Three-Phase Operator' pattern by extracting the pre-allocation cardinality check into `calculate_ungrouped_capacity` and the tuple creation loop into `generate_ungrouped_tuples`.
