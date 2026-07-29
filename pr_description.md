@@ -1,9 +1,3 @@
-Title: 🌟 Nova: Relational Vector Database Simulator
+Title: Fix: Resolve unused import warnings in relvar-storage and vector_db
 
-💡 **The Spark:** "I noticed we use relational operations for set logic, but can they handle spatial math like dot products and magnitudes for embeddings? Can a database natively function as a Vector DB using pure relation joins?"
-
-🚀 **The Feature:** "Implemented `VectorDB` struct using entirely relational algebra to compute Cosine Similarities between a query relation and embeddings stored in the DB (via Join, Extend, Summarize)."
-
-🔭 **The Potential:** "Could be used natively for similarity search, AI/LLM retrieval tasks, recommendation engines, or spatial querying purely within the relational engine."
-
-⚠️ **Risk:** "Low. Fully isolated in `src/experimental/vector_db.rs`."
+This commit fixes CI failures by removing unused imports (`RelationMetadata`, `PAGE_SIZE`, `PageId`) from `relvar-storage/src/storage/mod.rs` and unused imports (`RelationType`, `TupleType`) from `relvar/src/experimental/vector_db.rs`. It also adds `#[allow(dead_code)]` to the newly added `VectorDB` struct to suppress dead code warnings. These changes ensure `cargo clippy --all-targets --all-features -- -D warnings` completes successfully.
