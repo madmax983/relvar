@@ -72,4 +72,6 @@ pub mod synth;
 pub mod timeseries;
 pub mod turing;
 pub mod vcs;
+/// Relational Vector Database Simulator.
+pub mod vector_db;
 pub mod vm;
