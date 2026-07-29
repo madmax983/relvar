@@ -7,6 +7,7 @@ use relvar_core::algebra::Aggregation;
 use relvar_core::{DatabaseError, Relation, ScalarType, ScalarValue};
 
 /// A simple Relational Vector Database
+#[allow(dead_code)]
 pub struct VectorDB {
     /// Relation containing embeddings: `(item_id: String, dim: Int, value: Float)`
     pub embeddings: Relation,
