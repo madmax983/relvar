@@ -7,5 +7,7 @@ pub mod game_of_life;
 /// PageRank algorithm implementation.
 pub mod pagerank;
 
+/// Graph Neural Network implementation.
+pub mod graph_neural_network;
 /// Knowledge Graph implementation.
 pub mod knowledge_graph;
