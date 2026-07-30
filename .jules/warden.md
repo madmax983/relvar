@@ -15,4 +15,6 @@
 
 ## 2026-05-24 - [RwLock Poisoning DoS in PersistentEngine]
 **Threat:** Application panic due to `.unwrap()` calls on `storage_manager.read()` and `storage_manager.write()`. If a thread panics while holding the lock, it poisons the `RwLock`, causing subsequent threads to panic, resulting in a denial-of-service (DoS) cascade.
-**Defense:** Replaced `.unwrap()` with safe error handling on lock acquisition in `PersistentEngine`. Used `.map_err()` to propagate `StorageError::Other` for operations returning a `Result`, and used `.unwrap_or_else(|e| e.into_inner())` for read-only methods returning non-Results, safely extracting the guard without propagating a panic.
+## 2026-07-30 - Fix buffer overflow in heap slotted page serialization
+**Threat:** A logic bug in `serialize_slotted_page_with_tuples` allowed for unbounded slice indices by using `offset + length` without ensuring it did not overflow bounds. In addition, an outdated version of `crossbeam-epoch` (0.9.18) was vulnerable to a pointer deref vulnerability (CVE). Anyhow also needed update (1.0.102 -> 1.0.104).
+**Defense:** Added bounds checking during slotted page serialization via `offset.checked_add` and ensuring that `end_offset <= data.len()`. Also updated dependencies via `cargo update -p crossbeam-epoch` and `cargo update -p anyhow`.
