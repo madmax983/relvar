@@ -215,7 +215,6 @@ fn filter_matching_candidates(
     dividend: &Relation,
     dividend_heading: &crate::types::TupleType,
 ) -> Relation {
-    use std::collections::BTreeMap;
     use std::sync::Arc;
 
     // Clone dividend_heading once outside the loop to avoid repeated clones
@@ -225,12 +224,13 @@ fn filter_matching_candidates(
         // Check if ALL divisor tuples match when extended with this candidate
         divisor.tuples().all(|divisor_tuple| {
             // Extend candidate with divisor tuple using iterator-based approach
-            let extended_values: BTreeMap<_, _> = candidate
-                .values()
-                .iter()
-                .chain(divisor_tuple.values())
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
+            let mut extended_values = candidate.values().clone();
+            extended_values.extend(
+                divisor_tuple
+                    .values()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
 
             // Create extended tuple
             let extended_tuple =
