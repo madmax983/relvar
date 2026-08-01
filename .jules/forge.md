@@ -631,3 +631,7 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## 2026-08-01 - Refactored God Functions in ungroup and test setup
+**Learning:** `compute_ungrouped_tuples` and `setup_db` contained overly long logic (over 50 lines). Mixing capacity calculation, tuple extraction, and iteration into one function harms readability.
+**Action:** Applied the 'Three-Phase Operator' pattern to extract sub-tasks like `calculate_total_capacity` and `extract_base_values` into private helper functions. Similarly, extracted `setup_users_table` and `setup_orders_table` from `setup_db`.
