@@ -62,7 +62,7 @@
 //! ```
 
 pub(crate) mod catalog;
-pub(crate) mod heap;
+pub mod heap;
 pub(crate) mod manager;
 pub(crate) mod page;
 
