@@ -61,6 +61,3 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
-## 2026-08-02 - [Divide Operator Allocation Removal]
-**Learning:** In the `divide` operator, an intermediate `BTreeMap` extension step used iterator chaining and `.collect()`. Since `candidate.values()` is already a `BTreeMap`, calling `.clone()` is highly optimized (avoiding re-hashing/re-allocating elements from scratch) compared to iterator collection.
-**Action:** Replace `candidate.values().iter().chain(divisor_tuple.values()).map(...).collect()` with `let mut extended_values = candidate.values().clone(); extended_values.extend(divisor_tuple.values().iter().map(...));` to bypass multiple heap allocations and eliminate the need for iterator chaining overhead.
