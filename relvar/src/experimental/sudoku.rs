@@ -120,35 +120,24 @@ impl SudokuSolver {
             .join(&self.cells)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        // To find invalid possibilities, we need to join possibilities with known cells
-        // on the constraints: same row, same col, or same box.
+        // Helper closure to compute invalid possibilities for a given constraint
+        let compute_invalid =
+            |rename_mappings: &[(&str, &str)]| -> Result<Relation, DatabaseError> {
+                let known_renamed = known_with_box.rename(rename_mappings);
+                let invalid = all_possibilities
+                    .join(&known_renamed)
+                    .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+                Ok(invalid.project(&["row", "col", "box_id", "val"]))
+            };
 
-        // 1. Invalid due to same row:
-        // rename known(col -> k_col, box_id -> k_box) to avoid collision, join on row, val
-        let mappings = vec![("col", "k_col"), ("box_id", "k_box")];
-        let known_row = known_with_box.rename(&mappings);
-        let invalid_row = all_possibilities
-            .join(&known_row)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-        let invalid_row_proj = invalid_row.project(&["row", "col", "box_id", "val"]);
+        // 1. Invalid due to same row
+        let invalid_row_proj = compute_invalid(&[("col", "k_col"), ("box_id", "k_box")])?;
 
-        // 2. Invalid due to same col:
-        // rename known(row -> k_row, box_id -> k_box) to avoid collision, join on col, val
-        let mappings = vec![("row", "k_row"), ("box_id", "k_box")];
-        let known_col = known_with_box.rename(&mappings);
-        let invalid_col = all_possibilities
-            .join(&known_col)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-        let invalid_col_proj = invalid_col.project(&["row", "col", "box_id", "val"]);
+        // 2. Invalid due to same col
+        let invalid_col_proj = compute_invalid(&[("row", "k_row"), ("box_id", "k_box")])?;
 
-        // 3. Invalid due to same box:
-        // rename known(row -> k_row, col -> k_col) to avoid collision, join on box_id, val
-        let mappings = vec![("row", "k_row"), ("col", "k_col")];
-        let known_box = known_with_box.rename(&mappings);
-        let invalid_box = all_possibilities
-            .join(&known_box)
-            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-        let invalid_box_proj = invalid_box.project(&["row", "col", "box_id", "val"]);
+        // 3. Invalid due to same box
+        let invalid_box_proj = compute_invalid(&[("row", "k_row"), ("col", "k_col")])?;
 
         // Combine all invalid possibilities
         let all_invalid1 = invalid_row_proj
