@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-03-30 - TryFrom Coverage Gaps and Traits
+**Learning:** Some trait implementations for simple conversions (like `TryFrom` and `From`) in core types (`ScalarValue` and `Tuple`) often slip through primary algebraic tests and require explicit coverage.
+**Action:** Add direct coverage for these basic conversion traits (which handle errors manually and map values) to ensure correctness on edge cases and type extraction failures.
