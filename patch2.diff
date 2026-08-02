@@ -1,0 +1,21 @@
+--- relvar/src/experimental/timeseries.rs
++++ relvar/src/experimental/timeseries.rs
+@@ -96,7 +96,7 @@
+         // Keep all original attributes (except time_attr which we'll handle next)
+         let mut modified = false;
+
+-        for (attr_name, _) in original_heading.attributes().iter() {
++        for attr_name in original_heading.attributes().keys() {
+             if attr_name == time_attr {
+                 continue; // We'll add the modified time attribute below
+             }
+@@ -117,7 +117,7 @@
+
+     // Helper to build the resulting heading from original
+     fn build_result_heading(original_heading: &TupleType) -> TupleType {
+         let mut new_heading = TupleType::new();
+-        for (attr_name, _) in original_heading.attributes().iter() {
++        for attr_name in original_heading.attributes().keys() {
+             let attr_type = original_heading.get_attribute_type(attr_name).unwrap();
+             new_heading = new_heading.with_attribute(attr_name.clone(), attr_type.clone());
+         }
