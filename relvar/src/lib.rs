@@ -151,7 +151,6 @@ pub(crate) mod experimental;
 
 /// Developer tools and utilities.
 #[doc(hidden)]
-#[doc(hidden)]
 pub(crate) mod tools;
 
 #[deprecated(note = "Use `relvar::tools::visualizer` instead")]
