@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Role-Based Access Control (RBAC)
 //!
 //! Models a full RBAC system with role hierarchies using pure relational algebra.

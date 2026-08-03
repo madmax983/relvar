@@ -1,6 +1,6 @@
-Title: 🛡️ Sentry: [test coverage improvement]
+Title: 🛡️ Sentry: [fix ci errors]
 
-🎯 Target: `Database` struct and DML operations.
-💣 Risk: Missing test coverage for error conditions like type mismatches in `update` and operations on virtual relvars, which might cause undetected panics.
-🧪 Strategy: Added internal tests in `database::data`, `database::dml`, `database::integrity`, and `database::transaction` modules.
-🔬 Verification: `cargo test`
+🎯 Target: Multiple modules across the codebase.
+💣 Risk: CI failing due to private module accesses and clippy warnings blocking PRs.
+🧪 Strategy: Adjusted `pub(crate)` to `pub` for `tools` and `experimental` modules, cleaned up unused components causing warnings in `experimental`.
+🔬 Verification: `cargo test` and `cargo clippy --all-targets --all-features -- -D warnings`

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Automata
 //!
 //! This module models Non-deterministic Finite Automata (NFA) using purely

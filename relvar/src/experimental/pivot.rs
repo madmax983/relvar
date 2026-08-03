@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Pivot operator implementation.
 //!
 //! PIVOT transforms row values into column headers.

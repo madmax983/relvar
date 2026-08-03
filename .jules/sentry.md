@@ -132,6 +132,3 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
-## 2026-08-03 - Test Coverage for DML operations
-**Learning:** The database DML (insert, update, delete) handles virtual relvars and types gracefully but lacked test coverage.
-**Action:** Added extensive tests covering type mismatch, error handling on virtual relvars, and transaction failures.

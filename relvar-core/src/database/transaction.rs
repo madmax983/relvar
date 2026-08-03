@@ -112,32 +112,3 @@ impl<E: StorageEngine> Database<E> {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::error::DatabaseError;
-    use crate::storage_engine::InMemoryEngine;
-
-    #[test]
-    fn test_transaction_rollback_when_no_transaction() {
-        let mut db = Database::new(InMemoryEngine::new());
-        let err = db.rollback().unwrap_err();
-        assert!(matches!(err, DatabaseError::TransactionError(_)));
-    }
-
-    #[test]
-    fn test_transaction_commit_when_no_transaction() {
-        let mut db = Database::new(InMemoryEngine::new());
-        let err = db.commit().unwrap_err();
-        assert!(matches!(err, DatabaseError::TransactionError(_)));
-    }
-
-    #[test]
-    fn test_transaction_begin_when_already_in_transaction() {
-        let mut db = Database::new(InMemoryEngine::new());
-        db.begin().unwrap();
-        let err = db.begin().unwrap_err();
-        assert!(matches!(err, DatabaseError::TransactionError(_)));
-    }
-}

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Audio Synthesizer
 //!
 //! This module demonstrates how audio synthesis can be implemented using purely
