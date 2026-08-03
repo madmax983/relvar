@@ -121,6 +121,7 @@
 //! ```
 
 #![warn(missing_docs)]
+#![allow(dead_code)]
 
 /// Common types and traits.
 pub mod prelude;
