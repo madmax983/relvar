@@ -1,6 +1,6 @@
-Title: 🔒 Warden: Bump vulnerable dependencies (crossbeam-epoch, anyhow)
+Title: 🔒 Warden: Fix experimental module visibility issue
 
-🦠 Threat: Vulnerable dependency `crossbeam-epoch` v0.9.18 contained an invalid pointer dereference (RUSTSEC-2026-0204). Vulnerable dependency `anyhow` v1.0.102 contained an unsoundness issue (RUSTSEC-2026-0190).
-🛡️ Defense: Updated `crossbeam-epoch` to v0.9.20 and `anyhow` to v1.0.104.
-💥 Severity: High - These issues could cause crashes or unsoundness in multi-threaded/concurrent settings, and error handling paths.
-🧪 Verification: Scanned with `cargo audit` and verified that both issues have been resolved.
+🦠 Threat: Broken builds downstream when attempting to run tests, caused by `experimental` being `pub(crate)` and `tools` being `pub(crate)` instead of `pub mod` preventing cross-crate access from the test suite.
+🛡️ Defense: Changed `pub(crate) mod experimental` to `pub mod experimental` and `pub(crate) mod tools` to `pub mod tools` in `relvar/src/lib.rs`. Reverted `storage` to `pub mod storage` in `relvar-storage/src/lib.rs` to fix `relvar-storage` tests.
+💥 Severity: Low - This is a compilation issue breaking tests, not a live exploit.
+🧪 Verification: Scanned with `cargo clippy` and ran `cargo test` successfully across the workspace.
