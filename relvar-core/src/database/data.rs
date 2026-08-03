@@ -333,3 +333,36 @@ impl<E: StorageEngine> Database<E> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage_engine::InMemoryEngine;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+
+    #[test]
+    fn test_update_type_mismatch() {
+        let mut db = Database::new(InMemoryEngine::new());
+        let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        db.create_relvar("TEST", rel_type).unwrap();
+        db.insert("TEST", tuple! { id: 1i64 }).unwrap();
+
+        // Updater returns a tuple with wrong type structure
+        let res = db.update(
+            "TEST",
+            |_| true,
+            |_| {
+                let bad_type = TupleType::new().with_attribute("id", ScalarType::String);
+                let mut values = std::collections::BTreeMap::new();
+                values.insert(
+                    "id".to_string(),
+                    crate::values::ScalarValue::String("wrong".to_string()),
+                );
+                Tuple::new(std::sync::Arc::new(bad_type), values).unwrap()
+            },
+        );
+
+        assert!(matches!(res.unwrap_err(), DatabaseError::TupleMismatch));
+    }
+}
