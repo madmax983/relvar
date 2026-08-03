@@ -127,9 +127,10 @@
 //! ```
 
 #![warn(missing_docs)]
+#![allow(unused_imports)]
 
-pub mod persistent_engine;
-pub mod storage;
+pub(crate) mod persistent_engine;
+pub(crate) mod storage;
 
 // WAL module is pub(crate) - not exposed to logical layer (TTM compliance)
 pub(crate) mod wal;
