@@ -1,0 +1,25 @@
+<<<<<<< SEARCH
+use relvar_storage::storage::{HeapFile, Page, PageFile};
+use tempfile::NamedTempFile;
+
+fn create_test_relation_type() -> RelationType {
+=======
+use relvar_storage::{HeapFile, Page, PageFile};
+use tempfile::NamedTempFile;
+
+fn create_test_relation_type() -> RelationType {
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+                |(mut page_file, page, _temp_file)| {
+                    // Measured: just the write operation
+=======
+                |(mut page_file, page, _temp_file): (PageFile, Page, NamedTempFile)| {
+                    // Measured: just the write operation
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+                |(mut heap, _temp_file)| {
+                    // Measured: just the insert operations
+=======
+                |(mut heap, _temp_file): (HeapFile, NamedTempFile)| {
+                    // Measured: just the insert operations
+>>>>>>> REPLACE
