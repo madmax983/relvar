@@ -146,10 +146,12 @@ pub use relvar_core::constraints;
 pub use relvar_core::tuple;
 
 /// Experimental features that may be unstable or subject to change.
-pub mod experimental;
+#[doc(hidden)]
+pub(crate) mod experimental;
 
 /// Developer tools and utilities.
-pub mod tools;
+#[doc(hidden)]
+pub(crate) mod tools;
 
 #[deprecated(note = "Use `relvar::tools::visualizer` instead")]
 pub use tools::visualizer;

@@ -128,14 +128,22 @@
 
 #![warn(missing_docs)]
 
-pub mod persistent_engine;
-pub mod storage;
+
+#[doc(hidden)]
+pub(crate) mod persistent_engine;
+
+#[doc(hidden)]
+pub(crate) mod storage;
 
 // WAL module is pub(crate) - not exposed to logical layer (TTM compliance)
-pub(crate) mod wal;
+
+#[doc(hidden)]
+pub mod wal;
 
 // MVCC module is pub(crate) - not exposed to logical layer (TTM compliance)
-pub(crate) mod mvcc;
+
+#[doc(hidden)]
+pub mod mvcc;
 
 pub use persistent_engine::PersistentEngine;
 
