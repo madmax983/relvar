@@ -146,10 +146,10 @@ pub use relvar_core::constraints;
 pub use relvar_core::tuple;
 
 /// Experimental features that may be unstable or subject to change.
-pub mod experimental;
+pub(crate) mod experimental;
 
 /// Developer tools and utilities.
-pub mod tools;
+pub(crate) mod tools;
 
 #[deprecated(note = "Use `relvar::tools::visualizer` instead")]
 pub use tools::visualizer;
@@ -157,8 +157,14 @@ pub use tools::visualizer;
 /// Data import and export functionality.
 #[deprecated(note = "Use `relvar::tools` instead")]
 pub mod data {
-    pub use crate::tools::exporter;
-    pub use crate::tools::importer;
+    /// Legacy exporter module.
+    pub mod exporter {
+        pub use crate::tools::exporter::*;
+    }
+    /// Legacy importer module.
+    pub mod importer {
+        pub use crate::tools::importer::*;
+    }
 }
 
 /// Create an in-memory database.

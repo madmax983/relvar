@@ -56,7 +56,7 @@ fn test_moving_average_attribute_collision() {
 
     let t2 = res
         .tuples()
-        .find(|t| t.get_typed::<i64>("time") == Some(2))
+        .find(|t: &&relvar_core::values::Tuple| t.get_typed::<i64>("time") == Some(2))
         .unwrap();
 
     let avg = t2.get_typed::<f64>("moving_avg").unwrap();
