@@ -69,3 +69,103 @@ where
 
     Ok((new_relation, update_count))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+
+    #[test]
+    fn test_compute_relation_after_delete() -> Result<(), Box<dyn std::error::Error>> {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let mut rel = Relation::new(rel_type);
+        rel.insert(tuple! { id: 1i64 })?;
+        rel.insert(tuple! { id: 2i64 })?;
+
+        // Delete id == 1
+        let (new_rel, count) = compute_relation_after_delete(rel, |t| {
+            t.get_typed::<i64>("id").unwrap_or_default() == 1
+        })?;
+
+        assert_eq!(count, 1);
+        assert_eq!(new_rel.cardinality(), 1);
+        assert_eq!(
+            new_rel
+                .tuples()
+                .next()
+                .unwrap()
+                .get_typed::<i64>("id")
+                .unwrap(),
+            2
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_compute_relation_after_update() -> Result<(), Box<dyn std::error::Error>> {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let mut rel = Relation::new(rel_type.clone());
+        rel.insert(tuple! { id: 1i64 })?;
+        rel.insert(tuple! { id: 2i64 })?;
+
+        // Update id == 1 to id == 10
+        let (new_rel, count) = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap_or_default() == 1,
+            |_t| tuple! { id: 10i64 },
+        )?;
+
+        assert_eq!(count, 1);
+        assert_eq!(new_rel.cardinality(), 2);
+
+        let mut ids: Vec<i64> = new_rel
+            .tuples()
+            .map(|t| t.get_typed::<i64>("id").unwrap_or_default())
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec![2, 10]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_compute_relation_after_update_no_match() -> Result<(), Box<dyn std::error::Error>> {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let mut rel = Relation::new(rel_type.clone());
+        rel.insert(tuple! { id: 1i64 })?;
+        rel.insert(tuple! { id: 2i64 })?;
+
+        // Update id == 3 to id == 10 (no match)
+        let (new_rel, count) = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap_or_default() == 3,
+            |_t| tuple! { id: 10i64 },
+        )?;
+
+        assert_eq!(count, 0);
+        assert_eq!(new_rel.cardinality(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_compute_relation_after_update_tuple_mismatch() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let rel_type = RelationType::new(heading);
+        let mut rel = Relation::new(rel_type.clone());
+        rel.insert(tuple! { id: 1i64 })?;
+
+        // Update id == 1 to wrong attribute
+        let result = compute_relation_after_update(
+            rel,
+            |t| t.get_typed::<i64>("id").unwrap_or_default() == 1,
+            |_t| tuple! { wrong_id: 10i64 },
+        );
+
+        assert!(matches!(result, Err(DatabaseError::TupleMismatch)));
+        Ok(())
+    }
+}
