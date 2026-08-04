@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## $(date +%Y-%m-%d) - [DML Testing Coverage]
+**Learning:** Testing pure logic functions (like compute_relation_after_update) with `Result<(), Box<dyn std::error::Error>>` works well but sometimes extracting nested tuple types like `.get_typed("id")?` runs into `Option` to `Result` mismatch issues which can be circumvented via `unwrap_or_default()` in predicate closures or manual `.unwrap()` inside assertions if type is known.
+**Action:** When migrating tests to return `Result`, carefully handle `.unwrap()` inside `assert_eq!` as `assert_eq!` and closures may not allow seamless `?` propagation without explicit type mapping.
