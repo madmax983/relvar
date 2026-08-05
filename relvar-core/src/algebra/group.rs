@@ -445,27 +445,39 @@ fn compute_ungrouped_tuples(
 
         // Pre-compute the invariant non-RVA attributes for this outer tuple
         let mut base_values = std::collections::BTreeMap::new();
-        for (attr_name, val) in tuple.values().iter() {
+        for (attr_name, val) in tuple.values() {
             if attr_name != rva_name {
                 base_values.insert(attr_name.clone(), val.clone());
             }
         }
 
-        // For each tuple in the RVA, create a new tuple combining non-RVA and RVA attributes
-        let heading_arc = result_heading_arc.clone();
-        for rva_tuple in rva_relation.tuples() {
-            let mut values = base_values.clone();
-            for (attr_name, val) in rva_tuple.values().iter() {
-                values.insert(attr_name.clone(), val.clone());
-            }
-
-            // Re-use the cloned heading_arc
-            let result_tuple = Tuple::new_unchecked(heading_arc.clone(), values);
-            result_tuples.insert(result_tuple);
-        }
+        generate_ungrouped_tuples(
+            &mut result_tuples,
+            &result_heading_arc,
+            rva_relation,
+            &base_values,
+        );
     }
 
     Ok(result_tuples)
+}
+
+fn generate_ungrouped_tuples(
+    result_tuples: &mut std::collections::HashSet<Tuple>,
+    result_heading_arc: &std::sync::Arc<TupleType>,
+    rva_relation: &Relation,
+    base_values: &std::collections::BTreeMap<String, ScalarValue>,
+) {
+    let heading_arc = result_heading_arc.clone();
+    for rva_tuple in rva_relation.tuples() {
+        let mut values = base_values.clone();
+        for (attr_name, val) in rva_tuple.values() {
+            values.insert(attr_name.clone(), val.clone());
+        }
+
+        let result_tuple = Tuple::new_unchecked(heading_arc.clone(), values);
+        result_tuples.insert(result_tuple);
+    }
 }
 
 #[cfg(test)]
