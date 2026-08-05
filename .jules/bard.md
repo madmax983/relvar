@@ -33,9 +33,6 @@
 ## 2025-05-06 - [The Ghost Knowledge Graph]
 **Confusion:** The experimental `KnowledgeGraph` module was completely undocumented, leaving users to guess how it connects to the relational model.
 **Clarification:** Wrote comprehensive module-level documentation and executable doctests for `KnowledgeGraph` and `TriplePattern` explaining the "Relational Semantic Web" concept.
-## 2026-08-05 - Spreadsheet Documentation
-**Confusion:** The experimental spreadsheet module lacked working examples, resulting in unused or placeholder doc-tests.
-**Clarification:** Added comprehensive doc-tests showing relational spreadsheet initialization and evaluation.
-## 2026-08-05 - Clippy For KV Map
-**Confusion:** The timeseries module had compiler warnings due to non-idiomatic iteration over a map using `.iter()` when only keys were needed.
-**Clarification:** Replaced `.iter()` with `.keys()` to satisfy `clippy::for_kv_map`.
+## 2026-08-05 - Storage Unused Exports
+**Confusion:** The `relvar-storage/src/storage/mod.rs` file exported unused internal items (`RelationMetadata`, `PAGE_SIZE`, `PageId`), which triggered `clippy` warnings and made the public API confusing.
+**Clarification:** Removed the unused items from the `pub use` statements to clean up the public API and fix the warnings.
