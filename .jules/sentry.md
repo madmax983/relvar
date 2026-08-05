@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-08-05 - Derived Trait Error Coverage
+**Learning:** External crates like `thiserror` derive strings using macros (e.g. `#[error(...)]`) which may lack test coverage if they are propagated outwards implicitly without manual `.to_string()` unit assertion tests.
+**Action:** When adding missing code coverage for API boundaries, directly verify internal `thiserror` string generations to ensure exact formatting is respected for downstream API clients.
