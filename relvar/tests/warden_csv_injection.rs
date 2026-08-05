@@ -1,4 +1,4 @@
-use relvar::tools::exporter;
+use relvar::data::exporter;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Relation;
