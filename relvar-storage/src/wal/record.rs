@@ -592,3 +592,23 @@ fn test_record_txn_id_page_write_and_delete() {
     assert_eq!(record_page_write.txn_id(), Some(txn_id));
     assert_eq!(record_delete.txn_id(), Some(txn_id));
 }
+
+#[cfg(test)]
+mod sentry_wal_record_coverage {
+    use super::*;
+
+    #[test]
+    fn test_wal_record_error_display() {
+        let err1 = WalRecordError::Serialization(postcard::Error::DeserializeUnexpectedEnd);
+        assert_eq!(
+            err1.to_string(),
+            "Failed to serialize WAL record: Hit the end of buffer, expected more data"
+        );
+
+        let err2 = WalRecordError::RecordTooLarge(1500000, 1048576);
+        assert_eq!(
+            err2.to_string(),
+            "WAL record too large: 1500000 bytes (max: 1048576)"
+        );
+    }
+}
