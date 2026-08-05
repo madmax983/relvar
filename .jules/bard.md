@@ -36,3 +36,6 @@
 ## 2026-08-05 - Spreadsheet Documentation
 **Confusion:** The experimental spreadsheet module lacked working examples, resulting in unused or placeholder doc-tests.
 **Clarification:** Added comprehensive doc-tests showing relational spreadsheet initialization and evaluation.
+## 2026-08-05 - Clippy For KV Map
+**Confusion:** The timeseries module had compiler warnings due to non-idiomatic iteration over a map using `.iter()` when only keys were needed.
+**Clarification:** Replaced `.iter()` with `.keys()` to satisfy `clippy::for_kv_map`.
