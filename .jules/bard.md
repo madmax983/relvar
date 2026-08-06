@@ -36,3 +36,18 @@
 ## 2026-08-05 - Storage Unused Exports
 **Confusion:** The `relvar-storage/src/storage/mod.rs` file exported unused internal items (`RelationMetadata`, `PAGE_SIZE`, `PageId`), which triggered `clippy` warnings and made the public API confusing.
 **Clarification:** Removed the unused items from the `pub use` statements to clean up the public API and fix the warnings.
+## 2026-08-05 - Module Visibility & Unused Exports
+**Confusion:** Tests failed because the `tools` module was made private (`pub(crate)`), and unused exports in `relvar-storage` caused clippy warnings.
+**Clarification:** Restored `pub mod tools;` to maintain public API access for tests and removed unused exports from `relvar-storage/src/storage/mod.rs`.
+## 2026-08-06 - Experimental Module Dead Code
+**Confusion:** The `relvar/src/experimental/mod.rs` file triggered massive amounts of `clippy::dead_code` warnings because many experimental structs and methods are not currently used in production paths.
+**Clarification:** Added `#![allow(dead_code)]` to the `experimental` module to suppress these expected warnings and allow CI to pass.
+## 2026-08-06 - Storage Module Visibility
+**Confusion:** Bench tests failed because the `storage` and `persistent_engine` modules were made private (`pub(crate)`).
+**Clarification:** Restored `pub mod` to maintain public API access for bench tests.
+## 2026-08-06 - Experimental Module Visibility
+**Confusion:** Tests failed because the `experimental` module was made private (`pub(crate)`).
+**Clarification:** Restored `pub mod experimental;` to maintain public API access for tests.
+## 2026-08-06 - Storage Doc-test Visibility
+**Confusion:** Doc-tests failed because `PAGE_SIZE` was removed from the `relvar-storage/src/storage/mod.rs` exports, causing `E0432`.
+**Clarification:** Re-exported `PAGE_SIZE` to maintain doc-test compilation.
