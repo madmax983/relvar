@@ -39,7 +39,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar_storage::storage::{HeapFile, Catalog};
+//! use relvar_storage::storage::{HeapFile, Catalog, Page, PageFile};
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //! use relvar_core::tuple;
 //! use std::path::PathBuf;
@@ -66,8 +66,8 @@ pub(crate) mod heap;
 pub(crate) mod manager;
 pub(crate) mod page;
 
-pub use catalog::{Catalog, CatalogError, RelationMetadata};
+pub use catalog::{Catalog, CatalogError};
 pub use heap::{HeapError, HeapFile};
 pub use manager::StorageManager;
 // TupleId is now pub(crate) in heap.rs, not exported
-pub use page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
+pub use page::{PAGE_SIZE, Page, PageError, PageFile};
