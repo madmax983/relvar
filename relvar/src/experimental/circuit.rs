@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Logic Circuit Simulator
 //!
 //! This module demonstrates how synchronous digital logic circuits can be

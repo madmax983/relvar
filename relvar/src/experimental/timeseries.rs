@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Experimental Relational Time Series Analysis.
 //!
 //! This module demonstrates how to implement time series operations like

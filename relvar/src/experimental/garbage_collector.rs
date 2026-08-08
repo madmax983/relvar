@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Garbage Collector
 //!
 //! Models a Mark-and-Sweep Garbage Collector using purely relational algebra.

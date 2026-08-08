@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Relational Graph Neural Network (GNN)
 //!
 //! This module demonstrates how a Graph Neural Network (specifically, message passing)
