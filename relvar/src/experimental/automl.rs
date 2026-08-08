@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational AutoML (Naive Bayes)
 //!
 //! This module implements a Naive Bayes classifier using purely relational algebra

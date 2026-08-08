@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational CYK Parser
 //!
 //! This module demonstrates how the Cocke-Younger-Kasami (CYK) parsing algorithm
