@@ -1,4 +1,4 @@
-use relvar::data::importer;
+use relvar::tools::importer;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 
 #[test]

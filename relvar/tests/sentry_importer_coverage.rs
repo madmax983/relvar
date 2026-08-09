@@ -1,4 +1,4 @@
-use relvar::data::importer::{ImporterError, from_csv, from_json};
+use relvar::tools::importer::{ImporterError, from_csv, from_json};
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 
 #[test]
