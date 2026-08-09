@@ -61,3 +61,6 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
+## 2025-05-23 - [Optimization] Avoid intermediate allocation in Query AST rename execution
+**Learning:** When executing a `Query::Rename` operation, the evaluator owns the intermediate `relation` result from `input.execute(db)?`. By using `relation.rename_into` instead of `relation.rename`, we apply the rename in-place to the owned tuples instead of cloning the entire relation structure.
+**Action:** Always use `_into` consuming variants (like `rename_into`, `project_into`) when executing AST nodes that own their intermediate `Relation` values, as this acts as a zero-cost abstraction avoiding redundant heap allocations.
