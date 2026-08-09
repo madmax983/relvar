@@ -241,7 +241,9 @@ impl Query {
                     .iter()
                     .map(|(a, b)| (a.as_str(), b.as_str()))
                     .collect();
-                Ok(relation.rename(&mappings_ref))
+                // ⚡ Bolt: Use `rename_into` because `input.execute(db)?` returns an owned `Relation`.
+                // This avoids an intermediate allocation and clones by reusing the tuples in-place.
+                Ok(relation.rename_into(&mappings_ref))
             }
             Query::Join { left, right } => {
                 let left_rel = left.execute(db)?;
