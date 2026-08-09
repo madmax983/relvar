@@ -8,5 +8,4 @@ pub mod game_of_life;
 pub mod pagerank;
 
 /// Knowledge Graph implementation.
-pub mod build_system;
 pub mod knowledge_graph;
