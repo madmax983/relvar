@@ -12,11 +12,11 @@ def process_file(path, replacements):
         f.write(content)
 
 process_file("relvar/src/lib.rs", [
-    ("pub mod experimental;", "pub(crate) mod experimental;"),
-    ("pub mod tools;", "pub(crate) mod tools;")
+    ("pub mod experimental;", "pub mod experimental;"),
+    ("pub mod tools;", "pub mod tools;")
 ])
 
 process_file("relvar-storage/src/lib.rs", [
-    ("pub mod persistent_engine;", "pub(crate) mod persistent_engine;"),
-    ("pub mod storage;", "pub(crate) mod storage;")
+    ("pub mod persistent_engine;", "pub mod persistent_engine;"),
+    ("pub mod storage;", "pub mod storage;")
 ])
