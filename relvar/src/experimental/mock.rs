@@ -114,6 +114,7 @@ fn generate_value(scalar_type: &ScalarType, rng: &mut StdRng) -> ScalarValue {
     }
 }
 
+#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;
