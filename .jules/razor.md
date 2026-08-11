@@ -21,7 +21,3 @@
 **Bloat:** Single-variant enum `RelationError` in `relvar-core/src/values/relation.rs` acting as a unit struct, with an unused variant `DuplicateTuple` and only one used variant `TypeMismatch`.
 **Cut:** Converted to unit struct `pub struct RelationError;` with `#[error("Tuple does not conform to relation type")]` directly. Removed the unused `DuplicateTuple` variant.
 **Saved:** Unnecessary enum matching, simplified error handling code significantly.
-## [Reduction]
-**Bloat:** The `MockRelation` builder pattern in `relvar/src/experimental/mock.rs`
-**Cut:** Replaced the `MockRelation` struct and its methods with a single `generate_mock_relation` function.
-**Saved:** ~40 lines of code and the cognitive load of a builder pattern for 3 parameters.
