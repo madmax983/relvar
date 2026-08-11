@@ -1,0 +1,6 @@
+# 📚 Bard: [documentation update]
+
+📖 Chapter: Added `/// # Examples` tests to `relvar/src/experimental/spreadsheet.rs` and fixed empty doc tests for `relvar-core/src/utils/recursion.rs`.
+💡 Insight: Module-level documentation and executable doctests clarify how the Spreadsheet component works and ensures internal code examples don't fail parsing.
+🧪 Example: Added an example showing how to evaluate `B1 = A1 / A2` relationally.
+🖼️ Preview: Documentation generates successfully with zero warnings.
