@@ -212,46 +212,7 @@ impl Scene {
         // Let c = (O - C) \cdot (O - C) - r^2
         // discriminant = half_b^2 - a*c
         let intersections = combinations
-            .extend("t", ScalarType::Float, |tup| {
-                let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
-                let oy = tup.get_typed::<f64>("oy").unwrap_or(0.0);
-                let oz = tup.get_typed::<f64>("oz").unwrap_or(0.0);
-                let dx = tup.get_typed::<f64>("dx").unwrap_or(0.0);
-                let dy = tup.get_typed::<f64>("dy").unwrap_or(0.0);
-                let dz = tup.get_typed::<f64>("dz").unwrap_or(0.0);
-                let cx = tup.get_typed::<f64>("cx").unwrap_or(0.0);
-                let cy = tup.get_typed::<f64>("cy").unwrap_or(0.0);
-                let cz = tup.get_typed::<f64>("cz").unwrap_or(0.0);
-                let radius = tup.get_typed::<f64>("radius").unwrap_or(0.0);
-
-                let oc_x = ox - cx;
-                let oc_y = oy - cy;
-                let oc_z = oz - cz;
-
-                let a = dx * dx + dy * dy + dz * dz; // Should be ~1.0
-                let half_b = dx * oc_x + dy * oc_y + dz * oc_z;
-                let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - radius * radius;
-
-                let discriminant = half_b * half_b - a * c;
-
-                if discriminant < 0.0 {
-                    // No intersection, return negative distance
-                    ScalarValue::Float(-1.0)
-                } else {
-                    // Two solutions, we want the smallest positive one
-                    let sqrtd = discriminant.sqrt();
-                    let t1 = (-half_b - sqrtd) / a;
-                    let t2 = (-half_b + sqrtd) / a;
-
-                    if t1 > 0.001 {
-                        ScalarValue::Float(t1)
-                    } else if t2 > 0.001 {
-                        ScalarValue::Float(t2)
-                    } else {
-                        ScalarValue::Float(-1.0)
-                    }
-                }
-            })
+            .extend("t", ScalarType::Float, calculate_intersection_distance)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         Ok(intersections)
@@ -349,6 +310,46 @@ impl Default for Scene {
     }
 }
 
+fn calculate_intersection_distance(tup: &relvar_core::values::Tuple) -> ScalarValue {
+    let ox = tup.get_typed::<f64>("ox").unwrap_or(0.0);
+    let oy = tup.get_typed::<f64>("oy").unwrap_or(0.0);
+    let oz = tup.get_typed::<f64>("oz").unwrap_or(0.0);
+    let dx = tup.get_typed::<f64>("dx").unwrap_or(0.0);
+    let dy = tup.get_typed::<f64>("dy").unwrap_or(0.0);
+    let dz = tup.get_typed::<f64>("dz").unwrap_or(0.0);
+    let cx = tup.get_typed::<f64>("cx").unwrap_or(0.0);
+    let cy = tup.get_typed::<f64>("cy").unwrap_or(0.0);
+    let cz = tup.get_typed::<f64>("cz").unwrap_or(0.0);
+    let radius = tup.get_typed::<f64>("radius").unwrap_or(0.0);
+
+    let oc_x = ox - cx;
+    let oc_y = oy - cy;
+    let oc_z = oz - cz;
+
+    let a = dx * dx + dy * dy + dz * dz; // Should be ~1.0
+    let half_b = dx * oc_x + dy * oc_y + dz * oc_z;
+    let c = (oc_x * oc_x + oc_y * oc_y + oc_z * oc_z) - radius * radius;
+
+    let discriminant = half_b * half_b - a * c;
+
+    if discriminant < 0.0 {
+        // No intersection, return negative distance
+        ScalarValue::Float(-1.0)
+    } else {
+        // Two solutions, we want the smallest positive one
+        let sqrtd = discriminant.sqrt();
+        let t1 = (-half_b - sqrtd) / a;
+        let t2 = (-half_b + sqrtd) / a;
+
+        if t1 > 0.001 {
+            ScalarValue::Float(t1)
+        } else if t2 > 0.001 {
+            ScalarValue::Float(t2)
+        } else {
+            ScalarValue::Float(-1.0)
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

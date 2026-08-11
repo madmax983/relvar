@@ -214,31 +214,26 @@ fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Ve
         // Extend 1: Calculate target coordinates
         let with_coords = relation
             .extend("tx", ScalarType::Int, move |t| {
-                let x = t.get_typed::<i64>("x").unwrap();
-                ScalarValue::Int(x + dx)
+                compute_coordinate(t, "x", dx)
             })
             .unwrap()
             .extend("ty", ScalarType::Int, move |t| {
-                let y = t.get_typed::<i64>("y").unwrap();
-                ScalarValue::Int(y + dy)
+                compute_coordinate(t, "y", dy)
             })
             .unwrap();
 
         // Extend 2: Calculate weighted color components
         let with_weights = with_coords
             .extend("wr", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("r").unwrap();
-                ScalarValue::Int(v * weight)
+                compute_weighted_color(t, "r", weight)
             })
             .unwrap()
             .extend("wg", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("g").unwrap();
-                ScalarValue::Int(v * weight)
+                compute_weighted_color(t, "g", weight)
             })
             .unwrap()
             .extend("wb", ScalarType::Int, move |t| {
-                let v = t.get_typed::<i64>("b").unwrap();
-                ScalarValue::Int(v * weight)
+                compute_weighted_color(t, "b", weight)
             })
             .unwrap();
 
@@ -322,6 +317,15 @@ fn summarize_and_normalize(unioned: &Relation, total_weight: i64) -> Relation {
         .rename(&rename_map)
 }
 
+fn compute_coordinate(t: &relvar_core::values::Tuple, attr: &str, delta: i64) -> ScalarValue {
+    let val = t.get_typed::<i64>(attr).unwrap();
+    ScalarValue::Int(val + delta)
+}
+
+fn compute_weighted_color(t: &relvar_core::values::Tuple, attr: &str, weight: i64) -> ScalarValue {
+    let val = t.get_typed::<i64>(attr).unwrap();
+    ScalarValue::Int(val * weight)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
