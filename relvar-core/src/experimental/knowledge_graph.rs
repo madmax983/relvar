@@ -3,7 +3,7 @@
 //! This module provides a minimal, experimental implementation of a Knowledge Graph
 //! built entirely on top of relational algebra. Instead of using complex graph traversal
 //! algorithms or dedicated triple-stores, it stores `(subject, predicate, object)` triples
-//! in a single [`Relation`] and evaluates Basic Graph Patterns (BGPs) by translating
+//! in a single [`crate::values::Relation`] and evaluates Basic Graph Patterns (BGPs) by translating
 //! them into standard relational operations like `Restrict`, `Project`, and `Join`.
 //!
 //! This serves as a demonstration of the power and universality of the relational model,

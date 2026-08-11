@@ -9,7 +9,7 @@ use relvar_core::StorageEngine;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Relation;
-use relvar_storage::persistent_engine::PersistentEngine;
+use relvar_storage::PersistentEngine;
 use tempfile::TempDir;
 
 fn create_test_relation_type() -> RelationType {
@@ -45,7 +45,7 @@ fn bench_load_relation(c: &mut Criterion) {
 
                 (engine, temp_dir)
             },
-            |(engine, _temp_dir)| {
+            |(engine, _temp_dir): (PersistentEngine, _)| {
                 // Benchmark: Load relation (exercises MVCC visibility checks)
                 let _relation = black_box(engine.load_relation("TEST").unwrap());
             },
@@ -81,7 +81,7 @@ fn bench_store_relation(c: &mut Criterion) {
 
                         (engine, relation, temp_dir)
                     },
-                    |(mut engine, relation, _temp_dir)| {
+                    |(mut engine, relation, _temp_dir): (PersistentEngine, _, _)| {
                         // Benchmark: Store relation
                         engine.store_relation("TEST", &relation).unwrap();
                         black_box(());
@@ -118,7 +118,7 @@ fn bench_checkpoint(c: &mut Criterion) {
 
                 (engine, temp_dir)
             },
-            |(mut engine, _temp_dir)| {
+            |(mut engine, _temp_dir): (PersistentEngine, _)| {
                 // Benchmark: Checkpoint (includes GC)
                 engine.checkpoint().unwrap();
                 black_box(());
@@ -137,7 +137,7 @@ fn bench_create_relation(c: &mut Criterion) {
                 let engine = PersistentEngine::open(temp_dir.path()).unwrap();
                 (engine, temp_dir)
             },
-            |(mut engine, _temp_dir)| {
+            |(mut engine, _temp_dir): (PersistentEngine, _)| {
                 let rel_type = create_test_relation_type();
                 engine.create_relation("TEST", rel_type).unwrap();
                 black_box(());
@@ -171,7 +171,7 @@ fn bench_repeated_loads(c: &mut Criterion) {
 
                 (engine, temp_dir)
             },
-            |(engine, _temp_dir)| {
+            |(engine, _temp_dir): (PersistentEngine, _)| {
                 // Benchmark: 10 repeated loads
                 for _ in 0..10 {
                     let _relation = black_box(engine.load_relation("TEST").unwrap());
