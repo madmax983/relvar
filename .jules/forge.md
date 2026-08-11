@@ -631,7 +631,3 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
-
-## 2025-03-02 - Extracting God Closures in Pipeline
-**Learning:** Found several "God Functions" caused by extremely large inline closures (sometimes 40+ lines) passed to relational operators like `extend`. This obscured the high-level intent of the algebraic pipeline.
-**Action:** Extract large chunks of closure logic into private named helper functions. The `extend` operator then receives a much cleaner `|t| compute_value(t)` closure, improving readability and honoring the "Types are documentation" philosophy.
