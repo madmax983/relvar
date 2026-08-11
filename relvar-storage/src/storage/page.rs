@@ -21,7 +21,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar_storage::storage::{Page, PageFile};
+//! use relvar_storage::storage::{Page, PageFile, PAGE_SIZE};
 //!
 //! // Create a page file
 //! let mut pf = PageFile::create("data.pages").unwrap();
@@ -84,12 +84,12 @@ pub enum PageError {
 /// # Examples
 ///
 /// ```
-/// use relvar_storage::storage::Page;
+/// use relvar_storage::storage::{Page, PAGE_SIZE};
 ///
 /// // Create an empty page
 /// let mut page = Page::new(0);
 /// assert!(page.is_empty());
-/// // assert_eq!(page.available_space(), PAGE_SIZE);
+/// assert_eq!(page.available_space(), PAGE_SIZE);
 ///
 /// // Create a page with data
 /// let page = Page::from_data(1, vec![1, 2, 3, 4, 5]).unwrap();
@@ -200,11 +200,11 @@ impl Page {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::Page;
+    /// use relvar_storage::storage::{Page, PAGE_SIZE};
     ///
     /// let page = Page::new(1);
     /// // A new page starts completely empty (data length is 0).
-    /// // assert_eq!(page.available_space(), PAGE_SIZE);
+    /// assert_eq!(page.available_space(), PAGE_SIZE);
     /// ```
     ///
     /// This is `PAGE_SIZE - data.len()`.
@@ -492,7 +492,7 @@ mod tests {
         let page = Page::new(0);
         assert_eq!(page.id(), 0);
         assert!(page.is_empty());
-        // assert_eq!(page.available_space(), PAGE_SIZE);
+        assert_eq!(page.available_space(), PAGE_SIZE);
     }
 
     #[test]
