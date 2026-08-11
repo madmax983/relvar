@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! # Relvar - A Pure Relational Database Management System
 //!
 //! Relvar is a Rust implementation of a relational database management system (RDBMS)
