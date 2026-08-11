@@ -327,7 +327,9 @@ impl PageFile {
         let offset = page_id
             .checked_mul(PAGE_SIZE as u64)
             .ok_or(PageError::PageTooLarge)?;
-        self.file.seek(SeekFrom::Start(offset))?;
+        self.file
+            .seek(SeekFrom::Start(offset))
+            .map_err(PageError::Io)?;
         self.file.read(buffer).map_err(PageError::Io)
     }
 
@@ -387,7 +389,9 @@ impl PageFile {
             .id()
             .checked_mul(PAGE_SIZE as u64)
             .ok_or(PageError::PageTooLarge)?;
-        self.file.seek(SeekFrom::Start(offset))?;
+        self.file
+            .seek(SeekFrom::Start(offset))
+            .map_err(PageError::Io)?;
 
         // Prepare buffer with length prefix and data
         let mut buffer = Vec::with_capacity(PAGE_SIZE);
@@ -441,7 +445,9 @@ impl PageFile {
             .id()
             .checked_mul(PAGE_SIZE as u64)
             .ok_or(PageError::PageTooLarge)?;
-        self.file.seek(SeekFrom::Start(offset))?;
+        self.file
+            .seek(SeekFrom::Start(offset))
+            .map_err(PageError::Io)?;
 
         // Prepare buffer with length prefix and data
         let mut buffer = Vec::with_capacity(PAGE_SIZE);
