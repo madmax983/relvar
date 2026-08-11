@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2024-05-18 - [DML Pure Computations Coverage Gap]
+**Learning:** Pure functions inside `relvar-core/src/database/dml.rs` responsible for core DML evaluation `compute_relation_after_delete` and `compute_relation_after_update` lacked internal isolated coverage, relying on the outer layer. This masks early-exit error checks for schema mismatches.
+**Action:** Wrote isolated module tests inside `dml.rs` covering all paths, including `TupleMismatch` and empty mutation sets.
