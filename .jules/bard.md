@@ -33,6 +33,3 @@
 ## 2025-05-06 - [The Ghost Knowledge Graph]
 **Confusion:** The experimental `KnowledgeGraph` module was completely undocumented, leaving users to guess how it connects to the relational model.
 **Clarification:** Wrote comprehensive module-level documentation and executable doctests for `KnowledgeGraph` and `TriplePattern` explaining the "Relational Semantic Web" concept.
-## 2023-11-20 - [Doctests for Spreadsheets]
-**Confusion:** The experimental spreadsheet engine lacked module documentation and usage examples. Also, `RecursionGuard` had empty codeblocks `/// ``` ` which emitted rustdoc warnings.
-**Clarification:** Added module-level `//!` docs and concrete doctests demonstrating how to use `Spreadsheet` with tuple insertion and relational algebraic operations. Modified empty code blocks to use `/// ```text` instead of raw rust codeblocks to appease `rustdoc`.
