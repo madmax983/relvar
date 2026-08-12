@@ -1,6 +1,6 @@
 use relvar::experimental::timeseries::moving_average;
 use relvar::tuple;
-use relvar::{Relation, RelationType, ScalarType, TupleType};
+use relvar::{Relation, RelationType, ScalarType, Tuple, TupleType};
 
 #[test]
 fn test_moving_average_attribute_collision() {

@@ -1,4 +1,4 @@
-use relvar::tools::importer::{self, ImporterError};
+use relvar::data::importer::{self, ImporterError};
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use std::io::Cursor;
 
