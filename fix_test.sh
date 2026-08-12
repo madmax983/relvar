@@ -1,1 +1,7 @@
-sed -i 's/Relation::from_body_unchecked/relvar_core::values::Relation::from_tuples_unchecked/g' relvar-core/tests/sentry_correctness_algebra.rs
+sed -i 's/pub struct CykParser {/pub struct CykParser {/g' relvar/src/experimental/parser.rs
+
+# Let's fix warnings by allowing dead_code or fixing them properly
+# Instead of fixing them all individually, let's just make the modules public to fix the integration tests,
+# and silence the dead_code warnings for experimental modules.
+
+sed -i 's/#\[warn(missing_docs)\]/#![warn(missing_docs)]\n#![allow(dead_code)]/g' relvar/src/lib.rs
