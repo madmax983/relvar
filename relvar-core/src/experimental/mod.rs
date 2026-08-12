@@ -9,3 +9,5 @@ pub mod pagerank;
 
 /// Knowledge Graph implementation.
 pub mod knowledge_graph;
+/// Recommender system (Collaborative Filtering) implementation.
+pub mod recommender;
