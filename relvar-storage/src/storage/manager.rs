@@ -415,4 +415,57 @@ mod tests {
         assert_eq!(loaded.cardinality(), 1);
         assert!(loaded.contains(&tuple! { id: 100i64, name: "Charlie" }));
     }
+
+    #[test]
+    fn test_manager_validate_relvar_name_errors() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
+        let err = manager.create_relation("", test_rel_type()).unwrap_err();
+        assert!(matches!(err, StorageError::Other(_)));
+        let err = manager
+            .create_relation("foo/bar", test_rel_type())
+            .unwrap_err();
+        assert!(matches!(err, StorageError::Other(_)));
+        let err = manager
+            .create_relation("foo\\bar", test_rel_type())
+            .unwrap_err();
+        assert!(matches!(err, StorageError::Other(_)));
+        let err = manager.create_relation(".", test_rel_type()).unwrap_err();
+        assert!(matches!(err, StorageError::Other(_)));
+        let err = manager.create_relation("..", test_rel_type()).unwrap_err();
+        assert!(matches!(err, StorageError::Other(_)));
+        let err = manager
+            .create_relation("foo..bar", test_rel_type())
+            .unwrap_err();
+        assert!(matches!(err, StorageError::Other(_)));
+    }
+
+    #[test]
+    fn test_manager_convert_catalog_error() {
+        use crate::storage::catalog::CatalogError;
+        let err =
+            StorageManager::convert_catalog_error(CatalogError::Io(std::io::Error::other("foo")));
+        assert!(matches!(err, StorageError::Other(_)));
+        let err =
+            StorageManager::convert_catalog_error(CatalogError::Serialization("foo".to_string()));
+        assert!(matches!(err, StorageError::Other(_)));
+        let err =
+            StorageManager::convert_catalog_error(CatalogError::RelationExists("foo".to_string()));
+        assert!(matches!(err, StorageError::RelationAlreadyExists(_)));
+        let err = StorageManager::convert_catalog_error(CatalogError::RelationNotFound(
+            "foo".to_string(),
+        ));
+        assert!(matches!(err, StorageError::RelationNotFound(_)));
+    }
+
+    #[test]
+    fn test_manager_new_create_dir_error() {
+        #[cfg(target_family = "unix")]
+        {
+            let result = StorageManager::new("/dev/null/forbidden");
+            assert!(result.is_err());
+            let err = result.err().unwrap();
+            assert!(matches!(err, StorageError::Other(_)));
+        }
+    }
 }

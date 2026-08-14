@@ -576,4 +576,16 @@ mod tests {
             err => panic!("Expected Serialization error, got {:?}", err),
         }
     }
+
+    #[test]
+    fn test_catalog_load_with_limit_success() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let mut file = File::create(path).unwrap();
+        use std::io::Write;
+        file.write_all(b"{\"relations\":{}}").unwrap();
+        file.sync_all().unwrap();
+        let catalog = Catalog::load_with_limit(path, 100).unwrap();
+        assert_eq!(catalog.relation_count(), 0);
+    }
 }
