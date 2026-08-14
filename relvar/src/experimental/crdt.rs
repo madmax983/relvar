@@ -129,6 +129,7 @@ impl Default for OrSet {
     }
 }
 
+#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;

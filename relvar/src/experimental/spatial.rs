@@ -155,6 +155,7 @@ fn extract_coords(p: &ScalarValue) -> Result<(f64, f64), String> {
     }
 }
 
+#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;
