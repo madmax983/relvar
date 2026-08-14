@@ -9,6 +9,8 @@ use relvar_core::{
 /// Models a spreadsheet where cells can contain raw values or formulas referencing
 /// other cells. Evaluation is performed purely using relational joins and extensions
 /// until all cell values are resolved (fixpoint).
+#[doc(alias = "excel")]
+#[doc(alias = "calc")]
 pub struct Spreadsheet {
     /// Resolved values. Schema: `(id: String, val: Float)`
     pub values: Relation,
@@ -18,14 +20,31 @@ pub struct Spreadsheet {
 }
 
 impl Spreadsheet {
-    /// Creates a new Spreadsheet.
+    /// Creates a new Spreadsheet engine.
     ///
     /// # Examples
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    /// use relvar::tuple;
+    ///
+    /// // 1. Define the schema for raw values
+    /// let val_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float);
+    /// let mut values = Relation::new(RelationType::new(val_heading));
+    ///
+    /// // 2. Define the schema for formulas
+    /// let form_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String);
+    /// let mut formulas = Relation::new(RelationType::new(form_heading));
+    ///
+    /// // 3. Construct the spreadsheet
+    /// let spreadsheet = Spreadsheet::new(values, formulas);
     /// ```
     pub fn new(values: Relation, formulas: Relation) -> Self {
         Self { values, formulas }
@@ -33,12 +52,46 @@ impl Spreadsheet {
 
     /// Evaluates the spreadsheet until all possible formulas are resolved.
     ///
+    /// This method performs a relational fixpoint evaluation. In each iteration, it finds formulas
+    /// whose dependencies have been resolved, computes their values, and unions them with the known
+    /// cell values. It continues until no new cells are resolved.
+    ///
     /// # Examples
     ///
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    /// use relvar::tuple;
+    ///
+    /// // Initialize values: A1 = 10.0, A2 = 20.0
+    /// let val_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float);
+    /// let mut values = Relation::new(RelationType::new(val_heading));
+    /// values.insert(tuple! { id: "A1".to_string(), val: 10.0f64 }).unwrap();
+    /// values.insert(tuple! { id: "A2".to_string(), val: 20.0f64 }).unwrap();
+    ///
+    /// // Initialize formulas: B1 = A1 + A2
+    /// let form_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String);
+    /// let mut formulas = Relation::new(RelationType::new(form_heading));
+    /// formulas.insert(tuple! {
+    ///     id: "B1".to_string(),
+    ///     op: "ADD".to_string(),
+    ///     arg1: "A1".to_string(),
+    ///     arg2: "A2".to_string()
+    /// }).unwrap();
+    ///
+    /// let spreadsheet = Spreadsheet::new(values, formulas);
+    ///
+    /// // Evaluate the spreadsheet
+    /// let result = spreadsheet.evaluate().unwrap();
+    ///
+    /// // The result now contains A1, A2, and the newly computed B1 (30.0)
+    /// assert_eq!(result.cardinality(), 3);
     /// ```
     pub fn evaluate(&self) -> Result<Relation, DatabaseError> {
         let mut current_values = self.values.clone();
