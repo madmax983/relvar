@@ -27,6 +27,3 @@
 ## 2024-05-19 - Fixing Public Module Leaks
 **Tangle:** Broad visibility (`pub mod`) across many test and internal modules leaked implementation details and complicated the dependency graph.
 **Blueprint:** Converted most top-level internal module definitions in `relvar-core` and `relvar-storage` and `relvar` to `pub(crate) mod` where appropriate, and fixed some lingering pub use statements.
-## 2026-08-14 - Fix Top-Level Module Visibility
-**Tangle:** The `tools` module in `relvar/src/lib.rs` was mistakenly made `pub(crate)`, which broke downstream integration tests that relied on accessing it.
-**Blueprint:** Reverted `tools` to `pub mod tools;` to correctly expose the top-level module across the workspace, preserving intended architectural boundaries and API visibility.

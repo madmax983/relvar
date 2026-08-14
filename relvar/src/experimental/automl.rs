@@ -277,7 +277,6 @@ fn scalar_to_string(val: &ScalarValue) -> String {
     }
 }
 
-#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -322,7 +322,6 @@ fn summarize_and_normalize(unioned: &Relation, total_weight: i64) -> Relation {
         .rename(&rename_map)
 }
 
-#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;

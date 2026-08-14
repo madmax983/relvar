@@ -193,7 +193,6 @@ fn summarize_moving_average(
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
 }
 
-#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;

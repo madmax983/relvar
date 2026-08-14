@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Experimental features that may be unstable or subject to change.
 //!
 //! This module contains features that are still in development or being tested.
@@ -52,7 +51,6 @@ pub mod matrix;
 pub mod mock;
 pub mod neural_network;
 
-pub mod crdt;
 pub mod dom;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;

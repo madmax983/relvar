@@ -284,7 +284,6 @@ impl Default for PetriNet {
     }
 }
 
-#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;
