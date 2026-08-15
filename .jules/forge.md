@@ -634,3 +634,6 @@ Build it right, make it fast, keep it simple.
 ## 2024-05-16 - Extracting Pairwise Force Logic
 **Learning:** Found repetitive calculation closures in extended relation logic causing unnecessary duplication.
 **Action:** Extract calculation closures returning multiple scalar parts into isolated shared helper methods.
+## 2024-05-19 - Fix for-kv-map clippy warning
+**Learning:** Iterating over `(key, _)` in a map when only the key is used triggers the `clippy::for_kv_map` warning.
+**Action:** Use `.keys()` instead of `.iter()` when the value is ignored to enforce idiomatic Rust.
