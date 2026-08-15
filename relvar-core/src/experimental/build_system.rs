@@ -174,16 +174,16 @@ mod tests {
         let stale = build.get_stale_targets().unwrap();
         assert_eq!(stale.cardinality(), 3);
 
-        let is_stale = |name: &str| -> bool {
+        let is_stale1 = |name: &str| -> bool {
             let tuples: Vec<&Tuple> = stale.tuples().collect();
             tuples
                 .iter()
                 .any(|t| t.get_typed::<String>("target").unwrap() == name)
         };
 
-        assert!(is_stale("app"));
-        assert!(is_stale("main.o"));
-        assert!(is_stale("lib.o"));
+        assert!(is_stale1("app"));
+        assert!(is_stale1("main.o"));
+        assert!(is_stale1("lib.o"));
 
         build.update_stat("header.h", 10).unwrap();
         build.update_stat("main.c", 40).unwrap();
@@ -196,8 +196,16 @@ mod tests {
             stale.cardinality(),
             stale
         );
-        assert!(is_stale("app"));
-        assert!(is_stale("main.o"));
-        /* assert!(!is_stale("lib.o")); */
+
+        let is_stale2 = |name: &str| -> bool {
+            let tuples: Vec<&Tuple> = stale.tuples().collect();
+            tuples
+                .iter()
+                .any(|t| t.get_typed::<String>("target").unwrap() == name)
+        };
+
+        assert!(is_stale2("app"));
+        assert!(is_stale2("main.o"));
+        assert!(!is_stale2("lib.o"));
     }
 }
