@@ -132,6 +132,3 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
-## 2026-08-15 - DML Primitive Testing
-**Learning:** Pure functions inside `relvar-core/src/database/dml.rs` representing the DML data manipulation decoupled from the storage layer were missing tests entirely, specifically the `TupleMismatch` error branch of `compute_relation_after_update`.
-**Action:** Always create tests around newly introduced pure algorithmic variants inside the `mod` itself, as these often hold logic that might not be fully exercised by the broader facade APIs.
