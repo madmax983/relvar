@@ -131,7 +131,7 @@ impl PersistentEngine {
             if self
                 .storage_manager
                 .read()
-                .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+                .unwrap()
                 .relation_exists(&relation_name)
             {
                 self.cleanup_relation_uncommitted_inserts(&relation_name)?;
@@ -215,7 +215,7 @@ impl PersistentEngine {
         let gc_lsn = self.get_checkpoint_lsn();
         self.storage_manager
             .write()
-            .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+            .unwrap()
             .garbage_collect_versions(gc_lsn, &self.committed_txns)?;
 
         Ok(())
@@ -296,7 +296,7 @@ impl StorageEngine for PersistentEngine {
     ) -> Result<(), StorageError> {
         self.storage_manager
             .write()
-            .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+            .unwrap()
             .create_relation(name, relation_type)
     }
 
@@ -317,7 +317,7 @@ impl StorageEngine for PersistentEngine {
     fn get_relation_metadata(&self, name: &str) -> Result<RelationMetadata, StorageError> {
         self.storage_manager
             .read()
-            .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+            .unwrap()
             .get_relation_metadata(name)
     }
 
@@ -333,7 +333,7 @@ impl StorageEngine for PersistentEngine {
         let snapshot = self.get_snapshot_for_current_context()?;
         self.storage_manager
             .write()
-            .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+            .unwrap()
             .scan_relation(name, &snapshot, &self.committed_txns)
     }
 
@@ -342,7 +342,7 @@ impl StorageEngine for PersistentEngine {
 
         self.storage_manager
             .write()
-            .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+            .unwrap()
             .store_relation(name, relation, txn_id)?;
 
         if auto_commit {
@@ -371,7 +371,7 @@ impl StorageEngine for PersistentEngine {
 
         self.storage_manager
             .write()
-            .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+            .unwrap()
             .insert_tuple(name, tuple, txn_id)?;
 
         if auto_commit {
@@ -463,7 +463,7 @@ impl PersistentEngine {
 
         self.storage_manager
             .write()
-            .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+            .unwrap()
             .scan_relation(name, &snapshot, &self.committed_txns)
     }
 
@@ -488,7 +488,7 @@ impl PersistentEngine {
 
         self.storage_manager
             .write()
-            .map_err(|e| StorageError::Other(format!("Lock poisoned: {}", e)))?
+            .unwrap()
             .insert_tuple(name, tuple, txn_id)
     }
 }

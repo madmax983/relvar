@@ -7,6 +7,8 @@
 🛡️ Defense:
 - Replaced `.unwrap()` with safe error handling (`.map_err(...)`) on lock acquisition in `PersistentEngine`, propagating a `StorageError::Other` on lock poisoning.
 - Updated `crossbeam-epoch` to `v0.9.20` and `anyhow` to `v1.0.104` to eliminate these vulnerabilities.
+- Exposed modules `tools` and `experimental` to allow tests to compile properly.
+- Exposed modules `storage` and `persistent_engine` and their contents.
 
 💥 Severity: High - DoS cascade and potential UB/crashes from dependency vulnerabilities.
 
