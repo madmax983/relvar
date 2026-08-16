@@ -29,6 +29,7 @@
 //! - **[`vm`](crate::experimental::vm)**: Relational Virtual Machine.
 //! - **[`markov`](crate::experimental::markov)**: Relational Markov Chain.
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
+//! - **[`voting`](crate::experimental::voting)**: Relational Voting System (Condorcet Method).
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
 
@@ -73,3 +74,4 @@ pub mod timeseries;
 pub mod turing;
 pub mod vcs;
 pub mod vm;
+pub mod voting;
