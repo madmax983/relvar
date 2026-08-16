@@ -27,6 +27,7 @@ use relvar_core::values::{Relation, ScalarValue};
 /// use relvar::experimental::recommend::CollaborativeFilter;
 /// // Note: This is a placeholder example
 /// ```
+#[allow(dead_code)]
 pub struct CollaborativeFilter {
     /// The ratings relation. Schema: (user_id_attr, item_id_attr, score_attr)
     ratings: Relation,
@@ -35,6 +36,7 @@ pub struct CollaborativeFilter {
     score_attr: String,
 }
 
+#[allow(dead_code)]
 impl CollaborativeFilter {
     /// Creates a new CollaborativeFilter.
     ///

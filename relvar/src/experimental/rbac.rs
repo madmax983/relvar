@@ -28,6 +28,7 @@ use relvar_core::{error::DatabaseError, values::Relation};
 /// use relvar::experimental::rbac::RelationalRbac;
 /// // Note: This is a placeholder example
 /// ```
+#[allow(dead_code)]
 pub struct RelationalRbac {
     /// Users and their directly assigned roles. Schema: (user_id: String, role_id: String)
     pub user_roles: Relation,
@@ -37,6 +38,7 @@ pub struct RelationalRbac {
     pub permissions: Relation,
 }
 
+#[allow(dead_code)]
 impl RelationalRbac {
     /// Creates a new Relational RBAC Engine.
     /// # Examples

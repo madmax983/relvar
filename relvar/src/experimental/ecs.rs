@@ -214,6 +214,7 @@ impl<E: StorageEngine> World<E> {
     /// use relvar::{Database, InMemoryEngine};
     /// // Note: This is a placeholder example
     /// ```
+    #[allow(dead_code)]
     pub fn remove_component(
         &mut self,
         entity: Entity,

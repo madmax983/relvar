@@ -67,6 +67,7 @@ use relvar_core::values::{Relation, ScalarValue};
 ///   If your input relation already contains attributes ending in `_prev` that would conflict
 ///   with these generated names, the function will fail (panic or return error depending on the exact conflict).
 ///   **Workaround**: Ensure input attributes do not end with `_prev`.
+#[allow(dead_code)]
 pub fn moving_average(
     relation: &Relation,
     time_attr: &str,
@@ -90,6 +91,7 @@ pub fn moving_average(
     summarize_moving_average(relation, &joined, value_attr, &prev_attr_suffix)
 }
 
+#[allow(dead_code)]
 fn generate_non_colliding_suffix(relation: &Relation) -> String {
     let original_heading = relation.relation_type().heading();
     let mut prev_attr_suffix = "_prev".to_string();
@@ -112,6 +114,7 @@ fn generate_non_colliding_suffix(relation: &Relation) -> String {
     prev_attr_suffix
 }
 
+#[allow(dead_code)]
 fn prepare_previous_relation(relation: &Relation, prev_attr_suffix: String) -> (Relation, String) {
     let original_heading = relation.relation_type().heading();
     let mut rename_map = Vec::new();
@@ -131,6 +134,7 @@ fn prepare_previous_relation(relation: &Relation, prev_attr_suffix: String) -> (
     (r_prev, prev_attr_suffix)
 }
 
+#[allow(dead_code)]
 fn perform_window_theta_join(
     relation: &Relation,
     r_prev: &Relation,
@@ -172,6 +176,7 @@ fn perform_window_theta_join(
     })
 }
 
+#[allow(dead_code)]
 fn summarize_moving_average(
     original_relation: &Relation,
     joined: &Relation,

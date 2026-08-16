@@ -29,6 +29,7 @@ use relvar_core::{
 /// use relvar::{Database, InMemoryEngine, Relation, RelationType, ScalarType, TupleType};
 /// // Note: This is a placeholder example
 /// ```
+#[allow(dead_code)]
 pub struct RelVcs {
     /// Blobs: (hash: String, content: String)
     pub blobs: Relation,
@@ -40,6 +41,7 @@ pub struct RelVcs {
     pub branches: Relation,
 }
 
+#[allow(dead_code)]
 impl RelVcs {
     /// Creates a new, empty RelVcs.
     /// # Examples

@@ -32,6 +32,7 @@ use relvar_core::{
 /// // The transition is enabled because p_start has 1 token
 /// assert!(net.fire("t_run"));
 /// ```
+#[allow(dead_code)]
 pub struct PetriNet {
     /// Schema: { place_id: String, tokens: Int }
     pub places: Relation,
@@ -43,6 +44,7 @@ pub struct PetriNet {
     pub output_arcs: Relation,
 }
 
+#[allow(dead_code)]
 impl PetriNet {
     /// Creates a new, empty Petri Net.
     ///
