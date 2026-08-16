@@ -21,6 +21,7 @@ use relvar_core::{
 /// use relvar::experimental::physics::PhysicsEngine;
 /// // Note: This is a placeholder example
 /// ```
+#[allow(dead_code)]
 pub struct PhysicsEngine {
     /// The current state of the particles.
     /// Schema: `(id: Int, x: Float, y: Float, vx: Float, vy: Float, mass: Float)`
@@ -31,6 +32,7 @@ pub struct PhysicsEngine {
     pub dt: f64,
 }
 
+#[allow(dead_code)]
 impl PhysicsEngine {
     /// Creates a new PhysicsEngine.
     /// # Examples

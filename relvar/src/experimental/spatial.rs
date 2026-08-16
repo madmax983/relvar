@@ -29,6 +29,7 @@ use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};
 
 /// The name of the Point type.
+#[allow(dead_code)]
 pub const POINT_TYPE_NAME: &str = "Point";
 
 /// Defines and provides the required `ScalarType` representing a spatial point.
@@ -40,6 +41,7 @@ pub const POINT_TYPE_NAME: &str = "Point";
 /// ```text
 /// // Example
 /// ```
+#[allow(dead_code)]
 pub fn point_type() -> ScalarType {
     let heading = TupleType::new()
         .with_attribute("x", ScalarType::Float)
@@ -64,6 +66,7 @@ pub fn point_type() -> ScalarType {
 /// let p = point(3.0, 4.0);
 /// assert_eq!(p.scalar_type().name(), "Point");
 /// ```
+#[allow(dead_code)]
 pub fn point(x: f64, y: f64) -> ScalarValue {
     let pt_type = point_type();
 
@@ -100,6 +103,7 @@ pub fn point(x: f64, y: f64) -> ScalarValue {
 /// let dist = distance(&p1, &p2).unwrap();
 /// assert_eq!(dist, 5.0);
 /// ```
+#[allow(dead_code)]
 pub fn distance(p1: &ScalarValue, p2: &ScalarValue) -> Result<f64, String> {
     let pt_type = point_type();
 
@@ -131,12 +135,14 @@ pub fn distance(p1: &ScalarValue, p2: &ScalarValue) -> Result<f64, String> {
 /// assert!(within(&p, &center, 5.0).unwrap());
 /// assert!(!within(&p, &center, 4.0).unwrap());
 /// ```
+#[allow(dead_code)]
 pub fn within(p: &ScalarValue, center: &ScalarValue, radius: f64) -> Result<bool, String> {
     let dist = distance(p, center)?;
     Ok(dist <= radius)
 }
 
 /// Helper to extract (x, y) from a Point value.
+#[allow(dead_code)]
 fn extract_coords(p: &ScalarValue) -> Result<(f64, f64), String> {
     // Unwrap UserDefined wrapper
     let inner_val = p.observer().map_err(|_| "Not a user-defined type")?;

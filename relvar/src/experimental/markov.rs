@@ -21,6 +21,7 @@ use relvar_core::{
 /// use relvar::experimental::markov::MarkovChain;
 /// // Note: This is a placeholder example
 /// ```
+#[allow(dead_code)]
 pub struct MarkovChain {
     /// The state distribution. Schema: (state: String, probability: Float)
     pub state_distribution: Relation,
@@ -28,6 +29,7 @@ pub struct MarkovChain {
     pub transitions: Relation,
 }
 
+#[allow(dead_code)]
 impl MarkovChain {
     /// Creates a new Relational Markov Chain.
     /// # Examples

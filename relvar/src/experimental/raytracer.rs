@@ -57,11 +57,13 @@ use relvar_core::values::{Relation, ScalarValue};
 /// use relvar::experimental::raytracer::Scene;
 /// // Note: This is a placeholder example
 /// ```
+#[allow(dead_code)]
 pub struct Scene {
     spheres: Relation,
     next_id: i64,
 }
 
+#[allow(dead_code)]
 impl Scene {
     /// Creates a new, empty scene.
     /// # Examples

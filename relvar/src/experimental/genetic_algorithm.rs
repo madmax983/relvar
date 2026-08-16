@@ -29,6 +29,7 @@ use relvar_core::{
 /// use relvar::experimental::genetic_algorithm::GeneticAlgorithm;
 /// // Note: This is a placeholder example
 /// ```
+#[allow(dead_code)]
 pub struct GeneticAlgorithm {
     /// The current population. Schema: (id: Int, gene_a: Int, gene_b: Int)
     pub population: Relation,
@@ -36,6 +37,7 @@ pub struct GeneticAlgorithm {
     pub target_sum: i64,
 }
 
+#[allow(dead_code)]
 impl GeneticAlgorithm {
     /// Creates a new GeneticAlgorithm.
     ///

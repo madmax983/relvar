@@ -25,6 +25,7 @@ use relvar_core::{
 /// use relvar::experimental::turing::TuringMachine;
 /// // Note: This is a placeholder example
 /// ```
+#[allow(dead_code)]
 pub struct TuringMachine {
     /// The tape of the Turing Machine. Schema: (pos: Int, symbol: String)
     pub tape: Relation,
@@ -37,6 +38,7 @@ pub struct TuringMachine {
     pub blank_symbol: String,
 }
 
+#[allow(dead_code)]
 impl TuringMachine {
     /// Creates a new Relational Turing Machine.
     /// # Examples

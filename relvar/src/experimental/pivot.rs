@@ -83,6 +83,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// // Shirt: Red=10, Blue=5
 /// // Pants: Red=0 (default), Blue=20
 /// ```
+#[allow(dead_code)]
 pub fn pivot(
     relation: &Relation,
     on_attr: &str,
@@ -114,6 +115,7 @@ pub fn pivot(
     )
 }
 
+#[allow(dead_code)]
 fn scan_columns_and_validate(
     relation: &Relation,
     heading: &TupleType,
@@ -160,6 +162,7 @@ fn scan_columns_and_validate(
     Ok((group_attrs, new_columns))
 }
 
+#[allow(dead_code)]
 fn construct_pivot_heading(
     heading: &TupleType,
     group_attrs: &[String],
@@ -188,6 +191,7 @@ fn construct_pivot_heading(
     Ok(RelationType::new(new_heading))
 }
 
+#[allow(dead_code)]
 fn group_and_build_tuples(
     relation: &Relation,
     on_attr: &str,
@@ -240,6 +244,7 @@ fn group_and_build_tuples(
     Ok(result_relation)
 }
 
+#[allow(dead_code)]
 fn scalar_to_string_key(val: &ScalarValue) -> Result<String, DatabaseError> {
     match val {
         ScalarValue::Int(v) => Ok(v.to_string()),

@@ -32,6 +32,7 @@ use relvar_core::{error::DatabaseError, values::Relation};
 ///
 /// let dom = RelationalDom::new(nodes, edges, attributes);
 /// ```
+#[allow(dead_code)]
 pub struct RelationalDom {
     /// The DOM nodes. Schema: (node_id: Int, tag: String)
     pub nodes: Relation,
@@ -41,6 +42,7 @@ pub struct RelationalDom {
     pub attributes: Relation,
 }
 
+#[allow(dead_code)]
 impl RelationalDom {
     /// Creates a new Relational DOM.
     ///
