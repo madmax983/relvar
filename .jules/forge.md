@@ -631,3 +631,6 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+## 2024-05-19 - Fix tools module visibility and unused imports
+**Learning:** Marking an internal module like `tools` as `pub(crate)` breaks integration tests in the `tests/` directory which are considered external to the crate and need `pub` access.
+**Action:** Always verify if a module is used by external tests before restricting its visibility to `pub(crate)`, and proactively remove unused imports to avoid `clippy::unused_imports`.
