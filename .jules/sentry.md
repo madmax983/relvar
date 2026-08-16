@@ -132,3 +132,6 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
+## 2026-05-08 - Storage Page Edge Limits Missing Coverage
+**Learning:** Certain `PageError` conditions like `PageError::PageTooLarge` caused by setting valid upper limits that then exceed physical sizes when joined with length headers, and short `buffer.len()` mismatches against internal header length checks, were not tested.
+**Action:** When auditing `Page` and lower level storage elements, guarantee that permutations of maximum allowed capacity and metadata overhead bounds constraints explicitly return standard errors rather than unverified logic behaviors.
