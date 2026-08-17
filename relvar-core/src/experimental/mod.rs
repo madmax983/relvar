@@ -9,3 +9,6 @@ pub mod pagerank;
 
 /// Knowledge Graph implementation.
 pub mod knowledge_graph;
+
+/// Build system implementation.
+pub mod build_system;
