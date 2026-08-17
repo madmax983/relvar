@@ -126,56 +126,54 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     // Analysis pass
     let analysis = analyze(wal)?;
 
-    // Find uncommitted transactions (those with BEGIN but no COMMIT/ABORT)
-    // Also track maximum transaction ID seen
-    let mut active_txns = HashSet::new();
-    let mut max_txn_id = TransactionId::new(0);
+    // Track maximum transaction ID seen
+    let max_txn_id = analysis
+        .records
+        .iter()
+        .filter_map(|(_, r)| r.txn_id())
+        .chain(analysis.committed.iter().copied())
+        .chain(analysis.aborted.iter().copied())
+        .max()
+        .unwrap_or_else(|| TransactionId::new(0));
 
-    for (_, record) in &analysis.records {
-        // Extract transaction ID from record
-        let txn_id = record.txn_id();
-        if let Some(tid) = txn_id
-            && tid.value() > max_txn_id.value()
-        {
-            max_txn_id = tid;
-        }
+    // Find active transactions (those with BEGIN)
+    let mut active_txns: HashSet<TransactionId> = analysis
+        .records
+        .iter()
+        .filter_map(|(_, r)| {
+            if let WalRecord::Begin { txn_id } = r {
+                Some(*txn_id)
+            } else {
+                None
+            }
+        })
+        .collect();
 
-        if let WalRecord::Begin { txn_id } = record {
-            active_txns.insert(*txn_id);
-        }
-    }
-
-    // Remove committed and aborted transactions from active set
-    for txn_id in &analysis.committed {
-        active_txns.remove(txn_id);
-        if txn_id.value() > max_txn_id.value() {
-            max_txn_id = *txn_id;
-        }
-    }
-    for txn_id in &analysis.aborted {
-        active_txns.remove(txn_id);
-        if txn_id.value() > max_txn_id.value() {
-            max_txn_id = *txn_id;
-        }
-    }
+    // Retain only uncommitted transactions (no COMMIT/ABORT)
+    active_txns.retain(|txn_id| {
+        !analysis.committed.contains(txn_id) && !analysis.aborted.contains(txn_id)
+    });
 
     // Collect uncommitted inserts
-    let mut uncommitted_inserts = Vec::new();
-
-    for (_, record) in &analysis.records {
-        if let WalRecord::Insert {
-            txn_id,
-            relation_name,
-            tuple_data,
-        } = record
-            && active_txns.contains(txn_id)
-        {
-            uncommitted_inserts.push(UncommittedInsert {
-                relation_name: relation_name.clone(),
-                tuple_data: tuple_data.clone(),
-            });
-        }
-    }
+    let uncommitted_inserts = analysis
+        .records
+        .iter()
+        .filter_map(|(_, record)| {
+            if let WalRecord::Insert {
+                txn_id,
+                relation_name,
+                tuple_data,
+            } = record
+                && active_txns.contains(txn_id)
+            {
+                return Some(UncommittedInsert {
+                    relation_name: relation_name.clone(),
+                    tuple_data: tuple_data.clone(),
+                });
+            }
+            None
+        })
+        .collect();
 
     Ok(RecoveryResult {
         committed_txns: analysis.committed,
