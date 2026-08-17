@@ -126,14 +126,14 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     // Analysis pass
     let analysis = analyze(wal)?;
 
-    // Track maximum transaction ID seen across records, committed, and aborted
+    // Track maximum transaction ID seen
     let max_txn_id = analysis
         .records
         .iter()
         .filter_map(|(_, r)| r.txn_id())
         .chain(analysis.committed.iter().copied())
         .chain(analysis.aborted.iter().copied())
-        .max_by_key(|tid| tid.value())
+        .max()
         .unwrap_or_else(|| TransactionId::new(0));
 
     // Find active transactions (those with BEGIN)
