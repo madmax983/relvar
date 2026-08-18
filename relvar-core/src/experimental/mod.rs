@@ -7,8 +7,9 @@ pub mod game_of_life;
 /// PageRank algorithm implementation.
 pub mod pagerank;
 
+/// Knowledge Graph implementation.
+pub mod knowledge_graph;
+
 /// Graph Neural Network implementation.
 #[cfg(feature = "nova")]
 pub mod graph_neural_network;
-/// Knowledge Graph implementation.
-pub mod knowledge_graph;
