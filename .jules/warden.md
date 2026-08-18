@@ -16,13 +16,7 @@
 ## 2026-05-24 - [RwLock Poisoning DoS in PersistentEngine]
 **Threat:** Application panic due to `.unwrap()` calls on `storage_manager.read()` and `storage_manager.write()`. If a thread panics while holding the lock, it poisons the `RwLock`, causing subsequent threads to panic, resulting in a denial-of-service (DoS) cascade.
 **Defense:** Replaced `.unwrap()` with safe error handling on lock acquisition in `PersistentEngine`. Used `.map_err()` to propagate `StorageError::Other` for operations returning a `Result`, and used `.unwrap_or_else(|e| e.into_inner())` for read-only methods returning non-Results, safely extracting the guard without propagating a panic.
-## 2025-02-14 - Dependency Update for Security Advisories
-**Threat:** Invalid pointer dereference in `crossbeam-epoch` (RUSTSEC-2026-0204) and unsoundness in `anyhow` (RUSTSEC-2026-0190)
-**Defense:** Upgraded `crossbeam-epoch` to `0.9.20` and `anyhow` to `1.0.104` to eliminate the vulnerabilities.
 
-## 2026-08-18 - [Fix for Iterating on Map Keys]
-**Threat:** A previous commit caused CI checks to fail due to `clippy::for_kv_map` lint being triggered when iterating over map keys improperly (`for (k, _) in map.iter()`).
-**Defense:** Replaced the code with proper key iteration `for attr_name in original_heading.attributes().keys()` to fix the CI pipeline build error.
-## 2026-08-18 - [Fix Module Privacy Issue]
-**Threat:** Tests failed to compile due to private `tools` and `storage` modules being accessed.
-**Defense:** Changed visibility of `tools` in `relvar` and `storage` in `relvar-storage` to `pub` so tests can correctly access their contents.
+## 2026-08-18 - [Fix Visibility of Experimental Module]
+**Threat:** A CI compilation error occurred because `use relvar::experimental::image;` or similar was being executed inside integration tests (e.g., `warden_exploit_image_dos.rs`), but `experimental` was marked as `pub(crate)` instead of `pub`.
+**Defense:** Updated the visibility of `experimental` in `relvar/src/lib.rs` from `pub(crate)` to `pub` so it can be accessed in tests.
