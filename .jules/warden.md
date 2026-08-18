@@ -19,3 +19,7 @@
 ## 2025-02-14 - Dependency Update for Security Advisories
 **Threat:** Invalid pointer dereference in `crossbeam-epoch` (RUSTSEC-2026-0204) and unsoundness in `anyhow` (RUSTSEC-2026-0190)
 **Defense:** Upgraded `crossbeam-epoch` to `0.9.20` and `anyhow` to `1.0.104` to eliminate the vulnerabilities.
+
+## 2026-08-18 - [Fix for Iterating on Map Keys]
+**Threat:** A previous commit caused CI checks to fail due to `clippy::for_kv_map` lint being triggered when iterating over map keys improperly (`for (k, _) in map.iter()`).
+**Defense:** Replaced the code with proper key iteration `for attr_name in original_heading.attributes().keys()` to fix the CI pipeline build error.
