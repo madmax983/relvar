@@ -23,3 +23,6 @@
 ## 2026-08-18 - [Fix for Iterating on Map Keys]
 **Threat:** A previous commit caused CI checks to fail due to `clippy::for_kv_map` lint being triggered when iterating over map keys improperly (`for (k, _) in map.iter()`).
 **Defense:** Replaced the code with proper key iteration `for attr_name in original_heading.attributes().keys()` to fix the CI pipeline build error.
+## 2026-08-18 - [Fix Module Privacy Issue]
+**Threat:** Tests failed to compile due to private `tools` and `storage` modules being accessed.
+**Defense:** Changed visibility of `tools` in `relvar` and `storage` in `relvar-storage` to `pub` so tests can correctly access their contents.
