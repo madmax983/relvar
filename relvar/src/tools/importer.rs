@@ -19,7 +19,7 @@
 //!
 //! ```
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
-//! use relvar::data::importer;
+//! use relvar::tools::importer;
 //!
 //! let heading = TupleType::new()
 //!     .with_attribute("id", ScalarType::Int)
