@@ -79,7 +79,7 @@ impl Drop for RecursionGuard {
 /// to enforce recursion limits during Serde deserialization without wrapping types in custom guard structs.
 /// # Examples
 ///
-/// ```text
+/// ```
 /// // Internally used by serde
 /// ```
 pub fn deserialize_guarded<'de, D, T>(deserializer: D) -> Result<T, D::Error>
