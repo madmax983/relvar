@@ -9,3 +9,5 @@ pub mod pagerank;
 
 /// Knowledge Graph implementation.
 pub mod knowledge_graph;
+#[cfg(feature = "nova")]
+pub mod turing_machine;
