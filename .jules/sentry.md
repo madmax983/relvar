@@ -132,6 +132,3 @@
 **Learning:** Missing coverage branches for specific operations involving database bulk constraints and cascading failure. `compute_relation_after_update` early exit logic via `?` unrolls some lines in `Database::update` if the logic before reaches an error state.
 
 **Action:** When adding tests for database constraints involving `update` and `delete`, ensure varying degrees of constraint violations such as duplicated primary keys after updates and violations on foreign keys mapped against parent relations to fully hit bulk checks.
-## 2026-05-04 - Storage Heap Extraction Error Paths
-**Learning:** Certain `HeapError::Serialization` conditions triggered by bounds limit checks inside `extract_tuples_from_versioned_slots` and `validate_slot_bounds` in `relvar-storage/src/storage/heap/mod.rs` were entirely missing coverage. These represent the critical error paths protecting against buffer overflows and memory corruption during MVCC page reconstruction.
-**Action:** Always create targeted error boundary tests for memory slicing and decoding functions, specifically simulating corrupted page states (like manipulating slot lengths past page boundaries or inserting offset overflows) to guarantee the serialization errors are actually thrown instead of panicking.
