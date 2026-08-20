@@ -61,6 +61,3 @@
 ## 2024-05-20 - String Allocations in Iterators
 **Learning:** `rename_into` previously consumed a tuple's BTreeMap entirely to scalar values by calling `.into_values()`. However, BTreeMaps also implement `into_iter()` which yields owned `(K, V)` pairs. We were discarding the `K` (the original String key) and creating a brand new String key for every column of every tuple, even if the rename mapping didn't touch it.
 **Action:** Always check if we can reuse the owned strings from an input collection instead of reflexively throwing them away and re-allocating them in an iterator pipeline.
-## 2024-05-20 - [Query Plan Rename Into Optimization]
-**Learning:** `Query::Rename` execution was using `relation.rename` which cloned every attribute for every tuple, even when it owned the intermediate relation result from `input.execute(db)?`.
-**Action:** Replace `relation.rename` with `relation.rename_into` in query plan execution whenever possible, converting O(N) tuple/string cloning into O(1) in-place migration for the underlying data and removing a significant source of allocations during query pipelines.
