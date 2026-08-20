@@ -132,12 +132,8 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     let mut max_txn_id = TransactionId::new(0);
 
     for (_, record) in &analysis.records {
-        // Extract transaction ID from record
-        let txn_id = record.txn_id();
-        if let Some(tid) = txn_id
-            && tid.value() > max_txn_id.value()
-        {
-            max_txn_id = tid;
+        if let Some(tid) = record.txn_id() {
+            max_txn_id = max_txn_id.max(tid);
         }
 
         if let WalRecord::Begin { txn_id } = record {
@@ -146,17 +142,9 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
     }
 
     // Remove committed and aborted transactions from active set
-    for txn_id in &analysis.committed {
+    for txn_id in analysis.committed.iter().chain(analysis.aborted.iter()) {
         active_txns.remove(txn_id);
-        if txn_id.value() > max_txn_id.value() {
-            max_txn_id = *txn_id;
-        }
-    }
-    for txn_id in &analysis.aborted {
-        active_txns.remove(txn_id);
-        if txn_id.value() > max_txn_id.value() {
-            max_txn_id = *txn_id;
-        }
+        max_txn_id = max_txn_id.max(*txn_id);
     }
 
     // Collect uncommitted inserts

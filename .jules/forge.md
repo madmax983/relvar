@@ -631,3 +631,7 @@ Build it right, make it fast, keep it simple.
 ## 2023-10-27 - Refactoring God Function `to_dot` in `SchemaVisualizer`
 **Learning:** The `to_dot` method for the `SchemaVisualizer` contained too much inline logic mapping schemas to dot graphs (Nodes and Edges), classifying as a "God Function", harming readability and testing.
 **Action:** Extract the Nodes and Edges mappings logic into separate `generate_nodes` and `generate_edges` private helpers inside the `SchemaVisualizer` struct, accepting `&mut String` to maintain efficiency.
+
+## 2024-05-18 - Iterator Chains over Loops in Recovery
+**Learning:** Manual loops (`for` with `if`) and duplicate logic to build sets (e.g., removing from active transactions based on multiple other sets) can be simplified into clean iterator chains like `.iter().chain()...`.
+**Action:** Use `.max()` on iterators or comparable types instead of manual conditional tracking, and use `.chain()` to combine sets when performing bulk operations like removal.
