@@ -81,7 +81,11 @@ fn bench_store_relation(c: &mut Criterion) {
 
                         (engine, relation, temp_dir)
                     },
-                    |(mut engine, relation, _temp_dir): (PersistentEngine, relvar_core::values::Relation, tempfile::TempDir)| {
+                    |(mut engine, relation, _temp_dir): (
+                        PersistentEngine,
+                        relvar_core::values::Relation,
+                        tempfile::TempDir,
+                    )| {
                         // Benchmark: Store relation
                         engine.store_relation("TEST", &relation).unwrap();
                         black_box(());
