@@ -95,9 +95,12 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: KeyConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self
-            .constraints
-            .set_key_constraints(&mut self.engine, relation_name, constraints)?)
+        self.constraints
+            .set_key_constraints(&mut self.engine, relation_name, constraints)?;
+        // (Re)build the key index from current data so subsequent inserts
+        // validate against O(1) lookups (#23).
+        self.rebuild_key_index(relation_name)?;
+        Ok(())
     }
 
     /// Set foreign key constraints for a relation.

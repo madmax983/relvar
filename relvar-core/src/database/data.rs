@@ -1,11 +1,13 @@
 //! Database Data Manipulation (DML) and Query operations.
 
 use super::dml::{compute_relation_after_delete, compute_relation_after_update};
+use super::key_index::StagedKeyValues;
 use crate::constraints::assertion::AssertionError;
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
-use crate::values::{Relation, Tuple};
+use crate::values::{Relation, ScalarValue, Tuple};
+use std::collections::HashSet;
 
 impl<E: StorageEngine> Database<E> {
     /// - Any constraint is violated (Key, Foreign Key, Type, Check)
@@ -27,7 +29,7 @@ impl<E: StorageEngine> Database<E> {
     /// ```
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
         self.ensure_not_virtual(relation_name)?;
-        self.validate_insert(relation_name, &tuple)?;
+        let staged_keys = self.validate_insert(relation_name, &tuple)?;
 
         // Snapshot the engine so the insert can be rolled back if a database
         // assertion is violated (no-op when no assertions are registered).
@@ -41,7 +43,13 @@ impl<E: StorageEngine> Database<E> {
 
         // Enforce database assertions against the post-insert state,
         // rolling back the insert on violation.
-        self.check_assertions()
+        self.check_assertions()?;
+
+        // The key index is updated only once the insert is fully committed:
+        // a failed write or a rolled-back assertion must not leave phantom
+        // index entries behind.
+        self.apply_staged_key_values(relation_name, staged_keys);
+        Ok(())
     }
 
     /// Insert many tuples into a base relvar in a single operation.
@@ -57,9 +65,10 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// # Performance
     ///
-    /// Unlike calling [`insert`](Self::insert) in a loop, this loads the
-    /// relation at most once for key validation, so total cost is O(N) in the
-    /// batch size rather than O(N^2).
+    /// Unlike calling [`insert`](Self::insert) in a loop, this validates key
+    /// constraints against the in-memory key index instead of loading the
+    /// relation per tuple, so total cost is O(N) in the batch size rather
+    /// than O(N^2).
     ///
     /// # Errors
     ///
@@ -116,31 +125,27 @@ impl<E: StorageEngine> Database<E> {
             )?;
         }
 
-        // Check key constraints once against a scratch copy of the relation.
-        // Tuples validated so far are added to the scratch copy, which catches
-        // duplicate key values both against existing data and within the batch.
-        if self
-            .constraints
-            .get_key_constraints(relation_name)
-            .is_some()
-        {
-            let mut scratch = self.query(relation_name)?;
-            for tuple in &tuples {
-                self.constraints.validate_key_constraints_single_tuple(
-                    relation_name,
-                    tuple,
-                    &scratch,
-                )?;
-                // Cannot fail: the tuple's type was validated above, and key
-                // duplicates were just rejected, so only set-semantics
-                // collapse (Ok(false)) remains possible.
-                scratch.insert(tuple.clone())?;
-            }
+        // Check key constraints for the whole batch against the key index,
+        // catching duplicates both against existing data and within the
+        // batch. Staged values are applied to the index only after all
+        // writes below succeed.
+        let mut batch_sets: Vec<HashSet<Vec<ScalarValue>>> = Vec::new();
+        let mut staged_batch: Vec<StagedKeyValues> = Vec::with_capacity(tuples.len());
+        for tuple in &tuples {
+            staged_batch.push(self.check_key_values_indexed(
+                relation_name,
+                tuple,
+                &mut batch_sets,
+            )?);
         }
 
-        // All validation passed: write the batch.
+        // All validation passed: write the batch, then publish the staged
+        // index entries.
         for tuple in tuples {
             self.engine.insert_tuple(relation_name, tuple)?;
+        }
+        for staged in staged_batch {
+            self.apply_staged_key_values(relation_name, staged);
         }
         Ok(())
     }
@@ -287,6 +292,12 @@ impl<E: StorageEngine> Database<E> {
         // Enforce database assertions against the post-delete state,
         // rolling back the delete on violation.
         self.check_assertions()?;
+
+        // Rebuild this relation's key index entries from the post-delete
+        // state (#23). Deferred until the delete is committed so a rollback
+        // cannot leave the index reflecting a state that never happened.
+        // The relation is already in hand, so no reload is needed.
+        self.rebuild_key_index_from(relation_name, &new_relation)?;
         Ok(delete_count)
     }
 
@@ -409,6 +420,12 @@ impl<E: StorageEngine> Database<E> {
         // Enforce database assertions against the post-update state,
         // rolling back the update on violation.
         self.check_assertions()?;
+
+        // Rebuild this relation's key index entries from the post-update
+        // state (#23). Deferred until the update is committed so a rollback
+        // cannot leave the index reflecting a state that never happened.
+        // The relation is already in hand, so no reload is needed.
+        self.rebuild_key_index_from(relation_name, &new_relation)?;
         Ok(update_count)
     }
 
@@ -521,7 +538,7 @@ impl<E: StorageEngine> Database<E> {
         &mut self,
         relation_name: &str,
         tuple: &Tuple,
-    ) -> Result<(), DatabaseError> {
+    ) -> Result<StagedKeyValues, DatabaseError> {
         // Pure checks and Type validations
         self.constraints
             .validate_tuple_type(&self.engine, relation_name, tuple)?;
@@ -532,23 +549,12 @@ impl<E: StorageEngine> Database<E> {
             tuple,
         )?;
 
-        // Only load the relation when key constraints actually exist: without
-        // keys there is nothing to check the tuple against, and the load is
-        // what made repeated inserts O(n^2) (#40).
-        if self
-            .constraints
-            .get_key_constraints(relation_name)
-            .is_some()
-        {
-            let current_relation = self.query(relation_name)?;
-            self.constraints.validate_key_constraints_single_tuple(
-                relation_name,
-                tuple,
-                &current_relation,
-            )?;
-        }
-
-        Ok(())
+        // Key validation against the in-memory key index (#23): O(1) per key
+        // with no relation load. Returns the key values staged for index
+        // insertion once the write succeeds.
+        let mut batch_sets = Vec::new();
+        let staged = self.check_key_values_indexed(relation_name, tuple, &mut batch_sets)?;
+        Ok(staged)
     }
 
     pub(crate) fn validate_relation_constraints(

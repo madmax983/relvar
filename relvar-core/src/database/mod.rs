@@ -79,8 +79,11 @@ pub(crate) mod virtual_relvar;
 
 mod data;
 mod integrity;
+mod key_index;
 mod schema;
 mod transaction;
+
+use self::key_index::KeyIndex;
 
 use self::virtual_relvar::VirtualRelvarDefinition;
 
@@ -136,6 +139,15 @@ pub struct Database<E: StorageEngine> {
     pub(crate) in_transaction: bool,
     /// Transaction savepoint.
     pub(crate) transaction_snapshot: Option<E::Snapshot>,
+    /// In-memory key index for O(1) key-constraint lookups (#23).
+    ///
+    /// Maps `(relation name, key attributes)` to the set of key values
+    /// present in the relation. Maintained on every write path; see the
+    /// [`key_index`](self::key_index) module.
+    pub(crate) key_index: KeyIndex,
+    /// Snapshot of [`key_index`](Self::key_index) taken at
+    /// [`begin`](Self::begin), restored on [`rollback`](Self::rollback).
+    pub(crate) key_index_snapshot: Option<KeyIndex>,
     /// Virtual relvars defined by expressions.
     pub(crate) virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
     /// Database assertions (cross-relvar predicates over the whole database state).
@@ -178,6 +190,8 @@ impl<E: StorageEngine> Database<E> {
             constraints: ConstraintManager::new(),
             in_transaction: false,
             transaction_snapshot: None,
+            key_index: HashMap::new(),
+            key_index_snapshot: None,
             virtual_relvars: HashMap::new(),
             assertions: Vec::new(),
             assertion_snapshot: None,
