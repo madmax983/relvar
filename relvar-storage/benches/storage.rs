@@ -39,7 +39,11 @@ fn bench_page_write(c: &mut Criterion) {
                     let page = Page::from_data(0, data).unwrap();
                     (page_file, page, temp_file)
                 },
-                |(mut page_file, page, _temp_file): (relvar_storage::storage::PageFile, relvar_storage::storage::Page, _)| {
+                |(mut page_file, page, _temp_file): (
+                    relvar_storage::storage::PageFile,
+                    relvar_storage::storage::Page,
+                    _,
+                )| {
                     // Measured: just the write operation
                     page_file.write_page(&page).unwrap();
                     black_box(page_file);
