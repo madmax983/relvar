@@ -135,6 +135,131 @@ fn bench_insert_with_key_constraint(c: &mut Criterion) {
     group.finish();
 }
 
+// In-memory keyed database setup for the index-scaling benchmarks (#23).
+//
+// Uses InMemoryEngine to isolate the constraint/index path from storage
+// I/O: the measured cost is key validation, not the WAL.
+fn create_keyed_memory_database() -> relvar::Database<relvar::InMemoryEngine> {
+    let mut db = relvar::Database::new(relvar::InMemoryEngine::new());
+    db.create_relvar("EMP", create_employee_type()).unwrap();
+    let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
+    db.set_key_constraints("EMP", KeyConstraints::new().with_primary_key(pk))
+        .unwrap();
+    db
+}
+
+fn make_employee_tuple(i: i64) -> relvar::Tuple {
+    tuple! {
+        emp_id: i,
+        name: format!("Employee_{}", i),
+        dept_id: i % 10,
+        salary: 50000.0 + (i as f64 * 100.0)
+    }
+}
+
+// Keyed single-insert scaling benchmark (#23).
+//
+// The key index keeps per-insert validation O(1), so total time should
+// scale linearly with the insert count even as the relation grows --
+// the O(n^2) full-relation scan per insert is gone.
+fn bench_keyed_insert_scaling(c: &mut Criterion) {
+    let mut group = c.benchmark_group("keyed_insert_scaling");
+
+    for count in [100, 500, 1000, 5000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
+            b.iter_batched(
+                || {
+                    // Setup: fresh keyed database (not measured)
+                    create_keyed_memory_database()
+                },
+                |mut db| {
+                    // Measured: single keyed inserts into a growing relation
+                    for i in 0..count {
+                        db.insert("EMP", make_employee_tuple(i as i64)).unwrap();
+                    }
+                    black_box(db);
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}
+
+// Bulk insert scaling benchmark (#40).
+//
+// One bulk_insert call per batch: validation is O(batch size) against the
+// key index, so time should scale linearly with the batch size.
+fn bench_bulk_insert(c: &mut Criterion) {
+    let mut group = c.benchmark_group("bulk_insert");
+
+    for count in [100, 500, 1000, 5000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
+            b.iter_batched(
+                || {
+                    // Setup: fresh keyed database and the batch (not measured)
+                    let db = create_keyed_memory_database();
+                    let batch: Vec<relvar::Tuple> =
+                        (0..count).map(|i| make_employee_tuple(i as i64)).collect();
+                    (db, batch)
+                },
+                |(mut db, batch)| {
+                    // Measured: a single bulk_insert call
+                    db.bulk_insert("EMP", batch).unwrap();
+                    black_box(db);
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}
+
+// Bulk insert against pre-populated relations (#23, #40).
+//
+// A fixed-size batch goes into relations of varying existing size. The key
+// index means validation never loads the relation, so the batch cost
+// should stay flat as existing data grows.
+fn bench_bulk_insert_with_existing_data(c: &mut Criterion) {
+    let mut group = c.benchmark_group("bulk_insert_with_existing_data");
+    const BATCH: i64 = 500;
+
+    for existing in [0, 500, 2000, 5000].iter() {
+        group.throughput(Throughput::Elements(BATCH as u64));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(existing),
+            existing,
+            |b, &existing| {
+                b.iter_batched(
+                    || {
+                        // Setup: keyed database pre-populated with `existing`
+                        // tuples, plus a fresh 500-tuple batch (not measured)
+                        let mut db = create_keyed_memory_database();
+                        if existing > 0 {
+                            let seed: Vec<relvar::Tuple> =
+                                (0..existing).map(make_employee_tuple).collect();
+                            db.bulk_insert("EMP", seed).unwrap();
+                        }
+                        let batch: Vec<relvar::Tuple> = (existing..existing + BATCH)
+                            .map(make_employee_tuple)
+                            .collect();
+                        (db, batch)
+                    },
+                    |(mut db, batch)| {
+                        // Measured: bulk_insert into the populated relation
+                        db.bulk_insert("EMP", batch).unwrap();
+                        black_box(db);
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+        );
+    }
+    group.finish();
+}
+
 // Query benchmark
 fn bench_query(c: &mut Criterion) {
     let mut group = c.benchmark_group("query");
@@ -497,6 +622,9 @@ criterion_group!(
     bench_create_relvar,
     bench_insert,
     bench_insert_with_key_constraint,
+    bench_keyed_insert_scaling,
+    bench_bulk_insert,
+    bench_bulk_insert_with_existing_data,
     bench_query,
     bench_query_with_operations,
     bench_delete,
