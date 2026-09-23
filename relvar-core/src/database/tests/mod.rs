@@ -1,3 +1,4 @@
+mod assertions;
 pub(crate) mod common;
 mod data;
 mod integrity;

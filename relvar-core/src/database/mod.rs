@@ -140,6 +140,11 @@ pub struct Database<E: StorageEngine> {
     pub(crate) virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
     /// Database assertions (cross-relvar predicates over the whole database state).
     pub(crate) assertions: Vec<DatabaseAssertion<E>>,
+    /// Pre-operation engine snapshot backing the assertion guard.
+    ///
+    /// `Some` only while an assertion-guarded DML operation is in flight;
+    /// always `None` when no assertions are registered.
+    pub(crate) assertion_snapshot: Option<E::Snapshot>,
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -175,6 +180,7 @@ impl<E: StorageEngine> Database<E> {
             transaction_snapshot: None,
             virtual_relvars: HashMap::new(),
             assertions: Vec::new(),
+            assertion_snapshot: None,
         }
     }
 

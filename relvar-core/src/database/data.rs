@@ -1,6 +1,7 @@
 //! Database Data Manipulation (DML) and Query operations.
 
 use super::dml::{compute_relation_after_delete, compute_relation_after_update};
+use crate::constraints::assertion::AssertionError;
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
@@ -8,6 +9,8 @@ use crate::values::{Relation, Tuple};
 
 impl<E: StorageEngine> Database<E> {
     /// - Any constraint is violated (Key, Foreign Key, Type, Check)
+    /// - A database assertion is violated ([`DatabaseError::AssertionViolation`]);
+    ///   the insert is rolled back
     /// # Examples
     ///
     /// ```
@@ -26,9 +29,19 @@ impl<E: StorageEngine> Database<E> {
         self.ensure_not_virtual(relation_name)?;
         self.validate_insert(relation_name, &tuple)?;
 
-        // Insert into engine
-        self.engine.insert_tuple(relation_name, tuple)?;
-        Ok(())
+        // Snapshot the engine so the insert can be rolled back if a database
+        // assertion is violated (no-op when no assertions are registered).
+        self.begin_assertion_guard()?;
+
+        // Insert into engine, restoring the pre-insert state if it fails.
+        if let Err(op_error) = self.engine.insert_tuple(relation_name, tuple) {
+            self.abort_assertion_guard()?;
+            return Err(op_error.into());
+        }
+
+        // Enforce database assertions against the post-insert state,
+        // rolling back the insert on violation.
+        self.check_assertions()
     }
 
     /// Query a relation (base or virtual).
@@ -91,6 +104,8 @@ impl<E: StorageEngine> Database<E> {
     /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
     /// - Deleting the tuples would violate a foreign key constraint in another relation
     ///   ([`crate::constraints::ConstraintManagerError::ForeignKeyViolation`])
+    /// - A database assertion is violated ([`DatabaseError::AssertionViolation`]);
+    ///   the delete is rolled back
     ///
     /// # Performance
     ///
@@ -158,8 +173,19 @@ impl<E: StorageEngine> Database<E> {
             &new_relation,
         )?;
 
-        // Store the new relation
-        self.engine.store_relation(relation_name, &new_relation)?;
+        // Snapshot the engine so the delete can be rolled back if a database
+        // assertion is violated (no-op when no assertions are registered).
+        self.begin_assertion_guard()?;
+
+        // Store the new relation, restoring the pre-delete state if it fails.
+        if let Err(op_error) = self.engine.store_relation(relation_name, &new_relation) {
+            self.abort_assertion_guard()?;
+            return Err(op_error.into());
+        }
+
+        // Enforce database assertions against the post-delete state,
+        // rolling back the delete on violation.
+        self.check_assertions()?;
         Ok(delete_count)
     }
 
@@ -176,6 +202,8 @@ impl<E: StorageEngine> Database<E> {
     /// - A foreign key constraint is violated ([`crate::constraints::ConstraintManagerError::ForeignKeyViolation`])
     /// - A type constraint is violated ([`crate::constraints::ConstraintManagerError::TypeConstraintViolation`])
     /// - A CHECK constraint is violated ([`crate::constraints::ConstraintManagerError::CheckConstraintViolation`])
+    /// - A database assertion is violated ([`DatabaseError::AssertionViolation`]);
+    ///   the update is rolled back
     ///
     /// # Performance
     ///
@@ -267,12 +295,116 @@ impl<E: StorageEngine> Database<E> {
             &new_relation,
         )?;
 
-        // Store the new relation
-        self.engine.store_relation(relation_name, &new_relation)?;
+        // Snapshot the engine so the update can be rolled back if a database
+        // assertion is violated (no-op when no assertions are registered).
+        self.begin_assertion_guard()?;
+
+        // Store the new relation, restoring the pre-update state if it fails.
+        if let Err(op_error) = self.engine.store_relation(relation_name, &new_relation) {
+            self.abort_assertion_guard()?;
+            return Err(op_error.into());
+        }
+
+        // Enforce database assertions against the post-update state,
+        // rolling back the update on violation.
+        self.check_assertions()?;
         Ok(update_count)
     }
 
     // --- Helper Methods ---
+
+    /// Begins an assertion guard: snapshots the engine before a DML mutation
+    /// so the mutation can be rolled back if a database assertion is violated.
+    ///
+    /// This is a no-op (no snapshot is taken) when no assertions are
+    /// registered, keeping assertion-free DML at zero overhead.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TransactionError`] if a guard is already
+    /// active (assertion predicates must not perform DML), or a
+    /// [`DatabaseError::Storage`] error if the engine cannot snapshot.
+    fn begin_assertion_guard(&mut self) -> Result<(), DatabaseError> {
+        if self.assertions.is_empty() {
+            return Ok(());
+        }
+        if self.assertion_snapshot.is_some() {
+            return Err(DatabaseError::TransactionError(
+                "assertion guard already active: assertion predicates must not perform DML"
+                    .to_string(),
+            ));
+        }
+        let snapshot = self.engine.begin_transaction()?;
+        self.assertion_snapshot = Some(snapshot);
+        Ok(())
+    }
+
+    /// Aborts an assertion guard after the guarded operation itself failed:
+    /// restores the pre-operation engine state and discards the snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DatabaseError::Storage`] error if the engine cannot roll back.
+    fn abort_assertion_guard(&mut self) -> Result<(), DatabaseError> {
+        if let Some(snapshot) = self.assertion_snapshot.take() {
+            self.engine.rollback_transaction(snapshot)?;
+        }
+        Ok(())
+    }
+
+    /// Checks every registered database assertion against the current state.
+    ///
+    /// Called after each DML mutation. If any assertion is violated, the
+    /// guarded operation is rolled back and
+    /// [`DatabaseError::AssertionViolation`] is returned; otherwise the guard
+    /// snapshot is committed and `Ok(())` is returned.
+    ///
+    /// When no assertions are registered this is a no-op.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::AssertionViolation`] naming the first violated
+    /// assertion, or a [`DatabaseError::Storage`] error if the engine cannot
+    /// roll back or commit the guard snapshot.
+    fn check_assertions(&mut self) -> Result<(), DatabaseError> {
+        if self.assertions.is_empty() {
+            return Ok(());
+        }
+
+        // Move the assertions out of `self` while evaluating: predicates take
+        // `&mut Database<E>` (they query relvars), which cannot coexist with
+        // an outstanding borrow of `self.assertions`.
+        let assertions = std::mem::take(&mut self.assertions);
+        let mut violated: Option<AssertionError> = None;
+        for assertion in &assertions {
+            if !assertion.is_satisfied_by(self) {
+                violated = Some(AssertionError::Violation {
+                    assertion_name: assertion.name().to_string(),
+                    description: assertion.description().to_string(),
+                });
+                break;
+            }
+        }
+        // Always restore the assertion list, even on violation.
+        self.assertions = assertions;
+
+        match violated {
+            Some(assertion_error) => {
+                // Roll back the operation that triggered the violation.
+                if let Some(snapshot) = self.assertion_snapshot.take() {
+                    self.engine.rollback_transaction(snapshot)?;
+                }
+                Err(assertion_error.into())
+            }
+            None => {
+                // All assertions hold: release the pre-operation snapshot.
+                if let Some(snapshot) = self.assertion_snapshot.take() {
+                    self.engine.commit_transaction(snapshot)?;
+                }
+                Ok(())
+            }
+        }
+    }
 
     pub(crate) fn ensure_not_virtual(&self, relation_name: &str) -> Result<(), DatabaseError> {
         if self.virtual_relvars.contains_key(relation_name) {
