@@ -8,6 +8,8 @@ use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::values::{Relation, ScalarValue, Tuple};
 use crate::collections::HashSet;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 impl<E: StorageEngine> Database<E> {
     /// - Any constraint is violated (Key, Foreign Key, Type, Check)

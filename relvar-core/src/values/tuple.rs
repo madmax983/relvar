@@ -33,6 +33,9 @@ use serde::{Deserialize, Serialize};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use thiserror::Error;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 mod arc_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};

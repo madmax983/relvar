@@ -43,6 +43,9 @@ use crate::values::{Relation, ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
 use crate::collections::HashMap;
 use thiserror::Error;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Errors that arise when attempting to distill the truth.
 ///

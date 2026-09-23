@@ -47,6 +47,10 @@ use crate::storage_engine::StorageEngine;
 use crate::values::Relation;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
+use alloc::string::ToString;
 
 /// AST for a relational query.
 ///

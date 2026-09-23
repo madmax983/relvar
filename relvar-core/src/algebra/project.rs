@@ -33,6 +33,7 @@
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 
 impl Relation {
     /// Projects this relation onto a subset of attributes.

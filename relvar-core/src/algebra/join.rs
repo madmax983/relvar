@@ -47,6 +47,9 @@ use crate::collections::{HashMap, HashSet};
 use alloc::collections::BTreeMap;
 use core::hash::{Hash, Hasher};
 use alloc::sync::Arc;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 impl Relation {
     /// Performs a natural join with another relation.

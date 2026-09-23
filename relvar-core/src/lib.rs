@@ -99,6 +99,9 @@
 // `#![no_std]` + `alloc` when the `std` feature is off (see the `no_std` CI job).
 #![cfg_attr(not(feature = "std"), no_std)]
 
+// `#[macro_use]` brings alloc's `vec!`/`format!` into textual scope crate-wide,
+// so only types and traits need per-file imports in `no_std` builds.
+#[cfg_attr(not(feature = "std"), macro_use)]
 extern crate alloc;
 
 pub mod algebra;

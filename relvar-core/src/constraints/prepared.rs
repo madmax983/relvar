@@ -10,6 +10,10 @@ use super::expression::{
 use crate::types::OperatorRegistry;
 use crate::values::{ScalarValue, Tuple};
 use crate::collections::HashSet;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// A prepared, optimized version of `ConstraintExpression`.
 ///

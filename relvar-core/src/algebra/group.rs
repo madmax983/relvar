@@ -37,6 +37,10 @@ use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use crate::collections::HashMap;
 use thiserror::Error;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Errors that can occur during group operations.
 #[derive(Debug, Error)]

@@ -60,6 +60,9 @@ use crate::collections::HashMap;
 use core::fmt;
 use alloc::sync::Arc;
 use thiserror::Error;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Errors from operator registration, resolution, and invocation.
 #[derive(Debug, Error)]

@@ -75,6 +75,9 @@ use crate::storage_engine::{IsolationLevel, StorageEngine};
 use crate::types::{OperatorError, OperatorRegistry, OperatorSignature};
 use crate::values::ScalarValue;
 use crate::collections::HashMap;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 mod dml;
 pub(crate) mod virtual_relvar;

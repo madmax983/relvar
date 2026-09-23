@@ -12,6 +12,9 @@ use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
 use crate::collections::HashMap;
 use thiserror::Error;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Errors that can occur during constraint management operations.
 #[derive(Debug, Error)]

@@ -9,6 +9,12 @@ description = "Persistent storage layer for Relvar"
 keywords = ["database", "storage", "persistence"]
 categories = ["database-implementations"]
 
+[features]
+default = ["std"]
+# `std` keeps the storage layer on the standard library (v0.7 will introduce
+# a `no_std` storage HAL; until then this feature documents the requirement).
+std = ["serde/std", "thiserror/std"]
+
 [dependencies]
 relvar-core.workspace = true
 thiserror.workspace = true

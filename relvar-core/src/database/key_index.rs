@@ -28,6 +28,9 @@ use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::values::{Relation, ScalarValue, Tuple};
 use crate::collections::{HashMap, HashSet};
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// In-memory index of key values per relation.
 ///

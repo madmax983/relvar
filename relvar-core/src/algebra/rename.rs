@@ -33,6 +33,9 @@ use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 impl Relation {
     /// Renames attributes in this relation according to the provided mapping.

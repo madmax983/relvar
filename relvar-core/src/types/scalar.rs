@@ -31,6 +31,8 @@
 use serde::{Deserialize, Serialize};
 use core::convert::TryFrom;
 use thiserror::Error;
+use alloc::boxed::Box;
+use alloc::string::String;
 
 /// Errors that can occur during scalar type operations.
 ///

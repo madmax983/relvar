@@ -36,6 +36,8 @@
 
 use crate::values::{Relation, ScalarValue, Tuple};
 use thiserror::Error;
+use alloc::string::String;
+use alloc::string::ToString;
 
 /// The boundaries of extending knowledge.
 ///

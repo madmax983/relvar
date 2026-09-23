@@ -27,6 +27,7 @@
 use crate::types::ScalarType;
 use serde::{Deserialize, Serialize};
 use alloc::collections::BTreeMap;
+use alloc::string::String;
 
 /// Defines the structure (heading) of tuples.
 ///

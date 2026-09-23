@@ -3,6 +3,7 @@
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::{IsolationLevel, StorageEngine};
+use alloc::string::ToString;
 
 impl<E: StorageEngine> Database<E> {
     /// Begins a new transaction.

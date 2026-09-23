@@ -38,6 +38,8 @@
 //! ```
 use crate::values::Relation;
 use thiserror::Error;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// Errors that can occur during relational division.
 #[derive(Debug, Error)]

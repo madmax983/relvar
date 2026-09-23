@@ -17,6 +17,8 @@
 use crate::values::{Relation, Tuple};
 use crate::collections::HashSet;
 use core::hash::{Hash, Hasher};
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// A key for hash join that avoids allocating a Vec for the key.
 /// It holds references to the tuple and the attributes to key on.

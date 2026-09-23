@@ -21,6 +21,7 @@
 
 use crate::error::DatabaseError;
 use crate::values::Relation;
+use alloc::string::ToString;
 
 impl Relation {
     /// Computes the transitive closure of a binary relation.

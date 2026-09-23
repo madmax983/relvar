@@ -6,6 +6,9 @@ use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::types::RelationType;
 use crate::values::Relation;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 impl<E: StorageEngine> Database<E> {
     /// Create a new base relvar (stored relation).
     ///

@@ -60,6 +60,9 @@ use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use thiserror::Error;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::string::ToString;
 
 /// Errors that can occur when a database assertion is evaluated.
 #[derive(Debug, Error)]

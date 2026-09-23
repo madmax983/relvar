@@ -30,6 +30,10 @@ use crate::types::ScalarType;
 use serde::{Deserialize, Serialize};
 use core::convert::TryFrom;
 use thiserror::Error;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Errors that can occur during scalar value operations.
 ///

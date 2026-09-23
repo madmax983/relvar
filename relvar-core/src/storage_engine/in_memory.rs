@@ -10,6 +10,9 @@ use super::{RelationMetadata, StorageEngine, StorageError};
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 use crate::collections::HashMap;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Stored relation with metadata.
 #[derive(Debug, Clone)]

@@ -41,6 +41,9 @@ use crate::values::Tuple;
 use serde::{Deserialize, Serialize};
 use crate::collections::HashSet;
 use thiserror::Error;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Errors that can occur during CHECK constraint evaluation.
 #[derive(Debug, Error)]
