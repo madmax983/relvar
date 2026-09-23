@@ -170,11 +170,7 @@ impl Blockchain {
             curr_prev_hash != p_hash
         });
 
-        if invalid_links.cardinality() > 0 {
-            return Ok(false);
-        }
-
-        Ok(true)
+        Ok(invalid_links.cardinality() == 0)
     }
 }
 
