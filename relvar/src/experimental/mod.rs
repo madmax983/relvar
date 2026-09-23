@@ -34,6 +34,7 @@
 //! - **[`apriori`](crate::experimental::apriori)**: Relational Apriori frequent-itemset mining.
 //! - **[`boids`](crate::experimental::boids)**: Relational Boids flocking simulation.
 //! - **[`decision_tree`](crate::experimental::decision_tree)**: Relational Decision Tree inference.
+//! - **[`fourier`](crate::experimental::fourier)**: Relational Discrete Fourier Transform.
 
 pub mod apriori;
 pub mod automata;
@@ -46,6 +47,7 @@ pub mod circuit;
 pub mod ecs;
 pub mod enigma;
 pub mod expert_system;
+pub mod fourier;
 pub mod garbage_collector;
 pub mod gnn;
 pub mod graph;
