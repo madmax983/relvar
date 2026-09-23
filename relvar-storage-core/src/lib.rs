@@ -57,3 +57,10 @@
 #![warn(missing_docs)]
 
 extern crate alloc;
+
+// Modules land one per commit; each owns one on-disk format plus its tests.
+
+/// 4 KiB page layout: 8-byte little-endian length header, zero-padded to
+/// [`PAGE_SIZE`](page::PAGE_SIZE). The lowest-level framing; everything else
+/// is built on pages.
+pub mod page;
