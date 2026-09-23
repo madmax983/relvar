@@ -31,7 +31,9 @@
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
+//! - **[`apriori`](crate::experimental::apriori)**: Relational Apriori frequent-itemset mining.
 
+pub mod apriori;
 pub mod automata;
 pub mod automl;
 pub mod blockchain;
