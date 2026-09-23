@@ -76,6 +76,8 @@ impl ActiveTransactionTable {
     /// # Arguments
     /// * `txn_id` - The unique identifier for the new transaction.
     /// * `lsn` - The Current Log Sequence Number (LSN) marking the point in time this transaction began.
+    /// * `horizon` - Visibility horizon: transaction IDs `>= horizon` began after this
+    ///   snapshot and are invisible to it. Pass the ID generator's next value.
     ///
     /// # Returns
     /// A [`TransactionSnapshot`] that the transaction will carry for its entire lifetime
@@ -88,12 +90,21 @@ impl ActiveTransactionTable {
     /// use relvar_storage::wal::{Lsn, TransactionId};
     ///
     /// let mut att = ActiveTransactionTable::new();
-    /// let snapshot = att.begin(TransactionId::new(42), Lsn::new(100));
+    /// let snapshot = att.begin(
+    ///     TransactionId::new(42),
+    ///     Lsn::new(100),
+    ///     TransactionId::new(43),
+    /// );
     ///
     /// assert_eq!(snapshot.txn_id, TransactionId::new(42));
     /// assert_eq!(snapshot.snapshot_lsn, Lsn::new(100));
     /// ```ignore
-    pub fn begin(&mut self, txn_id: TransactionId, lsn: Lsn) -> TransactionSnapshot {
+    pub fn begin(
+        &mut self,
+        txn_id: TransactionId,
+        lsn: Lsn,
+        horizon: TransactionId,
+    ) -> TransactionSnapshot {
         // Update current LSN
         self.current_lsn = lsn;
 
@@ -101,7 +112,7 @@ impl ActiveTransactionTable {
         let active: Vec<TransactionId> = self.transactions.keys().copied().collect();
 
         // Create snapshot for this transaction
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
+        let snapshot = TransactionSnapshot::new(txn_id, lsn, active).with_horizon(horizon);
 
         // Add to active transaction table
         self.transactions.insert(txn_id, snapshot.clone());
@@ -191,6 +202,16 @@ impl ActiveTransactionTable {
     pub fn get_snapshot(&self, txn_id: TransactionId) -> Option<&TransactionSnapshot> {
         self.transactions.get(&txn_id)
     }
+
+    /// Returns the ids of all currently active transactions.
+    ///
+    /// Used to build per-read snapshots for
+    /// [`IsolationLevel::ReadCommitted`](relvar_core::storage_engine::IsolationLevel::ReadCommitted):
+    /// every transaction still running must stay in the snapshot's active
+    /// list so its uncommitted changes remain invisible.
+    pub fn active_ids(&self) -> Vec<TransactionId> {
+        self.transactions.keys().copied().collect()
+    }
 }
 
 #[cfg(test)]
@@ -220,7 +241,7 @@ mod tests {
         let txn_id = test_txn(1);
         let lsn = test_lsn(100);
 
-        let snapshot = att.begin(txn_id, lsn);
+        let snapshot = att.begin(txn_id, lsn, test_txn(2));
 
         assert_eq!(snapshot.txn_id, txn_id);
         assert_eq!(snapshot.snapshot_lsn, lsn);
@@ -233,7 +254,7 @@ mod tests {
         let txn_id = test_txn(1);
         let lsn = test_lsn(100);
 
-        att.begin(txn_id, lsn);
+        att.begin(txn_id, lsn, TransactionId::new(u64::MAX));
 
         assert_eq!(att.transactions.len(), 1);
         assert!(att.transactions.contains_key(&txn_id));
@@ -244,16 +265,16 @@ mod tests {
         let mut att = ActiveTransactionTable::new();
 
         // T1 begins
-        let snapshot1 = att.begin(test_txn(1), test_lsn(100));
+        let snapshot1 = att.begin(test_txn(1), test_lsn(100), test_txn(2));
         assert_eq!(snapshot1.active_txns.len(), 0);
 
         // T2 begins (should see T1 as active)
-        let snapshot2 = att.begin(test_txn(2), test_lsn(200));
+        let snapshot2 = att.begin(test_txn(2), test_lsn(200), test_txn(3));
         assert_eq!(snapshot2.active_txns.len(), 1);
         assert!(snapshot2.is_active(test_txn(1)));
 
         // T3 begins (should see T1 and T2 as active)
-        let snapshot3 = att.begin(test_txn(3), test_lsn(300));
+        let snapshot3 = att.begin(test_txn(3), test_lsn(300), test_txn(4));
         assert_eq!(snapshot3.active_txns.len(), 2);
         assert!(snapshot3.is_active(test_txn(1)));
         assert!(snapshot3.is_active(test_txn(2)));
@@ -264,7 +285,7 @@ mod tests {
         let mut att = ActiveTransactionTable::new();
         let txn_id = test_txn(1);
 
-        att.begin(txn_id, test_lsn(100));
+        att.begin(txn_id, test_lsn(100), TransactionId::new(u64::MAX));
         assert_eq!(att.transactions.len(), 1);
 
         att.commit(txn_id);
@@ -286,7 +307,7 @@ mod tests {
         let mut att = ActiveTransactionTable::new();
         let txn_id = test_txn(1);
 
-        att.begin(txn_id, test_lsn(100));
+        att.begin(txn_id, test_lsn(100), TransactionId::new(u64::MAX));
         assert_eq!(att.transactions.len(), 1);
 
         att.abort(txn_id);
@@ -313,7 +334,7 @@ mod tests {
     fn test_att_oldest_active_lsn_single() {
         let mut att = ActiveTransactionTable::new();
 
-        att.begin(test_txn(1), test_lsn(100));
+        att.begin(test_txn(1), test_lsn(100), test_txn(2));
 
         assert_eq!(att.oldest_active_lsn(), Some(test_lsn(100)));
     }
@@ -322,9 +343,9 @@ mod tests {
     fn test_att_oldest_active_lsn_multiple() {
         let mut att = ActiveTransactionTable::new();
 
-        att.begin(test_txn(1), test_lsn(300));
-        att.begin(test_txn(2), test_lsn(100)); // Oldest
-        att.begin(test_txn(3), test_lsn(200));
+        att.begin(test_txn(1), test_lsn(300), test_txn(2));
+        att.begin(test_txn(2), test_lsn(100), test_txn(3)); // Oldest
+        att.begin(test_txn(3), test_lsn(200), test_txn(4));
 
         assert_eq!(att.oldest_active_lsn(), Some(test_lsn(100)));
     }
@@ -333,8 +354,8 @@ mod tests {
     fn test_att_oldest_active_lsn_after_commit() {
         let mut att = ActiveTransactionTable::new();
 
-        att.begin(test_txn(1), test_lsn(100)); // Oldest
-        att.begin(test_txn(2), test_lsn(200));
+        att.begin(test_txn(1), test_lsn(100), test_txn(2)); // Oldest
+        att.begin(test_txn(2), test_lsn(200), test_txn(3));
 
         att.commit(test_txn(1)); // Remove oldest
 
@@ -347,7 +368,7 @@ mod tests {
         let txn_id = test_txn(1);
         let lsn = test_lsn(100);
 
-        let created_snapshot = att.begin(txn_id, lsn);
+        let created_snapshot = att.begin(txn_id, lsn, test_txn(2));
         let retrieved_snapshot = att.get_snapshot(txn_id);
 
         assert!(retrieved_snapshot.is_some());
@@ -366,7 +387,7 @@ mod tests {
         let mut att = ActiveTransactionTable::new();
         let txn_id = test_txn(1);
 
-        att.begin(txn_id, test_lsn(100));
+        att.begin(txn_id, test_lsn(100), TransactionId::new(u64::MAX));
         att.commit(txn_id);
 
         assert!(att.get_snapshot(txn_id).is_none());
@@ -376,10 +397,10 @@ mod tests {
     fn test_att_updates_current_lsn() {
         let mut att = ActiveTransactionTable::new();
 
-        att.begin(test_txn(1), test_lsn(100));
+        att.begin(test_txn(1), test_lsn(100), test_txn(2));
         assert_eq!(att.current_lsn, test_lsn(100));
 
-        att.begin(test_txn(2), test_lsn(200));
+        att.begin(test_txn(2), test_lsn(200), test_txn(3));
         assert_eq!(att.current_lsn, test_lsn(200));
     }
 }

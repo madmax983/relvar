@@ -462,3 +462,204 @@ fn test_sentry_find_page_for_insertion_error_propagation() {
 
     assert!(matches!(result, Err(HeapError::TupleTooLarge(10000))));
 }
+
+// Issue #26: slotted-page insert must not rewrite existing tuples.
+//
+// The standard slotted-page technique:
+// 1. Read only the slot directory.
+// 2. Append new tuple data into free space at the page end.
+// 3. Rewrite only the slot directory.
+// Existing tuple bytes and slot offsets stay stable across inserts.
+
+/// Reads the raw slot directory of a page without touching tuple data.
+fn read_slot_directory(heap: &mut HeapFile, page_id: u64) -> SlottedPage {
+    let page = heap.page_file.read_page(page_id).unwrap();
+    assert!(!page.is_empty(), "expected page {page_id} to contain data");
+    postcard::from_bytes(page.data()).unwrap()
+}
+
+/// Serializes a tuple exactly the way `insert_tuple` does.
+fn serialize_tuple_for_test(tuple: &relvar_core::values::Tuple) -> Vec<u8> {
+    postcard::to_allocvec(tuple).unwrap()
+}
+
+#[test]
+fn test_slotted_insert_first_tuple_packed_at_page_end() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let tuple = tuple! { id: 1i64, name: "Alice" };
+    let tuple_data = serialize_tuple_for_test(&tuple);
+    let slot = heap.try_insert_into_page(0, &tuple_data).unwrap();
+    assert_eq!(slot, 0);
+
+    let slotted_page = read_slot_directory(&mut heap, 0);
+    assert_eq!(slotted_page.slot_count, 1);
+    let entry = slotted_page.slots[0].as_ref().unwrap();
+    // Tuple data grows downward from the end of the usable area.
+    assert_eq!(
+        entry.offset() as usize + entry.length() as usize,
+        USABLE_PAGE_SIZE_V1,
+        "first tuple should be packed against the end of the page"
+    );
+    assert_eq!(entry.length() as usize, tuple_data.len());
+}
+
+#[test]
+fn test_slotted_insert_does_not_move_existing_tuples() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let first = tuple! { id: 1i64, name: "Alice" };
+    heap.insert_tuple(&first).unwrap();
+
+    // Snapshot the first tuple's slot offset and raw bytes.
+    let before_dir = read_slot_directory(&mut heap, 0);
+    let before_entry = before_dir.slots[0].as_ref().unwrap();
+    let before_offset = before_entry.offset();
+    let before_length = before_entry.length();
+    let page_before = heap.page_file.read_page(0).unwrap();
+    let before_bytes = page_before.data()
+        [before_offset as usize..(before_offset + before_length) as usize]
+        .to_vec();
+
+    // Insert several more tuples; existing data must not be rewritten.
+    for i in 2..=6 {
+        let tuple = tuple! { id: i as i64, name: format!("Name{i}") };
+        heap.insert_tuple(&tuple).unwrap();
+    }
+
+    let after_dir = read_slot_directory(&mut heap, 0);
+    let after_entry = after_dir.slots[0].as_ref().unwrap();
+    assert_eq!(
+        after_entry.offset(),
+        before_offset,
+        "existing tuple offset must stay stable across inserts"
+    );
+    assert_eq!(after_entry.length(), before_length);
+
+    let page_after = heap.page_file.read_page(0).unwrap();
+    let after_bytes = &page_after.data()
+        [after_entry.offset() as usize..(after_entry.offset() + after_entry.length()) as usize];
+    assert_eq!(
+        after_bytes, before_bytes,
+        "existing tuple bytes must not be rewritten on insert"
+    );
+}
+
+#[test]
+fn test_slotted_insert_slot_directory_integrity() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    for i in 0..50 {
+        let tuple = tuple! { id: i as i64, name: format!("Name{i}") };
+        heap.insert_tuple(&tuple).unwrap();
+    }
+
+    let page = heap.page_file.read_page(0).unwrap();
+    let slotted_page: SlottedPage = postcard::from_bytes(page.data()).unwrap();
+    let header_len = postcard::to_allocvec(&slotted_page).unwrap().len();
+
+    assert_eq!(slotted_page.slot_count, 50);
+    assert_eq!(slotted_page.slots.len(), 50);
+
+    // Every live slot must point inside the page, below the header, and
+    // no two tuple extents may overlap.
+    let mut extents: Vec<(usize, usize)> = Vec::new();
+    for slot in slotted_page.slots.iter().flatten() {
+        let start = slot.offset() as usize;
+        let end = start + slot.length() as usize;
+        assert!(start >= header_len, "tuple overlaps the slot directory");
+        assert!(end <= page.data().len(), "tuple extends past the page");
+        extents.push((start, end));
+    }
+    extents.sort_unstable();
+    for pair in extents.windows(2) {
+        assert!(
+            pair[0].1 <= pair[1].0,
+            "tuple extents must not overlap: {:?} vs {:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
+
+#[test]
+fn test_slotted_insert_then_read_roundtrip_many_tuples() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let mut expected = std::collections::HashSet::new();
+    for i in 0..300 {
+        let tuple = tuple! { id: i as i64, name: format!("Name{i}") };
+        heap.insert_tuple(&tuple).unwrap();
+        expected.insert(tuple);
+    }
+
+    let scanned: std::collections::HashSet<_> = heap.scan().unwrap().into_iter().collect();
+    assert_eq!(scanned.len(), 300);
+    assert_eq!(scanned, expected);
+}
+
+#[test]
+fn test_slotted_insert_page_full_spills_to_next_page() {
+    let temp_file = NamedTempFile::new().unwrap();
+
+    let heading = TupleType::new().with_attribute("data".to_string(), ScalarType::Bytes);
+    let rel_type = RelationType::new(heading);
+    let mut heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
+
+    // 1000-byte payloads: about 3 fit per page with the slot directory.
+    let mut inserted = 0usize;
+    for i in 0..20 {
+        let tuple = tuple! { data: vec![i as u8; 1000] };
+        heap.insert_tuple(&tuple).unwrap();
+        inserted += 1;
+        if !heap.page_file.read_page(1).unwrap().is_empty() {
+            break;
+        }
+    }
+
+    assert!(
+        !heap.page_file.read_page(1).unwrap().is_empty(),
+        "page 0 should fill up and spill over to page 1"
+    );
+
+    // Every tuple must still be readable after the spill.
+    let tuples = heap.scan().unwrap();
+    assert_eq!(tuples.len(), inserted);
+}
+
+#[test]
+fn test_try_insert_into_page_returns_page_full_when_no_space() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    // Fill page 0 with fixed-size payloads until it reports PageFull.
+    let payload = vec![0xABu8; 500];
+    let mut filled = false;
+    for _ in 0..20 {
+        match heap.try_insert_into_page(0, &payload) {
+            Ok(_) => {}
+            Err(HeapError::PageFull) => {
+                filled = true;
+                break;
+            }
+            Err(e) => panic!("expected PageFull, got {e:?}"),
+        }
+    }
+    assert!(filled, "page should eventually report PageFull");
+
+    // A further same-size insert must keep reporting PageFull, not corrupt.
+    let result = heap.try_insert_into_page(0, &payload);
+    assert!(
+        matches!(result, Err(HeapError::PageFull)),
+        "expected PageFull, got {result:?}"
+    );
+
+    // The page must still be readable: slot directory intact.
+    let slotted_page = read_slot_directory(&mut heap, 0);
+    assert!(slotted_page.slot_count > 0);
+    assert!(slotted_page.slots.iter().all(|s| s.is_some()));
+}

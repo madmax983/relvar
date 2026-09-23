@@ -4,9 +4,12 @@
 //! specific tuple version is visible to a specific transaction.
 //!
 //! A tuple version is visible to transaction `T` if:
-//! 1. `version.xmin` committed before `T.snapshot_lsn` AND
-//! 2. `version.xmin` not in `T.active_txns` (not concurrent uncommitted) AND
-//! 3. `version.xmax` is `None` OR (`version.xmax` committed after `T.snapshot_lsn` OR `version.xmax` in `T.active_txns`)
+//! 1. `version.xmin` committed before `T`'s snapshot AND
+//! 2. `version.xmin` is below `T`'s visibility horizon (its creator began no
+//!    later than `T` did) AND
+//! 3. `version.xmin` not in `T.active_txns` (not concurrent uncommitted) AND
+//! 4. `version.xmax` is `None` OR (`version.xmax` committed after `T`'s snapshot
+//!    OR `version.xmax` is at/above the horizon OR `version.xmax` in `T.active_txns`)
 
 use crate::mvcc::TransactionSnapshot;
 use crate::wal::TransactionId;
@@ -54,8 +57,14 @@ pub struct VersionMetadata {
 /// # Visibility Rules
 /// A version is visible if:
 /// 1. `xmin` is committed (in `committed` set).
-/// 2. `xmin` is NOT in the snapshot's `active_txns` (wasn't concurrent uncommitted).
-/// 3. `xmax` is `None` (not deleted) OR `xmax` is NOT committed OR `xmax` was concurrent.
+/// 2. `xmin` is below the snapshot's visibility horizon (its creator began no
+///    later than the snapshot was taken — this hides versions committed by
+///    transactions that started *after* the snapshot, which the commit set
+///    and active set alone cannot exclude).
+/// 3. `xmin` is NOT in the snapshot's `active_txns` (wasn't concurrent uncommitted).
+/// 4. `xmax` is `None` (not deleted) OR `xmax` is NOT committed OR `xmax` was concurrent
+///    (active at snapshot time) OR `xmax` is at/above the horizon (deleted after
+///    the snapshot was taken).
 ///
 /// **Exception:** A transaction can always see its own uncommitted changes.
 ///
@@ -106,13 +115,27 @@ fn is_created_visible(
     snapshot: &TransactionSnapshot,
     committed: &HashSet<TransactionId>,
 ) -> bool {
-    let xmin_visible = committed.contains(&version.xmin) || version.xmin == snapshot.txn_id;
+    // Own writes are always visible to the writing transaction.
+    if version.xmin == snapshot.txn_id {
+        return true;
+    }
 
-    if snapshot.is_active(version.xmin) && version.xmin != snapshot.txn_id {
+    // Versions created by transactions that began after this snapshot was
+    // taken are from the snapshot's future: invisible even if they have
+    // since committed. The commit set and the active set alone cannot
+    // exclude them, because a transaction that starts after our snapshot is
+    // in neither. This upper bound is what makes Repeatable Read repeat.
+    if version.xmin >= snapshot.horizon {
         return false;
     }
 
-    xmin_visible
+    // Versions created by transactions that were still active when the
+    // snapshot was taken are in flux: invisible.
+    if snapshot.is_active(version.xmin) {
+        return false;
+    }
+
+    committed.contains(&version.xmin)
 }
 
 fn is_deletion_invisible(
@@ -124,8 +147,15 @@ fn is_deletion_invisible(
         return true;
     };
 
+    // A transaction's own deletes hide the version from itself.
     if xmax == snapshot.txn_id {
         return false;
+    }
+
+    // Deletes made by transactions that began after the snapshot was taken
+    // are future changes: the version is still visible.
+    if xmax >= snapshot.horizon {
+        return true;
     }
 
     if !committed.contains(&xmax) {
@@ -515,6 +545,86 @@ mod tests {
         let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
         let mut committed = HashSet::new();
         committed.insert(t1); // created by self, deleted by self
+
+        assert!(!is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_false_when_creator_began_after_snapshot_even_if_committed() {
+        // T1's snapshot is taken with horizon 2: only transactions with
+        // IDs < 2 began before the snapshot.
+        let t1 = test_txn(1);
+        let t2 = test_txn(2);
+
+        let version = VersionMetadata {
+            xmin: t2,
+            xmax: None,
+        };
+        let snapshot =
+            TransactionSnapshot::new(t1, test_lsn(100), vec![]).with_horizon(test_txn(2));
+        let mut committed = HashSet::new();
+        committed.insert(t2); // t2 committed AFTER t1's snapshot was taken
+
+        // T2 is committed and was never in T1's active set, but it began
+        // after the snapshot: its version is from T1's future.
+        assert!(!is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_true_when_creator_committed_before_snapshot_horizon() {
+        let t2 = test_txn(2);
+        let t3 = test_txn(3);
+
+        let version = VersionMetadata {
+            xmin: t2,
+            xmax: None,
+        };
+        // T3's snapshot horizon is 4: T2 began before it.
+        let snapshot =
+            TransactionSnapshot::new(t3, test_lsn(200), vec![]).with_horizon(test_txn(4));
+        let mut committed = HashSet::new();
+        committed.insert(t2);
+
+        assert!(is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_true_when_deleter_began_after_snapshot() {
+        // T2 deletes a version after T3's snapshot was taken; T3 must still
+        // see the version even though T2 has committed.
+        let t1 = test_txn(1);
+        let t2 = test_txn(4);
+        let t3 = test_txn(3);
+
+        let version = VersionMetadata {
+            xmin: t1,
+            xmax: Some(t2),
+        };
+        let snapshot =
+            TransactionSnapshot::new(t3, test_lsn(200), vec![]).with_horizon(test_txn(4));
+        let mut committed = HashSet::new();
+        committed.insert(t1);
+        committed.insert(t2);
+
+        assert!(is_visible(&version, &snapshot, &committed));
+    }
+
+    #[test]
+    fn should_return_false_when_deleter_committed_before_snapshot_horizon() {
+        let t1 = test_txn(1);
+        let t2 = test_txn(2);
+        let t3 = test_txn(3);
+
+        let version = VersionMetadata {
+            xmin: t1,
+            xmax: Some(t2),
+        };
+        // Horizon 3: the delete by T2 predates T3's snapshot.
+        let snapshot =
+            TransactionSnapshot::new(t3, test_lsn(200), vec![]).with_horizon(test_txn(3));
+        let mut committed = HashSet::new();
+        committed.insert(t1);
+        committed.insert(t2);
 
         assert!(!is_visible(&version, &snapshot, &committed));
     }

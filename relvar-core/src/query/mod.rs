@@ -210,10 +210,13 @@ impl Query {
                 // This prevents O(N*M) behavior for large IN lists or LIKE patterns
                 let prepared = predicate.prepare();
 
-                // Manually restrict the relation to handle and propagate evaluation errors
+                // Manually restrict the relation to handle and propagate evaluation errors.
+                // Operator applications in the predicate resolve against the
+                // database's operator registry (TTM RM Prescription 3).
+                let registry = db.operator_registry();
                 let mut eval_error = None;
                 let result = relation.restrict_into(|tuple| {
-                    match prepared.evaluate(tuple) {
+                    match prepared.evaluate_with_operators(tuple, registry) {
                         Ok(res) => res,
                         Err(e) => {
                             if eval_error.is_none() {

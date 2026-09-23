@@ -114,7 +114,10 @@ pub mod values;
 pub use database::Database;
 pub use error::DatabaseError;
 pub use query::{Query, QueryError};
-pub use types::{RelationType, ScalarType, TupleType};
+pub use types::{
+    OperatorError, OperatorRegistry, OperatorSignature, RegisteredOperator, RelationType,
+    ScalarType, TupleType,
+};
 pub use values::{Relation, ScalarValue, Tuple};
 
 // Re-export constraint types
@@ -122,8 +125,8 @@ pub use constraints::{
     AssertionError, AttributeConstraints, CandidateKey, CheckConstraint, CheckConstraintError,
     CheckConstraints, CmpOp, ConstraintExpression, ConstraintManagerError, DatabaseAssertion,
     ExpressionError, ForeignKey, ForeignKeyConstraints, ForeignKeyError, KeyConstraintError,
-    KeyConstraints, PrimaryKey, TypeConstraint, TypeConstraintError, ValueOrRef,
+    KeyConstraints, PrimaryKey, ScalarExpression, TypeConstraint, TypeConstraintError, ValueOrRef,
 };
 
 // Re-export storage engine types
-pub use storage_engine::{InMemoryEngine, StorageEngine, StorageError};
+pub use storage_engine::{InMemoryEngine, IsolationLevel, StorageEngine, StorageError};

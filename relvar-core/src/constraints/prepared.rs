@@ -4,7 +4,10 @@
 //! version of a `ConstraintExpression`. By pre-compiling `IN` lists to HashSets
 //! and string patterns to compiled regexers, evaluating these constraints during
 //! filtering loops is O(1) instead of O(N) per tuple.
-use super::expression::{CmpOp, ConstraintExpression, ExpressionError, ValueOrRef};
+use super::expression::{
+    CmpOp, ConstraintExpression, ExpressionError, ScalarExpression, ValueOrRef,
+};
+use crate::types::OperatorRegistry;
 use crate::values::{ScalarValue, Tuple};
 use std::collections::HashSet;
 
@@ -45,6 +48,20 @@ pub enum PreparedConstraintExpression {
     /// Pattern matching: attribute LIKE pattern
     /// Optimized by pre-parsing pattern into chars.
     Like(String, Vec<char>),
+
+    /// Comparison of two scalar expressions (TTM RM Prescription 3).
+    ///
+    /// Scalar expressions need no pre-computation, so they are carried
+    /// through unchanged. Operator applications resolve against the
+    /// registry passed to [`evaluate_with_operators`](Self::evaluate_with_operators).
+    ScalarCmp {
+        /// Left scalar expression
+        left: ScalarExpression,
+        /// Comparison operator
+        op: CmpOp,
+        /// Right scalar expression
+        right: ScalarExpression,
+    },
 }
 
 impl PreparedConstraintExpression {
@@ -97,7 +114,100 @@ impl PreparedConstraintExpression {
                     pattern_chars,
                 ))
             }
+            PreparedConstraintExpression::ScalarCmp { left, op, right } => {
+                let left_val = left.evaluate(tuple)?;
+                let right_val = right.evaluate(tuple)?;
+                Self::evaluate_scalar_cmp(&left_val, op, &right_val)
+            }
         }
+    }
+
+    /// Evaluates this prepared expression against a tuple, resolving
+    /// user-defined operator applications against `registry`
+    /// (TTM RM Prescription 3).
+    ///
+    /// Expressions without operator applications evaluate exactly as
+    /// [`evaluate`](Self::evaluate) does.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`evaluate`](Self::evaluate), plus
+    /// [`ExpressionError::Operator`] when operator resolution or invocation
+    /// fails.
+    pub fn evaluate_with_operators(
+        &self,
+        tuple: &Tuple,
+        registry: &OperatorRegistry,
+    ) -> Result<bool, ExpressionError> {
+        match self {
+            PreparedConstraintExpression::Cmp { left, op, right } => {
+                let (left_val, right_val) =
+                    ConstraintExpression::get_comparison_operands(tuple, left, right)?;
+
+                Self::evaluate_cmp(left_val, op, right_val)
+            }
+            PreparedConstraintExpression::And(left, right) => Ok(left
+                .evaluate_with_operators(tuple, registry)?
+                && right.evaluate_with_operators(tuple, registry)?),
+            PreparedConstraintExpression::Or(left, right) => Ok(left
+                .evaluate_with_operators(tuple, registry)?
+                || right.evaluate_with_operators(tuple, registry)?),
+            PreparedConstraintExpression::Not(expr) => {
+                Ok(!expr.evaluate_with_operators(tuple, registry)?)
+            }
+            PreparedConstraintExpression::In(attr, values) => {
+                let tuple_value = tuple
+                    .get(attr)
+                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
+                Ok(values.contains(tuple_value))
+            }
+            PreparedConstraintExpression::Like(attr, pattern_chars) => {
+                let tuple_value = tuple
+                    .get(attr)
+                    .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone()))?;
+
+                let text = match tuple_value {
+                    ScalarValue::String(s) => s,
+                    _ => {
+                        return Err(ExpressionError::TypeMismatch(
+                            "String".to_string(),
+                            format!("{:?}", tuple_value.scalar_type()),
+                        ));
+                    }
+                };
+
+                // Use the shared helper from ConstraintExpression
+                Ok(ConstraintExpression::matches_pattern_chars(
+                    text,
+                    pattern_chars,
+                ))
+            }
+            PreparedConstraintExpression::ScalarCmp { left, op, right } => {
+                let left_val = left.evaluate_with(tuple, registry)?;
+                let right_val = right.evaluate_with(tuple, registry)?;
+                Self::evaluate_scalar_cmp(&left_val, op, &right_val)
+            }
+        }
+    }
+
+    /// Compares two evaluated scalar values with a comparison operator.
+    ///
+    /// Both values must be of the same type; mismatched types fail with
+    /// [`ExpressionError::TypeMismatch`]. The full scalar type is compared,
+    /// not just the value discriminant, so distinct user-defined types
+    /// (which share a discriminant) never compare as the same type.
+    fn evaluate_scalar_cmp(
+        left_val: &ScalarValue,
+        op: &CmpOp,
+        right_val: &ScalarValue,
+    ) -> Result<bool, ExpressionError> {
+        if left_val.scalar_type() != right_val.scalar_type() {
+            return Err(ExpressionError::TypeMismatch(
+                format!("{:?}", left_val.scalar_type()),
+                format!("{:?}", right_val.scalar_type()),
+            ));
+        }
+        Self::evaluate_cmp(left_val, op, right_val)
     }
 
     /// Evaluates a comparison operation.
@@ -141,6 +251,9 @@ impl From<ConstraintExpression> for PreparedConstraintExpression {
             ConstraintExpression::Like(attr, pattern) => {
                 let pattern_chars: Vec<char> = pattern.chars().collect();
                 PreparedConstraintExpression::Like(attr, pattern_chars)
+            }
+            ConstraintExpression::ScalarCmp { left, op, right } => {
+                PreparedConstraintExpression::ScalarCmp { left, op, right }
             }
         }
     }
