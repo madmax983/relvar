@@ -52,7 +52,7 @@
 //! use relvar_core::types::{TupleType, RelationType, ScalarType};
 //! use relvar_core::tuple;
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! fn main() -> Result<(), Box<dyn core::error::Error>> {
 //!     // 1. Initialize an in-memory database
 //!     let mut db = Database::new(InMemoryEngine::new());
 //!

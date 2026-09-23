@@ -32,7 +32,7 @@
 
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
-use std::sync::Arc;
+use alloc::sync::Arc;
 
 impl Relation {
     /// Projects this relation onto a subset of attributes.
@@ -172,7 +172,7 @@ fn project_tuple_values(source_tuple: &Tuple, target_heading: &Arc<TupleType>) -
     let mut result_items = Vec::with_capacity(target_heading.degree());
 
     while let (Some((t_attr, t_val)), Some((h_attr, _))) = (current_tuple, current_heading) {
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
         match t_attr.cmp(h_attr) {
             Ordering::Equal => {
                 result_items.push((t_attr.clone(), t_val.clone()));
@@ -188,7 +188,7 @@ fn project_tuple_values(source_tuple: &Tuple, target_heading: &Arc<TupleType>) -
         }
     }
 
-    let values = std::collections::BTreeMap::from_iter(result_items);
+    let values = alloc::collections::BTreeMap::from_iter(result_items);
 
     // Safety: We constructed values exactly from attributes present in new_heading
     // derived from the source relation schema, so types match by definition.
@@ -203,7 +203,7 @@ fn project_tuple_values_owned(source_tuple: Tuple, target_heading: &Arc<TupleTyp
 
     values.retain(|k, _| {
         while let Some(&h_attr) = heading_iter.peek() {
-            use std::cmp::Ordering;
+            use core::cmp::Ordering;
             match h_attr.cmp(k) {
                 Ordering::Less => {
                     heading_iter.next();

@@ -125,7 +125,7 @@ fn test_query_deserialization_depth_limit() {
     let bytes = postcard::to_stdvec(&q).unwrap();
 
     // Deserialize
-    std::mem::forget(q); // Prevent Drop stack overflow
+    core::mem::forget(q); // Prevent Drop stack overflow
     let result: Result<Query, _> = postcard::from_bytes(&bytes);
 
     assert!(
@@ -134,6 +134,6 @@ fn test_query_deserialization_depth_limit() {
     );
 
     if let Ok(q2) = result {
-        std::mem::forget(q2); // Should not reach here, but prevent Drop if it does
+        core::mem::forget(q2); // Should not reach here, but prevent Drop if it does
     }
 }

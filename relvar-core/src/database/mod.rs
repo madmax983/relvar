@@ -74,7 +74,7 @@ use crate::error::DatabaseError;
 use crate::storage_engine::{IsolationLevel, StorageEngine};
 use crate::types::{OperatorError, OperatorRegistry, OperatorSignature};
 use crate::values::ScalarValue;
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 mod dml;
 pub(crate) mod virtual_relvar;

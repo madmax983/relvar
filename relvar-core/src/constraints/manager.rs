@@ -10,7 +10,7 @@ use crate::constraints::{
 use crate::storage_engine::{StorageEngine, StorageError};
 use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
-use std::collections::HashMap;
+use crate::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur during constraint management operations.

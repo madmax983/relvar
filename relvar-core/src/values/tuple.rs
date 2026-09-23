@@ -30,13 +30,13 @@
 use crate::types::TupleType;
 use crate::values::ScalarValue;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
 use thiserror::Error;
 
 mod arc_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use std::sync::Arc;
+    use alloc::sync::Arc;
 
     /// Helper for Serde to serialize an `Arc<T>` transparently.
     ///
@@ -50,7 +50,7 @@ mod arc_serde {
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
-    /// use std::sync::Arc;
+    /// use alloc::sync::Arc;
     /// // Internally used by serde
     /// ```
     pub fn serialize<S, T>(val: &Arc<T>, serializer: S) -> Result<S::Ok, S::Error>
@@ -72,7 +72,7 @@ mod arc_serde {
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
-    /// use std::sync::Arc;
+    /// use alloc::sync::Arc;
     /// // Internally used by serde
     /// ```
     pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Arc<T>, D::Error>
@@ -171,7 +171,7 @@ impl Tuple {
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
     /// use relvar_core::values::{Tuple, ScalarValue};
-    /// use std::collections::HashMap;
+    /// use crate::collections::HashMap;
     ///
     /// let tuple_type = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int)
@@ -189,7 +189,7 @@ impl Tuple {
     /// ```
     /// use relvar_core::values::{Tuple, ScalarValue};
     /// use relvar_core::types::{TupleType, ScalarType};
-    /// use std::collections::BTreeMap;
+    /// use alloc::collections::BTreeMap;
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int)
@@ -436,8 +436,8 @@ impl Tuple {
     }
 }
 
-impl std::hash::Hash for Tuple {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl core::hash::Hash for Tuple {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // Hash the tuple type first
         self.tuple_type.hash(state);
 
@@ -469,7 +469,7 @@ impl<'a> TryFrom<&'a ScalarValue> for &'a str {
 #[macro_export]
 macro_rules! tuple {
     ($($name:ident: $value:expr),* $(,)?) => {{
-        use std::collections::HashMap;
+        use crate::collections::HashMap;
         let mut type_builder = $crate::types::TupleType::new();
         let mut values = HashMap::new();
 
@@ -545,7 +545,7 @@ impl TryFrom<ScalarValue> for String {
     type Error = ();
     fn try_from(mut value: ScalarValue) -> Result<Self, Self::Error> {
         match value {
-            ScalarValue::String(ref mut v) => Ok(std::mem::take(v)),
+            ScalarValue::String(ref mut v) => Ok(core::mem::take(v)),
             _ => Err(()),
         }
     }
@@ -565,7 +565,7 @@ impl TryFrom<ScalarValue> for Vec<u8> {
     type Error = ();
     fn try_from(mut value: ScalarValue) -> Result<Self, Self::Error> {
         match value {
-            ScalarValue::Bytes(ref mut v) => Ok(std::mem::take(v)),
+            ScalarValue::Bytes(ref mut v) => Ok(core::mem::take(v)),
             _ => Err(()),
         }
     }
@@ -625,7 +625,7 @@ impl<'a> TryFrom<&'a ScalarValue> for Vec<u8> {
 mod tests {
     use super::*;
     use crate::types::ScalarType;
-    use std::collections::HashMap;
+    use crate::collections::HashMap;
 
     #[test]
     fn test_tuple_conforms_to_type() {
@@ -747,8 +747,8 @@ mod tests {
 
     #[test]
     fn test_tuple_hash_consistency_with_different_insertion_order() {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use crate::collections::new_hasher;
+        use core::hash::{Hash, Hasher};
 
         let tuple_type = TupleType::new()
             .with_attribute("a", ScalarType::Int)
@@ -770,11 +770,11 @@ mod tests {
         let tuple2 = Tuple::new(tuple_type, values2).unwrap();
 
         // Hashes should be identical despite different insertion orders
-        let mut hasher1 = DefaultHasher::new();
+        let mut hasher1 = new_hasher();
         tuple1.hash(&mut hasher1);
         let hash1 = hasher1.finish();
 
-        let mut hasher2 = DefaultHasher::new();
+        let mut hasher2 = new_hasher();
         tuple2.hash(&mut hasher2);
         let hash2 = hasher2.finish();
 
@@ -880,7 +880,7 @@ mod tests {
         assert_eq!(tuple_from_vec.degree(), 2);
 
         // Case 2: BTreeMap<String, ScalarValue>
-        use std::collections::BTreeMap;
+        use alloc::collections::BTreeMap;
         let mut btree_values = BTreeMap::new();
         btree_values.insert("a".to_string(), ScalarValue::Int(1));
         btree_values.insert("b".to_string(), ScalarValue::Int(2));

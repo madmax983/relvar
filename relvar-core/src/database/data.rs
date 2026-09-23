@@ -7,7 +7,7 @@ use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::HashSet;
+use crate::collections::HashSet;
 
 impl<E: StorageEngine> Database<E> {
     /// - Any constraint is violated (Key, Foreign Key, Type, Check)
@@ -510,7 +510,7 @@ impl<E: StorageEngine> Database<E> {
         // Move the assertions out of `self` while evaluating: predicates take
         // `&mut Database<E>` (they query relvars), which cannot coexist with
         // an outstanding borrow of `self.assertions`.
-        let assertions = std::mem::take(&mut self.assertions);
+        let assertions = core::mem::take(&mut self.assertions);
         let mut violated: Option<AssertionError> = None;
         for assertion in &assertions {
             if !assertion.is_satisfied_by(self) {

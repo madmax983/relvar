@@ -215,8 +215,8 @@ fn filter_matching_candidates(
     dividend: &Relation,
     dividend_heading: &crate::types::TupleType,
 ) -> Relation {
-    use std::collections::BTreeMap;
-    use std::sync::Arc;
+    use alloc::collections::BTreeMap;
+    use alloc::sync::Arc;
 
     // Clone dividend_heading once outside the loop to avoid repeated clones
     let dividend_heading_arc = Arc::new(dividend_heading.clone());

@@ -9,7 +9,7 @@
 use super::{RelationMetadata, StorageEngine, StorageError};
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 /// Stored relation with metadata.
 #[derive(Debug, Clone)]

@@ -43,9 +43,10 @@
 use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use crate::collections::{HashMap, HashSet};
+use alloc::collections::BTreeMap;
+use core::hash::{Hash, Hasher};
+use alloc::sync::Arc;
 
 impl Relation {
     /// Performs a natural join with another relation.
@@ -452,10 +453,10 @@ where
     F: Fn(&Tuple, &Tuple) -> bool,
 {
     // Optimization: Pre-allocate an initial capacity for the HashSet directly
-    // based on `std::cmp::max` of the two relations to mitigate resizing overhead.
+    // based on `core::cmp::max` of the two relations to mitigate resizing overhead.
     // By returning a `HashSet` rather than a `Vec`, we completely eliminate a
     // redundant intermediate collection allocation step.
-    let capacity = std::cmp::max(left.cardinality(), right.cardinality());
+    let capacity = core::cmp::max(left.cardinality(), right.cardinality());
     let mut joined_tuples = HashSet::with_capacity(capacity);
 
     for tuple1 in left.tuples() {
@@ -522,8 +523,8 @@ fn merge_tuple_values<'a>(primary: &'a Tuple, secondary: &'a Tuple) -> Vec<(Stri
 /// Helper to merge the next value from the primary and secondary tuples.
 /// Returns `true` if a value was merged, `false` if both iterators are empty.
 fn merge_next_values<'a>(
-    iter_p: &mut std::iter::Peekable<std::collections::btree_map::Iter<'a, String, ScalarValue>>,
-    iter_s: &mut std::iter::Peekable<std::collections::btree_map::Iter<'a, String, ScalarValue>>,
+    iter_p: &mut core::iter::Peekable<alloc::collections::btree_map::Iter<'a, String, ScalarValue>>,
+    iter_s: &mut core::iter::Peekable<alloc::collections::btree_map::Iter<'a, String, ScalarValue>>,
     values: &mut Vec<(String, ScalarValue)>,
 ) -> bool {
     match (iter_p.peek(), iter_s.peek()) {

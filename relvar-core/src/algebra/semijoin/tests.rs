@@ -528,8 +528,8 @@ fn test_semidifference_equals_self_minus_semijoin() {
 
 #[test]
 fn test_semijoin_key_missing_attributes() {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::Hash;
+    use crate::collections::new_hasher;
+    use core::hash::Hash;
 
     let t1 = tuple! { a: 1i64 };
     let attributes = vec!["a".to_string(), "b".to_string()];
@@ -540,7 +540,7 @@ fn test_semijoin_key_missing_attributes() {
     };
 
     // Should not panic on missing attribute "b", and hashing should complete
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = new_hasher();
     key1.hash(&mut hasher);
 
     let t2 = tuple! { a: 1i64, c: "test" };

@@ -29,7 +29,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use core::convert::TryFrom;
 use thiserror::Error;
 
 /// Errors that can occur during scalar type operations.
@@ -319,10 +319,10 @@ impl ScalarType {
     }
 }
 
-impl std::hash::Hash for ScalarType {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl core::hash::Hash for ScalarType {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // Hash the discriminant first
-        std::mem::discriminant(self).hash(state);
+        core::mem::discriminant(self).hash(state);
 
         // Then hash the data based on variant
         match self {
@@ -347,14 +347,14 @@ impl std::hash::Hash for ScalarType {
 }
 
 impl PartialOrd for ScalarType {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for ScalarType {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
 
         // Helper to get a discriminant value for ordering
         let disc_value = |t: &ScalarType| match t {
@@ -399,8 +399,8 @@ impl ScalarType {
     fn cmp_relation_types(
         a: &crate::types::RelationType,
         b: &crate::types::RelationType,
-    ) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
+    ) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
 
         let a_heading = a.heading();
         let b_heading = b.heading();
@@ -433,8 +433,8 @@ impl ScalarType {
         a_rep: &ScalarType,
         b_name: &str,
         b_rep: &ScalarType,
-    ) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
+    ) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
         match a_name.cmp(b_name) {
             Ordering::Equal => a_rep.cmp(b_rep),
             other => other,
@@ -478,7 +478,7 @@ mod tests {
             bool_type.name(),
             bytes_type.name(),
         ];
-        let unique_names: std::collections::HashSet<_> = names.iter().collect();
+        let unique_names: crate::collections::HashSet<_> = names.iter().collect();
         assert_eq!(names.len(), unique_names.len());
     }
 
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn test_scalar_types_can_be_hashed() {
-        use std::collections::HashSet;
+        use crate::collections::HashSet;
 
         let mut set = HashSet::new();
         set.insert(ScalarType::Int);
@@ -516,7 +516,7 @@ mod tests {
     // Tests for Ord/PartialOrd implementations (for coverage)
     #[test]
     fn test_scalar_type_ord_basic_types() {
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
 
         // Test discriminant ordering: Int < Float < String < Bool < Bytes < Relation < UserDefined
         assert_eq!(ScalarType::Int.cmp(&ScalarType::Float), Ordering::Less);
@@ -535,7 +535,7 @@ mod tests {
     #[test]
     fn test_scalar_type_ord_relation_types() {
         use crate::types::{RelationType, TupleType};
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
 
         // Create relation types with different headings
         let heading_a = TupleType::new().with_attribute("a", ScalarType::Int);
@@ -560,7 +560,7 @@ mod tests {
     #[test]
     fn test_scalar_type_ord_relation_types_different_degrees() {
         use crate::types::{RelationType, TupleType};
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
 
         // Different degree headings
         let heading_1 = TupleType::new().with_attribute("a", ScalarType::Int);
@@ -579,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_scalar_type_ord_user_defined_by_name() {
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
 
         let widget_id = ScalarType::user_defined("WidgetId", ScalarType::Int);
         let supplier_id = ScalarType::user_defined("SupplierId", ScalarType::Int);
@@ -596,7 +596,7 @@ mod tests {
 
     #[test]
     fn test_scalar_type_ord_user_defined_by_representation() {
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
 
         // Same name but different representation
         let widget_id_int = ScalarType::user_defined("WidgetId", ScalarType::Int);
@@ -611,7 +611,7 @@ mod tests {
     #[test]
     fn test_scalar_type_ord_mixed_variants() {
         use crate::types::{RelationType, TupleType};
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
 
         let int_type = ScalarType::Int;
         let relation_type = ScalarType::Relation(Box::new(RelationType::new(
@@ -641,7 +641,7 @@ mod tests {
         );
         assert_eq!(
             int_type.partial_cmp(&int_type),
-            Some(std::cmp::Ordering::Equal)
+            Some(core::cmp::Ordering::Equal)
         );
     }
 
@@ -658,13 +658,13 @@ mod tests {
         ];
 
         for ty in types {
-            assert_eq!(ty.cmp(&ty), std::cmp::Ordering::Equal);
+            assert_eq!(ty.cmp(&ty), core::cmp::Ordering::Equal);
         }
     }
 
     #[test]
     fn test_scalar_type_ord_transitivity() {
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
 
         // If a < b and b < c, then a < c (transitivity)
         let a = ScalarType::Int;
@@ -777,8 +777,8 @@ mod additional_scalar_tests_final {
 
     #[test]
     fn should_hash_all_scalar_types() {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use crate::collections::new_hasher;
+        use core::hash::{Hash, Hasher};
 
         let types = vec![
             ScalarType::Int,
@@ -791,7 +791,7 @@ mod additional_scalar_tests_final {
         ];
 
         for t in types {
-            let mut hasher = DefaultHasher::new();
+            let mut hasher = new_hasher();
             t.hash(&mut hasher);
             let _ = hasher.finish();
         }

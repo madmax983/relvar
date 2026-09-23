@@ -9,7 +9,7 @@ use super::expression::{
 };
 use crate::types::OperatorRegistry;
 use crate::values::{ScalarValue, Tuple};
-use std::collections::HashSet;
+use crate::collections::HashSet;
 
 /// A prepared, optimized version of `ConstraintExpression`.
 ///

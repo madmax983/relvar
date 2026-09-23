@@ -36,7 +36,7 @@
 use crate::types::{RelationType, TupleType};
 use crate::values::Tuple;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use crate::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur when working with relations.
@@ -134,8 +134,8 @@ pub struct Relation {
 // Custom Hash implementation for Relation
 // Since HashSet doesn't have a deterministic iteration order, we need to
 // hash the relation in a way that's independent of the set's internal ordering
-impl std::hash::Hash for Relation {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl core::hash::Hash for Relation {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // Hash the relation type
         self.relation_type.hash(state);
 
@@ -146,9 +146,9 @@ impl std::hash::Hash for Relation {
         // This works because XOR is commutative and associative
         let mut combined_hash = 0u64;
         for tuple in &self.body {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            let mut hasher = crate::collections::new_hasher();
             tuple.hash(&mut hasher);
-            combined_hash ^= std::hash::Hasher::finish(&hasher);
+            combined_hash ^= core::hash::Hasher::finish(&hasher);
         }
         combined_hash.hash(state);
     }
@@ -156,7 +156,7 @@ impl std::hash::Hash for Relation {
 
 impl IntoIterator for Relation {
     type Item = Tuple;
-    type IntoIter = std::collections::hash_set::IntoIter<Tuple>;
+    type IntoIter = hashbrown::hash_set::IntoIter<Tuple>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.body.into_iter()

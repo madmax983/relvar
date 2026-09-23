@@ -31,8 +31,8 @@
 
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
 
 impl Relation {
     /// Renames attributes in this relation according to the provided mapping.

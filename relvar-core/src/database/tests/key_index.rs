@@ -6,7 +6,7 @@ use crate::error::DatabaseError;
 use crate::storage_engine::InMemoryEngine;
 use crate::tuple;
 use crate::values::ScalarValue;
-use std::collections::HashSet;
+use crate::collections::HashSet;
 
 fn pk_on_id() -> KeyConstraints {
     KeyConstraints::new().with_primary_key(PrimaryKey::new(vec!["id".to_string()]).unwrap())

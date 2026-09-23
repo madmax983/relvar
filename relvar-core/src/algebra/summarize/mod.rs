@@ -41,7 +41,7 @@
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use crate::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that arise when attempting to distill the truth.
@@ -525,7 +525,7 @@ impl Relation {
         self.validate_grouping_attributes(group_by)?;
         let result_heading = self.build_result_heading(group_by, aggregations)?;
         let result_rel_type = RelationType::new(result_heading.clone());
-        let result_heading_arc = std::sync::Arc::new(result_heading);
+        let result_heading_arc = alloc::sync::Arc::new(result_heading);
 
         let groups = self.group_tuples(group_by);
 
@@ -546,12 +546,12 @@ impl Relation {
         group_by: &[&str],
         aggregations: &[Aggregation],
         groups: &HashMap<Vec<&ScalarValue>, Vec<&Tuple>>,
-        result_heading_arc: &std::sync::Arc<TupleType>,
-    ) -> Result<std::collections::HashSet<Tuple>, SummarizeError> {
-        let mut result_tuples = std::collections::HashSet::with_capacity(groups.len());
+        result_heading_arc: &alloc::sync::Arc<TupleType>,
+    ) -> Result<crate::collections::HashSet<Tuple>, SummarizeError> {
+        let mut result_tuples = crate::collections::HashSet::with_capacity(groups.len());
 
         for (key, group_tuples) in groups {
-            let mut values = std::collections::BTreeMap::new();
+            let mut values = alloc::collections::BTreeMap::new();
 
             // Add grouping attribute values
             for (i, &attr_str) in group_by.iter().enumerate() {

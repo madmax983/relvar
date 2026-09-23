@@ -35,7 +35,7 @@
 
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::HashMap;
+use crate::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur during group operations.
@@ -278,9 +278,9 @@ fn group_tuples<'a>(
     relation: &'a Relation,
     grouping_attrs: &[String],
     attrs_to_group: &[&str],
-    rva_heading_arc: std::sync::Arc<TupleType>,
-) -> Result<HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>>, GroupError> {
-    let mut groups: HashMap<Vec<&'a ScalarValue>, std::collections::HashSet<Tuple>> =
+    rva_heading_arc: alloc::sync::Arc<TupleType>,
+) -> Result<HashMap<Vec<&'a ScalarValue>, crate::collections::HashSet<Tuple>>, GroupError> {
+    let mut groups: HashMap<Vec<&'a ScalarValue>, crate::collections::HashSet<Tuple>> =
         HashMap::new();
 
     // Pre-allocate attribute name strings
@@ -298,7 +298,7 @@ fn group_tuples<'a>(
         }
 
         // Extract grouped attributes for RVA
-        let mut rva_values = std::collections::BTreeMap::new();
+        let mut rva_values = alloc::collections::BTreeMap::new();
         for (i, &attr) in attrs_to_group.iter().enumerate() {
             rva_values.insert(attr_names[i].clone(), tuple.get(attr).unwrap().clone());
         }
@@ -309,7 +309,7 @@ fn group_tuples<'a>(
             group.insert(rva_tuple);
         } else {
             groups.insert(key_buffer.clone(), {
-                let mut s = std::collections::HashSet::new();
+                let mut s = crate::collections::HashSet::new();
                 s.insert(rva_tuple);
                 s
             });
@@ -326,17 +326,17 @@ fn compute_grouped_tuples(
     result_heading: &TupleType,
     rva_heading: &TupleType,
     rva_name: &str,
-) -> Result<std::collections::HashSet<Tuple>, GroupError> {
-    let rva_heading_arc = std::sync::Arc::new(rva_heading.clone());
-    let result_heading_arc = std::sync::Arc::new(result_heading.clone());
+) -> Result<crate::collections::HashSet<Tuple>, GroupError> {
+    let rva_heading_arc = alloc::sync::Arc::new(rva_heading.clone());
+    let result_heading_arc = alloc::sync::Arc::new(result_heading.clone());
 
     let groups = group_tuples(relation, grouping_attrs, attrs_to_group, rva_heading_arc)?;
 
     // Build result tuples
-    let mut result_tuples = std::collections::HashSet::with_capacity(groups.len());
+    let mut result_tuples = crate::collections::HashSet::with_capacity(groups.len());
     let rva_relation_type = RelationType::new(rva_heading.clone());
     for (key, rva_tuples) in groups {
-        let mut values = std::collections::BTreeMap::new();
+        let mut values = alloc::collections::BTreeMap::new();
 
         // Add grouping attribute values
         for (i, attr) in grouping_attrs.iter().enumerate() {
@@ -434,9 +434,9 @@ fn generate_ungrouped_tuples(
     rva_name: &str,
     result_heading: &TupleType,
     total_capacity: usize,
-) -> Result<std::collections::HashSet<Tuple>, UngroupError> {
-    let mut result_tuples = std::collections::HashSet::with_capacity(total_capacity);
-    let result_heading_arc = std::sync::Arc::new(result_heading.clone());
+) -> Result<crate::collections::HashSet<Tuple>, UngroupError> {
+    let mut result_tuples = crate::collections::HashSet::with_capacity(total_capacity);
+    let result_heading_arc = alloc::sync::Arc::new(result_heading.clone());
 
     for tuple in relation.tuples() {
         let val = tuple
@@ -447,7 +447,7 @@ fn generate_ungrouped_tuples(
             _ => return Err(UngroupError::NotRelationValued(rva_name.to_string())),
         };
 
-        let mut base_values = std::collections::BTreeMap::new();
+        let mut base_values = alloc::collections::BTreeMap::new();
         for (attr_name, val) in tuple.values().iter() {
             if attr_name != rva_name {
                 base_values.insert(attr_name.clone(), val.clone());
@@ -473,7 +473,7 @@ fn compute_ungrouped_tuples(
     rva_name: &str,
     result_heading: &TupleType,
     _rva_relation_type: &RelationType,
-) -> Result<std::collections::HashSet<Tuple>, UngroupError> {
+) -> Result<crate::collections::HashSet<Tuple>, UngroupError> {
     // Perform an initial pass to sum the cardinality of the target RVAs
     // to pre-allocate the exact needed capacity, avoiding dynamic heap reallocations.
     let total_capacity = calculate_ungrouped_capacity(relation, rva_name)?;

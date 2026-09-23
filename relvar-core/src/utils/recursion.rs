@@ -4,7 +4,7 @@
 //! limits (`MAX_TYPE_DEPTH`) on nested tree structures (like ASTs or nested Types).
 //! This prevents stack overflows, particularly against deeply nested payload attacks.
 use serde::Deserialize;
-use std::cell::Cell;
+use core::cell::Cell;
 
 thread_local! {
     static RECURSION_DEPTH: Cell<usize> = const { Cell::new(0) };

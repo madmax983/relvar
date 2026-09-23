@@ -27,7 +27,7 @@ use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::{HashMap, HashSet};
+use crate::collections::{HashMap, HashSet};
 
 /// In-memory index of key values per relation.
 ///

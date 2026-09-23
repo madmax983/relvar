@@ -39,7 +39,7 @@
 use crate::constraints::expression::ConstraintExpression;
 use crate::values::Tuple;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use crate::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur during CHECK constraint evaluation.

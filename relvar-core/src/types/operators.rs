@@ -56,9 +56,9 @@
 use super::ScalarType;
 use crate::values::ScalarValue;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt;
-use std::sync::Arc;
+use crate::collections::HashMap;
+use core::fmt;
+use alloc::sync::Arc;
 use thiserror::Error;
 
 /// Errors from operator registration, resolution, and invocation.

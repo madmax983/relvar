@@ -131,7 +131,7 @@ impl Relation {
         new_heading = new_heading.with_attribute(attr_name.to_string(), attr_type.clone());
 
         let new_rel_type = crate::types::RelationType::new(new_heading.clone());
-        let new_heading_arc = std::sync::Arc::new(new_heading);
+        let new_heading_arc = alloc::sync::Arc::new(new_heading);
 
         // Create extended tuples
         //
@@ -142,7 +142,7 @@ impl Relation {
         // We iterate directly into a pre-sized HashSet and construct the relation
         // using `from_body_unchecked` to avoid any redundant internal reallocation or
         // O(N) validation overhead.
-        let mut extended_tuples = std::collections::HashSet::with_capacity(self.cardinality());
+        let mut extended_tuples = crate::collections::HashSet::with_capacity(self.cardinality());
         for tuple in self.tuples() {
             extended_tuples.insert(create_extended_tuple(
                 tuple,
@@ -204,9 +204,9 @@ impl Relation {
         new_heading = new_heading.with_attribute(attr_name.to_string(), attr_type.clone());
 
         let new_rel_type = crate::types::RelationType::new(new_heading.clone());
-        let new_heading_arc = std::sync::Arc::new(new_heading);
+        let new_heading_arc = alloc::sync::Arc::new(new_heading);
 
-        let mut extended_tuples = std::collections::HashSet::with_capacity(self.cardinality());
+        let mut extended_tuples = crate::collections::HashSet::with_capacity(self.cardinality());
 
         // Take ownership of the tuples from self
         for tuple in self.into_iter() {
@@ -228,7 +228,7 @@ fn create_extended_tuple<F>(
     tuple: &Tuple,
     attr_name: &str,
     attr_type: &crate::types::ScalarType,
-    new_heading: &std::sync::Arc<crate::types::TupleType>,
+    new_heading: &alloc::sync::Arc<crate::types::TupleType>,
     compute: &F,
 ) -> Result<Tuple, ExtendError>
 where
@@ -262,7 +262,7 @@ fn create_extended_tuple_owned<F>(
     tuple: Tuple,
     attr_name: &str,
     attr_type: &crate::types::ScalarType,
-    new_heading: &std::sync::Arc<crate::types::TupleType>,
+    new_heading: &alloc::sync::Arc<crate::types::TupleType>,
     compute: &F,
 ) -> Result<Tuple, ExtendError>
 where

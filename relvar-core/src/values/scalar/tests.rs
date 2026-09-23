@@ -79,7 +79,7 @@ fn test_float_equality_for_set_semantics() {
 
 #[test]
 fn test_values_can_be_hashed() {
-    use std::collections::HashSet;
+    use crate::collections::HashSet;
 
     let mut set = HashSet::new();
     set.insert(ScalarValue::Int(42));
@@ -226,7 +226,7 @@ fn test_user_defined_types_serialize() {
 
 #[test]
 fn test_user_defined_values_can_be_hashed() {
-    use std::collections::HashSet;
+    use crate::collections::HashSet;
 
     let widget_id_type = ScalarType::user_defined("WidgetId", ScalarType::Int);
     let supplier_id_type = ScalarType::user_defined("SupplierId", ScalarType::Int);
@@ -270,7 +270,7 @@ fn test_bytes_equality() {
 
 #[test]
 fn test_bytes_hashing() {
-    use std::collections::HashSet;
+    use crate::collections::HashSet;
     let mut set = HashSet::new();
     set.insert(ScalarValue::Bytes(vec![1, 2, 3]));
     set.insert(ScalarValue::Bytes(vec![1, 2, 3]));
@@ -314,7 +314,7 @@ fn test_relation_value_hashing() {
     use crate::tuple;
     use crate::types::{RelationType, TupleType};
     use crate::values::Relation;
-    use std::collections::HashSet;
+    use crate::collections::HashSet;
 
     let heading = TupleType::new().with_attribute("a", ScalarType::Int);
     let rel_type = RelationType::new(heading);

@@ -5,7 +5,7 @@
 use crate::algebra::{Aggregation, AggregationFn};
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 /// Evaluates one generation of Conway's Game of Life purely using relational algebra.
 ///
