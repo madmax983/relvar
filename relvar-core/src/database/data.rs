@@ -44,6 +44,107 @@ impl<E: StorageEngine> Database<E> {
         self.check_assertions()
     }
 
+    /// Insert many tuples into a base relvar in a single operation.
+    ///
+    /// The batch is atomic: every tuple is validated (heading conformance,
+    /// type/CHECK/foreign-key constraints, and key uniqueness) before anything
+    /// is written. If any tuple fails validation, the whole batch is rejected
+    /// and the relation is left unchanged.
+    ///
+    /// TTM Proscription 2 (no duplicate tuples) holds: duplicate key values
+    /// are rejected when key constraints exist, and fully duplicate tuples
+    /// collapse to one via set semantics otherwise.
+    ///
+    /// # Performance
+    ///
+    /// Unlike calling [`insert`](Self::insert) in a loop, this loads the
+    /// relation at most once for key validation, so total cost is O(N) in the
+    /// batch size rather than O(N^2).
+    ///
+    /// # Errors
+    ///
+    /// Yields an error if:
+    /// - The relation doesn't exist ([`DatabaseError::RelationNotFound`])
+    /// - The relation is virtual ([`DatabaseError::CannotModifyVirtualRelvar`])
+    /// - Any tuple doesn't match the relation type ([`DatabaseError::TupleMismatch`])
+    /// - A key constraint is violated ([`crate::constraints::ConstraintManagerError::PrimaryKeyViolation`], [`crate::constraints::ConstraintManagerError::CandidateKeyViolation`])
+    /// - A foreign key constraint is violated ([`crate::constraints::ConstraintManagerError::ForeignKeyViolation`])
+    /// - A type constraint is violated ([`crate::constraints::ConstraintManagerError::TypeConstraintViolation`])
+    /// - A CHECK constraint is violated ([`crate::constraints::ConstraintManagerError::CheckConstraintViolation`])
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::tuple;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    ///
+    /// db.bulk_insert("USERS", vec![
+    ///     tuple!{ id: 1i64 },
+    ///     tuple!{ id: 2i64 },
+    ///     tuple!{ id: 3i64 },
+    /// ]).unwrap();
+    /// assert_eq!(db.query("USERS").unwrap().cardinality(), 3);
+    /// ```
+    pub fn bulk_insert(
+        &mut self,
+        relation_name: &str,
+        tuples: Vec<Tuple>,
+    ) -> Result<(), DatabaseError> {
+        self.ensure_not_virtual(relation_name)?;
+        if !self.engine.relation_exists(relation_name) {
+            return Err(DatabaseError::RelationNotFound(relation_name.to_string()));
+        }
+        if tuples.is_empty() {
+            return Ok(());
+        }
+
+        // Validate every tuple up front so a failure leaves the relation
+        // unchanged (atomic batch).
+        for tuple in &tuples {
+            self.constraints
+                .validate_tuple_type(&self.engine, relation_name, tuple)?;
+            self.constraints.validate_tuple_content_constraints(
+                &mut self.engine,
+                relation_name,
+                tuple,
+            )?;
+        }
+
+        // Check key constraints once against a scratch copy of the relation.
+        // Tuples validated so far are added to the scratch copy, which catches
+        // duplicate key values both against existing data and within the batch.
+        if self
+            .constraints
+            .get_key_constraints(relation_name)
+            .is_some()
+        {
+            let mut scratch = self.query(relation_name)?;
+            for tuple in &tuples {
+                self.constraints.validate_key_constraints_single_tuple(
+                    relation_name,
+                    tuple,
+                    &scratch,
+                )?;
+                // Cannot fail: the tuple's type was validated above, and key
+                // duplicates were just rejected, so only set-semantics
+                // collapse (Ok(false)) remains possible.
+                scratch.insert(tuple.clone())?;
+            }
+        }
+
+        // All validation passed: write the batch.
+        for tuple in tuples {
+            self.engine.insert_tuple(relation_name, tuple)?;
+        }
+        Ok(())
+    }
+
     /// Query a relation (base or virtual).
     ///
     /// # Examples
@@ -431,13 +532,21 @@ impl<E: StorageEngine> Database<E> {
             tuple,
         )?;
 
-        // Load current relation to check key constraints
-        let current_relation = self.query(relation_name)?;
-        self.constraints.validate_key_constraints_single_tuple(
-            relation_name,
-            tuple,
-            &current_relation,
-        )?;
+        // Only load the relation when key constraints actually exist: without
+        // keys there is nothing to check the tuple against, and the load is
+        // what made repeated inserts O(n^2) (#40).
+        if self
+            .constraints
+            .get_key_constraints(relation_name)
+            .is_some()
+        {
+            let current_relation = self.query(relation_name)?;
+            self.constraints.validate_key_constraints_single_tuple(
+                relation_name,
+                tuple,
+                &current_relation,
+            )?;
+        }
 
         Ok(())
     }
