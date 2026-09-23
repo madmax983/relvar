@@ -3,6 +3,7 @@
 //! This module provides the [`ConstraintManager`], which is responsible for
 //! storing and validating all database constraints (keys, foreign keys, types, CHECKs).
 
+use crate::collections::HashMap;
 use crate::constraints::{
     AttributeConstraints, CheckConstraintError, CheckConstraints, ForeignKey,
     ForeignKeyConstraints, KeyConstraints,
@@ -10,11 +11,10 @@ use crate::constraints::{
 use crate::storage_engine::{StorageEngine, StorageError};
 use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
-use crate::collections::HashMap;
-use thiserror::Error;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
+use thiserror::Error;
 
 /// Errors that can occur during constraint management operations.
 #[derive(Debug, Error)]

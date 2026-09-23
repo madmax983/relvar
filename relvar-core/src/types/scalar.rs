@@ -28,11 +28,11 @@
 //! assert_ne!(widget_id, supplier_id);
 //! ```
 
-use serde::{Deserialize, Serialize};
-use core::convert::TryFrom;
-use thiserror::Error;
 use alloc::boxed::Box;
 use alloc::string::String;
+use core::convert::TryFrom;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Errors that can occur during scalar type operations.
 ///

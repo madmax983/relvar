@@ -66,12 +66,12 @@
 //! assert_eq!(violation.unwrap(), vec!["emp_id"]);
 //! ```
 
-use crate::values::{Relation, Tuple};
-use serde::{Deserialize, Serialize};
 use crate::collections::HashSet;
-use thiserror::Error;
+use crate::values::{Relation, Tuple};
 use alloc::string::String;
 use alloc::vec::Vec;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Errors that can occur with key constraints.
 #[derive(Debug, Error)]

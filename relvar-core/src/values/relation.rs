@@ -33,10 +33,10 @@
 //! assert_eq!(employees.cardinality(), 2);  // Still 2, not 3
 //! ```
 
+use crate::collections::HashSet;
 use crate::types::{RelationType, TupleType};
 use crate::values::Tuple;
 use serde::{Deserialize, Serialize};
-use crate::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur when working with relations.

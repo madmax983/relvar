@@ -11,9 +11,9 @@
 
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
-use thiserror::Error;
 use alloc::string::String;
 use alloc::vec::Vec;
+use thiserror::Error;
 
 pub(crate) mod in_memory;
 

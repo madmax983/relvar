@@ -60,12 +60,12 @@
 //! assert!(fk.would_violate_on_insert(&invalid_employee, &departments).unwrap());
 //! ```
 
-use crate::values::{Relation, ScalarValue, Tuple};
-use serde::{Deserialize, Serialize};
 use crate::collections::HashSet;
-use thiserror::Error;
+use crate::values::{Relation, ScalarValue, Tuple};
 use alloc::string::String;
 use alloc::vec::Vec;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Errors that can occur with foreign key constraints.
 #[derive(Debug, Error)]

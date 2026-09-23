@@ -29,11 +29,11 @@
 
 use crate::types::ScalarType;
 use crate::values::ScalarValue;
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Errors that can occur with type constraints.
 #[derive(Debug, Error)]

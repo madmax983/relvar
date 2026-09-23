@@ -7,9 +7,9 @@
 //! - Temporary databases that don't need persistence
 
 use super::{RelationMetadata, StorageEngine, StorageError};
+use crate::collections::HashMap;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
-use crate::collections::HashMap;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;

@@ -40,16 +40,16 @@
 //! assert_eq!(result.degree(), 4);  // emp_id, name, dept_id, dept_name
 //! ```
 
+use crate::collections::{HashMap, HashSet};
 use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use crate::collections::{HashMap, HashSet};
 use alloc::collections::BTreeMap;
-use core::hash::{Hash, Hasher};
-use alloc::sync::Arc;
 use alloc::string::String;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::hash::{Hash, Hasher};
 
 impl Relation {
     /// Performs a natural join with another relation.

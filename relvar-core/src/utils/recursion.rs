@@ -3,9 +3,9 @@
 //! This module provides a simple `DepthGuarded` wrapper to enforce maximum recursion
 //! limits (`MAX_TYPE_DEPTH`) on nested tree structures (like ASTs or nested Types).
 //! This prevents stack overflows, particularly against deeply nested payload attacks.
-use serde::Deserialize;
 #[cfg(feature = "std")]
 use core::cell::Cell;
+use serde::Deserialize;
 
 #[cfg(feature = "std")]
 thread_local! {

@@ -3,8 +3,8 @@
 use crate::constraints::ConstraintManagerError;
 use crate::storage_engine::StorageError;
 use crate::values::relation::RelationError;
-use thiserror::Error;
 use alloc::string::String;
+use thiserror::Error;
 
 /// Errors that can occur during database operations.
 ///

@@ -311,10 +311,10 @@ fn test_relation_value_equality() {
 
 #[test]
 fn test_relation_value_hashing() {
+    use crate::collections::HashSet;
     use crate::tuple;
     use crate::types::{RelationType, TupleType};
     use crate::values::Relation;
-    use crate::collections::HashSet;
 
     let heading = TupleType::new().with_attribute("a", ScalarType::Int);
     let rel_type = RelationType::new(heading);

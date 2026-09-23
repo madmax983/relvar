@@ -30,15 +30,15 @@
 //! ```
 
 use super::prepared::PreparedConstraintExpression;
+use crate::collections::HashSet;
 use crate::types::{OperatorError, OperatorRegistry};
 use crate::values::{ScalarValue, Tuple};
-use serde::{Deserialize, Serialize};
-use crate::collections::HashSet;
-use thiserror::Error;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Errors that can occur during constraint expression evaluation.
 #[derive(Debug, Error)]

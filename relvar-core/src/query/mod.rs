@@ -45,12 +45,12 @@ use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::values::Relation;
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use alloc::boxed::Box;
 use alloc::string::String;
-use alloc::vec::Vec;
 use alloc::string::ToString;
+use alloc::vec::Vec;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// AST for a relational query.
 ///

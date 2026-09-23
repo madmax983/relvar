@@ -37,9 +37,9 @@
 //! assert!(result.contains(&Tuple::new(result.relation_type().tuple_type().clone(), vec![("employee_id".to_string(), relvar_core::values::ScalarValue::Int(1))]).unwrap()));
 //! ```
 use crate::values::Relation;
-use thiserror::Error;
 use alloc::string::String;
 use alloc::vec::Vec;
+use thiserror::Error;
 
 /// Errors that can occur during relational division.
 #[derive(Debug, Error)]

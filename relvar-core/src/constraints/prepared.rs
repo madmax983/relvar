@@ -7,9 +7,9 @@
 use super::expression::{
     CmpOp, ConstraintExpression, ExpressionError, ScalarExpression, ValueOrRef,
 };
+use crate::collections::HashSet;
 use crate::types::OperatorRegistry;
 use crate::values::{ScalarValue, Tuple};
-use crate::collections::HashSet;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::string::ToString;

@@ -14,11 +14,11 @@
 //! - Result heading always equals self's heading
 //! - Set semantics maintained (no duplicates, no ordering)
 
-use crate::values::{Relation, Tuple};
 use crate::collections::HashSet;
-use core::hash::{Hash, Hasher};
+use crate::values::{Relation, Tuple};
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::hash::{Hash, Hasher};
 
 /// A key for hash join that avoids allocating a Vec for the key.
 /// It holds references to the tuple and the attributes to key on.

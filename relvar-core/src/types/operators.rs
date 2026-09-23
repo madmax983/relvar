@@ -54,15 +54,15 @@
 //! ```
 
 use super::ScalarType;
-use crate::values::ScalarValue;
-use serde::{Deserialize, Serialize};
 use crate::collections::HashMap;
-use core::fmt;
-use alloc::sync::Arc;
-use thiserror::Error;
+use crate::values::ScalarValue;
 use alloc::string::String;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::fmt;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Errors from operator registration, resolution, and invocation.
 #[derive(Debug, Error)]

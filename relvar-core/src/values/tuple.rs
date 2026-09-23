@@ -29,17 +29,17 @@
 
 use crate::types::TupleType;
 use crate::values::ScalarValue;
-use serde::{Deserialize, Serialize};
 use alloc::collections::BTreeMap;
-use alloc::sync::Arc;
-use thiserror::Error;
 use alloc::string::String;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 mod arc_serde {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use alloc::sync::Arc;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     /// Helper for Serde to serialize an `Arc<T>` transparently.
     ///
@@ -629,8 +629,8 @@ impl<'a> TryFrom<&'a ScalarValue> for Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ScalarType;
     use crate::collections::HashMap;
+    use crate::types::ScalarType;
 
     #[test]
     fn test_tuple_conforms_to_type() {

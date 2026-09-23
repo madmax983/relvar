@@ -38,14 +38,14 @@
 //! assert_eq!(result.cardinality(), 2);  // Two departments
 //! ```
 
+use crate::collections::HashMap;
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use serde::{Deserialize, Serialize};
-use crate::collections::HashMap;
-use thiserror::Error;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Errors that arise when attempting to distill the truth.
 ///

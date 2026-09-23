@@ -32,9 +32,9 @@
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
 use alloc::collections::BTreeMap;
-use alloc::sync::Arc;
 use alloc::string::String;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 impl Relation {
