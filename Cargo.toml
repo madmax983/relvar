@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "relvar-core",
     "relvar-storage",
+    "relvar-storage-core",
     "relvar",
 ]
 
@@ -33,3 +34,4 @@ criterion = { version = "0.5", features = ["html_reports"] }
 # Internal crates
 relvar-core = { path = "relvar-core" }
 relvar-storage = { path = "relvar-storage" }
+relvar-storage-core = { path = "relvar-storage-core" }
