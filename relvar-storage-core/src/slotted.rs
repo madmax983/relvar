@@ -31,7 +31,7 @@
 use crate::page::PAGE_SIZE;
 use crate::wal::TransactionId;
 use alloc::format;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

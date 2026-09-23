@@ -47,6 +47,7 @@ use crate::crc::crc32;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
+#[cfg(target_has_atomic = "64")]
 use core::sync::atomic::{AtomicU64, Ordering};
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
@@ -99,8 +100,17 @@ pub struct TransactionId(u64);
 ///
 /// This generator is thread-safe and guarantees that each transaction
 /// receives a unique identifier.
+///
+/// On targets without 64-bit atomics (e.g. `thumbv8m`) the counter is a
+/// plain [`Cell`](core::cell::Cell) instead: the generator is `!Sync` there,
+/// so sharing it across execution contexts is a compile error. Those
+/// targets are single-core; callers that need the counter from both thread
+/// and interrupt context must serialize access externally.
 pub struct TransactionIdGenerator {
+    #[cfg(target_has_atomic = "64")]
     next_id: AtomicU64,
+    #[cfg(not(target_has_atomic = "64"))]
+    next_id: core::cell::Cell<u64>,
 }
 
 impl Lsn {
@@ -198,7 +208,10 @@ impl TransactionIdGenerator {
     /// ```ignore
     pub fn new() -> Self {
         Self {
+            #[cfg(target_has_atomic = "64")]
             next_id: AtomicU64::new(1),
+            #[cfg(not(target_has_atomic = "64"))]
+            next_id: core::cell::Cell::new(1),
         }
     }
 
@@ -215,13 +228,17 @@ impl TransactionIdGenerator {
     /// ```ignore
     pub fn from_start(start_id: TransactionId) -> Self {
         Self {
+            #[cfg(target_has_atomic = "64")]
             next_id: AtomicU64::new(start_id.value()),
+            #[cfg(not(target_has_atomic = "64"))]
+            next_id: core::cell::Cell::new(start_id.value()),
         }
     }
 
     /// Generates the next unique transaction ID.
     ///
-    /// This method is thread-safe and guarantees uniqueness.
+    /// This method is thread-safe and guarantees uniqueness on targets
+    /// with 64-bit atomics; elsewhere see the struct-level caveat.
     ///
     /// # Panics
     ///
@@ -235,10 +252,23 @@ impl TransactionIdGenerator {
     /// assert_eq!(txn_id.value(), 1);
     /// ```ignore
     pub fn generate(&self) -> TransactionId {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
-        if id == u64::MAX {
-            panic!("TransactionId overflow");
-        }
+        #[cfg(target_has_atomic = "64")]
+        let id = {
+            let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+            if id == u64::MAX {
+                panic!("TransactionId overflow");
+            }
+            id
+        };
+        #[cfg(not(target_has_atomic = "64"))]
+        let id = {
+            let id = self.next_id.get();
+            if id == u64::MAX {
+                panic!("TransactionId overflow");
+            }
+            self.next_id.set(id + 1);
+            id
+        };
         TransactionId(id)
     }
 
@@ -250,7 +280,14 @@ impl TransactionIdGenerator {
     /// begin afterwards — even if those transactions commit before the
     /// snapshot is read. This is what makes Repeatable Read actually repeat.
     pub fn peek_next(&self) -> TransactionId {
-        TransactionId(self.next_id.load(Ordering::SeqCst))
+        #[cfg(target_has_atomic = "64")]
+        {
+            TransactionId(self.next_id.load(Ordering::SeqCst))
+        }
+        #[cfg(not(target_has_atomic = "64"))]
+        {
+            TransactionId(self.next_id.get())
+        }
     }
 }
 
