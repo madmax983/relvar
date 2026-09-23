@@ -64,3 +64,7 @@ extern crate alloc;
 /// [`PAGE_SIZE`](page::PAGE_SIZE). The lowest-level framing; everything else
 /// is built on pages.
 pub mod page;
+
+/// IEEE CRC-32 (pure `core`, `const`-computed table). Integrity primitive
+/// for the WAL v2 frame format (torn-write detection).
+pub mod crc;
