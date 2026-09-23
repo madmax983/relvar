@@ -37,6 +37,8 @@
 //! assert!(result.contains(&Tuple::new(result.relation_type().tuple_type().clone(), vec![("employee_id".to_string(), relvar_core::values::ScalarValue::Int(1))]).unwrap()));
 //! ```
 use crate::values::Relation;
+use alloc::string::String;
+use alloc::vec::Vec;
 use thiserror::Error;
 
 /// Errors that can occur during relational division.
@@ -215,8 +217,8 @@ fn filter_matching_candidates(
     dividend: &Relation,
     dividend_heading: &crate::types::TupleType,
 ) -> Relation {
-    use std::collections::BTreeMap;
-    use std::sync::Arc;
+    use alloc::collections::BTreeMap;
+    use alloc::sync::Arc;
 
     // Clone dividend_heading once outside the loop to avoid repeated clones
     let dividend_heading_arc = Arc::new(dividend_heading.clone());

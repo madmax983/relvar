@@ -36,10 +36,13 @@
 //! assert!(!constraint.is_satisfied_by(&invalid_tuple).unwrap());
 //! ```
 
+use crate::collections::HashSet;
 use crate::constraints::expression::ConstraintExpression;
 use crate::values::Tuple;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur during CHECK constraint evaluation.

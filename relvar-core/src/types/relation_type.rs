@@ -248,8 +248,8 @@ impl RelationType {
     }
 }
 
-impl std::hash::Hash for RelationType {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl core::hash::Hash for RelationType {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // Just hash the heading
         self.heading.hash(state);
     }

@@ -3,21 +3,60 @@
 //! This module provides a simple `DepthGuarded` wrapper to enforce maximum recursion
 //! limits (`MAX_TYPE_DEPTH`) on nested tree structures (like ASTs or nested Types).
 //! This prevents stack overflows, particularly against deeply nested payload attacks.
+#[cfg(feature = "std")]
+use core::cell::Cell;
 use serde::Deserialize;
-use std::cell::Cell;
 
+#[cfg(feature = "std")]
 thread_local! {
     static RECURSION_DEPTH: Cell<usize> = const { Cell::new(0) };
 }
 
+#[cfg(not(feature = "std"))]
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+/// Process-wide recursion depth counter for `no_std` builds.
+///
+/// Without thread-local storage the counter is shared across threads. This is
+/// conservative: concurrent use can only over-count, so the depth bound (and
+/// its stack-overflow protection) always holds.
+#[cfg(not(feature = "std"))]
+static RECURSION_DEPTH: AtomicUsize = AtomicUsize::new(0);
+
 /// The maximum allowed recursion depth for nested structures.
 pub const MAX_RECURSION_DEPTH: usize = 64;
 
+/// Reads the current recursion depth.
+#[cfg(feature = "std")]
+fn current_depth() -> usize {
+    RECURSION_DEPTH.with(|cell| cell.get())
+}
+
+/// Reads the current recursion depth.
+#[cfg(not(feature = "std"))]
+fn current_depth() -> usize {
+    RECURSION_DEPTH.load(Ordering::Relaxed)
+}
+
+/// Writes the current recursion depth.
+#[cfg(feature = "std")]
+fn set_depth(depth: usize) {
+    RECURSION_DEPTH.with(|cell| cell.set(depth));
+}
+
+/// Writes the current recursion depth.
+#[cfg(not(feature = "std"))]
+fn set_depth(depth: usize) {
+    RECURSION_DEPTH.store(depth, Ordering::Relaxed);
+}
+
 /// A guard that automatically tracks and limits call depth to prevent stack overflows.
 ///
-/// This struct uses a thread-local counter to track recursion depth. When created via [`RecursionGuard::new`],
-/// it increments the counter. When dropped, it decrements the counter. If the depth exceeds
-/// `MAX_RECURSION_DEPTH`, creation fails.
+/// This struct uses a thread-local counter on `std` builds (a shared atomic
+/// counter on `no_std` builds) to track recursion depth. When created via
+/// [`RecursionGuard::new`], it increments the counter. When dropped, it
+/// decrements the counter. If the depth exceeds `MAX_RECURSION_DEPTH`,
+/// creation fails.
 ///
 /// This is particularly useful for protecting the database engine against deeply nested or recursive
 /// inputs (e.g. self-referencing expressions, deeply nested constraint types, or malicious payloads).
@@ -50,26 +89,22 @@ impl RecursionGuard {
     /// // The guard automatically decrements the depth when it is dropped.
     /// ```
     pub fn new() -> Result<Self, &'static str> {
-        RECURSION_DEPTH.with(|cell| {
-            let depth = cell.get();
-            if depth >= MAX_RECURSION_DEPTH {
-                Err("Recursion limit exceeded")
-            } else {
-                cell.set(depth + 1);
-                Ok(RecursionGuard)
-            }
-        })
+        let depth = current_depth();
+        if depth >= MAX_RECURSION_DEPTH {
+            Err("Recursion limit exceeded")
+        } else {
+            set_depth(depth + 1);
+            Ok(RecursionGuard)
+        }
     }
 }
 
 impl Drop for RecursionGuard {
     fn drop(&mut self) {
-        RECURSION_DEPTH.with(|cell| {
-            let depth = cell.get();
-            if depth > 0 {
-                cell.set(depth - 1);
-            }
-        });
+        let depth = current_depth();
+        if depth > 0 {
+            set_depth(depth - 1);
+        }
     }
 }
 

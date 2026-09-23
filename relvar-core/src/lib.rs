@@ -52,7 +52,7 @@
 //! use relvar_core::types::{TupleType, RelationType, ScalarType};
 //! use relvar_core::tuple;
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! fn main() -> Result<(), Box<dyn core::error::Error>> {
 //!     // 1. Initialize an in-memory database
 //!     let mut db = Database::new(InMemoryEngine::new());
 //!
@@ -96,8 +96,16 @@
 //! ```
 
 #![warn(missing_docs)]
+// `#![no_std]` + `alloc` when the `std` feature is off (see the `no_std` CI job).
+#![cfg_attr(not(feature = "std"), no_std)]
+
+// `#[macro_use]` brings alloc's `vec!`/`format!` into textual scope crate-wide,
+// so only types and traits need per-file imports in `no_std` builds.
+#[cfg_attr(not(feature = "std"), macro_use)]
+extern crate alloc;
 
 pub mod algebra;
+pub mod collections;
 pub mod constraints;
 pub mod database;
 pub mod error;

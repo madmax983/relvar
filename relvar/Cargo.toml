@@ -10,8 +10,9 @@ keywords = ["database", "relational", "dbms", "date", "relational-algebra"]
 categories = ["database-implementations"]
 
 [features]
-default = ["storage"]
+default = ["storage", "std"]
 storage = ["dep:relvar-storage"]
+std = ["serde/std", "thiserror/std"]
 
 [dependencies]
 relvar-core.workspace = true

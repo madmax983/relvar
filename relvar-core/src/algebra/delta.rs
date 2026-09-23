@@ -35,6 +35,7 @@
 
 use crate::error::DatabaseError;
 use crate::values::Relation;
+use alloc::string::ToString;
 
 /// Represents the difference between two relations.
 ///

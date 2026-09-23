@@ -3,9 +3,9 @@
 //! This module implements Conway's Game of Life purely using relational algebra primitives.
 
 use crate::algebra::{Aggregation, AggregationFn};
+use crate::collections::HashMap;
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
-use std::collections::HashMap;
 
 /// Evaluates one generation of Conway's Game of Life purely using relational algebra.
 ///

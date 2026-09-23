@@ -54,11 +54,14 @@
 //! ```
 
 use super::ScalarType;
+use crate::collections::HashMap;
 use crate::values::ScalarValue;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::fmt;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 
 /// Errors from operator registration, resolution, and invocation.

@@ -29,6 +29,9 @@
 
 use crate::types::ScalarType;
 use crate::values::ScalarValue;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

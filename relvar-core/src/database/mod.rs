@@ -68,13 +68,16 @@
 //! assert_eq!(db.query("TEST").unwrap().cardinality(), 0);
 //! ```
 
+use crate::collections::HashMap;
 use crate::constraints::ConstraintManager;
 use crate::constraints::assertion::{AssertionError, DatabaseAssertion};
 use crate::error::DatabaseError;
 use crate::storage_engine::{IsolationLevel, StorageEngine};
 use crate::types::{OperatorError, OperatorRegistry, OperatorSignature};
 use crate::values::ScalarValue;
-use std::collections::HashMap;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 mod dml;
 pub(crate) mod virtual_relvar;

@@ -67,6 +67,19 @@ jobs:
       - name: Build
         run: cargo build --release --all-features
 
+  no_std:
+    name: no_std (thumbv8m)
+    needs: [fmt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv8m.main-none-eabihf
+      - uses: Swatinem/rust-cache@v2
+      - name: Build relvar-core for Cortex-M without std
+        run: cargo build -p relvar-core --no-default-features --target thumbv8m.main-none-eabihf
+
   coverage:
     name: Code Coverage
     needs: [fmt]

@@ -12,7 +12,8 @@ categories = ["database-implementations"]
 [dependencies]
 thiserror.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+hashbrown.workspace = true
+foldhash.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
@@ -37,4 +38,8 @@ name = "expression_in"
 harness = false
 
 [features]
+default = ["std"]
+# `std` enables standard-library conveniences. Disable default features for a
+# `#![no_std]` + `alloc` build (see the `no_std` CI job).
+std = ["serde/std", "thiserror/std"]
 nova = []

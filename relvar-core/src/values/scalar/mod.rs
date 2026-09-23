@@ -27,8 +27,12 @@
 //! ```
 
 use crate::types::ScalarType;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::convert::TryFrom;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 use thiserror::Error;
 
 /// Errors that can occur during scalar value operations.
@@ -262,13 +266,13 @@ impl Drop for ScalarValue {
     fn drop(&mut self) {
         if let ScalarValue::UserDefined { value, .. } = self {
             // Iteratively drop nested UserDefined values to prevent stack overflow
-            let mut current = std::mem::replace(value, Box::new(ScalarValue::Int(0)));
+            let mut current = core::mem::replace(value, Box::new(ScalarValue::Int(0)));
             while let ScalarValue::UserDefined {
                 value: ref mut next,
                 ..
             } = *current
             {
-                current = std::mem::replace(next, Box::new(ScalarValue::Int(0)));
+                current = core::mem::replace(next, Box::new(ScalarValue::Int(0)));
             }
         }
     }
@@ -282,7 +286,7 @@ impl Drop for ScalarValue {
 // the same representation value. This ensures type safety.
 impl PartialEq for ScalarValue {
     fn eq(&self, other: &Self) -> bool {
-        if std::mem::discriminant(self) != std::mem::discriminant(other) {
+        if core::mem::discriminant(self) != core::mem::discriminant(other) {
             return false;
         }
 
@@ -319,8 +323,8 @@ impl Eq for ScalarValue {}
 
 // Custom Hash implementation
 // TTM: User-defined values hash based on both type and value
-impl std::hash::Hash for ScalarValue {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl core::hash::Hash for ScalarValue {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         match self {
             ScalarValue::Int(v) => {
                 0u8.hash(state);
@@ -359,7 +363,7 @@ impl std::hash::Hash for ScalarValue {
 
 // Custom PartialOrd implementation for MIN/MAX operations
 impl PartialOrd for ScalarValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -368,8 +372,8 @@ impl PartialOrd for ScalarValue {
 // We order by type first, then by value within type
 // TTM: User-defined values are ordered by type identity first, then by representation value
 impl Ord for ScalarValue {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
 
         // Helper to get type ordering
         fn type_order(val: &ScalarValue) -> u8 {
@@ -413,8 +417,8 @@ impl Ord for ScalarValue {
 }
 
 impl ScalarValue {
-    fn cmp_floats(a: f64, b: f64) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
+    fn cmp_floats(a: f64, b: f64) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
         // For floats, treat all NaNs as equal and greater than any other float
         match (a.is_nan(), b.is_nan()) {
             (true, true) => Ordering::Equal,
@@ -453,8 +457,8 @@ impl ScalarValue {
     fn cmp_relations(
         a: &crate::values::Relation,
         b: &crate::values::Relation,
-    ) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
+    ) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
         // For relations, order by cardinality first, then degree
         match a.cardinality().cmp(&b.cardinality()) {
             Ordering::Equal => a.degree().cmp(&b.degree()),
@@ -497,12 +501,12 @@ impl ScalarValue {
         }
     }
 
-    fn hash_user_defined_value<H: std::hash::Hasher>(
+    fn hash_user_defined_value<H: core::hash::Hasher>(
         type_def: &ScalarType,
         value: &ScalarValue,
         state: &mut H,
     ) {
-        use std::hash::Hash;
+        use core::hash::Hash;
         6u8.hash(state);
         type_def.hash(state);
         // Iterative hash to prevent stack overflow
@@ -530,8 +534,8 @@ impl ScalarValue {
         val_a: &ScalarValue,
         type_b: &ScalarType,
         val_b: &ScalarValue,
-    ) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
+    ) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
         // Order by type identity first (structural comparison), then by value
         match type_a.cmp(type_b) {
             Ordering::Equal => {
@@ -637,7 +641,7 @@ mod tests;
 #[cfg(test)]
 mod nan_fix_tests {
     use super::*;
-    use std::collections::HashSet;
+    use crate::collections::HashSet;
 
     #[test]
     fn test_nan_grouping_consistent() {
@@ -661,7 +665,7 @@ mod nan_fix_tests {
 #[cfg(test)]
 mod float_ord_tests {
     use super::*;
-    use std::cmp::Ordering;
+    use core::cmp::Ordering;
 
     #[test]
     fn test_float_negative_ordering() {

@@ -15,10 +15,15 @@ repository = "https://github.com/yourusername/relvar"
 
 [workspace.dependencies]
 # Shared dependencies
-thiserror = "2"
-serde = { version = "1", features = ["derive"] }
+thiserror = { version = "2", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 postcard = { version = "1.0", default-features = false, features = ["alloc", "use-std"] }
 serde_json = "1"
+# no_std-compatible hash maps for relvar-core (foldhash-backed, no std rand needed)
+hashbrown = { version = "0.15", default-features = false, features = ["default-hasher", "serde"] }
+# Deterministic no_std-compatible hasher for ad-hoc content hashing
+# (replaces std's DefaultHasher in new_hasher(); see relvar-core/src/collections.rs)
+foldhash = { version = "0.2", default-features = false }
 
 # Dev dependencies
 proptest = "1"

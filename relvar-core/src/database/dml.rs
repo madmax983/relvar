@@ -42,7 +42,7 @@ where
 
     let (body, update_count) = current_relation.into_iter().try_fold(
         (
-            std::collections::HashSet::with_capacity(initial_cardinality),
+            crate::collections::HashSet::with_capacity(initial_cardinality),
             0,
         ),
         |(mut acc, count), tuple| {
@@ -77,7 +77,7 @@ mod tests {
     use crate::types::{RelationType, ScalarType, TupleType};
 
     #[test]
-    fn test_compute_relation_after_delete() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_compute_relation_after_delete() -> Result<(), Box<dyn core::error::Error>> {
         let heading = TupleType::new().with_attribute("id", ScalarType::Int);
         let rel_type = RelationType::new(heading);
         let mut rel = Relation::new(rel_type);
@@ -104,7 +104,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_relation_after_update() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_compute_relation_after_update() -> Result<(), Box<dyn core::error::Error>> {
         let heading = TupleType::new().with_attribute("id", ScalarType::Int);
         let rel_type = RelationType::new(heading);
         let mut rel = Relation::new(rel_type.clone());
@@ -131,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_relation_after_update_no_match() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_compute_relation_after_update_no_match() -> Result<(), Box<dyn core::error::Error>> {
         let heading = TupleType::new().with_attribute("id", ScalarType::Int);
         let rel_type = RelationType::new(heading);
         let mut rel = Relation::new(rel_type.clone());
@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_relation_after_update_tuple_mismatch() -> Result<(), Box<dyn std::error::Error>>
+    fn test_compute_relation_after_update_tuple_mismatch() -> Result<(), Box<dyn core::error::Error>>
     {
         let heading = TupleType::new().with_attribute("id", ScalarType::Int);
         let rel_type = RelationType::new(heading);

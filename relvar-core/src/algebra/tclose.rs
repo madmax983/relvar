@@ -21,6 +21,7 @@
 
 use crate::error::DatabaseError;
 use crate::values::Relation;
+use alloc::string::ToString;
 
 impl Relation {
     /// Computes the transitive closure of a binary relation.
@@ -177,7 +178,7 @@ fn perform_tclose_iteration(
 
     // 7. Update accumulators
     // r_total = r_total UNION new_unique_paths
-    let old_total = std::mem::replace(r_total, Relation::new(r_total.relation_type().clone()));
+    let old_total = core::mem::replace(r_total, Relation::new(r_total.relation_type().clone()));
     *r_total = old_total
         .union_into(&new_unique_paths)
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;

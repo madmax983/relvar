@@ -25,8 +25,9 @@
 //! ```
 
 use crate::types::ScalarType;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 /// Defines the structure (heading) of tuples.
 ///
@@ -328,8 +329,8 @@ impl Default for TupleType {
     }
 }
 
-impl std::hash::Hash for TupleType {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl core::hash::Hash for TupleType {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // Hash the count first
         self.attributes.len().hash(state);
 
@@ -472,8 +473,8 @@ mod tests {
 
     #[test]
     fn test_tuple_type_hash_consistency() {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use crate::collections::new_hasher;
+        use core::hash::{Hash, Hasher};
 
         // Order 1
         let type1 = TupleType::new()
@@ -487,11 +488,11 @@ mod tests {
             .with_attribute("b", ScalarType::Int)
             .with_attribute("a", ScalarType::Int);
 
-        let mut hasher1 = DefaultHasher::new();
+        let mut hasher1 = new_hasher();
         type1.hash(&mut hasher1);
         let hash1 = hasher1.finish();
 
-        let mut hasher2 = DefaultHasher::new();
+        let mut hasher2 = new_hasher();
         type2.hash(&mut hasher2);
         let hash2 = hasher2.finish();
 

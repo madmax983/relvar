@@ -30,10 +30,14 @@
 //! ```
 
 use super::prepared::PreparedConstraintExpression;
+use crate::collections::HashSet;
 use crate::types::{OperatorError, OperatorRegistry};
 use crate::values::{ScalarValue, Tuple};
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur during constraint expression evaluation.
@@ -282,7 +286,7 @@ pub enum ConstraintExpression {
     ),
 
     /// Set membership: attribute IN (value1, value2, ...)
-    In(String, std::collections::HashSet<ScalarValue>),
+    In(String, crate::collections::HashSet<ScalarValue>),
 
     /// Pattern matching: attribute LIKE pattern
     ///
@@ -533,7 +537,7 @@ impl ConstraintExpression {
     fn evaluate_in(
         tuple: &Tuple,
         attr: &str,
-        values: &std::collections::HashSet<ScalarValue>,
+        values: &crate::collections::HashSet<ScalarValue>,
     ) -> Result<bool, ExpressionError> {
         let tuple_value = tuple
             .get(attr)
@@ -1431,7 +1435,7 @@ mod like_tests {
 #[cfg(test)]
 mod recursion_tests {
     use super::*;
-    use std::collections::HashSet;
+    use crate::collections::HashSet;
 
     #[test]
     fn test_constraint_expression_deserialization_depth_limit() {
@@ -1447,7 +1451,7 @@ mod recursion_tests {
         let bytes = postcard::to_stdvec(&q).unwrap();
 
         // Deserialize
-        std::mem::forget(q); // Prevent Drop stack overflow
+        core::mem::forget(q); // Prevent Drop stack overflow
         let result: Result<ConstraintExpression, _> = postcard::from_bytes(&bytes);
 
         assert!(
@@ -1456,7 +1460,7 @@ mod recursion_tests {
         );
 
         if let Ok(q2) = result {
-            std::mem::forget(q2); // Should not reach here, but prevent Drop if it does
+            core::mem::forget(q2); // Should not reach here, but prevent Drop if it does
         }
     }
 }
