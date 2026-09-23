@@ -1,0 +1,39 @@
+<<<<<<< SEARCH
+/// Developer tools and utilities.
+pub(crate) mod tools;
+
+#[deprecated(note = "Use `relvar::tools::visualizer` instead")]
+pub use tools::visualizer;
+
+/// Data import and export functionality.
+#[deprecated(note = "Use `relvar::tools` instead")]
+pub mod data {
+    /// Legacy exporter module.
+    pub mod exporter {
+        pub use crate::tools::exporter::*;
+    }
+    /// Legacy importer module.
+    pub mod importer {
+        pub use crate::tools::importer::*;
+    }
+}
+=======
+/// Developer tools and utilities.
+pub mod tools;
+
+#[deprecated(note = "Use `relvar::tools::visualizer` instead")]
+pub use tools::visualizer;
+
+/// Data import and export functionality.
+#[deprecated(note = "Use `relvar::tools` instead")]
+pub mod data {
+    /// Legacy exporter module.
+    pub mod exporter {
+        pub use crate::tools::exporter::*;
+    }
+    /// Legacy importer module.
+    pub mod importer {
+        pub use crate::tools::importer::*;
+    }
+}
+>>>>>>> REPLACE
