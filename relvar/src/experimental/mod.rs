@@ -36,6 +36,7 @@
 //! - **[`decision_tree`](crate::experimental::decision_tree)**: Relational Decision Tree inference.
 //! - **[`fourier`](crate::experimental::fourier)**: Relational Discrete Fourier Transform.
 //! - **[`quantum`](crate::experimental::quantum)**: Relational Quantum Circuit Simulator.
+//! - **[`vector_search`](crate::experimental::vector_search)**: Relational Vector Database (similarity search).
 
 pub mod apriori;
 pub mod automata;
@@ -82,4 +83,5 @@ pub mod synth;
 pub mod timeseries;
 pub mod turing;
 pub mod vcs;
+pub mod vector_search;
 pub mod vm;
