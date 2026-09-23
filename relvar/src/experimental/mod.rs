@@ -35,6 +35,7 @@
 //! - **[`boids`](crate::experimental::boids)**: Relational Boids flocking simulation.
 //! - **[`decision_tree`](crate::experimental::decision_tree)**: Relational Decision Tree inference.
 //! - **[`fourier`](crate::experimental::fourier)**: Relational Discrete Fourier Transform.
+//! - **[`quantum`](crate::experimental::quantum)**: Relational Quantum Circuit Simulator.
 
 pub mod apriori;
 pub mod automata;
@@ -68,6 +69,7 @@ pub mod parser;
 pub mod petri_net;
 pub mod physics;
 pub mod pivot;
+pub mod quantum;
 pub mod raytracer;
 pub mod rbac;
 pub mod recommend;
