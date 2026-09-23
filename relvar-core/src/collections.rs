@@ -22,9 +22,16 @@ pub type HashSet<T> = hashbrown::HashSet<T>;
 /// Build a fresh hasher for ad-hoc hashing.
 ///
 /// Replaces `std::collections::hash_map::DefaultHasher` in `no_std` builds.
-/// The hasher carries a fresh random state, matching the behavior the crate
-/// previously got from the standard hasher.
+/// Deterministic across hasher instances (fixed seed), matching the behavior
+/// the crate previously got from the standard hasher: equal values hashed by
+/// different hasher instances must produce equal digests. This is relied upon
+/// by the `Hash` impls (e.g. `Relation` combines per-tuple digests) and by
+/// content-hashing tests.
+///
+/// Note this is separate from the `HashMap`/`HashSet` aliases above, which
+/// keep a randomized hasher for hash-flooding resistance, mirroring
+/// `std::collections`.
 pub fn new_hasher() -> impl core::hash::Hasher {
     use core::hash::BuildHasher;
-    hashbrown::DefaultHashBuilder::default().build_hasher()
+    foldhash::fast::FixedState::default().build_hasher()
 }

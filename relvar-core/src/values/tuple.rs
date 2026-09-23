@@ -53,7 +53,7 @@ mod arc_serde {
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
-    /// use alloc::sync::Arc;
+    /// use std::sync::Arc;
     /// // Internally used by serde
     /// ```
     pub fn serialize<S, T>(val: &Arc<T>, serializer: S) -> Result<S::Ok, S::Error>
@@ -75,7 +75,7 @@ mod arc_serde {
     ///
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
-    /// use alloc::sync::Arc;
+    /// use std::sync::Arc;
     /// // Internally used by serde
     /// ```
     pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Arc<T>, D::Error>
@@ -174,7 +174,7 @@ impl Tuple {
     /// ```
     /// use relvar_core::types::{TupleType, ScalarType};
     /// use relvar_core::values::{Tuple, ScalarValue};
-    /// use crate::collections::HashMap;
+    /// use relvar_core::collections::HashMap;
     ///
     /// let tuple_type = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int)
@@ -192,7 +192,7 @@ impl Tuple {
     /// ```
     /// use relvar_core::values::{Tuple, ScalarValue};
     /// use relvar_core::types::{TupleType, ScalarType};
-    /// use alloc::collections::BTreeMap;
+    /// use std::collections::BTreeMap;
     ///
     /// let heading = TupleType::new()
     ///     .with_attribute("id", ScalarType::Int)

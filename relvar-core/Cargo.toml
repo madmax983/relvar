@@ -13,6 +13,7 @@ categories = ["database-implementations"]
 thiserror.workspace = true
 serde.workspace = true
 hashbrown.workspace = true
+foldhash.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
