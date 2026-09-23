@@ -37,7 +37,7 @@
 //!   `std` feature. A WAL or heap file written on a server must decode on
 //!   a `thumbv8m` target and vice versa.
 //! * **No I/O here.** The only way bytes enter or leave this crate is
-//!   `BlockDevice` (page-sized reads/writes/flush) or
+//!   through [`device::BlockDevice`] (page-sized reads/writes/flush) or
 //!   through pure encode/decode functions over caller-supplied buffers.
 //!   A host implements `BlockDevice` over a file; an embedded target
 //!   implements it over flash.
@@ -48,7 +48,7 @@
 //!
 //! Following the house rules: *relation* (not table), *tuple* (not row),
 //! *attribute* (not column), *relvar* (not table variable), *heading*
-//! (not schema). Physical identifiers such as `TupleId` are
+//! (not schema). Physical identifiers such as [`slotted::TupleId`] are
 //! storage-internal and never cross into the logical layer
 //! (TTM Proscription 6).
 
@@ -59,22 +59,15 @@
 extern crate alloc;
 
 // Modules land one per commit; each owns one on-disk format plus its tests.
+// (Module docs live in each file's `//!` header: `///` comments here would
+// merge with them and break intra-doc link resolution scope.)
 
-/// 4 KiB page layout: 8-byte little-endian length header, zero-padded to
-/// [`PAGE_SIZE`](page::PAGE_SIZE). The lowest-level framing; everything else
-/// is built on pages.
 pub mod page;
 
-/// IEEE CRC-32 (pure `core`, `const`-computed table). Integrity primitive
-/// for the WAL v2 frame format (torn-write detection).
 pub mod crc;
 
-/// LSNs, transaction IDs, WAL records, and WAL framing (v2 CRC-32 frames
-/// plus legacy pre-v0.7 frame decoding). The postcard representation of
-/// [`WalRecord`](wal::WalRecord) is frozen for byte-compatibility.
 pub mod wal;
 
-/// Slotted-page payload layouts (v1 legacy + v2 MVCC) with their exact
-/// on-disk framing. [`TupleId`](slotted::TupleId) is storage-internal per
-/// TTM Proscription 6.
 pub mod slotted;
+
+pub mod device;
