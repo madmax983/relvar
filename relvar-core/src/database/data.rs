@@ -81,6 +81,9 @@ impl<E: StorageEngine> Database<E> {
     /// - A type constraint is violated ([`crate::constraints::ConstraintManagerError::TypeConstraintViolation`])
     /// - A CHECK constraint is violated ([`crate::constraints::ConstraintManagerError::CheckConstraintViolation`])
     ///
+    /// A database assertion is violated ([`DatabaseError::AssertionViolation`]);
+    /// the whole batch is rolled back.
+    ///
     /// # Examples
     ///
     /// ```
@@ -139,11 +142,26 @@ impl<E: StorageEngine> Database<E> {
             )?);
         }
 
-        // All validation passed: write the batch, then publish the staged
-        // index entries.
+        // Snapshot the engine so the batch can be rolled back if a database
+        // assertion is violated (no-op when no assertions are registered).
+        self.begin_assertion_guard()?;
+
+        // All validation passed: write the batch, restoring the pre-batch
+        // state if any write fails.
         for tuple in tuples {
-            self.engine.insert_tuple(relation_name, tuple)?;
+            if let Err(op_error) = self.engine.insert_tuple(relation_name, tuple) {
+                self.abort_assertion_guard()?;
+                return Err(op_error.into());
+            }
         }
+
+        // Enforce database assertions against the post-batch state,
+        // rolling back the batch on violation.
+        self.check_assertions()?;
+
+        // Publish the staged index entries only once the batch is fully
+        // committed: a failed write or a rolled-back assertion must not
+        // leave phantom entries in the key index.
         for staged in staged_batch {
             self.apply_staged_key_values(relation_name, staged);
         }

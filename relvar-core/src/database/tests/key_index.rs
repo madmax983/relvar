@@ -1,6 +1,6 @@
 use super::common::*;
 use crate::constraints::ConstraintManagerError;
-use crate::constraints::{CandidateKey, KeyConstraints, PrimaryKey};
+use crate::constraints::{CandidateKey, DatabaseAssertion, KeyConstraints, PrimaryKey};
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::InMemoryEngine;
@@ -346,4 +346,79 @@ fn test_key_index_entry_set_matches_relation_contents() {
     let key = ("TEST".to_string(), vec!["id".to_string()]);
     assert_eq!(db.key_index.get(&key), Some(&expected));
     assert_eq!(db.query("TEST").unwrap().cardinality(), expected.len());
+}
+
+#[test]
+fn test_assertion_rollback_leaves_key_index_clean() {
+    // Integration (#23 x #36): an insert rolled back by a database
+    // assertion must not leave phantom entries in the key index.
+    let mut db = setup_keyed_db();
+    let assertion = DatabaseAssertion::new(
+        "at_most_one",
+        "TEST must hold at most one tuple",
+        |db: &mut Database<InMemoryEngine>| db.query("TEST").unwrap().cardinality() <= 1,
+    );
+    db.add_assertion(assertion).unwrap();
+
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+
+    // This insert violates the assertion and is rolled back.
+    let result = db.insert("TEST", tuple! { id: 2i64, name: "Bob" });
+    assert!(matches!(result, Err(DatabaseError::AssertionViolation(_))));
+    assert_eq!(db.query("TEST").unwrap().cardinality(), 1);
+
+    // No phantom index entry for the rolled-back key...
+    assert!(!index_contains(
+        &db,
+        "TEST",
+        &["id"],
+        vec![ScalarValue::Int(2)]
+    ));
+
+    // ...so the same key inserts cleanly once the assertion is gone.
+    assert!(db.remove_assertion("at_most_one"));
+    db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+    assert_eq!(db.query("TEST").unwrap().cardinality(), 2);
+}
+
+#[test]
+fn test_assertion_rollback_on_delete_keeps_key_index_accurate() {
+    // Integration (#23 x #36): a delete rolled back by a database
+    // assertion must leave the key index reflecting the restored state.
+    let mut db = setup_keyed_db();
+    db.insert("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+    db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
+
+    let assertion = DatabaseAssertion::new(
+        "keep_bob",
+        "Bob must not be deleted",
+        |db: &mut Database<InMemoryEngine>| {
+            db.query("TEST")
+                .unwrap()
+                .tuples()
+                .any(|t| t.get("name") == Some(&ScalarValue::String("Bob".to_string())))
+        },
+    );
+    db.add_assertion(assertion).unwrap();
+
+    // Delete Bob: violates the assertion, rolled back.
+    let deleted = db.delete("TEST", |t| t.get("id") == Some(&ScalarValue::Int(2)));
+    assert!(matches!(deleted, Err(DatabaseError::AssertionViolation(_))));
+    assert_eq!(db.query("TEST").unwrap().cardinality(), 2);
+
+    // The index must still hold both keys (no stale post-delete rebuild).
+    assert!(index_contains(
+        &db,
+        "TEST",
+        &["id"],
+        vec![ScalarValue::Int(1)]
+    ));
+    assert!(index_contains(
+        &db,
+        "TEST",
+        &["id"],
+        vec![ScalarValue::Int(2)]
+    ));
 }
