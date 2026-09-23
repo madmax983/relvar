@@ -21,7 +21,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use relvar_storage::storage::{Page, PageFile, PAGE_SIZE};
+//! use relvar_storage::storage::page::{Page, PageFile, PAGE_SIZE};
 //!
 //! // Create a page file
 //! let mut pf = PageFile::create("data.pages").unwrap();
@@ -84,7 +84,7 @@ pub enum PageError {
 /// # Examples
 ///
 /// ```
-/// use relvar_storage::storage::{Page, PAGE_SIZE};
+/// use relvar_storage::storage::page::{Page, PAGE_SIZE};
 ///
 /// // Create an empty page
 /// let mut page = Page::new(0);
@@ -200,7 +200,7 @@ impl Page {
     /// # Examples
     ///
     /// ```
-    /// use relvar_storage::storage::{Page, PAGE_SIZE};
+    /// use relvar_storage::storage::page::{Page, PAGE_SIZE};
     ///
     /// let page = Page::new(1);
     /// // A new page starts completely empty (data length is 0).
