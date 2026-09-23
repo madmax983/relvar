@@ -109,7 +109,7 @@ impl QuantumState {
         let final_state = summarized.rename(&[
             ("sum_real", "real"),
             ("sum_imag", "imag"),
-            ("out_bit", &q_attr),
+            ("out_bit", q_attr.as_str()),
         ]);
 
         Ok(Self {
