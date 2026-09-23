@@ -9,7 +9,6 @@ use relvar_core::{
 /// Models a spreadsheet where cells can contain raw values or formulas referencing
 /// other cells. Evaluation is performed purely using relational joins and extensions
 /// until all cell values are resolved (fixpoint).
-#[allow(dead_code)]
 pub struct Spreadsheet {
     /// Resolved values. Schema: `(id: String, val: Float)`
     pub values: Relation,
@@ -18,7 +17,6 @@ pub struct Spreadsheet {
     pub formulas: Relation,
 }
 
-#[allow(dead_code)]
 impl Spreadsheet {
     /// Creates a new Spreadsheet.
     ///

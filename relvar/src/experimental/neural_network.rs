@@ -148,7 +148,6 @@ impl NeuralNetwork {
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
     /// // Note: This is a placeholder example
     /// ```
-    #[allow(dead_code)]
     pub fn forward_pass(&mut self, num_layers: i64) -> Result<(), DatabaseError> {
         for i in 0..num_layers {
             self.forward_layer(i)?;

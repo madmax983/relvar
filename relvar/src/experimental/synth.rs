@@ -30,7 +30,6 @@ use relvar_core::{
 /// use relvar::experimental::synth::Synth;
 /// // Note: This is a placeholder example
 /// ```
-#[allow(dead_code)]
 pub struct Synth {
     /// Timeline relation. Schema: `(t: Float)`
     pub timeline: Relation,
@@ -38,7 +37,6 @@ pub struct Synth {
     pub oscillators: Relation,
 }
 
-#[allow(dead_code)]
 impl Synth {
     /// Creates a new Synthesizer.
     /// # Examples

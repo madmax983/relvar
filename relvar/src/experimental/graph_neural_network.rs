@@ -47,7 +47,6 @@ use relvar_core::{algebra::Aggregation, error::DatabaseError, values::Relation};
 ///
 /// let gnn = RelationalGNN::new(features, edges);
 /// ```
-#[allow(dead_code)]
 pub struct RelationalGNN {
     /// Schema: (node_id: Int, feature_idx: Int, value: Float)
     pub node_features: Relation,
@@ -55,7 +54,6 @@ pub struct RelationalGNN {
     pub edges: Relation,
 }
 
-#[allow(dead_code)]
 impl RelationalGNN {
     /// Creates a new Relational GNN representation.
     ///

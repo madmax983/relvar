@@ -68,7 +68,6 @@ use std::collections::HashMap;
 /// use relvar::{Relation, RelationType, ScalarType, TupleType, Database, InMemoryEngine};
 /// // Note: This is a placeholder example
 /// ```
-#[allow(dead_code)]
 pub fn tokenize(text: &str) -> HashMap<String, i64> {
     let mut counts = HashMap::new();
 
@@ -115,7 +114,6 @@ pub fn tokenize(text: &str) -> HashMap<String, i64> {
 ///     Ok(())
 /// }
 /// ```
-#[allow(dead_code)]
 pub struct FullTextIndex {
     /// The name of the relation storing the index.
     index_name: String,
@@ -123,7 +121,6 @@ pub struct FullTextIndex {
     doc_id_type: ScalarType,
 }
 
-#[allow(dead_code)]
 impl FullTextIndex {
     /// Creates a new index definition.
     /// # Examples

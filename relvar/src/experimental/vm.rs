@@ -56,7 +56,6 @@ use relvar_core::{
 ///
 /// let vm = RelationalVM::new(registers, memory, program, head);
 /// ```
-#[allow(dead_code)]
 pub struct RelationalVM {
     /// The registers of the VM. Schema: (reg_id: String, value: Int)
     pub registers: Relation,
@@ -68,7 +67,6 @@ pub struct RelationalVM {
     pub head: Relation,
 }
 
-#[allow(dead_code)]
 impl RelationalVM {
     /// Creates a new Relational VM.
     ///

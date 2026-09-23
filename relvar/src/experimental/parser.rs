@@ -39,7 +39,6 @@ use relvar_core::{
 /// use relvar::experimental::parser::CykParser;
 /// // Placeholder example
 /// ```
-#[allow(dead_code)]
 pub struct CykParser {
     /// Terminal rules: (lhs: String, rhs: String)
     pub terminals: Relation,
@@ -47,7 +46,6 @@ pub struct CykParser {
     pub non_terminals: Relation,
 }
 
-#[allow(dead_code)]
 impl CykParser {
     /// Creates a new CYK parser with the given grammar rules.
     /// # Examples

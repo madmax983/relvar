@@ -45,7 +45,6 @@ use relvar_core::{
 /// ]).unwrap()).unwrap();
 /// // ...
 /// ```
-#[allow(dead_code)]
 pub struct SudokuSolver {
     /// Cells representation
     pub cells: Relation,
@@ -53,7 +52,6 @@ pub struct SudokuSolver {
     pub domain: Relation,
 }
 
-#[allow(dead_code)]
 impl SudokuSolver {
     /// Create a new solver
     /// # Examples
