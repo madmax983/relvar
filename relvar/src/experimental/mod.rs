@@ -32,11 +32,13 @@
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
 //! - **[`apriori`](crate::experimental::apriori)**: Relational Apriori frequent-itemset mining.
+//! - **[`boids`](crate::experimental::boids)**: Relational Boids flocking simulation.
 
 pub mod apriori;
 pub mod automata;
 pub mod automl;
 pub mod blockchain;
+pub mod boids;
 pub mod build_system;
 pub mod cellular_automaton;
 pub mod circuit;
