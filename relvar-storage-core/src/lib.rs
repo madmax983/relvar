@@ -73,3 +73,8 @@ pub mod crc;
 /// plus legacy pre-v0.7 frame decoding). The postcard representation of
 /// [`WalRecord`](wal::WalRecord) is frozen for byte-compatibility.
 pub mod wal;
+
+/// Slotted-page payload layouts (v1 legacy + v2 MVCC) with their exact
+/// on-disk framing. [`TupleId`](slotted::TupleId) is storage-internal per
+/// TTM Proscription 6.
+pub mod slotted;
