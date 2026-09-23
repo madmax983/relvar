@@ -68,3 +68,8 @@ pub mod page;
 /// IEEE CRC-32 (pure `core`, `const`-computed table). Integrity primitive
 /// for the WAL v2 frame format (torn-write detection).
 pub mod crc;
+
+/// LSNs, transaction IDs, WAL records, and WAL framing (v2 CRC-32 frames
+/// plus legacy pre-v0.7 frame decoding). The postcard representation of
+/// [`WalRecord`](wal::WalRecord) is frozen for byte-compatibility.
+pub mod wal;
