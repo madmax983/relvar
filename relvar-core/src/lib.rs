@@ -96,8 +96,13 @@
 //! ```
 
 #![warn(missing_docs)]
+// `#![no_std]` + `alloc` when the `std` feature is off (see the `no_std` CI job).
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
 
 pub mod algebra;
+pub mod collections;
 pub mod constraints;
 pub mod database;
 pub mod error;
