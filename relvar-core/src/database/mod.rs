@@ -72,6 +72,8 @@ use crate::constraints::ConstraintManager;
 use crate::constraints::assertion::{AssertionError, DatabaseAssertion};
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
+use crate::types::{OperatorError, OperatorRegistry, OperatorSignature};
+use crate::values::ScalarValue;
 use std::collections::HashMap;
 
 mod dml;
@@ -157,6 +159,13 @@ pub struct Database<E: StorageEngine> {
     /// `Some` only while an assertion-guarded DML operation is in flight;
     /// always `None` when no assertions are registered.
     pub(crate) assertion_snapshot: Option<E::Snapshot>,
+    /// Registry of user-defined scalar operators (TTM RM Prescription 3).
+    ///
+    /// Operators are resolved by name when expressions containing
+    /// [`ScalarExpression::Apply`](crate::constraints::ScalarExpression::Apply)
+    /// are evaluated, e.g. in [`Query::restrict`](crate::query::Query::restrict)
+    /// predicates executed via [`Query::execute`](crate::query::Query::execute).
+    pub(crate) operators: OperatorRegistry,
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -195,7 +204,85 @@ impl<E: StorageEngine> Database<E> {
             virtual_relvars: HashMap::new(),
             assertions: Vec::new(),
             assertion_snapshot: None,
+            operators: OperatorRegistry::new(),
         }
+    }
+
+    /// Returns the registry of user-defined scalar operators
+    /// (TTM RM Prescription 3).
+    ///
+    /// The registry is consulted whenever an expression containing an
+    /// operator application is evaluated against this database — in
+    /// particular by [`Query::execute`](crate::query::Query::execute) for
+    /// `restrict` predicates. Register operators with
+    /// [`register_operator`](Self::register_operator) or mutate the registry
+    /// via [`operator_registry_mut`](Self::operator_registry_mut).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let db = Database::new(InMemoryEngine::new());
+    /// assert!(db.operator_registry().is_empty());
+    /// ```
+    pub fn operator_registry(&self) -> &OperatorRegistry {
+        &self.operators
+    }
+
+    /// Returns the registry of user-defined scalar operators, mutably.
+    ///
+    /// See [`operator_registry`](Self::operator_registry).
+    pub fn operator_registry_mut(&mut self) -> &mut OperatorRegistry {
+        &mut self.operators
+    }
+
+    /// Defines a user-defined scalar operator on this database
+    /// (TTM RM Prescription 3).
+    ///
+    /// This is a convenience wrapper around
+    /// [`OperatorRegistry::register`]. The operator becomes usable in
+    /// [`ScalarExpression::Apply`](crate::constraints::ScalarExpression)
+    /// nodes evaluated against this database (e.g. in query predicates).
+    ///
+    /// # Errors
+    ///
+    /// [`OperatorError::InvalidName`] if the signature's name is empty, or
+    /// [`OperatorError::AlreadyRegistered`] if this exact signature is
+    /// already registered.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{OperatorSignature, ScalarType};
+    /// use relvar_core::values::ScalarValue;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// db.register_operator(
+    ///     OperatorSignature {
+    ///         name: "is_adult".to_string(),
+    ///         param_types: vec![ScalarType::Int],
+    ///         return_type: ScalarType::Bool,
+    ///     },
+    ///     |args| match args[0] {
+    ///         ScalarValue::Int(age) => Ok(ScalarValue::Bool(age >= 18)),
+    ///         _ => unreachable!("signature guarantees an Int argument"),
+    ///     },
+    /// ).unwrap();
+    /// assert!(!db.operator_registry().is_empty());
+    /// ```
+    pub fn register_operator(
+        &mut self,
+        signature: OperatorSignature,
+        implementation: impl Fn(&[ScalarValue]) -> Result<ScalarValue, OperatorError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Result<(), OperatorError> {
+        self.operators.register(signature, implementation)
     }
 
     /// Registers a database assertion.

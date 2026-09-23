@@ -42,10 +42,12 @@
 //! assert_eq!(employee_type.degree(), 3);
 //! ```
 
+pub mod operators;
 pub(crate) mod relation_type;
 pub(crate) mod scalar;
 pub(crate) mod tuple_type;
 
+pub use operators::{OperatorError, OperatorRegistry, OperatorSignature, RegisteredOperator};
 pub use relation_type::RelationType;
 pub use scalar::ScalarType;
 pub use tuple_type::TupleType;

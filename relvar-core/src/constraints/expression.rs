@@ -30,6 +30,7 @@
 //! ```
 
 use super::prepared::PreparedConstraintExpression;
+use crate::types::{OperatorError, OperatorRegistry};
 use crate::values::{ScalarValue, Tuple};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -49,6 +50,21 @@ pub enum ExpressionError {
     /// Invalid comparison operation for the given types.
     #[error("Invalid comparison: {0}")]
     InvalidComparison(String),
+
+    /// An operator application was evaluated without an operator registry.
+    ///
+    /// `ScalarExpression::Apply` nodes can only be evaluated with
+    /// [`ConstraintExpression::evaluate_with_operators`] (or
+    /// [`ScalarExpression::evaluate_with`]), which resolves operator names
+    /// against an [`OperatorRegistry`].
+    #[error(
+        "operator application '{0}' requires an operator registry; use evaluate_with_operators"
+    )]
+    OperatorRegistryRequired(String),
+
+    /// Operator resolution or invocation failed.
+    #[error(transparent)]
+    Operator(#[from] OperatorError),
 }
 
 /// Represents a value or attribute reference in a constraint expression.
@@ -77,6 +93,128 @@ pub enum CmpOp {
     Ge,
 }
 
+/// A scalar-valued expression: a literal, an attribute reference, or a
+/// user-defined operator application.
+///
+/// `ScalarExpression` is the scalar level of the expression language;
+/// [`ConstraintExpression`] is the boolean (predicate) level. Operator
+/// applications compose: `Apply` nodes nest inside other `Apply` nodes'
+/// argument lists, e.g. `upper(concat(first, last))`.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::constraints::ScalarExpression;
+/// use relvar_core::values::ScalarValue;
+/// use relvar_core::tuple;
+///
+/// let expr = ScalarExpression::Attribute("n".to_string());
+/// assert_eq!(
+///     expr.evaluate(&tuple! { n: 41i64 }).unwrap(),
+///     ScalarValue::Int(41)
+/// );
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ScalarExpression {
+    /// A literal scalar value.
+    Value(ScalarValue),
+    /// A reference to an attribute by name.
+    Attribute(String),
+    /// Application of a user-defined scalar operator
+    /// (TTM RM Prescription 3).
+    ///
+    /// The operator name is resolved against an [`OperatorRegistry`] at
+    /// evaluation time (see [`evaluate_with`](Self::evaluate_with)), so
+    /// expressions remain plain serializable data.
+    Apply {
+        /// Operator name, e.g. `"age"`.
+        operator: String,
+        /// Argument expressions, evaluated left to right.
+        #[serde(deserialize_with = "crate::utils::recursion::deserialize_guarded")]
+        args: Vec<ScalarExpression>,
+    },
+}
+
+impl ScalarExpression {
+    /// Collects attribute names referenced by this expression into `attributes`.
+    fn collect_attributes(&self, attributes: &mut HashSet<String>) {
+        match self {
+            ScalarExpression::Value(_) => {}
+            ScalarExpression::Attribute(attr) => {
+                attributes.insert(attr.clone());
+            }
+            ScalarExpression::Apply { args, .. } => {
+                for arg in args {
+                    arg.collect_attributes(attributes);
+                }
+            }
+        }
+    }
+
+    /// Scans this expression tree to collect all referenced attribute names.
+    pub fn referenced_attributes(&self) -> HashSet<String> {
+        let mut attributes = HashSet::new();
+        self.collect_attributes(&mut attributes);
+        attributes
+    }
+
+    /// Evaluates this expression against a tuple, without an operator registry.
+    ///
+    /// Literals and attribute references evaluate normally; an [`Apply`](Self::Apply)
+    /// node fails with [`ExpressionError::OperatorRegistryRequired`]. Use
+    /// [`evaluate_with`](Self::evaluate_with) when the expression may
+    /// contain operator applications.
+    ///
+    /// # Errors
+    ///
+    /// - [`ExpressionError::AttributeNotFound`] for missing attributes.
+    /// - [`ExpressionError::OperatorRegistryRequired`] for `Apply` nodes.
+    pub fn evaluate(&self, tuple: &Tuple) -> Result<ScalarValue, ExpressionError> {
+        match self {
+            ScalarExpression::Value(value) => Ok(value.clone()),
+            ScalarExpression::Attribute(attr) => tuple
+                .get(attr)
+                .cloned()
+                .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone())),
+            ScalarExpression::Apply { operator, .. } => {
+                Err(ExpressionError::OperatorRegistryRequired(operator.clone()))
+            }
+        }
+    }
+
+    /// Evaluates this expression against a tuple, resolving operator
+    /// applications against `registry`.
+    ///
+    /// Arguments are evaluated left to right, then the operator is invoked
+    /// with the resulting values (TTM RM Prescription 3(c) type discipline
+    /// is enforced by the registry).
+    ///
+    /// # Errors
+    ///
+    /// - [`ExpressionError::AttributeNotFound`] for missing attributes.
+    /// - [`ExpressionError::Operator`] if resolution or invocation fails.
+    pub fn evaluate_with(
+        &self,
+        tuple: &Tuple,
+        registry: &OperatorRegistry,
+    ) -> Result<ScalarValue, ExpressionError> {
+        match self {
+            ScalarExpression::Value(value) => Ok(value.clone()),
+            ScalarExpression::Attribute(attr) => tuple
+                .get(attr)
+                .cloned()
+                .ok_or_else(|| ExpressionError::AttributeNotFound(attr.clone())),
+            ScalarExpression::Apply { operator, args } => {
+                let mut values = Vec::with_capacity(args.len());
+                for arg in args {
+                    values.push(arg.evaluate_with(tuple, registry)?);
+                }
+                Ok(registry.invoke(operator, &values)?)
+            }
+        }
+    }
+}
+
 /// Constraint expression DSL for serializable predicates.
 ///
 /// This enum represents a tree of expressions that can be evaluated
@@ -86,6 +224,9 @@ pub enum CmpOp {
 /// # Supported Operations
 ///
 /// - **Comparisons**: Eq, Ne, Lt, Le, Gt, Ge via `Cmp`
+/// - **Scalar comparisons**: comparisons over scalar expressions, enabling
+///   user-defined operators in predicates, via `ScalarCmp`
+///   (TTM RM Prescription 3)
 /// - **Logical**: And, Or, Not
 /// - **Set membership**: In
 /// - **Pattern matching**: Like
@@ -99,6 +240,25 @@ pub enum ConstraintExpression {
         op: CmpOp,
         /// Right operand (value or attribute reference)
         right: ValueOrRef,
+    },
+
+    /// Comparison of two scalar expressions.
+    ///
+    /// This is the predicate-level hook for user-defined operators
+    /// (TTM RM Prescription 3): either side may be an operator application,
+    /// e.g. `age(birthdate) > 18` is
+    /// `ScalarCmp { left: Apply { operator: "age", args: [Attribute("birthdate")] },
+    /// op: Gt, right: Value(Int(18)) }`.
+    ///
+    /// Both sides must evaluate to values of the same type; otherwise
+    /// evaluation fails with [`ExpressionError::TypeMismatch`].
+    ScalarCmp {
+        /// Left scalar expression
+        left: ScalarExpression,
+        /// Comparison operator
+        op: CmpOp,
+        /// Right scalar expression
+        right: ScalarExpression,
     },
 
     /// Logical AND: both expressions must be true
@@ -195,6 +355,10 @@ impl ConstraintExpression {
             ConstraintExpression::Like(attr, _) => {
                 attributes.insert(attr.clone());
             }
+            ConstraintExpression::ScalarCmp { left, right, .. } => {
+                left.collect_attributes(attributes);
+                right.collect_attributes(attributes);
+            }
         }
     }
 
@@ -209,6 +373,8 @@ impl ConstraintExpression {
     /// - A referenced attribute is not found in the tuple
     /// - A type mismatch occurs during comparison
     /// - An invalid comparison is attempted
+    /// - The expression contains an operator application (see
+    ///   [`evaluate_with_operators`](Self::evaluate_with_operators))
     ///
     /// # Examples
     ///
@@ -231,6 +397,11 @@ impl ConstraintExpression {
             ConstraintExpression::Cmp { left, op, right } => {
                 Self::evaluate_cmp(tuple, left, op, right)
             }
+            ConstraintExpression::ScalarCmp { left, op, right } => {
+                let left_val = left.evaluate(tuple)?;
+                let right_val = right.evaluate(tuple)?;
+                Self::evaluate_scalar_cmp(&left_val, op, &right_val)
+            }
             ConstraintExpression::And(left, right) => {
                 Ok(left.evaluate(tuple)? && right.evaluate(tuple)?)
             }
@@ -240,6 +411,105 @@ impl ConstraintExpression {
             ConstraintExpression::Not(expr) => Ok(!expr.evaluate(tuple)?),
             ConstraintExpression::In(attr, values) => Self::evaluate_in(tuple, attr, values),
             ConstraintExpression::Like(attr, pattern) => Self::evaluate_like(tuple, attr, pattern),
+        }
+    }
+
+    /// Evaluates this expression against a tuple, resolving user-defined
+    /// operator applications against `registry` (TTM RM Prescription 3).
+    ///
+    /// This is the evaluation entry point for expressions that may contain
+    /// [`ScalarExpression::Apply`] nodes. Expressions without operator
+    /// applications evaluate exactly as [`evaluate`](Self::evaluate) does.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`evaluate`](Self::evaluate), plus
+    /// [`ExpressionError::Operator`] when operator resolution or invocation
+    /// fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::{ConstraintExpression, CmpOp, ScalarExpression};
+    /// use relvar_core::types::{OperatorRegistry, OperatorSignature, ScalarType};
+    /// use relvar_core::values::ScalarValue;
+    /// use relvar_core::tuple;
+    ///
+    /// let mut registry = OperatorRegistry::new();
+    /// registry.register(
+    ///     OperatorSignature {
+    ///         name: "double".to_string(),
+    ///         param_types: vec![ScalarType::Int],
+    ///         return_type: ScalarType::Int,
+    ///     },
+    ///     |args| match args[0] {
+    ///         ScalarValue::Int(n) => Ok(ScalarValue::Int(n * 2)),
+    ///         _ => unreachable!("signature guarantees an Int argument"),
+    ///     },
+    /// ).unwrap();
+    ///
+    /// // double(n) > 40
+    /// let expr = ConstraintExpression::ScalarCmp {
+    ///     left: ScalarExpression::Apply {
+    ///         operator: "double".to_string(),
+    ///         args: vec![ScalarExpression::Attribute("n".to_string())],
+    ///     },
+    ///     op: CmpOp::Gt,
+    ///     right: ScalarExpression::Value(ScalarValue::Int(40)),
+    /// };
+    /// assert!(expr.evaluate_with_operators(&tuple! { n: 21i64 }, &registry).unwrap());
+    /// ```
+    pub fn evaluate_with_operators(
+        &self,
+        tuple: &Tuple,
+        registry: &OperatorRegistry,
+    ) -> Result<bool, ExpressionError> {
+        match self {
+            ConstraintExpression::Cmp { left, op, right } => {
+                Self::evaluate_cmp(tuple, left, op, right)
+            }
+            ConstraintExpression::ScalarCmp { left, op, right } => {
+                let left_val = left.evaluate_with(tuple, registry)?;
+                let right_val = right.evaluate_with(tuple, registry)?;
+                Self::evaluate_scalar_cmp(&left_val, op, &right_val)
+            }
+            ConstraintExpression::And(left, right) => Ok(left
+                .evaluate_with_operators(tuple, registry)?
+                && right.evaluate_with_operators(tuple, registry)?),
+            ConstraintExpression::Or(left, right) => Ok(left
+                .evaluate_with_operators(tuple, registry)?
+                || right.evaluate_with_operators(tuple, registry)?),
+            ConstraintExpression::Not(expr) => Ok(!expr.evaluate_with_operators(tuple, registry)?),
+            ConstraintExpression::In(attr, values) => Self::evaluate_in(tuple, attr, values),
+            ConstraintExpression::Like(attr, pattern) => Self::evaluate_like(tuple, attr, pattern),
+        }
+    }
+
+    /// Compares two evaluated scalar values with a comparison operator.
+    ///
+    /// Both values must be of the same type (TTM: comparisons are defined
+    /// per type); mismatched types fail with [`ExpressionError::TypeMismatch`].
+    /// The full [`ScalarType`](crate::types::ScalarType) is compared — not
+    /// just the value discriminant — so two distinct user-defined types
+    /// (which share a discriminant) never compare as the same type.
+    fn evaluate_scalar_cmp(
+        left_val: &ScalarValue,
+        op: &CmpOp,
+        right_val: &ScalarValue,
+    ) -> Result<bool, ExpressionError> {
+        if left_val.scalar_type() != right_val.scalar_type() {
+            return Err(ExpressionError::TypeMismatch(
+                format!("{:?}", left_val.scalar_type()),
+                format!("{:?}", right_val.scalar_type()),
+            ));
+        }
+        match op {
+            CmpOp::Eq => Ok(left_val == right_val),
+            CmpOp::Ne => Ok(left_val != right_val),
+            CmpOp::Lt => Ok(left_val < right_val),
+            CmpOp::Le => Ok(left_val <= right_val),
+            CmpOp::Gt => Ok(left_val > right_val),
+            CmpOp::Ge => Ok(left_val >= right_val),
         }
     }
 
@@ -402,9 +672,11 @@ impl ConstraintExpression {
             .ok_or_else(|| ExpressionError::AttributeNotFound(attr.to_string()))?;
         let right = Self::resolve_value_or_ref(tuple, value_or_ref)?;
 
-        // Validate types are compatible for comparison
-        // Using discriminant to check if they are the same enum variant
-        if std::mem::discriminant(left) != std::mem::discriminant(right) {
+        // Validate types are compatible for comparison.
+        // The full scalar type is compared, not just the value
+        // discriminant, so distinct user-defined types (which share a
+        // discriminant) are never treated as the same type.
+        if left.scalar_type() != right.scalar_type() {
             return Err(ExpressionError::TypeMismatch(
                 format!("{:?}", left.scalar_type()),
                 format!("{:?}", right.scalar_type()),
@@ -419,6 +691,7 @@ impl ConstraintExpression {
 mod tests {
     use super::*;
     use crate::tuple;
+    use crate::types::{OperatorError, OperatorRegistry, OperatorSignature, ScalarType};
 
     #[test]
     fn test_constraint_expression_eq() {
@@ -849,6 +1122,209 @@ mod tests {
         let attrs4 = expr4.referenced_attributes();
         assert_eq!(attrs4.len(), 1);
         assert!(attrs4.contains("name"));
+    }
+
+    // ------------------------------------------------------------------
+    // User-defined operators in expressions (TTM RM Prescription 3).
+    // Written before the implementation (TDD): these fail to compile
+    // until `ScalarExpression` and `ConstraintExpression::ScalarCmp` exist.
+    // ------------------------------------------------------------------
+
+    fn doubling_registry() -> OperatorRegistry {
+        let mut registry = OperatorRegistry::new();
+        registry
+            .register(
+                OperatorSignature {
+                    name: "double".to_string(),
+                    param_types: vec![ScalarType::Int],
+                    return_type: ScalarType::Int,
+                },
+                |args| match args[0] {
+                    ScalarValue::Int(n) => Ok(ScalarValue::Int(n * 2)),
+                    _ => Err(OperatorError::EvaluationFailed {
+                        name: "double".to_string(),
+                        reason: "expected Int".to_string(),
+                    }),
+                },
+            )
+            .unwrap();
+        registry
+    }
+
+    #[test]
+    fn scalar_apply_evaluates_with_registry() {
+        let registry = doubling_registry();
+        let expr = ScalarExpression::Apply {
+            operator: "double".to_string(),
+            args: vec![ScalarExpression::Attribute("n".to_string())],
+        };
+        let tuple = tuple! { n: 21i64 };
+        assert_eq!(
+            expr.evaluate_with(&tuple, &registry).unwrap(),
+            ScalarValue::Int(42)
+        );
+    }
+
+    #[test]
+    fn scalar_apply_without_registry_is_an_error() {
+        // Plain `evaluate` cannot resolve operator names: the caller must
+        // use `evaluate_with` / `evaluate_with_operators`.
+        let expr = ScalarExpression::Apply {
+            operator: "double".to_string(),
+            args: vec![ScalarExpression::Value(ScalarValue::Int(1))],
+        };
+        let tuple = tuple! { n: 21i64 };
+        let err = expr.evaluate(&tuple).unwrap_err();
+        assert!(
+            matches!(err, ExpressionError::OperatorRegistryRequired(_)),
+            "expected OperatorRegistryRequired, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn scalar_cmp_predicate_with_operator() {
+        // double(n) > 40  <=>  n = 21  =>  true
+        let registry = doubling_registry();
+        let expr = ConstraintExpression::ScalarCmp {
+            left: ScalarExpression::Apply {
+                operator: "double".to_string(),
+                args: vec![ScalarExpression::Attribute("n".to_string())],
+            },
+            op: CmpOp::Gt,
+            right: ScalarExpression::Value(ScalarValue::Int(40)),
+        };
+        assert!(
+            expr.evaluate_with_operators(&tuple! { n: 21i64 }, &registry)
+                .unwrap()
+        );
+        assert!(
+            !expr
+                .evaluate_with_operators(&tuple! { n: 10i64 }, &registry)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn scalar_cmp_collects_referenced_attributes() {
+        let expr = ConstraintExpression::ScalarCmp {
+            left: ScalarExpression::Apply {
+                operator: "double".to_string(),
+                args: vec![
+                    ScalarExpression::Attribute("n".to_string()),
+                    ScalarExpression::Attribute("m".to_string()),
+                ],
+            },
+            op: CmpOp::Gt,
+            right: ScalarExpression::Attribute("limit".to_string()),
+        };
+        let attrs = expr.referenced_attributes();
+        assert!(attrs.contains("n"));
+        assert!(attrs.contains("m"));
+        assert!(attrs.contains("limit"));
+        assert_eq!(attrs.len(), 3);
+    }
+
+    #[test]
+    fn nested_operator_application() {
+        // double(double(n)) with n = 10 => 40
+        let registry = doubling_registry();
+        let expr = ScalarExpression::Apply {
+            operator: "double".to_string(),
+            args: vec![ScalarExpression::Apply {
+                operator: "double".to_string(),
+                args: vec![ScalarExpression::Attribute("n".to_string())],
+            }],
+        };
+        assert_eq!(
+            expr.evaluate_with(&tuple! { n: 10i64 }, &registry).unwrap(),
+            ScalarValue::Int(40)
+        );
+    }
+
+    #[test]
+    fn scalar_cmp_type_mismatch_is_an_error() {
+        // double(n) is Int; comparing Int > String must fail, not coerce.
+        let registry = doubling_registry();
+        let expr = ConstraintExpression::ScalarCmp {
+            left: ScalarExpression::Apply {
+                operator: "double".to_string(),
+                args: vec![ScalarExpression::Attribute("n".to_string())],
+            },
+            op: CmpOp::Gt,
+            right: ScalarExpression::Value(ScalarValue::String("x".to_string())),
+        };
+        let err = expr
+            .evaluate_with_operators(&tuple! { n: 21i64 }, &registry)
+            .unwrap_err();
+        assert!(
+            matches!(err, ExpressionError::TypeMismatch(_, _)),
+            "expected TypeMismatch, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn scalar_cmp_distinct_user_types_are_a_mismatch() {
+        // Two differently-named user-defined types share a value
+        // discriminant; comparing them must still fail as a type mismatch
+        // (TTM: comparisons are defined per type).
+        let date_type = ScalarType::user_defined("Date", ScalarType::String);
+        let money_type = ScalarType::user_defined("Money", ScalarType::String);
+        let date =
+            ScalarValue::select(&date_type, ScalarValue::String("2020-01-01".to_string())).unwrap();
+        let money = ScalarValue::select(&money_type, ScalarValue::String("2020-01-01".to_string()))
+            .unwrap();
+
+        let expr = ConstraintExpression::ScalarCmp {
+            left: ScalarExpression::Value(date),
+            op: CmpOp::Eq,
+            right: ScalarExpression::Value(money),
+        };
+        let err = expr
+            .evaluate_with_operators(&tuple! { n: 1i64 }, &OperatorRegistry::new())
+            .unwrap_err();
+        assert!(
+            matches!(err, ExpressionError::TypeMismatch(_, _)),
+            "expected TypeMismatch, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn unknown_operator_in_expression_is_an_error() {
+        let registry = OperatorRegistry::new();
+        let expr = ConstraintExpression::ScalarCmp {
+            left: ScalarExpression::Apply {
+                operator: "missing".to_string(),
+                args: vec![ScalarExpression::Attribute("n".to_string())],
+            },
+            op: CmpOp::Gt,
+            right: ScalarExpression::Value(ScalarValue::Int(1)),
+        };
+        let err = expr
+            .evaluate_with_operators(&tuple! { n: 1i64 }, &registry)
+            .unwrap_err();
+        assert!(
+            matches!(err, ExpressionError::Operator(_)),
+            "expected Operator error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn prepared_scalar_cmp_evaluates_with_registry() {
+        let registry = doubling_registry();
+        let expr = ConstraintExpression::ScalarCmp {
+            left: ScalarExpression::Apply {
+                operator: "double".to_string(),
+                args: vec![ScalarExpression::Attribute("n".to_string())],
+            },
+            op: CmpOp::Gt,
+            right: ScalarExpression::Value(ScalarValue::Int(40)),
+        };
+        let prepared = expr.prepare();
+        assert!(
+            prepared
+                .evaluate_with_operators(&tuple! { n: 21i64 }, &registry)
+                .unwrap()
+        );
     }
 }
 
