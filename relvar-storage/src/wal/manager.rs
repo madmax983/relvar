@@ -5,8 +5,8 @@
 //! log records into a single fsync operation.
 
 use super::error::WalError;
-use super::lsn::Lsn;
-use super::record::WalRecord;
+use super::Lsn;
+use super::WalRecord;
 use std::fs::{File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;

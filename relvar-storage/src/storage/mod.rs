@@ -23,7 +23,8 @@
 //!
 //! # Components
 //!
-//! - `Page` / `PageFile` - Fixed-size page abstraction for disk I/O
+//! - `Page` - Fixed-size page abstraction (on-disk format owned by
+//!   `relvar-storage-core`)
 //! - `HeapFile` - Unordered tuple storage with slotted pages
 //! - `Catalog` - System catalog storing relation metadata
 //!
@@ -70,4 +71,4 @@ pub use catalog::{Catalog, CatalogError, RelationMetadata};
 pub use heap::{HeapError, HeapFile};
 pub use manager::StorageManager;
 // TupleId is now pub(crate) in heap.rs, not exported
-pub use page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
+pub use page::{PAGE_SIZE, Page, PageError, PageId};

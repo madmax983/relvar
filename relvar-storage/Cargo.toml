@@ -17,6 +17,7 @@ std = ["serde/std", "thiserror/std"]
 
 [dependencies]
 relvar-core.workspace = true
+relvar-storage-core.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 postcard.workspace = true

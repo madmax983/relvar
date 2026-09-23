@@ -583,6 +583,7 @@ dependencies = [
  "postcard",
  "proptest",
  "relvar-core",
+ "relvar-storage-core",
  "serde",
  "serde_json",
  "tempfile",

@@ -47,13 +47,16 @@
 
 pub(crate) mod error;
 pub(crate) mod iter;
-pub(crate) mod lsn;
 pub(crate) mod manager;
-pub(crate) mod record;
 pub(crate) mod recovery;
 
 pub(crate) use error::WalError;
-pub(crate) use lsn::{Lsn, TransactionId, TransactionIdGenerator};
 pub(crate) use manager::{DEFAULT_BUFFER_SIZE, WalManager};
-pub(crate) use record::{MAX_RECORD_SIZE, WalRecord, WalRecordError};
 pub(crate) use recovery::{AnalysisResult, UncommittedInsert, recover};
+// WAL primitives (LSN, transaction IDs, records) moved to the no_std
+// storage core; re-exported here so the storage layer keeps a single
+// import path. The local `WalError` stays: it adds the host `Io` variant
+// the core's error type deliberately omits.
+pub(crate) use relvar_storage_core::wal::{
+    Lsn, TransactionId, TransactionIdGenerator, WalRecord, WalRecordError, MAX_RECORD_SIZE,
+};

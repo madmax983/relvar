@@ -25,10 +25,10 @@
 //! of uncommitted inserts and removes them from relations. This design allows
 //! undo to access the catalog and relation types.
 
+use super::WalRecord;
 use super::error::WalError;
-use super::lsn::{Lsn, TransactionId};
 use super::manager::WalManager;
-use super::record::WalRecord;
+use super::{Lsn, TransactionId};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};

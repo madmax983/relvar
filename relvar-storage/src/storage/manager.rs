@@ -7,6 +7,7 @@
 //!
 //! It abstracts the physical storage details from the transaction management layer.
 
+use crate::FileBlockDevice;
 use crate::mvcc::TransactionSnapshot;
 use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
 use crate::wal::TransactionId;
@@ -25,7 +26,7 @@ pub struct StorageManager {
     /// System catalog containing relation metadata.
     catalog: Catalog,
     /// Open heap files, keyed by relation name.
-    heap_files: HashMap<String, HeapFile>,
+    heap_files: HashMap<String, HeapFile<FileBlockDevice>>,
 }
 
 impl StorageManager {
@@ -185,7 +186,10 @@ impl StorageManager {
     }
 
     /// Get or open a heap file for a relation.
-    fn get_or_open_heap_file(&mut self, name: &str) -> Result<&mut HeapFile, StorageError> {
+    fn get_or_open_heap_file(
+        &mut self,
+        name: &str,
+    ) -> Result<&mut HeapFile<FileBlockDevice>, StorageError> {
         use std::collections::hash_map::Entry;
         match self.heap_files.entry(name.to_string()) {
             Entry::Occupied(entry) => Ok(entry.into_mut()),

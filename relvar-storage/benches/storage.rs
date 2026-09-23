@@ -4,7 +4,9 @@ use criterion::{
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Tuple;
-use relvar_storage::storage::{HeapFile, Page, PageFile};
+use relvar_storage::FileBlockDevice;
+use relvar_storage::storage::{HeapFile, PAGE_SIZE, Page};
+use relvar_storage_core::device::BlockDevice;
 use tempfile::NamedTempFile;
 
 fn create_test_relation_type() -> RelationType {
@@ -32,17 +34,19 @@ fn bench_page_write(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             b.iter_batched(
                 || {
-                    // Setup: create file and page
+                    // Setup: create device and page
                     let temp_file = NamedTempFile::new().unwrap();
-                    let page_file = PageFile::create(temp_file.path()).unwrap();
+                    let device = FileBlockDevice::create(temp_file.path()).unwrap();
                     let data = vec![0u8; size];
                     let page = Page::from_data(0, data).unwrap();
-                    (page_file, page, temp_file)
+                    (device, page, temp_file)
                 },
-                |(mut page_file, page, _temp_file)| {
+                |(mut device, page, _temp_file)| {
                     // Measured: just the write operation
-                    page_file.write_page(&page).unwrap();
-                    black_box(page_file);
+                    device
+                        .write_page(page.id(), &page.to_bytes().unwrap())
+                        .unwrap();
+                    black_box(device);
                 },
                 BatchSize::SmallInput,
             );
@@ -58,13 +62,17 @@ fn bench_page_read(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(*size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             let temp_file = NamedTempFile::new().unwrap();
-            let mut page_file = PageFile::create(temp_file.path()).unwrap();
+            let mut device = FileBlockDevice::create(temp_file.path()).unwrap();
             let data = vec![42u8; size];
             let page = Page::from_data(0, data).unwrap();
-            page_file.write_page(&page).unwrap();
+            device
+                .write_page(page.id(), &page.to_bytes().unwrap())
+                .unwrap();
 
             b.iter(|| {
-                let result = page_file.read_page(0).unwrap();
+                let mut buf = [0u8; PAGE_SIZE];
+                device.read_page(0, &mut buf).unwrap();
+                let result = Page::from_bytes(0, &buf).unwrap();
                 black_box(result);
             });
         });

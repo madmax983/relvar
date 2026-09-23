@@ -52,7 +52,7 @@ fn test_update_marks_old_xmax() {
         .unwrap();
 
     // Old version should have xmax set
-    let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
+    let page = heap.load_page(tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
     let slot = versioned_page.slots[tuple_id.slot as usize]
@@ -81,7 +81,7 @@ fn test_update_new_version_has_correct_xmin() {
         .unwrap();
 
     // New version should have xmin = test_txn(2)
-    let page = heap.page_file.read_page(new_tuple_id.page_id).unwrap();
+    let page = heap.load_page(new_tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
     let slot = versioned_page.slots[new_tuple_id.slot as usize]
@@ -111,7 +111,7 @@ fn test_update_links_versions() {
         .unwrap();
 
     // New version should point back to old version
-    let page = heap.page_file.read_page(new_tuple_id.page_id).unwrap();
+    let page = heap.load_page(new_tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
     let new_slot = versioned_page.slots[new_tuple_id.slot as usize]
@@ -206,12 +206,12 @@ fn test_update_multiple_times_creates_chain() {
     let tid3 = heap.update_tuple_versioned(tid2, &v3, test_txn(3)).unwrap();
 
     // Verify chain: tid3 -> tid2 -> tid1
-    let page3 = heap.page_file.read_page(tid3.page_id).unwrap();
+    let page3 = heap.load_page(tid3.page_id).unwrap();
     let vpage3: VersionedSlottedPage = deserialize_versioned_page_for_test(page3.data()).unwrap();
     let slot3 = vpage3.slots[tid3.slot as usize].as_ref().unwrap();
     assert_eq!(slot3.prev_version, Some(tid2));
 
-    let page2 = heap.page_file.read_page(tid2.page_id).unwrap();
+    let page2 = heap.load_page(tid2.page_id).unwrap();
     let vpage2: VersionedSlottedPage = deserialize_versioned_page_for_test(page2.data()).unwrap();
     let slot2 = vpage2.slots[tid2.slot as usize].as_ref().unwrap();
     assert_eq!(slot2.prev_version, Some(tid1));
@@ -280,7 +280,7 @@ fn test_update_old_version_xmin_unchanged() {
         .unwrap();
 
     // Old version should still have xmin = test_txn(1)
-    let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
+    let page = heap.load_page(tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
     let slot = versioned_page.slots[tuple_id.slot as usize]
@@ -361,7 +361,7 @@ fn test_heap_update_on_corrupted_page_fails() {
     // 2. Corrupt the page (slot pointing outside)
     // We need to read the page, construct a corrupted version, and write it back
     {
-        let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
+        let page = heap.load_page(tuple_id.page_id).unwrap();
 
         // Deserialize (valid)
         let _versioned_page: VersionedSlottedPage =
@@ -389,7 +389,7 @@ fn test_heap_update_on_corrupted_page_fails() {
         page_data[5..5 + slot_dir.len()].copy_from_slice(&slot_dir);
 
         let new_page = Page::from_data(tuple_id.page_id, page_data).unwrap();
-        heap.page_file.write_page(&new_page).unwrap();
+        heap.store_page(&new_page).unwrap();
     }
 
     // 3. Try to update the tuple
@@ -400,14 +400,14 @@ fn test_heap_update_on_corrupted_page_fails() {
     // 4. Assert failure
     assert!(result.is_err(), "Update should fail on corrupted page");
     match result {
-        Err(HeapError::Serialization(msg)) => {
+        Err(HeapError::Slotted(SlottedError::Serialization(msg))) => {
             assert!(
                 msg.contains("Corrupted slot") || msg.contains("outside page data"),
                 "Unexpected error message: {}",
                 msg
             );
         }
-        _ => panic!("Expected Serialization error, got {:?}", result),
+        _ => panic!("Expected Slotted error, got {:?}", result),
     }
 }
 

@@ -22,8 +22,8 @@
 //! │                      StorageManager                         │
 //! │             (Manages files and directory layout)            │
 //! ├─────────────────────────────────────────────────────────────┤
-//! │                        PageFile                             │
-//! │              (Fixed-size Page I/O abstraction)              │
+//! │                    FileBlockDevice                      │
+//! │         (Host BlockDevice: file-backed page I/O)        │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -131,13 +131,18 @@
 pub mod persistent_engine;
 pub mod storage;
 
+// Host block-device shims (std): FileBlockDevice implements the storage HAL's
+// BlockDevice trait over OS files. Replaces the old PageFile.
+mod device;
+
 // WAL module is pub(crate) - not exposed to logical layer (TTM compliance)
 pub(crate) mod wal;
 
 // MVCC module is pub(crate) - not exposed to logical layer (TTM compliance)
 pub(crate) mod mvcc;
 
+pub use device::FileBlockDevice;
 pub use persistent_engine::PersistentEngine;
 
 // Re-export key storage types
-pub use storage::{Catalog, CatalogError, HeapError, HeapFile, Page, PageError, PageFile};
+pub use storage::{Catalog, CatalogError, HeapError, HeapFile, Page, PageError};
