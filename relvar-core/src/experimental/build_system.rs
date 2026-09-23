@@ -10,7 +10,10 @@ impl BuildSystem {
     /// The `file_times` relation must have `file` (String) and `mtime` (Int).
     pub fn find_stale_targets(dependencies: &Relation, file_times: &Relation) -> Relation {
         // 1. Find all transitive dependencies
-        let closure = dependencies.clone().tclose("target", "dependency").unwrap();
+        let closure = dependencies
+            .clone()
+            .tclose("target", "dependency")
+            .unwrap();
 
         // 2. We need to compare target's mtime and dependency's mtime
         let target_times = file_times

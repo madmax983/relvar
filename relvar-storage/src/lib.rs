@@ -127,7 +127,6 @@
 //! ```
 
 #![warn(missing_docs)]
-#![allow(unused_imports)]
 
 pub(crate) mod persistent_engine;
 pub(crate) mod storage;
