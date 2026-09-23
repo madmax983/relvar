@@ -881,4 +881,56 @@ mod tests {
             _ => panic!("Expected Serialization error, got {:?}", result),
         }
     }
+
+    #[test]
+    fn test_page_set_data_too_large() {
+        let mut page = Page::new(0);
+        let huge_data = vec![0; PAGE_SIZE + 1];
+
+        let result = page.set_data(huge_data);
+        assert!(matches!(result, Err(PageError::PageTooLarge)));
+    }
+
+    #[test]
+    fn test_page_write_too_large_via_set_data() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        let mut page_file = PageFile::create(path).unwrap();
+
+        let mut page = Page::new(0);
+        // set_data allows up to PAGE_SIZE, but write_page adds 8 bytes for length prefix.
+        // So PAGE_SIZE - 4 will pass set_data but fail write_page due to buffer.len() > PAGE_SIZE
+        let large_data = vec![0; PAGE_SIZE - 4];
+        page.set_data(large_data).unwrap();
+
+        let result = page_file.write_page(&page);
+        assert!(matches!(result, Err(PageError::PageTooLarge)));
+
+        let result_buffered = page_file.write_page_buffered(&page);
+        assert!(matches!(result_buffered, Err(PageError::PageTooLarge)));
+    }
+
+    #[test]
+    fn test_page_parse_corrupted_length() {
+        // Construct a buffer where length prefix indicates 100 bytes of data,
+        // but the actual buffer is only 20 bytes total (8 bytes prefix + 12 bytes data).
+        let mut buffer = Vec::new();
+        let fake_len: u64 = 100;
+        buffer.extend_from_slice(&fake_len.to_le_bytes());
+        buffer.resize(20, 0); // Total size 20, less than 8 + 100
+
+        let result = PageFile::parse_page_data(0, &buffer);
+        assert!(result.is_err());
+        match result {
+            Err(PageError::Serialization(msg)) => {
+                assert!(msg.contains("Corrupted page"), "Unexpected: {}", msg);
+                assert!(
+                    msg.contains("but only 20 bytes available"),
+                    "Unexpected: {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected Serialization error, got {:?}", result),
+        }
+    }
 }

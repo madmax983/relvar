@@ -9,6 +9,39 @@ use relvar_core::{
 /// Models a spreadsheet where cells can contain raw values or formulas referencing
 /// other cells. Evaluation is performed purely using relational joins and extensions
 /// until all cell values are resolved (fixpoint).
+///
+/// # Examples
+///
+/// ```
+/// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
+/// use relvar::experimental::spreadsheet::Spreadsheet;
+///
+/// // 1. Create a values relation for initial cells (A1 = 10.0, A2 = 20.0)
+/// let val_heading = TupleType::new()
+///     .with_attribute("id", ScalarType::String)
+///     .with_attribute("val", ScalarType::Float);
+/// let mut values = Relation::new(RelationType::new(val_heading));
+/// values.insert(tuple! { id: "A1".to_string(), val: 10.0f64 }).unwrap();
+/// values.insert(tuple! { id: "A2".to_string(), val: 20.0f64 }).unwrap();
+///
+/// // 2. Create a formulas relation for computed cells (B1 = A1 + A2)
+/// let form_heading = TupleType::new()
+///     .with_attribute("id", ScalarType::String)
+///     .with_attribute("op", ScalarType::String)
+///     .with_attribute("arg1", ScalarType::String)
+///     .with_attribute("arg2", ScalarType::String);
+/// let mut formulas = Relation::new(RelationType::new(form_heading));
+/// formulas.insert(tuple! {
+///     id: "B1".to_string(), op: "ADD".to_string(), arg1: "A1".to_string(), arg2: "A2".to_string()
+/// }).unwrap();
+///
+/// // 3. Instantiate and evaluate the spreadsheet
+/// let spreadsheet = Spreadsheet::new(values, formulas);
+/// let result = spreadsheet.evaluate().unwrap();
+///
+/// // 4. Check the results
+/// assert_eq!(result.cardinality(), 3); // A1, A2, and B1
+/// ```
 pub struct Spreadsheet {
     /// Resolved values. Schema: `(id: String, val: Float)`
     pub values: Relation,
@@ -25,7 +58,20 @@ impl Spreadsheet {
     /// ```
     /// use relvar::{Relation, RelationType, ScalarType, TupleType};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    ///
+    /// let val_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float);
+    /// let values = Relation::new(RelationType::new(val_heading));
+    ///
+    /// let form_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String);
+    /// let formulas = Relation::new(RelationType::new(form_heading));
+    ///
+    /// let spreadsheet = Spreadsheet::new(values, formulas);
     /// ```
     pub fn new(values: Relation, formulas: Relation) -> Self {
         Self { values, formulas }
@@ -36,9 +82,33 @@ impl Spreadsheet {
     /// # Examples
     ///
     /// ```
-    /// use relvar::{Relation, RelationType, ScalarType, TupleType};
+    /// use relvar::{Relation, RelationType, ScalarType, TupleType, tuple};
     /// use relvar::experimental::spreadsheet::Spreadsheet;
-    /// // Note: This is a placeholder example
+    ///
+    /// let val_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("val", ScalarType::Float);
+    /// let mut values = Relation::new(RelationType::new(val_heading));
+    /// values.insert(tuple! { id: "A1".to_string(), val: 10.0f64 }).unwrap();
+    /// values.insert(tuple! { id: "A2".to_string(), val: 20.0f64 }).unwrap();
+    ///
+    /// let form_heading = TupleType::new()
+    ///     .with_attribute("id", ScalarType::String)
+    ///     .with_attribute("op", ScalarType::String)
+    ///     .with_attribute("arg1", ScalarType::String)
+    ///     .with_attribute("arg2", ScalarType::String);
+    /// let mut formulas = Relation::new(RelationType::new(form_heading));
+    /// formulas.insert(tuple! {
+    ///     id: "B1".to_string(), op: "MUL".to_string(), arg1: "A1".to_string(), arg2: "A2".to_string()
+    /// }).unwrap();
+    ///
+    /// let spreadsheet = Spreadsheet::new(values, formulas);
+    /// let result = spreadsheet.evaluate().unwrap();
+    ///
+    /// let b1_tuple = result.tuples()
+    ///     .find(|t| t.get_typed::<String>("id").unwrap() == "B1")
+    ///     .unwrap();
+    /// assert_eq!(b1_tuple.get_typed::<f64>("val").unwrap(), 200.0);
     /// ```
     pub fn evaluate(&self) -> Result<Relation, DatabaseError> {
         let mut current_values = self.values.clone();
@@ -46,53 +116,10 @@ impl Spreadsheet {
         loop {
             let initial_count = current_values.cardinality();
 
-            // Find unresolved formulas by antijoining/difference with resolved values
-            // We only want formulas whose 'id' is NOT yet in current_values
-            let resolved_ids = current_values.project(&["id"]);
-            let formula_ids = self.formulas.project(&["id"]);
-
-            let unresolved_ids = formula_ids
-                .difference(&resolved_ids)
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            let unresolved_formulas = self.formulas.join(&unresolved_ids)?;
-
-            // Rename current_values for arg1
-            let values_arg1 = current_values.rename(&[("id", "arg1"), ("val", "val1")]);
-            // Rename current_values for arg2
-            let values_arg2 = current_values.rename(&[("id", "arg2"), ("val", "val2")]);
-
-            // Join unresolved formulas with arg1 values
-            let with_arg1 = unresolved_formulas.join(&values_arg1)?;
-            // Join with arg2 values
-            let fully_resolved_args = with_arg1.join(&values_arg2)?;
-
-            // Evaluate the formula
-            let evaluated = fully_resolved_args
-                .extend("val", ScalarType::Float, |t| {
-                    let op = t.get_typed::<String>("op").unwrap();
-                    let val1 = t.get_typed::<f64>("val1").unwrap();
-                    let val2 = t.get_typed::<f64>("val2").unwrap();
-
-                    let result = match op.as_str() {
-                        "ADD" => val1 + val2,
-                        "SUB" => val1 - val2,
-                        "MUL" => val1 * val2,
-                        "DIV" => {
-                            if val2 != 0.0 {
-                                val1 / val2
-                            } else {
-                                f64::NAN
-                            }
-                        }
-                        _ => f64::NAN,
-                    };
-                    ScalarValue::Float(result)
-                })
-                .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-
-            // Project back to (id, val)
-            let new_values = evaluated.project(&["id", "val"]);
+            let unresolved_formulas = self.find_unresolved_formulas(&current_values)?;
+            let fully_resolved_args =
+                self.join_resolved_arguments(&unresolved_formulas, &current_values)?;
+            let new_values = self.compute_formula_evaluations(&fully_resolved_args)?;
 
             // Union with current values
             current_values = current_values
@@ -105,6 +132,70 @@ impl Spreadsheet {
         }
 
         Ok(current_values)
+    }
+
+    fn find_unresolved_formulas(
+        &self,
+        current_values: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        // Find unresolved formulas by antijoining/difference with resolved values
+        // We only want formulas whose 'id' is NOT yet in current_values
+        let resolved_ids = current_values.project(&["id"]);
+        let formula_ids = self.formulas.project(&["id"]);
+
+        let unresolved_ids = formula_ids
+            .difference(&resolved_ids)
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        self.formulas.join(&unresolved_ids)
+    }
+
+    fn join_resolved_arguments(
+        &self,
+        unresolved_formulas: &Relation,
+        current_values: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        // Rename current_values for arg1
+        let values_arg1 = current_values.rename(&[("id", "arg1"), ("val", "val1")]);
+        // Rename current_values for arg2
+        let values_arg2 = current_values.rename(&[("id", "arg2"), ("val", "val2")]);
+
+        // Join unresolved formulas with arg1 values
+        let with_arg1 = unresolved_formulas.join(&values_arg1)?;
+        // Join with arg2 values
+        with_arg1.join(&values_arg2)
+    }
+
+    fn compute_formula_evaluations(
+        &self,
+        fully_resolved_args: &Relation,
+    ) -> Result<Relation, DatabaseError> {
+        // Evaluate the formula
+        let evaluated = fully_resolved_args
+            .extend("val", ScalarType::Float, |t| {
+                let op = t.get_typed::<String>("op").unwrap();
+                let val1 = t.get_typed::<f64>("val1").unwrap();
+                let val2 = t.get_typed::<f64>("val2").unwrap();
+
+                let result = match op.as_str() {
+                    "ADD" => val1 + val2,
+                    "SUB" => val1 - val2,
+                    "MUL" => val1 * val2,
+                    "DIV" => {
+                        if val2 != 0.0 {
+                            val1 / val2
+                        } else {
+                            f64::NAN
+                        }
+                    }
+                    _ => f64::NAN,
+                };
+                ScalarValue::Float(result)
+            })
+            .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
+
+        // Project back to (id, val)
+        Ok(evaluated.project(&["id", "val"]))
     }
 }
 

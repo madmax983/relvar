@@ -59,8 +59,11 @@ impl PhysicsEngine {
     }
 
     fn compute_pairwise_forces(&self) -> Result<Relation, DatabaseError> {
-        // 1. Cross join particles with themselves to compute pairwise forces.
-        // Rename attributes to distinguish particle 1 and particle 2.
+        let interactions = self.generate_particle_pairs()?;
+        self.apply_force_extensions(&interactions)
+    }
+
+    fn generate_particle_pairs(&self) -> Result<Relation, DatabaseError> {
         let p1 = self.particles.rename(&[
             ("id", "id1"),
             ("x", "x1"),
@@ -81,63 +84,48 @@ impl PhysicsEngine {
 
         let pairs = p1.join(&p2)?;
 
-        // 2. Filter out self-interactions (id1 == id2)
-        let interactions = pairs.restrict(|t| {
+        Ok(pairs.restrict(|t| {
             let id1 = t.get_typed::<i64>("id1").unwrap();
             let id2 = t.get_typed::<i64>("id2").unwrap();
             id1 != id2
-        });
+        }))
+    }
 
-        // 3. Compute forces for each pair
+    fn apply_force_extensions(&self, interactions: &Relation) -> Result<Relation, DatabaseError> {
         let g = self.g;
         interactions
             .extend("fx", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
-                // Avoid division by zero
+                let (dx, _dy, dist_sq, m1, m2) = Self::extract_force_components(t);
                 if dist_sq < 1e-10 {
                     return ScalarValue::Float(0.0);
                 }
-
-                let dist = dist_sq.sqrt();
                 let f = g * m1 * m2 / dist_sq;
-                let fx = f * (dx / dist);
-
-                ScalarValue::Float(fx)
+                ScalarValue::Float(f * (dx / dist_sq.sqrt()))
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("fy", ScalarType::Float, move |t| {
-                let x1 = t.get_typed::<f64>("x1").unwrap();
-                let y1 = t.get_typed::<f64>("y1").unwrap();
-                let x2 = t.get_typed::<f64>("x2").unwrap();
-                let y2 = t.get_typed::<f64>("y2").unwrap();
-                let m1 = t.get_typed::<f64>("m1").unwrap();
-                let m2 = t.get_typed::<f64>("m2").unwrap();
-
-                let dx = x2 - x1;
-                let dy = y2 - y1;
-                let dist_sq = dx * dx + dy * dy;
-
+                let (_dx, dy, dist_sq, m1, m2) = Self::extract_force_components(t);
                 if dist_sq < 1e-10 {
                     return ScalarValue::Float(0.0);
                 }
-
-                let dist = dist_sq.sqrt();
                 let f = g * m1 * m2 / dist_sq;
-                let fy = f * (dy / dist);
-
-                ScalarValue::Float(fy)
+                ScalarValue::Float(f * (dy / dist_sq.sqrt()))
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
+    }
+
+    fn extract_force_components(t: &relvar_core::values::Tuple) -> (f64, f64, f64, f64, f64) {
+        let x1 = t.get_typed::<f64>("x1").unwrap();
+        let y1 = t.get_typed::<f64>("y1").unwrap();
+        let x2 = t.get_typed::<f64>("x2").unwrap();
+        let y2 = t.get_typed::<f64>("y2").unwrap();
+        let m1 = t.get_typed::<f64>("m1").unwrap();
+        let m2 = t.get_typed::<f64>("m2").unwrap();
+
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let dist_sq = dx * dx + dy * dy;
+        (dx, dy, dist_sq, m1, m2)
     }
 
     fn summarize_net_forces(&self, with_forces: &Relation) -> Result<Relation, DatabaseError> {

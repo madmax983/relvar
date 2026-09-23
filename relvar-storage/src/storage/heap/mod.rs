@@ -648,7 +648,20 @@ impl HeapFile {
                 let offset = entry.offset as usize;
                 let length = entry.length as usize;
                 if idx < tuples.len() && !tuples[idx].is_empty() {
-                    data[offset..offset + length].copy_from_slice(&tuples[idx]);
+                    let end_offset = offset.checked_add(length).ok_or_else(|| {
+                        HeapError::Serialization("Tuple offset + length overflow".to_string())
+                    })?;
+                    let header_end = slot_dir.len();
+                    if end_offset > data.len() || offset < header_end {
+                        return Err(HeapError::Serialization(format!(
+                            "Slot points outside buffer or overlaps header: offset={}, length={}, buffer_len={}, header_end={}",
+                            offset,
+                            length,
+                            data.len(),
+                            header_end
+                        )));
+                    }
+                    data[offset..end_offset].copy_from_slice(&tuples[idx]);
                 }
             }
         }
