@@ -925,3 +925,32 @@ mod tests {
         assert_eq!(tuple.get_typed::<i64>("name"), None);
     }
 }
+
+#[cfg(test)]
+mod sentry_tuple_missing_coverage {
+    use super::*;
+
+    #[test]
+    fn test_tuple_into_values() {
+        let t = tuple! { id: 1i64, name: "Test" };
+        let map = t.into_values();
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("id"), Some(&ScalarValue::Int(1)));
+        assert_eq!(
+            map.get("name"),
+            Some(&ScalarValue::String("Test".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_tuple_attribute_names() {
+        let t = tuple! { id: 1i64, name: "Test" };
+        let mut names: Vec<&String> = t.attribute_names().collect();
+        names.sort();
+
+        // BTreeMap iterators are already sorted by key, but sorting expected ensures safety
+        assert_eq!(names.len(), 2);
+        assert_eq!(names[0], &"id".to_string());
+        assert_eq!(names[1], &"name".to_string());
+    }
+}

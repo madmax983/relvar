@@ -521,6 +521,32 @@ mod tests {
         let result = WalRecord::deserialize(&invalid_bytes);
         assert!(matches!(result, Err(WalRecordError::Serialization(_))));
     }
+
+    #[test]
+    fn test_is_txn_end_other_variants() {
+        let txn_id = TransactionId::new(1);
+
+        let page_write = WalRecord::PageWrite {
+            txn_id,
+            relation_name: "test".to_string(),
+            page_id: 1,
+            page_data: vec![],
+        };
+        assert!(!page_write.is_txn_end());
+
+        let delete = WalRecord::Delete {
+            txn_id,
+            relation_name: "test".to_string(),
+            key_values: vec![],
+        };
+        assert!(!delete.is_txn_end());
+
+        let checkpoint = WalRecord::Checkpoint {
+            min_active_lsn: crate::wal::lsn::Lsn::new(1),
+            dirty_pages: std::collections::HashMap::new(),
+        };
+        assert!(!checkpoint.is_txn_end());
+    }
 }
 
 #[cfg(test)]
@@ -598,4 +624,24 @@ fn test_record_txn_id_page_write_and_delete() {
 
     assert_eq!(record_page_write.txn_id(), Some(txn_id));
     assert_eq!(record_delete.txn_id(), Some(txn_id));
+}
+
+#[cfg(test)]
+mod sentry_wal_record_coverage {
+    use super::*;
+
+    #[test]
+    fn test_wal_record_error_display() {
+        let err1 = WalRecordError::Serialization(postcard::Error::DeserializeUnexpectedEnd);
+        assert_eq!(
+            err1.to_string(),
+            "Failed to serialize WAL record: Hit the end of buffer, expected more data"
+        );
+
+        let err2 = WalRecordError::RecordTooLarge(1500000, 1048576);
+        assert_eq!(
+            err2.to_string(),
+            "WAL record too large: 1500000 bytes (max: 1048576)"
+        );
+    }
 }

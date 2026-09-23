@@ -38,6 +38,8 @@ fn test_scalar_value_float_cmp() {
 
 #[test]
 fn test_scalar_value_hash_coverage() {
+    use relvar_core::types::{RelationType, TupleType};
+    use relvar_core::values::Relation;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -51,8 +53,25 @@ fn test_scalar_value_hash_coverage() {
     let _ = calculate_hash(&ScalarValue::Float(42.0));
     let _ = calculate_hash(&ScalarValue::Float(f64::NAN));
     let _ = calculate_hash(&ScalarValue::String("hello".to_string()));
-    let _ = calculate_hash(&ScalarValue::Bool(true));
-    let _ = calculate_hash(&ScalarValue::Bytes(vec![1, 2, 3]));
+
+    // Stronger assertions (salvaged from swarm PR #1168): distinct values
+    // of the same variant must hash distinctly.
+    let bool_val = ScalarValue::Bool(true);
+    let bytes_val = ScalarValue::Bytes(vec![1, 2, 3]);
+    let rel_type = RelationType::new(TupleType::new().with_attribute("a", ScalarType::Int));
+    let rel_val = ScalarValue::Relation(Relation::new(rel_type));
+
+    assert_ne!(
+        calculate_hash(&bool_val),
+        calculate_hash(&ScalarValue::Bool(false))
+    );
+    assert_ne!(
+        calculate_hash(&bytes_val),
+        calculate_hash(&ScalarValue::Bytes(vec![1, 2]))
+    );
+
+    // Hash of Relation
+    let _ = calculate_hash(&rel_val);
 }
 
 #[test]

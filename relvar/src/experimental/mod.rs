@@ -10,7 +10,6 @@
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
 //! - **[`matrix`](crate::experimental::matrix)**: Relational Linear Algebra (Sparse Matrices).
-//! - **[`mock`](crate::experimental::mock)**: Tools for generating random relations for testing.
 //! - **[`physics`](crate::experimental::physics)**: Relational N-Body Physics Engine.
 //! - **[`pivot`](crate::experimental::pivot)**: Operator to rotate unique values from one column into multiple columns.
 //! - **[`raytracer`](crate::experimental::raytracer)**: Relational Raytracer.
@@ -31,16 +30,25 @@
 //! - **[`petri_net`](crate::experimental::petri_net)**: Relational Petri Net Simulator.
 //!
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
+//! - **[`apriori`](crate::experimental::apriori)**: Relational Apriori frequent-itemset mining.
+//! - **[`boids`](crate::experimental::boids)**: Relational Boids flocking simulation.
+//! - **[`decision_tree`](crate::experimental::decision_tree)**: Relational Decision Tree inference.
+//! - **[`fourier`](crate::experimental::fourier)**: Relational Discrete Fourier Transform.
+//! - **[`quantum`](crate::experimental::quantum)**: Relational Quantum Circuit Simulator.
+//! - **[`vector_search`](crate::experimental::vector_search)**: Relational Vector Database (similarity search).
 
+pub mod apriori;
 pub mod automata;
 pub mod automl;
 pub mod blockchain;
+pub mod boids;
 pub mod build_system;
 pub mod cellular_automaton;
 pub mod circuit;
 pub mod ecs;
 pub mod enigma;
 pub mod expert_system;
+pub mod fourier;
 pub mod garbage_collector;
 pub mod gnn;
 pub mod graph;
@@ -48,9 +56,9 @@ pub mod image;
 pub mod kmeans;
 pub mod knowledge_graph;
 pub mod matrix;
-pub mod mock;
 pub mod neural_network;
 
+pub mod decision_tree;
 pub mod dom;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;
@@ -60,6 +68,7 @@ pub mod parser;
 pub mod petri_net;
 pub mod physics;
 pub mod pivot;
+pub mod quantum;
 pub mod raytracer;
 pub mod rbac;
 pub mod recommend;
@@ -72,4 +81,5 @@ pub mod synth;
 pub mod timeseries;
 pub mod turing;
 pub mod vcs;
+pub mod vector_search;
 pub mod vm;
