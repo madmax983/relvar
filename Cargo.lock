@@ -590,6 +590,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "relvar-storage-core"
+version = "0.1.0"
+dependencies = [
+ "hashbrown",
+ "postcard",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "rustix"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

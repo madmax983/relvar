@@ -1,0 +1,26 @@
+[package]
+name = "relvar-storage-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "no_std storage core for Relvar: page layout, slotted pages, WAL records/framing, CRC-32, and the BlockDevice HAL"
+keywords = ["database", "storage", "no-std"]
+categories = ["database-implementations"]
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+# no_std hash map for WalRecord::Checkpoint's dirty_pages (std HashMap is
+# unavailable without the `std` feature; the postcard map encoding is unchanged).
+hashbrown.workspace = true
+# NOTE: postcard is deliberately NOT taken from the workspace spec — the
+# workspace pins `use-std` on, which breaks `#![no_std]` builds.
+postcard = { version = "1.0", default-features = false, features = ["alloc"] }
+
+[features]
+default = ["std"]
+# `std` enables standard-library conveniences. Disable default features for a
+# `#![no_std]` + `alloc` build (mirrors relvar-core v0.6's no_std pattern).
+std = ["serde/std", "thiserror/std", "postcard/use-std"]
