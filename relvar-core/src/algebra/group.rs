@@ -412,10 +412,7 @@ fn build_ungroup_result_heading(
     Ok(result_heading)
 }
 
-fn compute_total_capacity(
-    relation: &Relation,
-    rva_name: &str,
-) -> Result<usize, UngroupError> {
+fn compute_total_capacity(relation: &Relation, rva_name: &str) -> Result<usize, UngroupError> {
     let mut total_capacity = 0;
     for tuple in relation.tuples() {
         let val = tuple
