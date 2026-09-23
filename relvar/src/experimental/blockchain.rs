@@ -77,7 +77,7 @@ impl Blockchain {
                 // To avoid DoS from large values, use checked operations or saturating if needed.
                 // However, for pure relational algebra demo, simple negation is fine here unless sizes are huge.
                 // Security memory constraint: strictly use `saturating_*` or `checked_*` arithmetic.
-                ScalarValue::Int(amount.saturating_neg())
+                ScalarValue::Int(amount.checked_neg().unwrap_or(0))
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["tx_id", "from", "net_amount"])
@@ -115,6 +115,13 @@ impl Blockchain {
     /// // Note: This is a placeholder example
     /// ```
     pub fn is_valid(&self) -> Result<bool, DatabaseError> {
+        // 0. Check for negative transaction amounts
+        let negative_txs = self
+            .transactions
+            .restrict(|t| t.get_typed::<i64>("amount").unwrap_or(0) < 0);
+        if negative_txs.cardinality() > 0 {
+            return Ok(false);
+        }
         // 1. Check balances
         let balances = self.compute_balances()?;
 
