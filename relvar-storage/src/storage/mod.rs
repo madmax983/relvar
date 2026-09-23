@@ -70,4 +70,4 @@ pub use catalog::{Catalog, CatalogError};
 pub use heap::{HeapError, HeapFile};
 pub use manager::StorageManager;
 // TupleId is now pub(crate) in heap.rs, not exported
-pub use page::{Page, PageError, PageFile, PAGE_SIZE};
+pub use page::{PAGE_SIZE, Page, PageError, PageFile};
