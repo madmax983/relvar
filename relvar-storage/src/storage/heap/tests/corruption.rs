@@ -60,3 +60,44 @@ fn test_sentry_check_versioned_tuple_size_limit_overflow() {
         Err(HeapError::Serialization(msg)) if msg.contains("Header size + tuple data length overflow")
     ));
 }
+
+#[test]
+fn test_serialize_slotted_page_rejects_out_of_bounds_slot() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+    let tuple_data = vec![1u8, 2, 3, 4];
+
+    // Slot claims tuple data past the end of the page buffer: previously panicked
+    // on data[offset..offset + length].
+    let past_end = SlottedPage {
+        slot_count: 1,
+        slots: vec![Some(SlotEntry {
+            offset: (PAGE_SIZE - 8) as u32,
+            length: 16,
+        })],
+    };
+    let result =
+        heap.serialize_slotted_page_with_tuples(&past_end, std::slice::from_ref(&tuple_data));
+    match result {
+        Err(HeapError::Serialization(msg)) => {
+            assert!(msg.contains("outside buffer"), "unexpected message: {msg}")
+        }
+        other => panic!("expected Serialization error for out-of-bounds slot, got {other:?}"),
+    }
+
+    // Slot overlaps the slot-directory header: previously overwrote header bytes.
+    let overlaps_header = SlottedPage {
+        slot_count: 1,
+        slots: vec![Some(SlotEntry {
+            offset: 0,
+            length: 4,
+        })],
+    };
+    let result = heap.serialize_slotted_page_with_tuples(&overlaps_header, &[tuple_data]);
+    match result {
+        Err(HeapError::Serialization(msg)) => {
+            assert!(msg.contains("outside buffer"), "unexpected message: {msg}")
+        }
+        other => panic!("expected Serialization error for header-overlapping slot, got {other:?}"),
+    }
+}
