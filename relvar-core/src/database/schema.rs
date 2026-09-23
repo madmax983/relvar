@@ -72,6 +72,9 @@ impl<E: StorageEngine> Database<E> {
         // Remove associated constraints
         self.constraints.remove_constraints_for_relation(name);
 
+        // Drop this relation's key index entries (#23)
+        self.remove_key_index(name);
+
         // Drop from engine
         self.engine.drop_relation(name)?;
         Ok(())

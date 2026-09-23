@@ -69,6 +69,8 @@
 //! ```
 
 use crate::constraints::ConstraintManager;
+use crate::constraints::assertion::{AssertionError, DatabaseAssertion};
+use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use std::collections::HashMap;
 
@@ -77,8 +79,11 @@ pub(crate) mod virtual_relvar;
 
 mod data;
 mod integrity;
+mod key_index;
 mod schema;
 mod transaction;
+
+use self::key_index::KeyIndex;
 
 use self::virtual_relvar::VirtualRelvarDefinition;
 
@@ -134,8 +139,24 @@ pub struct Database<E: StorageEngine> {
     pub(crate) in_transaction: bool,
     /// Transaction savepoint.
     pub(crate) transaction_snapshot: Option<E::Snapshot>,
+    /// In-memory key index for O(1) key-constraint lookups (#23).
+    ///
+    /// Maps `(relation name, key attributes)` to the set of key values
+    /// present in the relation. Maintained on every write path; see the
+    /// [`key_index`](self::key_index) module.
+    pub(crate) key_index: KeyIndex,
+    /// Snapshot of [`key_index`](Self::key_index) taken at
+    /// [`begin`](Self::begin), restored on [`rollback`](Self::rollback).
+    pub(crate) key_index_snapshot: Option<KeyIndex>,
     /// Virtual relvars defined by expressions.
     pub(crate) virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
+    /// Database assertions (cross-relvar predicates over the whole database state).
+    pub(crate) assertions: Vec<DatabaseAssertion<E>>,
+    /// Pre-operation engine snapshot backing the assertion guard.
+    ///
+    /// `Some` only while an assertion-guarded DML operation is in flight;
+    /// always `None` when no assertions are registered.
+    pub(crate) assertion_snapshot: Option<E::Snapshot>,
 }
 
 impl<E: StorageEngine> Database<E> {
@@ -169,8 +190,112 @@ impl<E: StorageEngine> Database<E> {
             constraints: ConstraintManager::new(),
             in_transaction: false,
             transaction_snapshot: None,
+            key_index: HashMap::new(),
+            key_index_snapshot: None,
             virtual_relvars: HashMap::new(),
+            assertions: Vec::new(),
+            assertion_snapshot: None,
         }
+    }
+
+    /// Registers a database assertion.
+    ///
+    /// The assertion is validated against the current database state before
+    /// it is accepted: if the state already violates the assertion, the
+    /// assertion is rejected and the database is left unchanged.
+    ///
+    /// TTM: RM Prescription 9 - Database-level integrity constraints.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, TupleType, ScalarType};
+    /// use relvar_core::{DatabaseAssertion, tuple};
+    ///
+    /// let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    /// let rel_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+    /// db.create_relvar("USERS", rel_type).unwrap();
+    /// db.insert("USERS", tuple! { id: 1i64 }).unwrap();
+    ///
+    /// let assertion = DatabaseAssertion::new(
+    ///     "users_non_empty",
+    ///     "The USERS relvar must not be empty",
+    ///     |db: &mut Database<InMemoryEngine>| db.query("USERS").unwrap().cardinality() > 0,
+    /// );
+    /// db.add_assertion(assertion).unwrap();
+    /// assert_eq!(db.assertions().len(), 1);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::AssertionViolation`] if the assertion does
+    /// not hold against the current database state.
+    pub fn add_assertion(&mut self, assertion: DatabaseAssertion<E>) -> Result<(), DatabaseError> {
+        if !assertion.is_satisfied_by(self) {
+            return Err(AssertionError::Violation {
+                assertion_name: assertion.name().to_string(),
+                description: assertion.description().to_string(),
+            }
+            .into());
+        }
+        self.assertions.push(assertion);
+        Ok(())
+    }
+
+    /// Removes the database assertion with the given name.
+    ///
+    /// Returns `true` if an assertion with that name was registered and
+    /// removed, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::DatabaseAssertion;
+    ///
+    /// let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    /// db.add_assertion(DatabaseAssertion::new(
+    ///     "trivially_true",
+    ///     "Always holds",
+    ///     |_: &mut Database<InMemoryEngine>| true,
+    /// ))
+    /// .unwrap();
+    ///
+    /// assert!(db.remove_assertion("trivially_true"));
+    /// assert!(!db.remove_assertion("trivially_true"));
+    /// assert_eq!(db.assertions().len(), 0);
+    /// ```
+    pub fn remove_assertion(&mut self, name: &str) -> bool {
+        let registered = self.assertions.len();
+        self.assertions.retain(|assertion| assertion.name() != name);
+        self.assertions.len() != registered
+    }
+
+    /// Returns the database assertions registered on this database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::DatabaseAssertion;
+    ///
+    /// let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    /// assert_eq!(db.assertions().len(), 0);
+    ///
+    /// db.add_assertion(DatabaseAssertion::new(
+    ///     "trivially_true",
+    ///     "Always holds",
+    ///     |_: &mut Database<InMemoryEngine>| true,
+    /// ))
+    /// .unwrap();
+    /// assert_eq!(db.assertions()[0].name(), "trivially_true");
+    /// ```
+    pub fn assertions(&self) -> &[DatabaseAssertion<E>] {
+        &self.assertions
     }
 }
 

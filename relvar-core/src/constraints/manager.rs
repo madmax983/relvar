@@ -4,8 +4,8 @@
 //! storing and validating all database constraints (keys, foreign keys, types, CHECKs).
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraintError, CheckConstraints, ForeignKeyConstraints,
-    KeyConstraints,
+    AttributeConstraints, CheckConstraintError, CheckConstraints, ForeignKey,
+    ForeignKeyConstraints, KeyConstraints,
 };
 use crate::storage_engine::{StorageEngine, StorageError};
 use crate::values::relation::RelationError;
@@ -74,6 +74,13 @@ pub struct ConstraintManager {
     key_constraints: HashMap<String, KeyConstraints>,
     /// Foreign key constraints per relation.
     foreign_key_constraints: HashMap<String, ForeignKeyConstraints>,
+    /// Reverse foreign-key index (#25): maps a referenced relation name to
+    /// the `(referencing relation, foreign key)` pairs that point at it.
+    ///
+    /// Rebuilt whenever foreign key constraints are set or removed, so delete
+    /// validation can find referencing constraints without scanning every
+    /// foreign key definition.
+    reverse_foreign_key_index: HashMap<String, Vec<(String, ForeignKey)>>,
     /// Type constraints per relation, per attribute.
     type_constraints: HashMap<String, HashMap<String, AttributeConstraints>>,
     /// CHECK constraints (tuple-level predicates) per relation.
@@ -102,6 +109,7 @@ impl ConstraintManager {
     pub fn remove_constraints_for_relation(&mut self, relation_name: &str) {
         self.key_constraints.remove(relation_name);
         self.foreign_key_constraints.remove(relation_name);
+        self.remove_from_reverse_foreign_key_index(relation_name);
         self.type_constraints.remove(relation_name);
         self.check_constraints.remove(relation_name);
     }
@@ -159,6 +167,10 @@ impl ConstraintManager {
 
         self.foreign_key_constraints
             .insert(relation_name.to_string(), constraints);
+        // Rebuild this relation's reverse-index entries from the new
+        // constraint set (#25): old entries are dropped first, so replacing
+        // constraints cannot leave stale references behind.
+        self.rebuild_reverse_foreign_key_index_for(relation_name);
         Ok(())
     }
 
@@ -550,25 +562,72 @@ impl ConstraintManager {
         relation_name: &str,
         relation_after_delete: &Relation,
     ) -> Result<(), ConstraintManagerError> {
-        // Iterate over constraints without collecting/cloning
-        for (ref_name, fk_constraints) in &self.foreign_key_constraints {
-            for fk in fk_constraints.foreign_keys() {
-                if fk.referenced_relation_name() == relation_name {
-                    let referencing_relation = engine.load_relation(ref_name)?;
+        // Route through the reverse foreign-key index (#25): only the
+        // relations that actually reference this one are checked, instead of
+        // scanning every foreign key definition.
+        if let Some(entries) = self.reverse_foreign_key_index.get(relation_name) {
+            for (ref_name, fk) in entries {
+                let referencing_relation = engine.load_relation(ref_name)?;
 
-                    if !fk
-                        .is_satisfied_by(&referencing_relation, relation_after_delete)
-                        .map_err(|e| ConstraintManagerError::ForeignKeyViolation(e.to_string()))?
-                    {
-                        return Err(ConstraintManagerError::ForeignKeyViolation(format!(
-                            "Deleting tuples would orphan referencing tuples in {}",
-                            ref_name
-                        )));
-                    }
+                if !fk
+                    .is_satisfied_by(&referencing_relation, relation_after_delete)
+                    .map_err(|e| ConstraintManagerError::ForeignKeyViolation(e.to_string()))?
+                {
+                    return Err(ConstraintManagerError::ForeignKeyViolation(format!(
+                        "Deleting tuples would orphan referencing tuples in {}",
+                        ref_name
+                    )));
                 }
             }
         }
         Ok(())
+    }
+
+    /// Foreign keys that reference `relation_name`, as
+    /// `(referencing relation, foreign key)` pairs (#25).
+    ///
+    /// Returns an empty slice when no relation references `relation_name`.
+    ///
+    /// Test-only probe: production code routes through the map internally.
+    #[cfg(test)]
+    pub(crate) fn referencing_foreign_keys(&self, relation_name: &str) -> &[(String, ForeignKey)] {
+        self.reverse_foreign_key_index
+            .get(relation_name)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// Rebuild the reverse-index entries owned by `relation_name` from its
+    /// current foreign key constraints.
+    fn rebuild_reverse_foreign_key_index_for(&mut self, relation_name: &str) {
+        self.remove_from_reverse_foreign_key_index(relation_name);
+        let mut entries = Vec::new();
+        if let Some(constraints) = self.foreign_key_constraints.get(relation_name) {
+            for fk in constraints.foreign_keys() {
+                entries.push((
+                    fk.referenced_relation_name().to_string(),
+                    relation_name.to_string(),
+                    fk.clone(),
+                ));
+            }
+        }
+        for (referenced, referencing, fk) in entries {
+            self.reverse_foreign_key_index
+                .entry(referenced)
+                .or_default()
+                .push((referencing, fk));
+        }
+    }
+
+    /// Drop every reverse-index entry owned by `relation_name`.
+    ///
+    /// Empty referenced-relation lists are pruned so the map does not
+    /// accumulate dead keys.
+    fn remove_from_reverse_foreign_key_index(&mut self, relation_name: &str) {
+        self.reverse_foreign_key_index.retain(|_, entries| {
+            entries.retain(|(referencing, _)| referencing != relation_name);
+            !entries.is_empty()
+        });
     }
 }
 
@@ -576,8 +635,8 @@ impl ConstraintManager {
 mod tests {
     use super::*;
     use crate::constraints::{
-        AttributeConstraints, CandidateKey, CheckConstraint, ConstraintExpression, PrimaryKey,
-        TypeConstraint,
+        AttributeConstraints, CandidateKey, CheckConstraint, ConstraintExpression, ForeignKey,
+        ForeignKeyConstraints, PrimaryKey, TypeConstraint,
     };
     use crate::storage_engine::InMemoryEngine;
     use crate::tuple;
@@ -1028,5 +1087,163 @@ mod tests {
         assert!(
             matches!(res, Err(ConstraintManagerError::AttributeNotFound(attr, _)) if attr == "missing_attr")
         );
+    }
+
+    // #25 reverse foreign-key map fixtures and tests.
+
+    fn setup_fk_engine() -> InMemoryEngine {
+        let mut engine = InMemoryEngine::new();
+
+        let parent_type = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
+        engine.create_relation("parents", parent_type).unwrap();
+        let mut parents = Relation::new(RelationType::new(
+            TupleType::new().with_attribute("id", ScalarType::Int),
+        ));
+        parents.insert(tuple! { id: 1i64 }).unwrap();
+        engine.store_relation("parents", &parents).unwrap();
+
+        for child in ["children_a", "children_b"] {
+            let child_type =
+                RelationType::new(TupleType::new().with_attribute("parent_id", ScalarType::Int));
+            engine.create_relation(child, child_type).unwrap();
+            let mut rel = Relation::new(RelationType::new(
+                TupleType::new().with_attribute("parent_id", ScalarType::Int),
+            ));
+            rel.insert(tuple! { parent_id: 1i64 }).unwrap();
+            engine.store_relation(child, &rel).unwrap();
+        }
+
+        engine
+    }
+
+    fn fk_to_parents() -> ForeignKeyConstraints {
+        ForeignKeyConstraints::new().with_foreign_key(
+            ForeignKey::new(
+                vec!["parent_id".to_string()],
+                "parents".to_string(),
+                vec!["id".to_string()],
+            )
+            .unwrap(),
+        )
+    }
+
+    fn referencing_names(entries: &[(String, ForeignKey)]) -> Vec<&str> {
+        entries.iter().map(|(name, _)| name.as_str()).collect()
+    }
+
+    #[test]
+    fn reverse_fk_map_is_built_when_constraints_are_set() {
+        let mut engine = setup_fk_engine();
+        let mut manager = ConstraintManager::new();
+
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())
+            .unwrap();
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_b", fk_to_parents())
+            .unwrap();
+
+        let mut names = referencing_names(manager.referencing_foreign_keys("parents"));
+        names.sort_unstable();
+        assert_eq!(names, vec!["children_a", "children_b"]);
+
+        assert!(
+            manager
+                .referencing_foreign_keys("no_such_relation")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn reverse_fk_map_holds_each_fk_of_a_referencing_relation() {
+        let mut engine = setup_fk_engine();
+        let mut manager = ConstraintManager::new();
+
+        let two_fks = ForeignKeyConstraints::new()
+            .with_foreign_key(
+                ForeignKey::new(
+                    vec!["parent_id".to_string()],
+                    "parents".to_string(),
+                    vec!["id".to_string()],
+                )
+                .unwrap(),
+            )
+            .with_foreign_key(
+                ForeignKey::new(
+                    vec!["parent_id".to_string()],
+                    "parents".to_string(),
+                    vec!["id".to_string()],
+                )
+                .unwrap(),
+            );
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_a", two_fks)
+            .unwrap();
+
+        let entries = manager.referencing_foreign_keys("parents");
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|(name, _)| name == "children_a"));
+    }
+
+    #[test]
+    fn reverse_fk_map_is_replaced_when_constraints_are_reset() {
+        let mut engine = setup_fk_engine();
+        let mut manager = ConstraintManager::new();
+
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())
+            .unwrap();
+        // Replace with an empty constraint set: the old entry must go, and
+        // re-setting must not duplicate entries.
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_a", ForeignKeyConstraints::new())
+            .unwrap();
+        assert!(manager.referencing_foreign_keys("parents").is_empty());
+
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())
+            .unwrap();
+        assert_eq!(manager.referencing_foreign_keys("parents").len(), 1);
+    }
+
+    #[test]
+    fn reverse_fk_map_is_cleared_when_constraints_are_removed() {
+        let mut engine = setup_fk_engine();
+        let mut manager = ConstraintManager::new();
+
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())
+            .unwrap();
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_b", fk_to_parents())
+            .unwrap();
+
+        manager.remove_constraints_for_relation("children_a");
+
+        let names = referencing_names(manager.referencing_foreign_keys("parents"));
+        assert_eq!(names, vec!["children_b"]);
+    }
+
+    #[test]
+    fn reverse_fk_map_routes_delete_validation_to_referencing_relations() {
+        // Behavioral net for #25: orphaning deletes are still rejected when
+        // validation is routed through the reverse map.
+        let mut engine = setup_fk_engine();
+        let mut manager = ConstraintManager::new();
+
+        manager
+            .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())
+            .unwrap();
+
+        // Deleting the only parent tuple would orphan children_a's tuple.
+        let empty_parents = Relation::new(RelationType::new(
+            TupleType::new().with_attribute("id", ScalarType::Int),
+        ));
+
+        let res = manager.validate_referencing_foreign_keys(&mut engine, "parents", &empty_parents);
+        assert!(matches!(
+            res,
+            Err(ConstraintManagerError::ForeignKeyViolation(_))
+        ));
     }
 }

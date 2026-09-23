@@ -589,3 +589,60 @@ fn test_update_constraint_violation_in_loop() {
         ))
     ));
 }
+
+#[test]
+fn test_reverse_fk_map_consistent_through_drop_relvar() {
+    // #25: the reverse FK map must stay consistent when a referencing
+    // relvar is dropped -- the dropped relvar's entries go, and the
+    // remaining relvar's entries still route delete validation.
+    use crate::constraints::{ForeignKey, ForeignKeyConstraints};
+
+    let mut db = setup_parent_child_db();
+    let child2_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("child_id", ScalarType::Int)
+            .with_attribute("parent_id", ScalarType::Int),
+    );
+    db.create_relvar("CHILD2", child2_type).unwrap();
+
+    db.insert("PARENT", tuple! { id: 10i64, name: "Engineering" })
+        .unwrap();
+
+    for child in ["CHILD", "CHILD2"] {
+        let fk = ForeignKey::new(
+            vec!["parent_id".to_string()],
+            "PARENT".to_string(),
+            vec!["id".to_string()],
+        )
+        .unwrap();
+        db.set_foreign_key_constraints(child, ForeignKeyConstraints::new().with_foreign_key(fk))
+            .unwrap();
+    }
+
+    db.insert("CHILD", tuple! { child_id: 1i64, parent_id: 10i64 })
+        .unwrap();
+    db.insert("CHILD2", tuple! { child_id: 2i64, parent_id: 10i64 })
+        .unwrap();
+
+    // Deleting the parent is blocked while either child references it.
+    let blocked = db.delete("PARENT", |t| t.get_typed::<i64>("id").unwrap() == 10);
+    assert!(blocked.is_err());
+
+    // Dropping CHILD2 prunes only its reverse-map entry: CHILD still blocks.
+    db.drop_relvar("CHILD2").unwrap();
+    let still_blocked = db.delete("PARENT", |t| t.get_typed::<i64>("id").unwrap() == 10);
+    assert!(matches!(
+        still_blocked,
+        Err(DatabaseError::Constraint(
+            ConstraintManagerError::ForeignKeyViolation(_)
+        ))
+    ));
+
+    // Once no referencing tuples remain, the delete succeeds.
+    db.delete("CHILD", |t| t.get_typed::<i64>("child_id").unwrap() == 1)
+        .unwrap();
+    let deleted = db
+        .delete("PARENT", |t| t.get_typed::<i64>("id").unwrap() == 10)
+        .unwrap();
+    assert_eq!(deleted, 1);
+}

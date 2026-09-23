@@ -38,6 +38,9 @@ impl<E: StorageEngine> Database<E> {
 
         let snapshot = self.engine.begin_transaction()?;
         self.transaction_snapshot = Some(snapshot);
+        // Snapshot the key index too: rollback must restore it alongside
+        // the engine state (#23).
+        self.key_index_snapshot = Some(self.key_index.clone());
         self.in_transaction = true;
         Ok(())
     }
@@ -75,6 +78,9 @@ impl<E: StorageEngine> Database<E> {
             self.engine.commit_transaction(snapshot)?;
         }
 
+        // The index already reflects the committed state; drop the snapshot.
+        self.key_index_snapshot = None;
+
         self.in_transaction = false;
         Ok(())
     }
@@ -106,6 +112,11 @@ impl<E: StorageEngine> Database<E> {
 
         if let Some(snapshot) = self.transaction_snapshot.take() {
             self.engine.rollback_transaction(snapshot)?;
+        }
+
+        // Restore the key index to its pre-transaction state (#23).
+        if let Some(index_snapshot) = self.key_index_snapshot.take() {
+            self.key_index = index_snapshot;
         }
 
         self.in_transaction = false;

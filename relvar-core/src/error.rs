@@ -71,4 +71,13 @@ pub enum DatabaseError {
     /// Error during algebraic operation
     #[error("Algebra error: {0}")]
     AlgebraError(String),
+
+    /// A database assertion was violated.
+    ///
+    /// The payload is a human-readable message naming the violated assertion
+    /// and describing the business rule it enforces, e.g.
+    /// `"Database assertion 'total_non_negative' violated: Sum of all account
+    /// balances must be non-negative"`.
+    #[error("{0}")]
+    AssertionViolation(String),
 }
