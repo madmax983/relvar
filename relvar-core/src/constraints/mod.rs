@@ -34,6 +34,7 @@
 //! ).unwrap();
 //! ```
 
+pub(crate) mod assertion;
 pub(crate) mod check;
 pub(crate) mod expression;
 pub(crate) mod foreign_key;
@@ -43,6 +44,7 @@ pub(crate) mod manager;
 pub(crate) mod prepared;
 pub(crate) mod type_constraint;
 
+pub use assertion::{AssertionError, DatabaseAssertion};
 pub use check::{CheckConstraint, CheckConstraintError, CheckConstraints};
 pub use expression::{CmpOp, ConstraintExpression, ExpressionError, ValueOrRef};
 pub use foreign_key::{ForeignKey, ForeignKeyConstraints, ForeignKeyError};
