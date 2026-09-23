@@ -2,7 +2,7 @@
 
 use crate::mvcc::ActiveTransactionTable;
 use crate::storage::StorageManager;
-use std::sync::RwLock;
+use crate::sync::RwLock;
 use crate::wal::{TransactionId, TransactionIdGenerator, WalManager, WalRecord, recover};
 use relvar_core::storage_engine::{IsolationLevel, RelationMetadata, StorageEngine, StorageError};
 use relvar_core::types::RelationType;

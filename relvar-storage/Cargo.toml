@@ -18,10 +18,16 @@ std = ["serde/std", "thiserror/std"]
 [dependencies]
 relvar-core.workspace = true
 relvar-storage-core.workspace = true
+# spin backs the no_std lock shim (crate::sync); it is cfg-gated in code,
+# which Cargo's unused-dependencies lint cannot see (allowed below).
+spin.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 postcard.workspace = true
 serde_json.workspace = true
+
+[lints.cargo]
+unused_dependencies = "allow"
 
 [dev-dependencies]
 tempfile.workspace = true

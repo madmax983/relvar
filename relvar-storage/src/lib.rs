@@ -135,6 +135,9 @@ pub mod storage;
 // BlockDevice trait over OS files. Replaces the old PageFile.
 mod device;
 
+// Lock abstraction: std::sync::RwLock by default, spin::RwLock without `std`.
+pub(crate) mod sync;
+
 // WAL module is pub(crate) - not exposed to logical layer (TTM compliance)
 pub(crate) mod wal;
 
