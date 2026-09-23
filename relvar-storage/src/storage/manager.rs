@@ -261,15 +261,16 @@ impl StorageManager {
             .get_relation(name)
             .map_err(Self::convert_catalog_error)?;
 
-        // Remove old heap file and create new one
-        if let Err(e) = std::fs::remove_file(&metadata.heap_file_path) {
-            // Only error if file exists but can't be removed
-            if Path::new(&metadata.heap_file_path).exists() {
-                return Err(StorageError::Other(format!(
-                    "Failed to remove old heap file: {}",
-                    e
-                )));
-            }
+        // Remove old heap file and create new one.
+        // Inspect the error kind directly instead of a Path::exists() re-check
+        // (avoids the TOCTOU race and an extra syscall); a missing file is fine.
+        if let Err(e) = std::fs::remove_file(&metadata.heap_file_path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(StorageError::Other(format!(
+                "Failed to remove old heap file: {}",
+                e
+            )));
         }
 
         // Remove from cache
