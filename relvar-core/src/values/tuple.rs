@@ -472,7 +472,9 @@ impl<'a> TryFrom<&'a ScalarValue> for &'a str {
 #[macro_export]
 macro_rules! tuple {
     ($($name:ident: $value:expr),* $(,)?) => {{
-        use crate::collections::HashMap;
+        // `$crate` (not bare `crate`): this macro is `#[macro_export]`ed, so
+        // it expands in downstream crates where `crate` would resolve there.
+        use $crate::collections::HashMap;
         let mut type_builder = $crate::types::TupleType::new();
         let mut values = HashMap::new();
 
