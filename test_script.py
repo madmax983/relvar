@@ -1,13 +1,8 @@
-with open("relvar-storage/benches/mvcc.rs", "r") as f:
-    lines = f.readlines()
+import re
+with open("relvar-storage/src/storage/mod.rs", "r") as f:
+    content = f.read()
 
-for i, line in enumerate(lines):
-    if "let engine = PersistentEngine::open" in line:
-        lines[i] = line.replace("let engine", "let mut engine")
-    if "|(mut engine, _temp_dir): (PersistentEngine, _)|" in line:
-        if "load_relation_for_txn" in lines[i+1] or "load_relation_for_txn" in lines[i+2] or "load_relation_for_txn" in lines[i+3] or "load_relation" in lines[i+2] or "load_relation" in lines[i+3]:
-            # This is a read operation
-            lines[i] = line.replace("mut engine", "engine")
+content = content.replace("pub use page::{Page, PageError, PageFile};", "pub use page::{PAGE_SIZE, Page, PageError, PageFile, PageId};")
 
-with open("relvar-storage/benches/mvcc.rs", "w") as f:
-    f.writelines(lines)
+with open("relvar-storage/src/storage/mod.rs", "w") as f:
+    f.write(content)

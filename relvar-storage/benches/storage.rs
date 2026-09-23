@@ -4,8 +4,7 @@ use criterion::{
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Tuple;
-use relvar_storage::storage::HeapFile;
-use relvar_storage::storage::{Page, PageFile};
+use relvar_storage::storage::{HeapFile, Page, PageFile};
 use tempfile::NamedTempFile;
 
 fn create_test_relation_type() -> RelationType {
@@ -40,7 +39,7 @@ fn bench_page_write(c: &mut Criterion) {
                     let page = Page::from_data(0, data).unwrap();
                     (page_file, page, temp_file)
                 },
-                |(mut page_file, page, _temp_file): (PageFile, Page, _)| {
+                |(mut page_file, page, _temp_file)| {
                     // Measured: just the write operation
                     page_file.write_page(&page).unwrap();
                     black_box(page_file);
@@ -88,7 +87,7 @@ fn bench_heap_insert(c: &mut Criterion) {
                     let heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
                     (heap, temp_file)
                 },
-                |(mut heap, _temp_file): (HeapFile, _)| {
+                |(mut heap, _temp_file)| {
                     // Measured: just the insert operations
                     for i in 0..count {
                         let tuple = create_test_tuple(i as i64);
