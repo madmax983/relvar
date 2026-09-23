@@ -10,7 +10,6 @@
 //! - **[`graph`](crate::experimental::graph)**: Relational Graph Analytics (BFS, PageRank).
 //! - **[`image`](crate::experimental::image)**: Relational Image Processing (RIP).
 //! - **[`matrix`](crate::experimental::matrix)**: Relational Linear Algebra (Sparse Matrices).
-//! - **[`mock`](crate::experimental::mock)**: Tools for generating random relations for testing.
 //! - **[`physics`](crate::experimental::physics)**: Relational N-Body Physics Engine.
 //! - **[`pivot`](crate::experimental::pivot)**: Operator to rotate unique values from one column into multiple columns.
 //! - **[`raytracer`](crate::experimental::raytracer)**: Relational Raytracer.
@@ -57,7 +56,6 @@ pub mod image;
 pub mod kmeans;
 pub mod knowledge_graph;
 pub mod matrix;
-pub mod mock;
 pub mod neural_network;
 
 pub mod decision_tree;
