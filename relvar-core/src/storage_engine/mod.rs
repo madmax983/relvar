@@ -17,6 +17,46 @@ pub(crate) mod in_memory;
 
 pub use in_memory::InMemoryEngine;
 
+/// Isolation level of a transaction.
+///
+/// TTM treats each transaction as an atomic, isolated unit of work. The
+/// levels below refine what "isolated" means when transactions overlap in
+/// time; stronger levels hide more concurrent activity at the cost of more
+/// aborted transactions.
+///
+/// Guarantees (from weakest to strongest):
+///
+/// - [`IsolationLevel::ReadCommitted`]: every read observes the latest
+///   committed state. A transaction can observe a tuple inserted (or
+///   removed) by a transaction that commits mid-way through it —
+///   non-repeatable reads and phantoms are possible.
+/// - [`IsolationLevel::RepeatableRead`]: the transaction observes a fixed
+///   snapshot taken when it begins. Re-reading any data returns the same
+///   result for the life of the transaction, no matter what other
+///   transactions commit meanwhile.
+/// - [`IsolationLevel::Serializable`]: everything repeatable read
+///   guarantees, plus the commit is rejected with
+///   [`StorageError::SerializationFailure`] when a concurrent transaction
+///   committed changes that overlap this transaction's read or write sets.
+///   The effect is as if overlapping transactions had run one after the
+///   other (first-committer-wins).
+///
+/// The default is [`IsolationLevel::RepeatableRead`], matching the
+/// historical behavior of [`Database::begin`].
+///
+/// See [`StorageEngine::begin_transaction_with_isolation`] and
+/// [`Database::begin_transaction_with_level`](crate::database::Database::begin_transaction_with_level).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum IsolationLevel {
+    /// Each read observes the latest committed state.
+    ReadCommitted,
+    /// All reads observe the transaction's begin snapshot.
+    #[default]
+    RepeatableRead,
+    /// Repeatable read plus first-committer-wins conflict validation.
+    Serializable,
+}
+
 /// The grim reality of physical storage.
 ///
 /// Even the most pristine relational algebra must eventually touch the cold, hard disk.
@@ -51,6 +91,12 @@ pub enum StorageError {
     /// A relation error occurred.
     #[error("Relation error: {0}")]
     Relation(String),
+
+    /// A transaction failed serializable validation: a concurrent
+    /// transaction committed changes overlapping this transaction's read
+    /// or write sets. Retry the transaction.
+    #[error("Serialization failure: {0}")]
+    SerializationFailure(String),
 
     /// A general storage error occurred.
     #[error("Storage error: {0}")]
@@ -148,18 +194,63 @@ pub trait StorageEngine: Send + Sync {
 
     /// Begin a transaction (save current state).
     ///
+    /// Equivalent to
+    /// [`begin_transaction_with_isolation`](Self::begin_transaction_with_isolation)
+    /// at [`IsolationLevel::default`].
+    ///
     /// # Errors
     ///
     /// Yields an error if transaction creation fails.
     fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError>;
 
-    /// Commit a transaction (discard snapshot).
+    /// Begin a transaction at the given isolation level
+    /// (TTM transaction semantics).
     ///
-    /// This is a no-op for most engines since we're not rolling back.
+    /// The isolation level controls which concurrent changes this
+    /// transaction can observe while it runs:
+    ///
+    /// - [`IsolationLevel::ReadCommitted`]: each read observes the latest
+    ///   committed state.
+    /// - [`IsolationLevel::RepeatableRead`]: all reads observe the state as
+    ///   of the transaction's start.
+    /// - [`IsolationLevel::Serializable`]: like repeatable read, plus the
+    ///   commit fails with
+    ///   [`StorageError::SerializationFailure`] when a concurrent
+    ///   transaction committed changes that overlap this transaction's
+    ///   read/write sets (first-committer-wins).
+    ///
+    /// The default implementation ignores the level and delegates to
+    /// [`begin_transaction`](Self::begin_transaction), preserving the
+    /// engine's existing snapshot semantics. Engines with genuine
+    /// multi-version concurrency control should override this method.
     ///
     /// # Errors
     ///
-    /// Yields an error if commit fails.
+    /// Yields an error if transaction creation fails, or if the engine
+    /// cannot provide the requested level.
+    fn begin_transaction_with_isolation(
+        &mut self,
+        _level: IsolationLevel,
+    ) -> Result<Self::Snapshot, StorageError> {
+        self.begin_transaction()
+    }
+
+    /// Commit a transaction (discard snapshot).
+    ///
+    /// # Contract
+    ///
+    /// If this method returns `Err`, the transaction is no longer active in
+    /// the engine: the engine must have ended it (aborted, best-effort)
+    /// before returning the error, and the snapshot is consumed. Callers
+    /// such as [`Database::commit`](crate::database::Database::commit) rely
+    /// on this to drop their own transaction state without stranding an
+    /// engine-side transaction.
+    ///
+    /// # Errors
+    ///
+    /// Yields an error if commit fails — e.g.
+    /// [`StorageError::SerializationFailure`] when a serializable
+    /// transaction's commit validation rejects it.
     fn commit_transaction(&mut self, _snapshot: Self::Snapshot) -> Result<(), StorageError> {
         Ok(())
     }

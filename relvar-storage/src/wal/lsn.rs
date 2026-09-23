@@ -177,6 +177,17 @@ impl TransactionIdGenerator {
         }
         TransactionId(id)
     }
+
+    /// Peeks at the next transaction ID without consuming it.
+    ///
+    /// This is the MVCC visibility horizon: every transaction that has begun
+    /// so far holds an ID strictly less than the peeked value, so a snapshot
+    /// stamped with this horizon hides versions created by transactions that
+    /// begin afterwards — even if those transactions commit before the
+    /// snapshot is read. This is what makes Repeatable Read actually repeat.
+    pub fn peek_next(&self) -> TransactionId {
+        TransactionId(self.next_id.load(Ordering::SeqCst))
+    }
 }
 
 impl Default for TransactionIdGenerator {

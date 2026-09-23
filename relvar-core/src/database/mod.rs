@@ -71,7 +71,7 @@
 use crate::constraints::ConstraintManager;
 use crate::constraints::assertion::{AssertionError, DatabaseAssertion};
 use crate::error::DatabaseError;
-use crate::storage_engine::StorageEngine;
+use crate::storage_engine::{IsolationLevel, StorageEngine};
 use crate::types::{OperatorError, OperatorRegistry, OperatorSignature};
 use crate::values::ScalarValue;
 use std::collections::HashMap;
@@ -141,6 +141,12 @@ pub struct Database<E: StorageEngine> {
     pub(crate) in_transaction: bool,
     /// Transaction savepoint.
     pub(crate) transaction_snapshot: Option<E::Snapshot>,
+    /// Isolation level of the active transaction, if any.
+    ///
+    /// Set by [`begin`](Self::begin) /
+    /// [`begin_transaction_with_level`](Self::begin_transaction_with_level),
+    /// cleared by [`commit`](Self::commit) / [`rollback`](Self::rollback).
+    pub(crate) transaction_isolation: Option<IsolationLevel>,
     /// In-memory key index for O(1) key-constraint lookups (#23).
     ///
     /// Maps `(relation name, key attributes)` to the set of key values
@@ -199,6 +205,7 @@ impl<E: StorageEngine> Database<E> {
             constraints: ConstraintManager::new(),
             in_transaction: false,
             transaction_snapshot: None,
+            transaction_isolation: None,
             key_index: HashMap::new(),
             key_index_snapshot: None,
             virtual_relvars: HashMap::new(),

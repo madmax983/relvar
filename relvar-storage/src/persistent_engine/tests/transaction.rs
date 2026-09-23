@@ -384,15 +384,14 @@ fn test_load_for_txn_after_commit_visible() {
     // T3 begins after T2 commits
     let snapshot3 = engine.begin_transaction().unwrap();
 
-    // NOTE: Current implementation uses active_txns list, not commit LSNs.
-    // T1 WILL see T2's insert because T2 was not in T1's active_txns
-    // (T2 started after T1 took its snapshot).
-    // For full snapshot isolation, track commit LSNs and check:
-    //       committed_lsn[T2] < snapshot1.snapshot_lsn
+    // T1 began (repeatable read) before T2 committed: T2's insert is newer
+    // than T1's snapshot, so T1 must NOT see it. The snapshot's visibility
+    // horizon excludes transactions that began after the snapshot was taken,
+    // even when they have committed since.
     let rel1 = engine
         .load_relation_for_txn("TEST", snapshot1.txn_id)
         .unwrap();
-    assert_eq!(rel1.cardinality(), 1); // Sees committed data (Read Committed behavior)
+    assert_eq!(rel1.cardinality(), 0);
 
     // T3 should see T2's insert (T2 committed before T3 started)
     let rel3 = engine

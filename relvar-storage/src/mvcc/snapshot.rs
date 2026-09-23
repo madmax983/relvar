@@ -13,6 +13,12 @@ use std::collections::HashSet;
 /// 1. The transaction's own ID.
 /// 2. The Log Sequence Number (LSN) at the time it started.
 /// 3. The exact set of *other* transactions that were running (uncommitted) at that moment.
+/// 4. The visibility horizon: an upper bound on transaction IDs. Transactions
+///    with IDs at or above the horizon began *after* the snapshot was taken,
+///    so their versions are invisible even if they committed since. This is
+///    the bound that makes Repeatable Read actually repeat; without it, a
+///    transaction that begins and commits after our snapshot would leak its
+///    writes into our reads (a non-repeatable read).
 ///
 /// This structure is strictly read-only after creation and is passed to the visibility
 /// checker to ensure that any changes made by the `active_txns` are hidden from this transaction.
@@ -45,6 +51,13 @@ pub struct TransactionSnapshot {
     pub snapshot_lsn: Lsn,
     /// Set of transactions that were active (uncommitted) when snapshot was taken
     pub active_txns: HashSet<TransactionId>,
+    /// Visibility horizon: transaction IDs `>= horizon` began after this
+    /// snapshot was taken, so their versions are invisible to it.
+    ///
+    /// Defaults to `u64::MAX` (unbounded: every begun transaction is visible
+    /// subject to the commit/active rules). Production snapshots stamp a real
+    /// horizon via [`TransactionSnapshot::with_horizon`].
+    pub horizon: TransactionId,
 }
 
 impl TransactionSnapshot {
@@ -77,7 +90,21 @@ impl TransactionSnapshot {
             txn_id,
             snapshot_lsn,
             active_txns: active.into_iter().collect(),
+            // Unbounded horizon: preserves the historical visibility rules
+            // (commit set + active set only). Production snapshots narrow this
+            // via `with_horizon`.
+            horizon: TransactionId::new(u64::MAX),
         }
+    }
+
+    /// Stamps a visibility horizon on this snapshot.
+    ///
+    /// Transactions with IDs at or above `horizon` began after the snapshot
+    /// was taken; their versions (and their deletes) are invisible to it,
+    /// even if they committed in the meantime.
+    pub fn with_horizon(mut self, horizon: TransactionId) -> Self {
+        self.horizon = horizon;
+        self
     }
 
     /// Checks if a given transaction was active (uncommitted) when this snapshot was created.
@@ -249,5 +276,21 @@ mod tests {
         let snapshot2 = TransactionSnapshot::new(txn_id, test_lsn(200), active);
 
         assert_ne!(snapshot1, snapshot2);
+    }
+
+    #[test]
+    fn test_horizon_defaults_to_unbounded() {
+        let snapshot = TransactionSnapshot::new(test_txn(1), test_lsn(100), vec![]);
+        assert_eq!(snapshot.horizon, test_txn(u64::MAX));
+    }
+
+    #[test]
+    fn test_with_horizon_stamps_bound() {
+        let snapshot =
+            TransactionSnapshot::new(test_txn(1), test_lsn(100), vec![]).with_horizon(test_txn(7));
+        assert_eq!(snapshot.horizon, test_txn(7));
+        // Other fields are preserved.
+        assert_eq!(snapshot.txn_id, test_txn(1));
+        assert_eq!(snapshot.snapshot_lsn, test_lsn(100));
     }
 }
