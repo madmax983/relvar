@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Experimental Spatial Types.
 //!
 //! This module demonstrates how to implement complex types (like `Point`) using

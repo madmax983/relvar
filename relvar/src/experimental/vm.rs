@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Virtual Machine
 //!
 //! This module demonstrates how a simple Virtual Machine (VM) can be modeled using purely relational

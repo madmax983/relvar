@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational DOM Engine
 //!
 //! This module models a Document Object Model (DOM) using purely relational

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Build System
 //!
 //! This module demonstrates how a Build System (like Make or Ninja) can be implemented

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Markov Chain
 //!
 //! This module demonstrates how Markov Chains can be evaluated using purely

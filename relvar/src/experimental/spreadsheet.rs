@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use relvar_core::{
     error::DatabaseError,
     types::ScalarType,

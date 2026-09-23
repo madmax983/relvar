@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Blockchain Simulation
 //!
 //! This module demonstrates how a simple blockchain ledger can be modeled and

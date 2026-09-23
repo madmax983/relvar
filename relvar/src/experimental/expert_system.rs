@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Expert System (Forward Chaining Inference Engine)
 //!
 //! This module demonstrates how an Expert System (or Business Rules Engine)

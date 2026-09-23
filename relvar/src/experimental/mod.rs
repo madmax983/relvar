@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Experimental features that may be unstable or subject to change.
 //!
 //! This module contains features that are still in development or being tested.

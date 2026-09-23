@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Knowledge Graph (RDF/SPARQL)
 //!
 //! This module demonstrates how a Knowledge Graph (like RDF) and graph pattern matching (like SPARQL)

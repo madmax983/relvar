@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Image Processing (RIP)
 //!
 //! This module demonstrates how image processing algorithms (like convolution)

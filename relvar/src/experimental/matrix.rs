@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Linear Algebra.
 //!
 //! This module demonstrates how sparse matrices and linear algebra operations

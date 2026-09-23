@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Relational Full-Text Search
 //!
 //! This module implements a full-text search engine using pure relational algebra.
