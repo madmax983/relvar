@@ -1,7 +1,7 @@
 use relvar::experimental::timeseries::moving_average;
+use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::Relation;
-use relvar_core::tuple;
 
 #[test]
 fn test_sentry_timeseries_collision() {
