@@ -33,6 +33,7 @@
 //! - **[`build_system`](crate::experimental::build_system)**: Relational Build System.
 //! - **[`apriori`](crate::experimental::apriori)**: Relational Apriori frequent-itemset mining.
 //! - **[`boids`](crate::experimental::boids)**: Relational Boids flocking simulation.
+//! - **[`decision_tree`](crate::experimental::decision_tree)**: Relational Decision Tree inference.
 
 pub mod apriori;
 pub mod automata;
@@ -55,6 +56,7 @@ pub mod matrix;
 pub mod mock;
 pub mod neural_network;
 
+pub mod decision_tree;
 pub mod dom;
 pub mod genetic_algorithm;
 pub mod graph_neural_network;
