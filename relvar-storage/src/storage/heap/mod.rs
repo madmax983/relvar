@@ -167,10 +167,14 @@ impl SlotEntry {
         self.length
     }
 
+    // Test-only: used by page-layout tests that build expected pages by hand.
+    #[cfg(test)]
     fn set_offset(&mut self, offset: u32) {
         self.offset = offset;
     }
 
+    // Test-only: used by page-layout tests that build expected pages by hand.
+    #[cfg(test)]
     fn set_length(&mut self, length: u32) {
         self.length = length;
     }
@@ -353,6 +357,9 @@ impl HeapFile {
     /// Helper to repack slots and calculate offsets.
     /// Iterates backward from the end of the available space.
     /// Assumes slots are already populated (Some) for valid tuples.
+    ///
+    /// Test-only: page-layout tests use this to build expected pages by hand.
+    #[cfg(test)]
     fn repack_slots(
         slots: &mut [Option<SlotEntry>],
         tuples: &[Vec<u8>],
@@ -484,6 +491,9 @@ impl HeapFile {
 
     /// Helper to extract all tuples from a page based on slot entries.
     /// This abstracts the common logic used in insert, update, delete, and GC operations.
+    ///
+    /// Test-only: layout tests use this to verify page contents.
+    #[cfg(test)]
     fn extract_all_tuples(
         &self,
         page: &Page,
@@ -543,35 +553,91 @@ impl HeapFile {
         }
     }
 
-    /// Try to insert tuple data into a specific page
+    /// Try to insert tuple data into a specific page.
+    ///
+    /// Uses the standard slotted-page technique:
+    ///
+    /// 1. Deserialize only the slot directory (tuple data is never read).
+    /// 2. Append the new tuple bytes into free space at the page end.
+    /// 3. Rewrite only the slot directory at the start of the page.
+    ///
+    /// Existing tuple bytes are never read, moved, or rewritten, so their
+    /// slot offsets stay stable across inserts. Insert cost is independent
+    /// of the number of tuples already on the page.
     fn try_insert_into_page(
         &mut self,
         page_id: PageId,
         tuple_data: &[u8],
     ) -> Result<u32, HeapError> {
-        // Read the page (or create empty if doesn't exist)
+        // Read the page (or start from a zeroed buffer if it doesn't exist yet).
         let page = self.page_file.read_page(page_id)?;
-
-        // Read existing tuples from the page
-        let (mut slotted_page, mut existing_tuples) = if page.is_empty() {
-            (
-                SlottedPage {
-                    slot_count: 0,
-                    slots: Vec::new(),
-                },
-                Vec::new(),
-            )
+        let mut page_data = if page.is_empty() {
+            vec![0u8; USABLE_PAGE_SIZE_V1]
         } else {
-            let sp = self.deserialize_slotted_page(&page)?;
-            let tuples = self.extract_all_tuples(&page, &sp.slots)?;
-            (sp, tuples)
+            page.data().to_vec()
         };
 
-        let slot_number =
-            Self::prepare_insert(&mut slotted_page, &mut existing_tuples, tuple_data)?;
+        // 1. Read ONLY the slot directory.
+        let mut slotted_page = if page.is_empty() {
+            SlottedPage {
+                slot_count: 0,
+                slots: Vec::new(),
+            }
+        } else {
+            self.deserialize_slotted_page(&page)?
+        };
 
-        // Serialize the updated page with all tuples
-        let page_data = self.serialize_slotted_page_with_tuples(&slotted_page, &existing_tuples)?;
+        // Allocate a slot for the new tuple (reuses a freed slot when one exists).
+        let slot_number =
+            Self::find_or_allocate_slot(&mut slotted_page.slots, &mut slotted_page.slot_count);
+        let new_slot = slot_number as usize;
+
+        // 2. Locate free space. Tuples grow downward from the end of the
+        // usable area, so the new tuple goes just below the lowest live
+        // tuple. Existing slots are bounds-checked here, but their tuple
+        // data is never read.
+        let mut lowest_live_offset = page_data.len();
+        for (idx, slot) in slotted_page.slots.iter().enumerate() {
+            if idx == new_slot {
+                continue;
+            }
+            if let Some(entry) = slot {
+                let offset = entry.offset() as usize;
+                let end = offset.checked_add(entry.length() as usize).ok_or_else(|| {
+                    HeapError::Serialization("Tuple offset + length overflow".to_string())
+                })?;
+                if end > page_data.len() {
+                    return Err(HeapError::Serialization(format!(
+                        "Corrupted slot on page {page_id} points outside page data"
+                    )));
+                }
+                lowest_live_offset = lowest_live_offset.min(offset);
+            }
+        }
+
+        let tuple_len = tuple_data.len();
+        let new_offset = lowest_live_offset
+            .checked_sub(tuple_len)
+            .ok_or(HeapError::PageFull)?;
+
+        // 3. Serialize the updated slot directory with the final offset so the
+        // header size is exact, then verify the header and the new tuple fit
+        // in free space without colliding.
+        slotted_page.slots[new_slot] = Some(SlotEntry {
+            offset: new_offset as u32,
+            length: tuple_len as u32,
+        });
+        let new_slot_dir = serialize_compat(&slotted_page)?;
+        let new_header_len = new_slot_dir.len();
+        if new_header_len > new_offset {
+            return Err(HeapError::PageFull);
+        }
+
+        // 4. Append the tuple bytes and rewrite only the slot directory.
+        // (new_offset + tuple_len == lowest_live_offset <= page_data.len(),
+        // so both copies are in bounds.)
+        page_data[new_offset..new_offset + tuple_len].copy_from_slice(tuple_data);
+        page_data[..new_header_len].copy_from_slice(&new_slot_dir);
 
         // Write the page
         let updated_page = Page::from_data(page_id, page_data)?;
@@ -580,54 +646,10 @@ impl HeapFile {
         Ok(slot_number)
     }
 
-    fn prepare_insert(
-        slotted_page: &mut SlottedPage,
-        existing_tuples: &mut Vec<Vec<u8>>,
-        tuple_data: &[u8],
-    ) -> Result<u32, HeapError> {
-        // Find free slot or add new one
-        let slot_number =
-            Self::find_or_allocate_slot(&mut slotted_page.slots, &mut slotted_page.slot_count);
-
-        // Add new tuple to the list (overwrite if reusing slot, append if new)
-        if (slot_number as usize) < existing_tuples.len() {
-            existing_tuples[slot_number as usize] = tuple_data.to_vec();
-        } else {
-            existing_tuples.push(tuple_data.to_vec());
-        }
-
-        // Initialize the slot (needed for size calc and repacking)
-        slotted_page.slots[slot_number as usize] = Some(SlotEntry {
-            offset: 0,
-            length: tuple_data.len() as u32,
-        });
-
-        // Calculate exact header size using bincode
-        let header_size = serialized_size_compat(&slotted_page)? as usize;
-
-        // Calculate total size correctly
-        let total_tuple_data_size: usize = existing_tuples.iter().map(|t| t.len()).sum::<usize>();
-        let required_space = header_size
-            .checked_add(total_tuple_data_size)
-            .ok_or_else(|| {
-                HeapError::Serialization("Header size + total tuple data size overflow".to_string())
-            })?;
-
-        if required_space > USABLE_PAGE_SIZE_V1 {
-            return Err(HeapError::PageFull);
-        }
-
-        // Repack slots
-        Self::repack_slots(
-            &mut slotted_page.slots,
-            existing_tuples,
-            USABLE_PAGE_SIZE_V1,
-        )?;
-
-        Ok(slot_number)
-    }
-
     /// Serialize a slotted page with all tuple data
+    ///
+    /// Test-only: page-layout tests use this to build expected pages by hand.
+    #[cfg(test)]
     fn serialize_slotted_page_with_tuples(
         &self,
         slotted_page: &SlottedPage,
