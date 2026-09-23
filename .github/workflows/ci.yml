@@ -79,6 +79,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build relvar-core for Cortex-M without std
         run: cargo build -p relvar-core --no-default-features --target thumbv8m.main-none-eabihf
+      - name: Build relvar-storage-core for Cortex-M without std
+        run: cargo build -p relvar-storage-core --no-default-features --target thumbv8m.main-none-eabihf
 
   coverage:
     name: Code Coverage
