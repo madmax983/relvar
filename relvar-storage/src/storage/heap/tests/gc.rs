@@ -44,7 +44,7 @@ fn test_heap_gc_on_corrupted_page_fails() {
     page_data[5..5 + slot_dir.len()].copy_from_slice(&slot_dir);
 
     let page = Page::from_data(0, page_data).unwrap();
-    heap.page_file.write_page(&page).unwrap();
+    heap.store_page(&page).unwrap();
 
     // 2. Run GC
     let result =
@@ -53,14 +53,14 @@ fn test_heap_gc_on_corrupted_page_fails() {
     // 3. Assert failure
     assert!(result.is_err(), "GC should fail on corrupted page");
     match result {
-        Err(HeapError::Serialization(msg)) => {
+        Err(HeapError::Slotted(SlottedError::Serialization(msg))) => {
             assert!(
                 msg.contains("Corrupted slot") || msg.contains("outside page data"),
                 "Unexpected error message: {}",
                 msg
             );
         }
-        _ => panic!("Expected Serialization error, got {:?}", result),
+        _ => panic!("Expected Slotted error, got {:?}", result),
     }
 }
 

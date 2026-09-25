@@ -36,17 +36,26 @@ fn test_check_versioned_tuple_size_limit_overflow() {
 }
 
 #[test]
-fn test_verify_versioned_page_size_overflow() {
-    let slot_dir = vec![0; 100];
-    let header_size = usize::MAX;
-    let usable_size = 1000;
+fn test_encode_versioned_page_rejects_oversized_slot_dir() {
+    // Regression: an oversized slot directory must be rejected instead of
+    // overflowing the page buffer (previously `verify_versioned_page_size`).
+    let page = VersionedSlottedPage {
+        magic: VERSIONED_PAGE_MAGIC,
+        slot_count: 200_000,
+        slots: vec![None; 200_000],
+    };
 
-    let result = HeapFile::verify_versioned_page_size(&slot_dir, header_size, usable_size);
+    let result = encode_versioned_page(&page, &[]);
 
-    assert!(matches!(
-        result,
-        Err(HeapError::Serialization(msg)) if msg.contains("Header size overflow")
-    ));
+    match result {
+        Err(SlottedError::Serialization(msg)) => {
+            assert!(
+                msg.contains("too large for page"),
+                "unexpected message: {msg}"
+            )
+        }
+        other => panic!("expected Serialization error for oversized slot dir, got {other:?}"),
+    }
 }
 
 #[test]
@@ -62,9 +71,7 @@ fn test_sentry_check_versioned_tuple_size_limit_overflow() {
 }
 
 #[test]
-fn test_serialize_slotted_page_rejects_out_of_bounds_slot() {
-    let temp_file = NamedTempFile::new().unwrap();
-    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+fn test_encode_slotted_page_rejects_out_of_bounds_slot() {
     let tuple_data = vec![1u8, 2, 3, 4];
 
     // Slot claims tuple data past the end of the page buffer: previously panicked
@@ -76,10 +83,9 @@ fn test_serialize_slotted_page_rejects_out_of_bounds_slot() {
             length: 16,
         })],
     };
-    let result =
-        heap.serialize_slotted_page_with_tuples(&past_end, std::slice::from_ref(&tuple_data));
+    let result = encode_slotted_page(&past_end, std::slice::from_ref(&tuple_data));
     match result {
-        Err(HeapError::Serialization(msg)) => {
+        Err(SlottedError::Serialization(msg)) => {
             assert!(msg.contains("outside buffer"), "unexpected message: {msg}")
         }
         other => panic!("expected Serialization error for out-of-bounds slot, got {other:?}"),
@@ -93,9 +99,9 @@ fn test_serialize_slotted_page_rejects_out_of_bounds_slot() {
             length: 4,
         })],
     };
-    let result = heap.serialize_slotted_page_with_tuples(&overlaps_header, &[tuple_data]);
+    let result = encode_slotted_page(&overlaps_header, &[tuple_data]);
     match result {
-        Err(HeapError::Serialization(msg)) => {
+        Err(SlottedError::Serialization(msg)) => {
             assert!(msg.contains("outside buffer"), "unexpected message: {msg}")
         }
         other => panic!("expected Serialization error for header-overlapping slot, got {other:?}"),
@@ -122,34 +128,28 @@ fn test_sentry_extract_tuples_from_versioned_slots_corrupted_offset() {
     let result = heap.extract_tuples_from_versioned_slots(&page, slots.iter());
     assert!(matches!(
         result,
-        Err(HeapError::Serialization(msg)) if msg.contains("Tuple end offset overflow") || msg.contains("overflow") || msg.contains("points outside page data")
+        Err(HeapError::Slotted(SlottedError::Serialization(msg))) if msg.contains("Tuple end offset overflow") || msg.contains("overflow") || msg.contains("points outside page data")
     ));
 }
 
 #[test]
-fn test_sentry_validate_slot_bounds_overflow() {
-    let temp_file = NamedTempFile::new().unwrap();
-    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+fn test_sentry_slot_bytes_overflow() {
     let data = vec![0u8; 100];
-    let page = Page::from_data(0, data).unwrap();
 
-    let result = heap.validate_slot_bounds(&page, u32::MAX, 10);
+    let result = slot_bytes(&data, u32::MAX, 10);
     assert!(matches!(
         result,
-        Err(HeapError::Serialization(msg)) if msg.contains("Tuple end offset overflow") || msg.contains("overflow") || msg.contains("points outside page data")
+        Err(SlottedError::Serialization(msg)) if msg.contains("Tuple end offset overflow") || msg.contains("overflow") || msg.contains("points outside page data")
     ));
 }
 
 #[test]
-fn test_sentry_validate_slot_bounds_out_of_bounds() {
-    let temp_file = NamedTempFile::new().unwrap();
-    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+fn test_sentry_slot_bytes_out_of_bounds() {
     let data = vec![0u8; 100];
-    let page = Page::from_data(0, data).unwrap();
 
-    let result = heap.validate_slot_bounds(&page, 95, 10);
+    let result = slot_bytes(&data, 95, 10);
     assert!(matches!(
         result,
-        Err(HeapError::Serialization(msg)) if msg.contains("points outside page data")
+        Err(SlottedError::Serialization(msg)) if msg.contains("points outside page data")
     ));
 }

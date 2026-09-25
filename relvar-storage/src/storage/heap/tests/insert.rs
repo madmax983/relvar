@@ -318,7 +318,7 @@ fn test_heap_insert_on_corrupted_page_fails() {
     page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
     let page = Page::from_data(0, page_data).unwrap();
-    heap.page_file.write_page(&page).unwrap();
+    heap.store_page(&page).unwrap();
 
     // 2. Try to insert a new tuple
     // This should fail because it needs to read existing tuples to shift them
@@ -378,7 +378,7 @@ fn test_heap_insert_versioned_on_corrupted_page_fails() {
     page_data[5..5 + slot_dir.len()].copy_from_slice(&slot_dir);
 
     let page = Page::from_data(0, page_data).unwrap();
-    heap.page_file.write_page(&page).unwrap();
+    heap.store_page(&page).unwrap();
 
     // 2. Try to insert a new versioned tuple
     // This should fail when extracting existing tuples
@@ -391,14 +391,14 @@ fn test_heap_insert_versioned_on_corrupted_page_fails() {
         "Insert versioned should fail on corrupted page"
     );
     match result {
-        Err(HeapError::Serialization(msg)) => {
+        Err(HeapError::Slotted(SlottedError::Serialization(msg))) => {
             assert!(
                 msg.contains("Corrupted slot") || msg.contains("outside page data"),
                 "Unexpected error message: {}",
                 msg
             );
         }
-        _ => panic!("Expected Serialization error, got {:?}", result),
+        _ => panic!("Expected Slotted error, got {:?}", result),
     }
 }
 
@@ -473,7 +473,7 @@ fn test_sentry_find_page_for_insertion_error_propagation() {
 
 /// Reads the raw slot directory of a page without touching tuple data.
 fn read_slot_directory(heap: &mut HeapFile, page_id: u64) -> SlottedPage {
-    let page = heap.page_file.read_page(page_id).unwrap();
+    let page = heap.load_page(page_id).unwrap();
     assert!(!page.is_empty(), "expected page {page_id} to contain data");
     postcard::from_bytes(page.data()).unwrap()
 }
@@ -498,11 +498,11 @@ fn test_slotted_insert_first_tuple_packed_at_page_end() {
     let entry = slotted_page.slots[0].as_ref().unwrap();
     // Tuple data grows downward from the end of the usable area.
     assert_eq!(
-        entry.offset() as usize + entry.length() as usize,
+        entry.offset as usize + entry.length as usize,
         USABLE_PAGE_SIZE_V1,
         "first tuple should be packed against the end of the page"
     );
-    assert_eq!(entry.length() as usize, tuple_data.len());
+    assert_eq!(entry.length as usize, tuple_data.len());
 }
 
 #[test]
@@ -516,9 +516,9 @@ fn test_slotted_insert_does_not_move_existing_tuples() {
     // Snapshot the first tuple's slot offset and raw bytes.
     let before_dir = read_slot_directory(&mut heap, 0);
     let before_entry = before_dir.slots[0].as_ref().unwrap();
-    let before_offset = before_entry.offset();
-    let before_length = before_entry.length();
-    let page_before = heap.page_file.read_page(0).unwrap();
+    let before_offset = before_entry.offset;
+    let before_length = before_entry.length;
+    let page_before = heap.load_page(0).unwrap();
     let before_bytes = page_before.data()
         [before_offset as usize..(before_offset + before_length) as usize]
         .to_vec();
@@ -532,15 +532,14 @@ fn test_slotted_insert_does_not_move_existing_tuples() {
     let after_dir = read_slot_directory(&mut heap, 0);
     let after_entry = after_dir.slots[0].as_ref().unwrap();
     assert_eq!(
-        after_entry.offset(),
-        before_offset,
+        after_entry.offset, before_offset,
         "existing tuple offset must stay stable across inserts"
     );
-    assert_eq!(after_entry.length(), before_length);
+    assert_eq!(after_entry.length, before_length);
 
-    let page_after = heap.page_file.read_page(0).unwrap();
+    let page_after = heap.load_page(0).unwrap();
     let after_bytes = &page_after.data()
-        [after_entry.offset() as usize..(after_entry.offset() + after_entry.length()) as usize];
+        [after_entry.offset as usize..(after_entry.offset + after_entry.length) as usize];
     assert_eq!(
         after_bytes, before_bytes,
         "existing tuple bytes must not be rewritten on insert"
@@ -557,7 +556,7 @@ fn test_slotted_insert_slot_directory_integrity() {
         heap.insert_tuple(&tuple).unwrap();
     }
 
-    let page = heap.page_file.read_page(0).unwrap();
+    let page = heap.load_page(0).unwrap();
     let slotted_page: SlottedPage = postcard::from_bytes(page.data()).unwrap();
     let header_len = postcard::to_allocvec(&slotted_page).unwrap().len();
 
@@ -568,8 +567,8 @@ fn test_slotted_insert_slot_directory_integrity() {
     // no two tuple extents may overlap.
     let mut extents: Vec<(usize, usize)> = Vec::new();
     for slot in slotted_page.slots.iter().flatten() {
-        let start = slot.offset() as usize;
-        let end = start + slot.length() as usize;
+        let start = slot.offset as usize;
+        let end = start + slot.length as usize;
         assert!(start >= header_len, "tuple overlaps the slot directory");
         assert!(end <= page.data().len(), "tuple extends past the page");
         extents.push((start, end));
@@ -616,13 +615,13 @@ fn test_slotted_insert_page_full_spills_to_next_page() {
         let tuple = tuple! { data: vec![i as u8; 1000] };
         heap.insert_tuple(&tuple).unwrap();
         inserted += 1;
-        if !heap.page_file.read_page(1).unwrap().is_empty() {
+        if !heap.load_page(1).unwrap().is_empty() {
             break;
         }
     }
 
     assert!(
-        !heap.page_file.read_page(1).unwrap().is_empty(),
+        !heap.load_page(1).unwrap().is_empty(),
         "page 0 should fill up and spill over to page 1"
     );
 

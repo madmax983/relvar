@@ -11,11 +11,11 @@ pub enum WalError {
 
     /// Record serialization error.
     #[error("WAL record error: {0}")]
-    Record(#[from] super::record::WalRecordError),
+    Record(#[from] super::WalRecordError),
 
     /// WAL is corrupted and cannot be read.
     #[error("WAL corrupted at LSN {0}: {1}")]
-    Corrupted(super::lsn::Lsn, String),
+    Corrupted(super::Lsn, String),
 
     /// Attempted to read beyond end of WAL.
     #[error("End of WAL reached")]

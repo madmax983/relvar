@@ -211,11 +211,13 @@ fn test_sentry_extract_tuples_from_versioned_slots() {
     };
 
     let existing_tuples = vec![tuple_data.clone()];
-    HeapFile::repack_versioned_slots(&mut versioned_page.slots, &existing_tuples, PAGE_SIZE - 8)
-        .unwrap();
-    let page_data = heap
-        .serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)
-        .unwrap();
+    HeapFile::<crate::FileBlockDevice>::repack_versioned_slots(
+        &mut versioned_page.slots,
+        &existing_tuples,
+        PAGE_SIZE - 8,
+    )
+    .unwrap();
+    let page_data = encode_versioned_page(&versioned_page, &existing_tuples).unwrap();
     let page = Page::from_data(0, page_data).unwrap();
 
     let slots = [versioned_page.slots[0].clone().unwrap()];
@@ -249,11 +251,13 @@ fn test_sentry_extract_tuples_from_versioned_slots_corrupted_length() {
     };
 
     let existing_tuples = vec![tuple_data.clone()];
-    HeapFile::repack_versioned_slots(&mut versioned_page.slots, &existing_tuples, PAGE_SIZE - 8)
-        .unwrap();
-    let page_data = heap
-        .serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)
-        .unwrap();
+    HeapFile::<crate::FileBlockDevice>::repack_versioned_slots(
+        &mut versioned_page.slots,
+        &existing_tuples,
+        PAGE_SIZE - 8,
+    )
+    .unwrap();
+    let page_data = encode_versioned_page(&versioned_page, &existing_tuples).unwrap();
     let page = Page::from_data(0, page_data).unwrap();
 
     let mut slots = [versioned_page.slots[0].clone().unwrap()];
@@ -264,27 +268,27 @@ fn test_sentry_extract_tuples_from_versioned_slots_corrupted_length() {
         .extract_tuples_from_versioned_slots(&page, slots.iter())
         .unwrap_err();
 
-    assert!(matches!(extracted_err, HeapError::Serialization(_)));
-    if let HeapError::Serialization(msg) = extracted_err {
-        assert!(msg.contains("Corrupted slot on page"));
+    assert!(matches!(extracted_err, HeapError::Slotted(_)));
+    if let HeapError::Slotted(SlottedError::Serialization(msg)) = extracted_err {
+        assert!(msg.contains("Corrupted slot points outside page data"));
     }
 }
 
 #[test]
-fn test_sentry_validate_slot_bounds_offset_overflow() {
+fn test_sentry_extract_raw_tuple_data_out_of_bounds() {
     let temp_file = NamedTempFile::new().unwrap();
     let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
     let page = Page::new(0);
 
-    // Test the extract_tuple_from_page missing bound limit branch, where offset is fine but we exceed page data bounds
-    // to trigger "Corrupted slot on page ... points outside page data"
+    // Offset is fine but the range exceeds the page data bounds, triggering
+    // the storage core's "Corrupted slot points outside page data" error.
     let err = heap
         .extract_raw_tuple_data(&page, 0, (PAGE_SIZE + 10) as u32)
         .unwrap_err();
 
-    assert!(matches!(err, HeapError::Serialization(_)));
-    if let HeapError::Serialization(msg) = err {
-        assert!(msg.contains("Corrupted slot on page"));
+    assert!(matches!(err, HeapError::Slotted(_)));
+    if let HeapError::Slotted(SlottedError::Serialization(msg)) = err {
+        assert!(msg.contains("Corrupted slot points outside page data"));
     }
 }

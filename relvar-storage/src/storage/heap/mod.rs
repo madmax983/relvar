@@ -20,9 +20,24 @@
 //! This design ensures callers work with tuples as values, never as physical
 //! storage references, maintaining the relational abstraction.
 
-use super::page::{PAGE_SIZE, Page, PageError, PageFile, PageId};
+use super::page::{PAGE_SIZE, Page, PageError, PageId};
+use crate::device::FileBlockDevice;
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
+// Slotted-page types, wire formats, and codecs live in the no_std storage
+// core; the heap file only adds tuple serde and page-management policy.
+// (Private `use` items are visible to the child test modules via `::*`.)
+use relvar_storage_core::device::BlockDevice;
+use relvar_storage_core::slotted::{
+    SlotEntry, SlottedError, SlottedPage, TupleId, USABLE_PAGE_SIZE_V1, USABLE_PAGE_SIZE_V2,
+    V2_HEADER_SIZE, VERSIONED_PAGE_MAGIC, VersionedSlotEntry, VersionedSlottedPage,
+    decode_slotted_page, decode_versioned_page, encode_versioned_page, is_versioned_page,
+    slot_bytes,
+};
+// Re-exported for the page-layout tests (child modules import via `::*`);
+// unused in the non-test build.
+#[cfg(test)]
+use relvar_storage_core::slotted::{PAGE_FORMAT_VERSION, encode_slotted_page};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -48,13 +63,8 @@ fn serialized_size_compat<T: Serialize>(value: &T) -> Result<u64, HeapError> {
         .map_err(|e| HeapError::Serialization(e.to_string()))
 }
 
-/// Tuple ID: (page_id, slot_number)
-/// Internal to storage layer only (TTM Proscription 6)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(crate) struct TupleId {
-    pub(crate) page_id: PageId,
-    pub(crate) slot: u32,
-}
+// `TupleId` (page_id, slot) is re-exported from `relvar_storage_core::slotted`
+// above. It stays internal to the storage layer (TTM Proscription 6).
 
 /// Errors that can occur during heap file operations.
 #[derive(Debug, Error)]
@@ -62,6 +72,19 @@ pub enum HeapError {
     /// An error occurred at the page layer.
     #[error("Page error: {0}")]
     Page(#[from] PageError),
+
+    /// The underlying storage device reported an error.
+    ///
+    /// `BlockDevice::Error` is only bounded by [`core::fmt::Debug`] (embedded
+    /// targets have no `std::error::Error`), so the concrete error is captured
+    /// as its `Debug` rendering. For [`FileBlockDevice`] this is the
+    /// underlying I/O error's message.
+    #[error("Storage device error: {0}")]
+    Device(String),
+
+    /// A slotted-page layout or codec error from the storage core.
+    #[error("Slotted page error: {0}")]
+    Slotted(#[from] SlottedError),
 
     /// Tuple serialization or deserialization failed.
     #[error("Serialization error: {0}")]
@@ -126,103 +149,39 @@ pub enum HeapError {
 /// let tuples = heap.scan().unwrap();
 /// assert_eq!(tuples.len(), 2);
 /// ```text
-pub struct HeapFile {
-    /// The underlying page file for storage.
-    page_file: PageFile,
+/// Heap file: unordered tuple storage over a generic [`BlockDevice`].
+///
+/// `D` defaults to [`FileBlockDevice`] so existing path-based call sites keep
+/// working unchanged; pass any other [`BlockDevice`] (e.g. an in-memory or
+/// flash device) via [`create_on_device`](Self::create_on_device) /
+/// [`open_on_device`](Self::open_on_device).
+///
+/// [`BlockDevice`]: relvar_storage_core::device::BlockDevice
+pub struct HeapFile<D: BlockDevice = FileBlockDevice> {
+    /// The underlying storage device for page I/O.
+    device: D,
     /// The type of tuples stored in this heap file.
     relation_type: RelationType,
 }
 
-/// Slot directory entry
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SlotEntry {
-    offset: u32,
-    length: u32,
-}
+// The slotted-page types (`SlotEntry`, `SlottedPage`, `VersionedSlotEntry`,
+// `VersionedSlottedPage`, `TupleId`) and the page-layout constants
+// (`VERSIONED_PAGE_MAGIC`, `PAGE_FORMAT_VERSION`, `USABLE_PAGE_SIZE_V1`,
+// `USABLE_PAGE_SIZE_V2`, `V2_HEADER_SIZE`) now come from
+// `relvar_storage_core::slotted` (re-exported at the top of this module).
+// The on-disk formats are unchanged — the core documents them as the exact
+// layouts this heap file has always written.
 
-/// Versioned slot directory entry for MVCC.
+/// Maps a device error into [`HeapError::Device`].
 ///
-/// Extends SlotEntry with transaction version metadata to support
-/// Multi-Version Concurrency Control (MVCC).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct VersionedSlotEntry {
-    /// Offset of tuple data in page
-    offset: u32,
-    /// Length of tuple data
-    length: u32,
-    /// Transaction that created this version
-    xmin: crate::wal::TransactionId,
-    /// Transaction that deleted/updated this version (None = still visible)
-    xmax: Option<crate::wal::TransactionId>,
-    /// Previous version in the version chain (for undo)
-    prev_version: Option<TupleId>,
+/// `BlockDevice::Error` is only bounded by [`core::fmt::Debug`], so the
+/// concrete error is captured as its `Debug` rendering (see the
+/// [`HeapError::Device`] docs for the rationale).
+fn device_error<E: core::fmt::Debug>(error: E) -> HeapError {
+    HeapError::Device(format!("{error:?}"))
 }
 
-impl SlotEntry {
-    fn offset(&self) -> u32 {
-        self.offset
-    }
-
-    fn length(&self) -> u32 {
-        self.length
-    }
-
-    // Test-only: used by page-layout tests that build expected pages by hand.
-    #[cfg(test)]
-    fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    // Test-only: used by page-layout tests that build expected pages by hand.
-    #[cfg(test)]
-    fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-}
-
-impl VersionedSlotEntry {
-    fn offset(&self) -> u32 {
-        self.offset
-    }
-
-    fn length(&self) -> u32 {
-        self.length
-    }
-
-    fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-}
-
-/// Page layout: `[slot_count (4 bytes)] [slot_entries...] [free_space] [...tuple_data]`
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SlottedPage {
-    slot_count: u32,
-    slots: Vec<Option<SlotEntry>>,
-}
-
-/// Versioned page layout for MVCC
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct VersionedSlottedPage {
-    magic: u32, // Magic number to distinguish from SlottedPage: 0x4D564343 ("MVCC")
-    slot_count: u32,
-    slots: Vec<Option<VersionedSlotEntry>>,
-}
-
-const VERSIONED_PAGE_MAGIC: u32 = 0x4D564343; // "MVCC" in ASCII
-
-// Page format version to handle serialization changes
-const PAGE_FORMAT_VERSION: u8 = 2; // Version 2: length-prefixed slot directory
-
-const USABLE_PAGE_SIZE_V1: usize = PAGE_SIZE - 8;
-const USABLE_PAGE_SIZE_V2: usize = PAGE_SIZE - 8;
-const V2_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
-
-impl HeapFile {
+impl HeapFile<FileBlockDevice> {
     /// Creates a new heap file, truncating any existing file.
     ///
     /// # Arguments
@@ -232,7 +191,7 @@ impl HeapFile {
     ///
     /// # Errors
     ///
-    /// Returns [`HeapError::Page`] if the file cannot be created.
+    /// Returns [`HeapError::Device`] if the file cannot be created.
     ///
     /// # Examples
     /// ```text
@@ -244,11 +203,8 @@ impl HeapFile {
     /// let heap = HeapFile::create(dir.path().join("test.heap"), rel_type).unwrap();
     /// ```text
     pub fn create<P: AsRef<Path>>(path: P, relation_type: RelationType) -> Result<Self, HeapError> {
-        let page_file = PageFile::create(path)?;
-        Ok(Self {
-            page_file,
-            relation_type,
-        })
+        let device = FileBlockDevice::create(path).map_err(device_error)?;
+        Ok(Self::create_on_device(device, relation_type))
     }
 
     /// Opens an existing heap file, or creates one if it doesn't exist.
@@ -262,7 +218,7 @@ impl HeapFile {
     ///
     /// # Errors
     ///
-    /// Returns [`HeapError::Page`] if the file cannot be opened.
+    /// Returns [`HeapError::Device`] if the file cannot be opened.
     ///
     /// # Examples
     /// ```text
@@ -276,11 +232,61 @@ impl HeapFile {
     /// let heap = HeapFile::open(&path, rel_type).unwrap();
     /// ```text
     pub fn open<P: AsRef<Path>>(path: P, relation_type: RelationType) -> Result<Self, HeapError> {
-        let page_file = PageFile::open(path)?;
-        Ok(Self {
-            page_file,
+        let device = FileBlockDevice::open(path).map_err(device_error)?;
+        Ok(Self::open_on_device(device, relation_type))
+    }
+}
+
+impl<D: BlockDevice> HeapFile<D> {
+    /// Creates a heap file on a caller-provided device.
+    ///
+    /// The device equivalent of [`create`](HeapFile::create): use this with
+    /// an in-memory or embedded device instead of a file path.
+    pub fn create_on_device(device: D, relation_type: RelationType) -> Self {
+        Self {
+            device,
             relation_type,
-        })
+        }
+    }
+
+    /// Opens a heap file on a caller-provided device.
+    ///
+    /// The device equivalent of [`open`](HeapFile::open): use this with
+    /// an in-memory or embedded device instead of a file path.
+    pub fn open_on_device(device: D, relation_type: RelationType) -> Self {
+        Self {
+            device,
+            relation_type,
+        }
+    }
+
+    /// Reads a page through the device and parses its on-disk image.
+    ///
+    /// Never-written pages read back as zeroed buffers (the [`BlockDevice`]
+    /// contract) and parse to empty pages, preserving the old
+    /// `PageFile::read_page` semantics the scan loop relies on: an empty
+    /// page terminates the scan.
+    ///
+    /// [`BlockDevice`]: relvar_storage_core::device::BlockDevice
+    fn load_page(&mut self, page_id: PageId) -> Result<Page, HeapError> {
+        let mut buffer = [0u8; PAGE_SIZE];
+        self.device
+            .read_page(page_id, &mut buffer)
+            .map_err(device_error)?;
+        Ok(Page::from_bytes(page_id, &buffer)?)
+    }
+
+    /// Writes a page through the device.
+    ///
+    /// Flushes after the write to preserve the old `PageFile::write_page`
+    /// durability contract (every page write was followed by `sync_all`).
+    fn store_page(&mut self, page: &Page) -> Result<(), HeapError> {
+        let bytes = page.to_bytes()?;
+        self.device
+            .write_page(page.id(), &bytes)
+            .map_err(device_error)?;
+        self.device.flush().map_err(device_error)?;
+        Ok(())
     }
 
     /// Inserts a tuple into the heap file.
@@ -375,8 +381,8 @@ impl HeapFile {
                 current_offset = current_offset
                     .checked_sub(tuple.len())
                     .ok_or(HeapError::PageFull)?;
-                slot.set_offset(current_offset as u32);
-                slot.set_length(tuple.len() as u32);
+                slot.offset = current_offset as u32;
+                slot.length = tuple.len() as u32;
             }
         }
         Ok(())
@@ -432,8 +438,8 @@ impl HeapFile {
                 current_offset = current_offset
                     .checked_sub(tuple.len())
                     .ok_or(HeapError::PageFull)?;
-                slot.set_offset(current_offset as u32);
-                slot.set_length(tuple.len() as u32);
+                slot.offset = current_offset as u32;
+                slot.length = tuple.len() as u32;
             }
         }
         Ok(())
@@ -464,7 +470,7 @@ impl HeapFile {
         // pre-allocate to avoid repeated allocations
         let mut results = Vec::with_capacity(lower);
         for slot in slots {
-            let tuple = self.extract_tuple_from_page(page, slot.offset(), slot.length())?;
+            let tuple = self.extract_tuple_from_page(page, slot.offset, slot.length)?;
             results.push(tuple);
         }
         Ok(results)
@@ -483,7 +489,7 @@ impl HeapFile {
         // pre-allocate to avoid repeated allocations
         let mut results = Vec::with_capacity(lower);
         for slot in slots {
-            let tuple = self.extract_tuple_from_page(page, slot.offset(), slot.length())?;
+            let tuple = self.extract_tuple_from_page(page, slot.offset, slot.length)?;
             results.push(tuple);
         }
         Ok(results)
@@ -504,7 +510,7 @@ impl HeapFile {
         for slot_option in slots.iter() {
             if let Some(slot_entry) = slot_option {
                 let raw_data =
-                    self.extract_raw_tuple_data(page, slot_entry.offset(), slot_entry.length())?;
+                    self.extract_raw_tuple_data(page, slot_entry.offset, slot_entry.length)?;
                 existing_tuples.push(raw_data);
             } else {
                 existing_tuples.push(Vec::new());
@@ -525,7 +531,7 @@ impl HeapFile {
         for slot_option in slots.iter() {
             if let Some(slot_entry) = slot_option {
                 let raw_data =
-                    self.extract_raw_tuple_data(page, slot_entry.offset(), slot_entry.length())?;
+                    self.extract_raw_tuple_data(page, slot_entry.offset, slot_entry.length)?;
                 existing_tuples.push(raw_data);
             } else {
                 existing_tuples.push(Vec::new());
@@ -570,7 +576,7 @@ impl HeapFile {
         tuple_data: &[u8],
     ) -> Result<u32, HeapError> {
         // Read the page (or start from a zeroed buffer if it doesn't exist yet).
-        let page = self.page_file.read_page(page_id)?;
+        let page = self.load_page(page_id)?;
         let mut page_data = if page.is_empty() {
             vec![0u8; USABLE_PAGE_SIZE_V1]
         } else {
@@ -584,7 +590,7 @@ impl HeapFile {
                 slots: Vec::new(),
             }
         } else {
-            self.deserialize_slotted_page(&page)?
+            decode_slotted_page(page.data())?
         };
 
         // Allocate a slot for the new tuple (reuses a freed slot when one exists).
@@ -602,8 +608,8 @@ impl HeapFile {
                 continue;
             }
             if let Some(entry) = slot {
-                let offset = entry.offset() as usize;
-                let end = offset.checked_add(entry.length() as usize).ok_or_else(|| {
+                let offset = entry.offset as usize;
+                let end = offset.checked_add(entry.length as usize).ok_or_else(|| {
                     HeapError::Serialization("Tuple offset + length overflow".to_string())
                 })?;
                 if end > page_data.len() {
@@ -641,54 +647,9 @@ impl HeapFile {
 
         // Write the page
         let updated_page = Page::from_data(page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
+        self.store_page(&updated_page)?;
 
         Ok(slot_number)
-    }
-
-    /// Serialize a slotted page with all tuple data
-    ///
-    /// Test-only: page-layout tests use this to build expected pages by hand.
-    #[cfg(test)]
-    fn serialize_slotted_page_with_tuples(
-        &self,
-        slotted_page: &SlottedPage,
-        tuples: &[Vec<u8>],
-    ) -> Result<Vec<u8>, HeapError> {
-        // Serialize slot directory
-        let slot_dir = serialize_compat(slotted_page)?;
-
-        // Create page buffer
-        let mut data = vec![0u8; PAGE_SIZE - 8]; // USABLE_PAGE_SIZE
-
-        // Copy slot directory at beginning
-        data[..slot_dir.len()].copy_from_slice(&slot_dir);
-
-        // Copy each tuple at its designated offset
-        for (idx, slot_entry) in slotted_page.slots.iter().enumerate() {
-            if let Some(entry) = slot_entry {
-                let offset = entry.offset as usize;
-                let length = entry.length as usize;
-                if idx < tuples.len() && !tuples[idx].is_empty() {
-                    let end_offset = offset.checked_add(length).ok_or_else(|| {
-                        HeapError::Serialization("Tuple offset + length overflow".to_string())
-                    })?;
-                    let header_end = slot_dir.len();
-                    if end_offset > data.len() || offset < header_end {
-                        return Err(HeapError::Serialization(format!(
-                            "Slot points outside buffer or overlaps header: offset={}, length={}, buffer_len={}, header_end={}",
-                            offset,
-                            length,
-                            data.len(),
-                            header_end
-                        )));
-                    }
-                    data[offset..end_offset].copy_from_slice(&tuples[idx]);
-                }
-            }
-        }
-
-        Ok(data)
     }
 
     /// Read a tuple by its TupleId (internal use only per TTM Proscription 6)
@@ -696,7 +657,7 @@ impl HeapFile {
     /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
     #[allow(dead_code)]
     pub(crate) fn read_tuple(&mut self, tuple_id: TupleId) -> Result<Tuple, HeapError> {
-        let page = self.page_file.read_page(tuple_id.page_id)?;
+        let page = self.load_page(tuple_id.page_id)?;
 
         if page.is_empty() {
             return Err(HeapError::TupleNotFound);
@@ -735,13 +696,13 @@ impl HeapFile {
     /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
     #[allow(dead_code)]
     pub(crate) fn read_tuple_versioned(&mut self, tuple_id: TupleId) -> Result<Tuple, HeapError> {
-        let page = self.page_file.read_page(tuple_id.page_id)?;
+        let page = self.load_page(tuple_id.page_id)?;
 
         if page.is_empty() {
             return Err(HeapError::TupleNotFound);
         }
 
-        let versioned_page = self.deserialize_versioned_page(&page)?;
+        let versioned_page = decode_versioned_page(page.data())?;
 
         let slot_entry = versioned_page
             .slots
@@ -809,23 +770,23 @@ impl HeapFile {
 
         // Scan pages until we hit an empty one
         loop {
-            let page = self.page_file.read_page(page_id)?;
+            let page = self.load_page(page_id)?;
 
             if page.is_empty() {
                 // Empty page means no more data
                 break;
             }
 
-            if self.is_versioned_page(&page) {
+            if is_versioned_page(page.data()) {
                 // Versioned page format (MVCC)
-                let versioned_page = self.deserialize_versioned_page(&page)?;
+                let versioned_page = decode_versioned_page(page.data())?;
                 results.extend(self.extract_tuples_from_versioned_slots(
                     &page,
                     versioned_page.slots.iter().flatten(),
                 )?);
             } else {
                 // Old slotted page format (non-MVCC)
-                let slotted_page = self.deserialize_slotted_page(&page)?;
+                let slotted_page = decode_slotted_page(page.data())?;
                 results.extend(
                     self.extract_tuples_from_slots(&page, slotted_page.slots.iter().flatten())?,
                 );
@@ -897,7 +858,7 @@ impl HeapFile {
     ///
     /// Returns [`HeapError::Page`] if the sync fails.
     pub fn sync(&mut self) -> Result<(), HeapError> {
-        self.page_file.sync()?;
+        self.device.flush().map_err(device_error)?;
         Ok(())
     }
 
@@ -985,7 +946,7 @@ impl HeapFile {
         prev_version: Option<TupleId>,
     ) -> Result<u32, HeapError> {
         // Read the page (or create empty if doesn't exist)
-        let page = self.page_file.read_page(page_id)?;
+        let page = self.load_page(page_id)?;
 
         // Read existing tuples from the page
         let (mut versioned_page, mut existing_tuples) = if page.is_empty() {
@@ -998,7 +959,7 @@ impl HeapFile {
                 Vec::new(),
             )
         } else {
-            let vp = self.deserialize_versioned_page(&page)?;
+            let vp = decode_versioned_page(page.data())?;
             let tuples = self.extract_all_versioned_tuples(&page, &vp.slots)?;
             (vp, tuples)
         };
@@ -1012,12 +973,11 @@ impl HeapFile {
         )?;
 
         // Serialize the updated page with all tuples
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+        let page_data = encode_versioned_page(&versioned_page, &existing_tuples)?;
 
         // Write the page
         let updated_page = Page::from_data(page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
+        self.store_page(&updated_page)?;
 
         Ok(slot_number)
     }
@@ -1055,189 +1015,6 @@ impl HeapFile {
         Ok(slot_number)
     }
 
-    /// Serialize a versioned page with all tuple data
-    fn serialize_versioned_page_with_tuples(
-        &self,
-        versioned_page: &VersionedSlottedPage,
-        tuples: &[Vec<u8>],
-    ) -> Result<Vec<u8>, HeapError> {
-        // Serialize slot directory
-        let slot_dir = serialize_compat(versioned_page)?;
-
-        // Format: [version:1 byte][slot_dir_length:4 bytes][slot_dir][tuple_data]
-        const HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
-        const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
-
-        Self::verify_versioned_page_size(&slot_dir, HEADER_SIZE, USABLE_PAGE_SIZE)?;
-
-        // Create page buffer
-        let mut data = vec![0u8; USABLE_PAGE_SIZE];
-
-        // Write format version
-        data[0] = PAGE_FORMAT_VERSION;
-
-        // Write slot directory length
-        let slot_dir_len = slot_dir.len() as u32;
-        data[1..5].copy_from_slice(&slot_dir_len.to_le_bytes());
-
-        // Copy slot directory after header
-        data[HEADER_SIZE..HEADER_SIZE + slot_dir.len()].copy_from_slice(&slot_dir);
-
-        Self::copy_versioned_tuples_to_buffer(
-            &mut data,
-            versioned_page,
-            tuples,
-            HEADER_SIZE,
-            slot_dir.len(),
-        )?;
-
-        Ok(data)
-    }
-
-    fn verify_versioned_page_size(
-        slot_dir: &[u8],
-        header_size: usize,
-        usable_size: usize,
-    ) -> Result<(), HeapError> {
-        if slot_dir.len() > u32::MAX as usize {
-            return Err(HeapError::Serialization(
-                "Slot directory too large to be represented by u32 length prefix".to_string(),
-            ));
-        }
-
-        if slot_dir
-            .len()
-            .checked_add(header_size)
-            .ok_or_else(|| HeapError::Serialization("Header size overflow".to_string()))?
-            > usable_size
-        {
-            return Err(HeapError::Serialization(format!(
-                "slot directory too large for page: {} > {}",
-                slot_dir.len() + header_size,
-                usable_size
-            )));
-        }
-        Ok(())
-    }
-
-    fn copy_versioned_tuples_to_buffer(
-        data: &mut [u8],
-        versioned_page: &VersionedSlottedPage,
-        tuples: &[Vec<u8>],
-        header_size: usize,
-        slot_dir_len: usize,
-    ) -> Result<(), HeapError> {
-        for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
-            if let Some(entry) = slot_entry {
-                let offset = entry.offset as usize;
-                let length = entry.length as usize;
-                if idx < tuples.len() && !tuples[idx].is_empty() {
-                    let end_offset = offset.checked_add(length).ok_or_else(|| {
-                        HeapError::Serialization("Tuple offset + length overflow".to_string())
-                    })?;
-                    let header_end = header_size.checked_add(slot_dir_len).ok_or_else(|| {
-                        HeapError::Serialization(
-                            "Header size + slot directory length overflow".to_string(),
-                        )
-                    })?;
-                    // Validate that offset + length doesn't exceed buffer and doesn't overlap header
-                    if end_offset > data.len() || offset < header_end {
-                        return Err(HeapError::Serialization(format!(
-                            "Slot {} points outside buffer or overlaps header: offset={}, length={}, buffer_len={}, header_end={}",
-                            idx,
-                            offset,
-                            length,
-                            data.len(),
-                            header_end
-                        )));
-                    }
-                    data[offset..end_offset].copy_from_slice(&tuples[idx]);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Checks if a page is a versioned page (MVCC).
-    fn is_versioned_page(&self, page: &Page) -> bool {
-        // postcard uses varint for u32. 0x4D564343 encodes to [195, 134, 217, 234, 4].
-        let postcard_magic = [195, 134, 217, 234, 4];
-
-        // Check for new format: version byte + length (4 bytes) + magic at offset 5
-        let is_new_format = page.data().len() >= 5 + postcard_magic.len()
-            && page.data()[0] == PAGE_FORMAT_VERSION
-            && { page.data()[5..5 + postcard_magic.len()] == postcard_magic };
-
-        // Check for old format (just the magic number at the start)
-        let is_old_versioned = !is_new_format && page.data().len() >= postcard_magic.len() && {
-            page.data()[0..postcard_magic.len()] == postcard_magic
-        };
-
-        is_new_format || is_old_versioned
-    }
-
-    /// Deserializes a versioned page, handling both V1 and V2 formats.
-    fn deserialize_versioned_page(&self, page: &Page) -> Result<VersionedSlottedPage, HeapError> {
-        if !page.data().is_empty() && page.data()[0] == PAGE_FORMAT_VERSION {
-            if page.data().len() < 5 {
-                return Err(HeapError::Serialization(
-                    "Versioned page too short to contain header".to_string(),
-                ));
-            }
-            // New format: [version:1][length:4][slot_dir][tuples]
-            let len_bytes: [u8; 4] = page.data()[1..5].try_into().map_err(|_| {
-                HeapError::Serialization(
-                    "Invalid slot directory length prefix in versioned page header".to_string(),
-                )
-            })?;
-            let slot_dir_len = u32::from_le_bytes(len_bytes) as usize;
-
-            // Ensure the declared slot directory length fits within the page data
-            // Header is 5 bytes (1 byte version + 4 bytes length)
-            let end_of_header = 5usize.checked_add(slot_dir_len).ok_or_else(|| {
-                HeapError::Serialization("Slot directory length overflow".to_string())
-            })?;
-
-            if end_of_header > page.data().len() {
-                return Err(HeapError::Serialization(format!(
-                    "Slot directory length ({}) exceeds page size",
-                    slot_dir_len
-                )));
-            }
-
-            deserialize_bounded(&page.data()[5..end_of_header])
-        } else {
-            // Old format: [slot_dir][tuples]
-            deserialize_bounded(page.data())
-        }
-    }
-
-    /// Deserializes a standard slotted page.
-    fn deserialize_slotted_page(&self, page: &Page) -> Result<SlottedPage, HeapError> {
-        deserialize_bounded(page.data())
-    }
-
-    /// Validates that a slot points to valid data within the page.
-    fn validate_slot_bounds(
-        &self,
-        page: &Page,
-        offset: u32,
-        length: u32,
-    ) -> Result<(usize, usize), HeapError> {
-        let start = offset as usize;
-        let end = start
-            .checked_add(length as usize)
-            .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
-
-        if end > page.data().len() {
-            return Err(HeapError::Serialization(format!(
-                "Corrupted slot on page {} points outside page data",
-                page.id()
-            )));
-        }
-        Ok((start, end))
-    }
-
     /// Extracts a tuple from a page at the given offset and length.
     fn extract_tuple_from_page(
         &self,
@@ -1245,8 +1022,7 @@ impl HeapFile {
         offset: u32,
         length: u32,
     ) -> Result<Tuple, HeapError> {
-        let (start, end) = self.validate_slot_bounds(page, offset, length)?;
-        let tuple_data = &page.data()[start..end];
+        let tuple_data = slot_bytes(page.data(), offset, length)?;
         deserialize_bounded(tuple_data)
     }
 
@@ -1257,19 +1033,7 @@ impl HeapFile {
         offset: u32,
         length: u32,
     ) -> Result<Vec<u8>, HeapError> {
-        let start = offset as usize;
-        let end = start
-            .checked_add(length as usize)
-            .ok_or_else(|| HeapError::Serialization("Tuple end offset overflow".to_string()))?;
-
-        if end <= page.data().len() {
-            Ok(page.data()[start..end].to_vec())
-        } else {
-            Err(HeapError::Serialization(format!(
-                "Corrupted slot on page {} points outside page data",
-                page.id()
-            )))
-        }
+        Ok(slot_bytes(page.data(), offset, length)?.to_vec())
     }
 
     /// Updates a tuple by creating a new version and marking the old version as deleted.
@@ -1301,13 +1065,13 @@ impl HeapFile {
         txn_id: crate::wal::TransactionId,
     ) -> Result<TupleId, HeapError> {
         // Step 1: Mark old version's xmax
-        let page = self.page_file.read_page(old_tuple_id.page_id)?;
+        let page = self.load_page(old_tuple_id.page_id)?;
 
         if page.is_empty() {
             return Err(HeapError::TupleNotFound);
         }
 
-        let mut versioned_page = self.deserialize_versioned_page(&page)?;
+        let mut versioned_page = decode_versioned_page(page.data())?;
 
         // Find the old slot
         let old_slot = versioned_page
@@ -1323,10 +1087,9 @@ impl HeapFile {
         let existing_tuples = self.extract_all_versioned_tuples(&page, &versioned_page.slots)?;
 
         // Serialize and write updated page with old version marked
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+        let page_data = encode_versioned_page(&versioned_page, &existing_tuples)?;
         let updated_page = Page::from_data(old_tuple_id.page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
+        self.store_page(&updated_page)?;
 
         // Step 2: Insert new version
         let new_tuple_data = serialize_compat(new_tuple)?;
@@ -1371,13 +1134,13 @@ impl HeapFile {
         txn_id: crate::wal::TransactionId,
     ) -> Result<(), HeapError> {
         // Read the page containing the tuple
-        let page = self.page_file.read_page(tuple_id.page_id)?;
+        let page = self.load_page(tuple_id.page_id)?;
 
         if page.is_empty() {
             return Err(HeapError::TupleNotFound);
         }
 
-        let mut versioned_page = self.deserialize_versioned_page(&page)?;
+        let mut versioned_page = decode_versioned_page(page.data())?;
 
         // Find and mark the tuple
         let slot = versioned_page
@@ -1393,10 +1156,9 @@ impl HeapFile {
         let existing_tuples = self.extract_all_versioned_tuples(&page, &versioned_page.slots)?;
 
         // Serialize and write updated page
-        let page_data =
-            self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+        let page_data = encode_versioned_page(&versioned_page, &existing_tuples)?;
         let updated_page = Page::from_data(tuple_id.page_id, page_data)?;
-        self.page_file.write_page(&updated_page)?;
+        self.store_page(&updated_page)?;
 
         Ok(())
     }
@@ -1426,13 +1188,13 @@ impl HeapFile {
         let mut page_id = 0;
 
         loop {
-            let page = self.page_file.read_page(page_id)?;
+            let page = self.load_page(page_id)?;
 
             if page.is_empty() {
                 break;
             }
 
-            if !self.is_versioned_page(&page) {
+            if !is_versioned_page(page.data()) {
                 page_id += 1;
                 continue;
             }
@@ -1453,7 +1215,7 @@ impl HeapFile {
         committed: &std::collections::HashSet<crate::wal::TransactionId>,
     ) -> Result<usize, HeapError> {
         // Try to deserialize as versioned page
-        let mut versioned_page = match self.deserialize_versioned_page(page) {
+        let mut versioned_page = match decode_versioned_page(page.data()) {
             Ok(vp) => vp,
             Err(_) => return Ok(0), // Not a versioned page or corrupted, skip
         };
@@ -1486,10 +1248,9 @@ impl HeapFile {
                 USABLE_PAGE_SIZE_V2,
             )?;
 
-            let page_data =
-                self.serialize_versioned_page_with_tuples(&versioned_page, &existing_tuples)?;
+            let page_data = encode_versioned_page(&versioned_page, &existing_tuples)?;
             let updated_page = Page::from_data(page_id, page_data)?;
-            self.page_file.write_page(&updated_page)?;
+            self.store_page(&updated_page)?;
         }
 
         Ok(removed_count)
@@ -1540,7 +1301,7 @@ impl HeapFile {
         let mut page_id = 0;
 
         loop {
-            let page = self.page_file.read_page(page_id)?;
+            let page = self.load_page(page_id)?;
 
             if page.is_empty() {
                 // Empty page means no more data
@@ -1548,7 +1309,7 @@ impl HeapFile {
             }
 
             // Try to deserialize as VersionedSlottedPage
-            let versioned_page = match self.deserialize_versioned_page(&page) {
+            let versioned_page = match decode_versioned_page(page.data()) {
                 Ok(vp) => vp,
                 Err(_) => {
                     // Not a versioned page, skip

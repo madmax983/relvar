@@ -2,13 +2,13 @@
 
 use crate::mvcc::ActiveTransactionTable;
 use crate::storage::StorageManager;
+use crate::sync::RwLock;
 use crate::wal::{TransactionId, TransactionIdGenerator, WalManager, WalRecord, recover};
 use relvar_core::storage_engine::{IsolationLevel, RelationMetadata, StorageEngine, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::RwLock;
 
 /// Per-transaction isolation bookkeeping.
 ///
@@ -284,13 +284,13 @@ impl PersistentEngine {
         min_active_lsn: crate::wal::Lsn,
     ) -> Result<(), StorageError> {
         // Collect dirty pages logic is simplified - assume all managed files are potentially dirty
-        // A real implementation would track dirty pages in StorageManager
-        let dirty_pages = std::collections::HashMap::new();
-
+        // A real implementation would track dirty pages in StorageManager.
+        // (`WalRecord::Checkpoint` holds a no_std hashbrown map, so the empty
+        // map is inferred from the expected type.)
         self.wal
             .log(WalRecord::Checkpoint {
                 min_active_lsn,
-                dirty_pages,
+                dirty_pages: Default::default(),
             })
             .map_err(|e| StorageError::Other(format!("WAL checkpoint error: {}", e)))?;
         Ok(())

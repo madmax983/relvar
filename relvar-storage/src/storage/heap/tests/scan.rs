@@ -108,13 +108,11 @@ fn test_heap_scan_large_volume() {
             })],
         };
 
-        // We can use the helper method since we are in the same module (tests)
-        let page_data = heap
-            .serialize_slotted_page_with_tuples(&slotted_page, &[tuple_data])
-            .unwrap();
+        // Encode with the storage-core codec (same layout the heap file writes).
+        let page_data = encode_slotted_page(&slotted_page, &[tuple_data]).unwrap();
 
         let page = Page::from_data(i, page_data).unwrap();
-        heap.page_file.write_page(&page).unwrap();
+        heap.store_page(&page).unwrap();
     }
 
     // Scan and verify count
@@ -394,7 +392,7 @@ fn test_delete_already_deleted_sets_xmax_again() {
     heap.delete_tuple_versioned(tuple_id, test_txn(3)).unwrap();
 
     // Verify xmax is now T3
-    let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
+    let page = heap.load_page(tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
     let slot = versioned_page.slots[tuple_id.slot as usize]
@@ -427,16 +425,16 @@ fn test_heap_scan_corrupted_slot() {
     page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
     let page = Page::from_data(0, page_data).unwrap();
-    heap.page_file.write_page(&page).unwrap();
+    heap.store_page(&page).unwrap();
 
     // Scan should fail
     let result = heap.scan();
     assert!(result.is_err());
     match result {
-        Err(HeapError::Serialization(msg)) => {
+        Err(HeapError::Slotted(SlottedError::Serialization(msg))) => {
             assert!(msg.contains("Corrupted slot"));
         }
-        _ => panic!("Expected Serialization error for corrupted slot"),
+        _ => panic!("Expected Slotted error for corrupted slot"),
     }
 }
 
@@ -486,10 +484,10 @@ fn test_heap_scan_mid_stream_corruption() -> Result<(), Box<dyn std::error::Erro
     // 4. Verify scan fails gracefully
     let result = heap.scan();
     assert!(result.is_err());
-    // Should be a serialization error because postcard will fail to deserialize garbage
+    // Should be a slotted-page error because postcard will fail to deserialize garbage
     match result {
-        Err(HeapError::Serialization(_)) => {}
-        _ => panic!("Expected Serialization error, got {:?}", result),
+        Err(HeapError::Slotted(SlottedError::Serialization(_))) => {}
+        _ => panic!("Expected Slotted error, got {:?}", result),
     }
 
     Ok(())
@@ -521,13 +519,13 @@ fn test_heap_scan_offset_overflow() {
     page_data[..slot_dir.len()].copy_from_slice(&slot_dir);
 
     let page = Page::from_data(0, page_data).unwrap();
-    heap.page_file.write_page(&page).unwrap();
+    heap.store_page(&page).unwrap();
 
     // Scan should fail cleanly
     let result = heap.scan();
     assert!(result.is_err());
     match result {
-        Err(HeapError::Serialization(msg)) => {
+        Err(HeapError::Slotted(SlottedError::Serialization(msg))) => {
             // On 64-bit systems, u32+u32 fits in usize, so we get bounds check error.
             // On 32-bit systems, we get overflow error.
             assert!(
@@ -537,7 +535,7 @@ fn test_heap_scan_offset_overflow() {
             );
         }
         _ => panic!(
-            "Expected Serialization error with overflow message, got {:?}",
+            "Expected Slotted error with overflow message, got {:?}",
             result
         ),
     }
@@ -561,11 +559,6 @@ mod offset_overflow_tests {
     }
     #[test]
     fn test_heap_deserialize_short_page() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path();
-        let rel_type = create_test_relation_type();
-        let heap = HeapFile::create(path, rel_type).unwrap();
-
         // Create a page that mimics versioned format but is too short
         // PAGE_FORMAT_VERSION (1 byte) + 4 bytes length = 5 bytes needed
         // We write 3 bytes: [PAGE_FORMAT_VERSION, 0, 0]
@@ -574,14 +567,14 @@ mod offset_overflow_tests {
 
         // Call private method directly to verify protection
         // (update_tuple_versioned calls this without is_versioned_page check)
-        let result = heap.deserialize_versioned_page(&page);
+        let result = decode_versioned_page(page.data());
 
         assert!(result.is_err());
         match result {
-            Err(HeapError::Serialization(msg)) => {
+            Err(SlottedError::Serialization(msg)) => {
                 assert_eq!(msg, "Versioned page too short to contain header");
             }
-            _ => panic!("Expected specific Serialization error, got {:?}", result),
+            _ => panic!("Expected specific SlottedError, got {:?}", result),
         }
     }
 
@@ -605,9 +598,9 @@ mod offset_overflow_tests {
             heap.insert_tuple(&t).unwrap();
 
             // Read page 0
-            let page = heap.page_file.read_page(0).unwrap();
+            let page = heap.load_page(0).unwrap();
             // Try to deserialize
-            let res = heap.deserialize_slotted_page(&page);
+            let res = decode_slotted_page(page.data());
             if res.is_err() {
                 println!("Corruption detected at insert {}!", i);
                 panic!("Corruption detected: {:?}", res.err());
@@ -686,8 +679,8 @@ mod offset_overflow_tests {
         // 2. Manually simulate deletion of B (slot 1) to force reuse
         // We do this by modifying the page directly since we don't have a public delete yet
         {
-            let page = heap.page_file.read_page(0).unwrap();
-            let mut sp = heap.deserialize_slotted_page(&page).unwrap();
+            let page = heap.load_page(0).unwrap();
+            let mut sp = decode_slotted_page(page.data()).unwrap();
 
             // Delete slot 1 (B)
             sp.slots[1] = None;
@@ -697,19 +690,22 @@ mod offset_overflow_tests {
             // But we just modified slots[1] to None!
             // So we need to be careful.
             // Let's re-read the page as it was on disk to get the data
-            let original_sp = heap.deserialize_slotted_page(&page).unwrap();
+            let original_sp = decode_slotted_page(page.data()).unwrap();
             let mut existing_tuples = heap.extract_all_tuples(&page, &original_sp.slots).unwrap();
 
             // Mark tuple B as empty
             existing_tuples[1] = Vec::new();
 
             // Repack and write back
-            HeapFile::repack_slots(&mut sp.slots, &existing_tuples, USABLE_PAGE_SIZE_V1).unwrap();
-            let new_page_data = heap
-                .serialize_slotted_page_with_tuples(&sp, &existing_tuples)
-                .unwrap();
+            HeapFile::<crate::FileBlockDevice>::repack_slots(
+                &mut sp.slots,
+                &existing_tuples,
+                USABLE_PAGE_SIZE_V1,
+            )
+            .unwrap();
+            let new_page_data = encode_slotted_page(&sp, &existing_tuples).unwrap();
             let new_page = Page::from_data(0, new_page_data).unwrap();
-            heap.page_file.write_page(&new_page).unwrap();
+            heap.store_page(&new_page).unwrap();
         }
 
         // Verify B is gone
@@ -758,7 +754,7 @@ mod offset_overflow_tests {
         // Usable size = 200
         let usable_size = 200;
 
-        HeapFile::repack_slots(&mut slots, &tuples, usable_size).unwrap();
+        HeapFile::<crate::FileBlockDevice>::repack_slots(&mut slots, &tuples, usable_size).unwrap();
 
         // Check offsets
         // Last tuple (index 1) gets offset: 200 - 100 = 100
@@ -786,7 +782,11 @@ mod offset_overflow_tests {
             }),
         ];
 
-        let result = HeapFile::repack_slots(&mut slots_overflow, &tuples_overflow, usable_size);
+        let result = HeapFile::<crate::FileBlockDevice>::repack_slots(
+            &mut slots_overflow,
+            &tuples_overflow,
+            usable_size,
+        );
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), HeapError::PageFull));
     }

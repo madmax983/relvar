@@ -24,7 +24,7 @@ fn test_delete_sets_xmax() {
     heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
 
     // Verify xmax is set
-    let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
+    let page = heap.load_page(tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
     let slot = versioned_page.slots[tuple_id.slot as usize]
@@ -148,7 +148,7 @@ fn test_delete_preserves_xmin() {
     heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
 
     // Verify xmin unchanged
-    let page = heap.page_file.read_page(tuple_id.page_id).unwrap();
+    let page = heap.load_page(tuple_id.page_id).unwrap();
     let versioned_page: VersionedSlottedPage =
         deserialize_versioned_page_for_test(page.data()).unwrap();
     let slot = versioned_page.slots[tuple_id.slot as usize]
@@ -246,7 +246,7 @@ fn test_heap_delete_on_corrupted_page_fails() {
         page_data[5..5 + slot_dir.len()].copy_from_slice(&slot_dir);
 
         let new_page = Page::from_data(tuple_id.page_id, page_data).unwrap();
-        heap.page_file.write_page(&new_page).unwrap();
+        heap.store_page(&new_page).unwrap();
     }
 
     // 3. Try to delete the tuple
@@ -255,13 +255,13 @@ fn test_heap_delete_on_corrupted_page_fails() {
     // 4. Assert failure
     assert!(result.is_err(), "Delete should fail on corrupted page");
     match result {
-        Err(HeapError::Serialization(msg)) => {
+        Err(HeapError::Slotted(SlottedError::Serialization(msg))) => {
             assert!(
                 msg.contains("Corrupted slot") || msg.contains("outside page data"),
                 "Unexpected error message: {}",
                 msg
             );
         }
-        _ => panic!("Expected Serialization error, got {:?}", result),
+        _ => panic!("Expected Slotted error, got {:?}", result),
     }
 }
