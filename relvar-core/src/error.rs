@@ -2,6 +2,7 @@
 
 use crate::constraints::ConstraintManagerError;
 use crate::storage_engine::StorageError;
+use crate::values::arena::AllocError;
 use crate::values::relation::RelationError;
 use alloc::string::String;
 use thiserror::Error;
@@ -81,4 +82,12 @@ pub enum DatabaseError {
     /// balances must be non-negative"`.
     #[error("{0}")]
     AssertionViolation(String),
+
+    /// Arena allocation failure in the zero-alloc value layer (v0.8).
+    ///
+    /// The arena APIs surface [`AllocError`](crate::values::arena::AllocError)
+    /// directly; this variant lets arena-backed operations compose with the
+    /// crate-wide error type.
+    #[error("Arena allocation failed: {0}")]
+    AllocError(#[from] AllocError),
 }

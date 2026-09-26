@@ -60,6 +60,21 @@ pub(crate) mod relation;
 pub(crate) mod scalar;
 pub(crate) mod tuple;
 
+/// Waymaker-style arena value layer: zero-alloc values (v0.8).
+///
+/// [`Arena`], [`ScalarRef`], [`TupleView`], and [`SlotRelation`] form a new,
+/// additive API over caller-owned bump arenas. The existing owned value layer
+/// is untouched.
+pub mod arena;
+
+pub use arena::AllocError;
+pub use arena::Arena;
+pub use arena::CapacityError;
+pub use arena::MaterializeError;
+pub use arena::ScalarRef;
+pub use arena::SlotRelation;
+pub use arena::SlotRelationError;
+pub use arena::TupleView;
 pub use relation::Relation;
 pub use relation::RelationError;
 pub use scalar::ScalarValue;
