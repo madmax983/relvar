@@ -368,3 +368,93 @@ fn test_recovery_retains_valid_data_during_cleanup() {
         );
     }
 }
+
+#[test]
+fn test_reopen_resets_version_pool() {
+    // The version pool is operational state: uncommitted claims must not
+    // survive a reopen. With a pool capacity of one, any leaked claim
+    // would make the first write after reopen fail.
+    let temp_dir = TempDir::new().unwrap();
+
+    // Uncommitted write, then a simulated crash (drop without commit).
+    {
+        let mut engine =
+            PersistentEngine::open_with_pool_capacities(temp_dir.path(), 16, 1, 1).unwrap();
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        let _snapshot = engine.begin_transaction().unwrap();
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Uncommitted" })
+            .unwrap();
+        // No commit, no abort: the claim is still outstanding when the
+        // engine is dropped.
+    }
+
+    // Reopen: the pool starts empty, so the single record is available.
+    {
+        let mut engine =
+            PersistentEngine::open_with_pool_capacities(temp_dir.path(), 16, 1, 1).unwrap();
+
+        let snapshot = engine.begin_transaction().unwrap();
+        engine
+            .insert_tuple("TEST", tuple! { id: 2i64, name: "After reopen" })
+            .unwrap();
+        engine.commit_transaction(snapshot).unwrap();
+
+        // The crashed transaction's tuple is gone; the new one survived.
+        let relation = engine.load_relation("TEST").unwrap();
+        assert_eq!(relation.cardinality(), 1);
+        assert!(
+            relation
+                .tuples()
+                .any(|t| t.get_typed::<i64>("id").unwrap() == 2),
+            "Committed tuple should be present after reopen"
+        );
+    }
+}
+
+#[test]
+fn test_durable_begin_lost_insert_never_reuses_txn_id() {
+    // Durable Begin (flushed) + lost Insert (buffered, never flushed):
+    // recovery replays the Begin, finds no Commit, treats the transaction
+    // as aborted — and must never hand its ID to a new transaction, or the
+    // physically-present-but-invisible tuple could become visible.
+    let temp_dir = TempDir::new().unwrap();
+
+    // Crash window: the Begin record is durable, the Insert record is not.
+    {
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+        engine.create_relation("TEST", test_rel_type()).unwrap();
+
+        let snapshot = engine.begin_transaction().unwrap();
+        assert_eq!(snapshot.txn_id, crate::wal::TransactionId::new(1));
+        engine
+            .insert_tuple("TEST", tuple! { id: 1i64, name: "Lost" })
+            .unwrap();
+        // Simulated crash: drop without commit, abort, or flush. The WAL
+        // buffer (holding the Insert) is discarded; the heap file may
+        // still physically hold the tuple.
+    }
+
+    // Reopen: the crashed transaction's ID must not be reused, and its
+    // tuple must stay invisible even if it is physically present.
+    {
+        let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+
+        let snapshot = engine.begin_transaction().unwrap();
+        assert_ne!(
+            snapshot.txn_id,
+            crate::wal::TransactionId::new(1),
+            "recovery must not reuse the crashed transaction's ID"
+        );
+        assert_eq!(snapshot.txn_id, crate::wal::TransactionId::new(2));
+
+        let relation = engine.load_relation("TEST").unwrap();
+        assert_eq!(
+            relation.cardinality(),
+            0,
+            "the lost insert must stay invisible after recovery"
+        );
+        engine.rollback_transaction(snapshot).unwrap();
+    }
+}

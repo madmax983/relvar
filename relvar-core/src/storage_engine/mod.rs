@@ -100,6 +100,64 @@ pub enum StorageError {
     #[error("Serialization failure: {0}")]
     SerializationFailure(String),
 
+    /// The bounded transaction pool is exhausted: too many concurrently
+    /// live transactions. Commit or abort one and retry; the bound is
+    /// fixed at engine open and never grows.
+    #[error("Transaction pool exhausted: {active} live transactions at capacity {capacity}")]
+    TransactionPoolExhausted {
+        /// Live transactions holding pool slots when the begin failed.
+        active: usize,
+        /// The fixed pool capacity chosen at engine open.
+        capacity: usize,
+    },
+
+    /// The bounded transaction-history ring is exhausted: too many
+    /// commits piled up behind a long-lived transaction for old snapshots
+    /// to stay accurate. End the oldest live transaction and retry.
+    #[error("Transaction history exhausted: {len} retained records at capacity {capacity}")]
+    TransactionHistoryExhausted {
+        /// Retained finished-transaction records when the finish failed.
+        len: usize,
+        /// The fixed history-ring capacity (four times the pool capacity).
+        capacity: usize,
+    },
+
+    /// The bounded version pool is exhausted: too many uncommitted tuple
+    /// versions. Commit or abort the writing transaction(s) and retry; the
+    /// bound is fixed at engine open and never grows.
+    #[error("Version pool exhausted: {used} uncommitted versions at capacity {capacity}")]
+    VersionPoolExhausted {
+        /// Uncommitted versions holding pool records when the claim failed.
+        used: usize,
+        /// The fixed version-pool capacity chosen at engine open.
+        capacity: usize,
+    },
+
+    /// The bounded version-buffer pool is exhausted: too many page working
+    /// buffers checked out. This indicates unexpected re-entrant page work;
+    /// it is a typed error, never a panic.
+    #[error("Version buffer pool exhausted: {used} buffers checked out at capacity {capacity}")]
+    VersionBufferExhausted {
+        /// Buffers checked out when the acquire failed.
+        used: usize,
+        /// The fixed buffer capacity chosen at engine open.
+        capacity: usize,
+    },
+
+    /// The bounded version-claimant table is exhausted: too many distinct
+    /// transactions hold uncommitted version claims. End one of those
+    /// transactions and retry; the bound is fixed at engine open and never
+    /// grows.
+    #[error(
+        "Version claimant table exhausted: {active} claiming transactions at capacity {capacity}"
+    )]
+    VersionClaimantsExhausted {
+        /// Distinct transactions holding claims when the claim failed.
+        active: usize,
+        /// The fixed claimant-table capacity chosen at engine open.
+        capacity: usize,
+    },
+
     /// A general storage error occurred.
     #[error("Storage error: {0}")]
     Other(String),

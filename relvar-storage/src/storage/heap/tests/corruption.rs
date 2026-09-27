@@ -23,11 +23,14 @@ fn test_check_tuple_size_limit_overflow() {
 
 #[test]
 fn test_check_versioned_tuple_size_limit_overflow() {
+    // The check is an associated function; the heap file is only created to
+    // keep the on-disk layout honest.
     let temp_file = NamedTempFile::new().unwrap();
-    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+    let _heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
     let overflow_size = usize::MAX;
-    let result = heap.check_versioned_tuple_size_limit(overflow_size, false);
+    let result =
+        HeapFile::<FileBlockDevice>::check_versioned_tuple_size_limit(overflow_size, false);
 
     assert!(matches!(
         result,
@@ -61,9 +64,10 @@ fn test_encode_versioned_page_rejects_oversized_slot_dir() {
 #[test]
 fn test_sentry_check_versioned_tuple_size_limit_overflow() {
     let temp_file = NamedTempFile::new().unwrap();
-    let heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+    let _heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
-    let result = heap.check_versioned_tuple_size_limit(usize::MAX - 5, false);
+    let result =
+        HeapFile::<FileBlockDevice>::check_versioned_tuple_size_limit(usize::MAX - 5, false);
     assert!(matches!(
         result,
         Err(HeapError::Serialization(msg)) if msg.contains("Header size + tuple data length overflow")

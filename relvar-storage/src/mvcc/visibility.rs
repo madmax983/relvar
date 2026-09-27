@@ -1,118 +1,47 @@
-//! # MVCC Visibility Rules
+//! # MVCC visibility checker
 //!
-//! This module contains the core logic for Snapshot Isolation: determining if a
-//! specific tuple version is visible to a specific transaction.
+//! Determines which tuple version a transaction's snapshot may see, per the
+//! Snapshot Isolation rules documented in [`crate::mvcc::snapshot`].
 //!
-//! A tuple version is visible to transaction `T` if:
-//! 1. `version.xmin` committed before `T`'s snapshot AND
-//! 2. `version.xmin` is below `T`'s visibility horizon (its creator began no
-//!    later than `T` did) AND
-//! 3. `version.xmin` not in `T.active_txns` (not concurrent uncommitted) AND
-//! 4. `version.xmax` is `None` OR (`version.xmax` committed after `T`'s snapshot
-//!    OR `version.xmax` is at/above the horizon OR `version.xmax` in `T.active_txns`)
+//! ## TTM Compliance
+//!
+//! Visibility is an internal storage-layer mechanism (Physical Data
+//! Independence). The logical layer never sees versions or snapshots.
 
-use crate::mvcc::TransactionSnapshot;
+use crate::mvcc::{TransactionSnapshot, TxnPool};
 use crate::wal::TransactionId;
 use std::collections::HashSet;
 
-/// Version metadata stored with each tuple.
-///
-/// Every tuple in the heap contains this header. It tracks which transaction
-/// inserted the tuple (`xmin`) and which transaction deleted or updated it (`xmax`).
-///
-/// If `xmax` is `None`, the tuple is considered "alive" (subject to visibility rules).
-/// If `xmax` is `Some`, the tuple is a tombstone (deleted or an older version of an update).
-///
-/// ## Examples
-///
-/// ```ignore
-/// use relvar_storage::mvcc::VersionMetadata;
-/// use relvar_storage::wal::TransactionId;
-///
-/// // A newly inserted tuple
-/// let inserted = VersionMetadata {
-///     xmin: TransactionId::new(42),
-///     xmax: None, // Still alive!
-/// };
-///
-/// // A deleted tuple
-/// let deleted = VersionMetadata {
-///     xmin: TransactionId::new(42),
-///     xmax: Some(TransactionId::new(45)), // Txn 45 deleted this
-/// };
-/// ```ignore
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Metadata header stored with every tuple version on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VersionMetadata {
-    /// Transaction that created this version
+    /// Transaction that created this version.
     pub xmin: TransactionId,
-    /// Transaction that deleted/updated this version (None = still visible)
+    /// Transaction that deleted (or superseded) this version, if any.
     pub xmax: Option<TransactionId>,
 }
 
-/// Determines if a tuple version is visible to a transaction.
+/// Returns `true` when `version` is visible to `snapshot`.
 ///
-/// This function enforces the Snapshot Isolation guarantees. It evaluates the
-/// `version` metadata against the transaction's `snapshot` and the global `committed` set.
-///
-/// # Visibility Rules
-/// A version is visible if:
-/// 1. `xmin` is committed (in `committed` set).
-/// 2. `xmin` is below the snapshot's visibility horizon (its creator began no
-///    later than the snapshot was taken — this hides versions committed by
-///    transactions that started *after* the snapshot, which the commit set
-///    and active set alone cannot exclude).
-/// 3. `xmin` is NOT in the snapshot's `active_txns` (wasn't concurrent uncommitted).
-/// 4. `xmax` is `None` (not deleted) OR `xmax` is NOT committed OR `xmax` was concurrent
-///    (active at snapshot time) OR `xmax` is at/above the horizon (deleted after
-///    the snapshot was taken).
-///
-/// **Exception:** A transaction can always see its own uncommitted changes.
-///
-/// # Arguments
-/// * `version` - The version metadata attached to the tuple.
-/// * `snapshot` - The snapshot defining the reading transaction's point-in-time view.
-/// * `committed` - The global set of all transaction IDs that have successfully committed.
-///
-/// # Returns
-/// `true` if the version should be returned by a scan, `false` if it should be skipped.
-///
-/// ## Examples
-///
-/// ```ignore
-/// use relvar_storage::mvcc::{is_visible, VersionMetadata, TransactionSnapshot};
-/// use relvar_storage::wal::{Lsn, TransactionId};
-/// use std::collections::HashSet;
-///
-/// let t1 = TransactionId::new(1); // Committed txn
-/// let t2 = TransactionId::new(2); // Our scanning txn
-///
-/// let mut committed = HashSet::new();
-/// committed.insert(t1);
-///
-/// // T2 starts, T1 is already committed, no active txns
-/// let snapshot = TransactionSnapshot::new(t2, Lsn::new(100), vec![]);
-///
-/// // Tuple inserted by T1, never deleted
-/// let version = VersionMetadata { xmin: t1, xmax: None };
-///
-/// // T2 can see T1's insert because T1 is committed and wasn't active during T2's start
-/// assert!(is_visible(&version, &snapshot, &committed));
-/// ```ignore
+/// Liveness is resolved through `pool`; `committed` is the engine's set of
+/// committed transaction IDs. See [`crate::mvcc::snapshot`] for the rules.
 pub fn is_visible(
     version: &VersionMetadata,
     snapshot: &TransactionSnapshot,
+    pool: &TxnPool,
     committed: &HashSet<TransactionId>,
 ) -> bool {
-    if !is_created_visible(version, snapshot, committed) {
+    if !is_created_visible(version, snapshot, pool, committed) {
         return false;
     }
 
-    is_deletion_invisible(version, snapshot, committed)
+    is_deletion_invisible(version, snapshot, pool, committed)
 }
 
 fn is_created_visible(
     version: &VersionMetadata,
     snapshot: &TransactionSnapshot,
+    pool: &TxnPool,
     committed: &HashSet<TransactionId>,
 ) -> bool {
     // Own writes are always visible to the writing transaction.
@@ -131,7 +60,7 @@ fn is_created_visible(
 
     // Versions created by transactions that were still active when the
     // snapshot was taken are in flux: invisible.
-    if snapshot.is_active(version.xmin) {
+    if snapshot.is_active(version.xmin, pool) {
         return false;
     }
 
@@ -141,6 +70,7 @@ fn is_created_visible(
 fn is_deletion_invisible(
     version: &VersionMetadata,
     snapshot: &TransactionSnapshot,
+    pool: &TxnPool,
     committed: &HashSet<TransactionId>,
 ) -> bool {
     let Some(xmax) = version.xmax else {
@@ -162,7 +92,7 @@ fn is_deletion_invisible(
         return true;
     }
 
-    if snapshot.is_active(xmax) {
+    if snapshot.is_active(xmax, pool) {
         return true;
     }
 
@@ -195,6 +125,43 @@ mod tests {
         }
     }
 
+    /// Test fixture: a bounded pool plus the engine's committed set.
+    struct Fixture {
+        pool: TxnPool,
+        committed: HashSet<TransactionId>,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            Self {
+                pool: TxnPool::new(16),
+                committed: HashSet::new(),
+            }
+        }
+
+        /// Begins `txn_id` at `lsn` with an open horizon; returns its snapshot.
+        fn begin(&mut self, txn_id: TransactionId, lsn: u64) -> TransactionSnapshot {
+            self.pool
+                .begin(txn_id, test_lsn(lsn), test_txn(u64::MAX))
+                .unwrap()
+        }
+
+        /// Commits `txn_id` at `lsn` and records it in the committed set.
+        fn commit(&mut self, txn_id: TransactionId, lsn: u64) {
+            self.pool.commit(txn_id, test_lsn(lsn)).unwrap();
+            self.committed.insert(txn_id);
+        }
+
+        /// Aborts `txn_id` (stays out of the committed set).
+        fn abort(&mut self, txn_id: TransactionId) {
+            self.pool.abort(txn_id).unwrap();
+        }
+
+        fn is_visible(&self, version: &VersionMetadata, snapshot: &TransactionSnapshot) -> bool {
+            is_visible(version, snapshot, &self.pool, &self.committed)
+        }
+    }
+
     #[test]
     fn test_version_metadata_new() {
         let xmin = test_txn(1);
@@ -217,211 +184,206 @@ mod tests {
     #[test]
     fn test_version_visible_to_creator() {
         // Transaction creates a version and should see it
-        let txn_id = test_txn(1);
-        let version = new_version(txn_id);
+        let mut fx = Fixture::new();
+        let t1 = test_txn(1);
+        let snapshot = fx.begin(t1, 100);
 
-        let snapshot = TransactionSnapshot::new(txn_id, test_lsn(100), vec![]);
-        let committed = HashSet::new(); // txn not committed yet
+        let version = new_version(t1);
 
         // Creator should see its own uncommitted version
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_version_invisible_to_concurrent() {
         // T1 creates a version, T2 (concurrent) should NOT see it before T1 commits
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        fx.begin(t1, 50);
+        let snapshot = fx.begin(t2, 100);
 
         let version = new_version(t1);
 
-        // T2's snapshot shows T1 as active (concurrent)
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![t1]);
-        let committed = HashSet::new(); // T1 not committed
-
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_version_visible_after_commit() {
         // T1 creates and commits a version, T2 (starts later) should see it
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        let snapshot = fx.begin(t2, 200);
 
         let version = new_version(t1);
 
-        // T2 starts after T1 committed (T1 not in active list)
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
-        let mut committed = HashSet::new();
-        committed.insert(t1); // T1 committed
-
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_deleted_version_invisible() {
         // T1 creates, T2 deletes and commits, T3 should NOT see it
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
         let t3 = test_txn(3);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        fx.begin(t2, 150);
+        fx.commit(t2, 200);
+        let snapshot = fx.begin(t3, 300);
 
         let version = new_version_with_xmax(t1, t2);
 
-        // T3 starts after both T1 and T2 committed
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![]);
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-        committed.insert(t2); // Deletion committed
-
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_version_visible_deletion_uncommitted() {
         // T1 creates and commits, T2 deletes (uncommitted), T3 should still see it
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
         let t3 = test_txn(3);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        fx.begin(t2, 150); // T2 live: its delete is not yet visible
+        let snapshot = fx.begin(t3, 300);
 
         let version = new_version_with_xmax(t1, t2);
 
-        // T3 starts, sees T2 as active
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![t2]);
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-        // T2 not committed
-
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_aborted_version_never_visible() {
         // T1 creates but aborts, T2 should NOT see it
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        fx.begin(t1, 50);
+        fx.abort(t1);
+        let snapshot = fx.begin(t2, 200);
 
         let version = new_version(t1);
 
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
-        let committed = HashSet::new(); // T1 NOT in committed set (aborted)
-
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_version_visible_concurrent_deletion() {
-        // T1 creates and commits, T2 and T3 concurrent, T2 deletes
-        // T3 should still see it (deletion concurrent with T3)
+        // T1 creates and commits, T2 and T3 concurrent, T2 deletes then commits
+        // after T3's snapshot: T3 should still see it (deletion concurrent).
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
         let t3 = test_txn(3);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        fx.begin(t2, 150);
+        let snapshot = fx.begin(t3, 300);
+        fx.commit(t2, 350); // T2 committed AFTER T3 started
 
         let version = new_version_with_xmax(t1, t2);
 
-        // T3's snapshot shows T2 as active
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![t2]);
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-        committed.insert(t2); // T2 committed AFTER T3 started
-
-        // Should be visible because T2 was active when T3 started
-        assert!(is_visible(&version, &snapshot, &committed));
+        // Visible because T2 was active when T3's snapshot was taken.
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_version_invisible_not_committed() {
         // T1 creates (uncommitted), T2 should NOT see it
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        fx.begin(t1, 50);
+        let snapshot = fx.begin(t2, 200);
 
         let version = new_version(t1);
 
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(200), vec![]);
-        let committed = HashSet::new(); // T1 not committed
-
-        // T2 can't see T1's version if T1 != T2
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_visibility_creator_uncommitted_deleted() {
         // T1 creates and deletes in same txn (uncommitted)
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
+        let snapshot = fx.begin(t1, 100);
 
         let version = new_version_with_xmax(t1, t1);
 
-        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
-        let committed = HashSet::new();
-
         // T1 deleted its own version, should NOT see it
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_visibility_empty_committed_set() {
         // No transactions committed yet
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        fx.begin(t1, 50);
+        let snapshot = fx.begin(t2, 100);
 
         let version = new_version(t1);
 
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![]);
-        let committed = HashSet::new();
-
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_visibility_multiple_concurrent() {
-        // Multiple concurrent transactions
+        // T4 sees T2 and T3 as active, but T1 committed before T4 started.
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
         let t3 = test_txn(3);
         let t4 = test_txn(4);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        fx.begin(t2, 150);
+        fx.begin(t3, 160);
+        let snapshot = fx.begin(t4, 400);
 
         let version = new_version(t1);
 
-        // T4 sees T2 and T3 as active, but not T1 (T1 committed before T4 started)
-        let snapshot = TransactionSnapshot::new(t4, test_lsn(400), vec![t2, t3]);
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_visibility_deletion_by_creator() {
         // T1 creates, commits, then in a new txn deletes
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t1_new = test_txn(10); // Different txn by same "user"
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        let snapshot = fx.begin(t1_new, 150);
+        fx.commit(t1_new, 200);
 
         let version = new_version_with_xmax(t1, t1_new);
 
-        let snapshot = TransactionSnapshot::new(t1_new, test_lsn(200), vec![]);
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-        committed.insert(t1_new);
-
-        // Version deleted by committed txn
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn test_visibility_long_running_transaction() {
-        // T1 starts early, T2 creates and commits, T1 should NOT see it
-        // (T2 was active when T1 started)
+        // T1 starts early; T2 begins after T1's snapshot and commits.
+        // T1 must NOT see T2's version: T2 is in T1's future (horizon).
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        // T1's horizon is 2: T2 has not begun yet at T1's snapshot.
+        let snapshot = fx.begin(t1, 100).with_horizon(test_txn(2));
+        fx.begin(t2, 150);
+        fx.commit(t2, 200);
 
         let version = new_version(t2);
 
-        // T1's snapshot captured T2 as active
-        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![t2]);
-        let mut committed = HashSet::new();
-        committed.insert(t2);
-
-        // T1 should NOT see T2's changes (snapshot isolation)
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
@@ -429,203 +391,209 @@ mod tests {
         // T1 creates version V1, commits
         // T2 updates to V2 (marks V1.xmax=T2, creates V2.xmin=T2), commits
         // T3 starts and should see V2, not V1
-
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
         let t3 = test_txn(3);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        fx.begin(t2, 150);
+        fx.commit(t2, 200);
+        let snapshot = fx.begin(t3, 300);
 
         let v1 = new_version_with_xmax(t1, t2);
         let v2 = new_version(t2);
 
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(300), vec![]);
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-        committed.insert(t2);
-
         // V1 should NOT be visible (deleted by committed T2)
-        assert!(!is_visible(&v1, &snapshot, &committed));
+        assert!(!fx.is_visible(&v1, &snapshot));
 
         // V2 should be visible (created by committed T2)
-        assert!(is_visible(&v2, &snapshot, &committed));
+        assert!(fx.is_visible(&v2, &snapshot));
     }
 
     #[test]
     fn should_return_true_when_version_created_by_committed_txn() {
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        let snapshot = fx.begin(t2, 200);
 
         let version = VersionMetadata {
             xmin: t1,
             xmax: None,
         };
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![]);
-        let mut committed = HashSet::new();
-        committed.insert(t1);
 
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_false_when_version_created_by_uncommitted_concurrent_txn() {
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        fx.begin(t1, 50);
+        let snapshot = fx.begin(t2, 100);
 
         let version = VersionMetadata {
             xmin: t1,
             xmax: None,
         };
-        // t2 sees t1 as active
-        let snapshot = TransactionSnapshot::new(t2, test_lsn(100), vec![t1]);
-        let committed = HashSet::new(); // t1 not committed
 
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_true_when_version_created_by_self() {
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
+        let snapshot = fx.begin(t1, 100);
 
         let version = VersionMetadata {
             xmin: t1,
             xmax: None,
         };
-        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
-        let committed = HashSet::new(); // t1 not committed
 
         // Transaction can see its own changes
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_false_when_version_deleted_by_committed_txn() {
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
         let t3 = test_txn(3);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        fx.begin(t2, 120);
+        fx.commit(t2, 150);
+        let snapshot = fx.begin(t3, 200);
 
         let version = VersionMetadata {
             xmin: t1,
             xmax: Some(t2),
         };
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(200), vec![]);
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-        committed.insert(t2); // t2 is committed
 
         // T3 shouldn't see it because it was deleted by committed T2
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_true_when_version_deleted_by_uncommitted_txn() {
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
         let t3 = test_txn(3);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        fx.begin(t2, 150); // t2 live: its delete is not yet visible
+        let snapshot = fx.begin(t3, 200);
 
         let version = VersionMetadata {
             xmin: t1,
             xmax: Some(t2),
         };
-        // t3 sees t2 as active
-        let snapshot = TransactionSnapshot::new(t3, test_lsn(200), vec![t2]);
-        let mut committed = HashSet::new();
-        committed.insert(t1); // t1 committed, t2 not
 
         // T3 should see it because deletion is not yet visible
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_false_when_version_deleted_by_self() {
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
+        let snapshot = fx.begin(t1, 100);
+        fx.commit(t1, 150); // created by self, deleted by self
 
         let version = VersionMetadata {
             xmin: t1,
             xmax: Some(t1),
         };
-        let snapshot = TransactionSnapshot::new(t1, test_lsn(100), vec![]);
-        let mut committed = HashSet::new();
-        committed.insert(t1); // created by self, deleted by self
 
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_false_when_creator_began_after_snapshot_even_if_committed() {
         // T1's snapshot is taken with horizon 2: only transactions with
         // IDs < 2 began before the snapshot.
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
+        let snapshot = fx.begin(t1, 100).with_horizon(test_txn(2));
+        fx.commit(t2, 150); // t2 committed AFTER t1's snapshot was taken
 
         let version = VersionMetadata {
             xmin: t2,
             xmax: None,
         };
-        let snapshot =
-            TransactionSnapshot::new(t1, test_lsn(100), vec![]).with_horizon(test_txn(2));
-        let mut committed = HashSet::new();
-        committed.insert(t2); // t2 committed AFTER t1's snapshot was taken
 
         // T2 is committed and was never in T1's active set, but it began
         // after the snapshot: its version is from T1's future.
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_true_when_creator_committed_before_snapshot_horizon() {
+        let mut fx = Fixture::new();
         let t2 = test_txn(2);
         let t3 = test_txn(3);
+        fx.begin(t2, 50);
+        fx.commit(t2, 100);
+        // T3's snapshot horizon is 4: T2 began before it.
+        let snapshot = fx.begin(t3, 200).with_horizon(test_txn(4));
 
         let version = VersionMetadata {
             xmin: t2,
             xmax: None,
         };
-        // T3's snapshot horizon is 4: T2 began before it.
-        let snapshot =
-            TransactionSnapshot::new(t3, test_lsn(200), vec![]).with_horizon(test_txn(4));
-        let mut committed = HashSet::new();
-        committed.insert(t2);
 
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_true_when_deleter_began_after_snapshot() {
         // T2 deletes a version after T3's snapshot was taken; T3 must still
         // see the version even though T2 has committed.
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(4);
         let t3 = test_txn(3);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        // T3's snapshot horizon is 4: T2 began after it.
+        let snapshot = fx.begin(t3, 200).with_horizon(test_txn(4));
+        fx.begin(t2, 210);
+        fx.commit(t2, 250);
 
         let version = VersionMetadata {
             xmin: t1,
             xmax: Some(t2),
         };
-        let snapshot =
-            TransactionSnapshot::new(t3, test_lsn(200), vec![]).with_horizon(test_txn(4));
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-        committed.insert(t2);
 
-        assert!(is_visible(&version, &snapshot, &committed));
+        assert!(fx.is_visible(&version, &snapshot));
     }
 
     #[test]
     fn should_return_false_when_deleter_committed_before_snapshot_horizon() {
+        let mut fx = Fixture::new();
         let t1 = test_txn(1);
         let t2 = test_txn(2);
         let t3 = test_txn(3);
+        fx.begin(t1, 50);
+        fx.commit(t1, 100);
+        fx.begin(t2, 120);
+        fx.commit(t2, 150);
+        // Horizon 3: the delete by T2 predates T3's snapshot.
+        let snapshot = fx.begin(t3, 200).with_horizon(test_txn(3));
 
         let version = VersionMetadata {
             xmin: t1,
             xmax: Some(t2),
         };
-        // Horizon 3: the delete by T2 predates T3's snapshot.
-        let snapshot =
-            TransactionSnapshot::new(t3, test_lsn(200), vec![]).with_horizon(test_txn(3));
-        let mut committed = HashSet::new();
-        committed.insert(t1);
-        committed.insert(t2);
 
-        assert!(!is_visible(&version, &snapshot, &committed));
+        assert!(!fx.is_visible(&version, &snapshot));
     }
 }

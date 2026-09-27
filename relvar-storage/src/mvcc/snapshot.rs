@@ -1,140 +1,79 @@
-//! # Transaction Snapshots
+//! # MVCC transaction snapshots
 //!
-//! Provides the core abstraction for Snapshot Isolation. A snapshot represents
-//! a point in time view of the database. When a transaction starts, it receives
-//! a snapshot that defines what data versions it is allowed to see.
+//! A [`TransactionSnapshot`] is a point-in-time view of the database as seen
+//! by one transaction. It is a plain `Copy` value — `{txn_id, snapshot_lsn,
+//! horizon}` — carrying no heap data. Liveness questions ("was transaction T
+//! still running when this snapshot was taken?") are answered against the
+//! [`TxnPool`](crate::mvcc::TxnPool), never against a per-snapshot copy of
+//! the active set, so taking a snapshot allocates nothing.
+//!
+//! ## Visibility rules (Snapshot Isolation)
+//!
+//! A tuple version is visible to a snapshot when:
+//!
+//! 1. It was created by a transaction that had committed before the snapshot
+//!    was taken (or by the snapshotting transaction itself), and
+//! 2. It was not deleted by a transaction that had committed before the
+//!    snapshot was taken (deletes by the snapshotting transaction itself hide
+//!    the version from it).
+//!
+//! The `horizon` is the next transaction ID the generator would hand out at
+//! snapshot time: any transaction with an ID at or above the horizon began
+//! after the snapshot and is invisible to it, full stop.
+//!
+//! ## TTM Compliance
+//!
+//! Snapshots are an internal storage-layer mechanism (Physical Data
+//! Independence). The logical layer never sees transaction IDs or LSNs.
 
+use crate::mvcc::TxnPool;
 use crate::wal::{Lsn, TransactionId};
-use std::collections::HashSet;
 
-/// Snapshot of transaction state at a point in time.
+/// A point-in-time view of the database for one transaction.
 ///
-/// A `TransactionSnapshot` is created when a transaction begins. It captures:
-/// 1. The transaction's own ID.
-/// 2. The Log Sequence Number (LSN) at the time it started.
-/// 3. The exact set of *other* transactions that were running (uncommitted) at that moment.
-/// 4. The visibility horizon: an upper bound on transaction IDs. Transactions
-///    with IDs at or above the horizon began *after* the snapshot was taken,
-///    so their versions are invisible even if they committed since. This is
-///    the bound that makes Repeatable Read actually repeat; without it, a
-///    transaction that begins and commits after our snapshot would leak its
-///    writes into our reads (a non-repeatable read).
-///
-/// This structure is strictly read-only after creation and is passed to the visibility
-/// checker to ensure that any changes made by the `active_txns` are hidden from this transaction.
-///
-/// ## Examples
-///
-/// ```ignore
-/// use relvar_storage::mvcc::TransactionSnapshot;
-/// use relvar_storage::wal::{Lsn, TransactionId};
-///
-/// let my_txn = TransactionId::new(42);
-/// let current_lsn = Lsn::new(100);
-/// // Imagine transactions 40 and 41 are currently running
-/// let active = vec![TransactionId::new(40), TransactionId::new(41)];
-///
-/// let snapshot = TransactionSnapshot::new(my_txn, current_lsn, active);
-///
-/// // We know that txn 40 was active when we started, so we must NOT see its changes.
-/// assert!(snapshot.is_active(TransactionId::new(40)));
-///
-/// // Txn 39 is NOT in the active list, meaning it committed before we started.
-/// // We ARE allowed to see its changes.
-/// assert!(!snapshot.is_active(TransactionId::new(39)));
-/// ```ignore
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `Copy` and allocation-free: construct it from the pool
+/// ([`TxnPool::begin`]/[`TxnPool::get_snapshot`]) and query liveness through
+/// [`TransactionSnapshot::is_active`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransactionSnapshot {
-    /// The transaction ID this snapshot belongs to
+    /// The transaction that owns this snapshot.
     pub txn_id: TransactionId,
-    /// LSN at the time this snapshot was taken
+    /// LSN at the moment the snapshot was taken.
     pub snapshot_lsn: Lsn,
-    /// Set of transactions that were active (uncommitted) when snapshot was taken
-    pub active_txns: HashSet<TransactionId>,
-    /// Visibility horizon: transaction IDs `>= horizon` began after this
-    /// snapshot was taken, so their versions are invisible to it.
-    ///
-    /// Defaults to `u64::MAX` (unbounded: every begun transaction is visible
-    /// subject to the commit/active rules). Production snapshots stamp a real
-    /// horizon via [`TransactionSnapshot::with_horizon`].
+    /// Transactions with IDs at or above this began after this snapshot was
+    /// taken, so their versions are invisible to it.
     pub horizon: TransactionId,
 }
 
 impl TransactionSnapshot {
-    /// Creates a new transaction snapshot.
+    /// Creates a snapshot for `txn_id` taken at `snapshot_lsn`.
     ///
-    /// This is typically called exclusively by the `ActiveTransactionTable` when
-    /// a new transaction is registered.
-    ///
-    /// # Arguments
-    /// * `txn_id` - The transaction ID this snapshot is for.
-    /// * `snapshot_lsn` - The LSN at the exact moment the snapshot was created.
-    /// * `active` - A list of transaction IDs that are currently uncommitted.
-    ///
-    /// ## Examples
-    ///
-    /// ```ignore
-    /// use relvar_storage::mvcc::TransactionSnapshot;
-    /// use relvar_storage::wal::{Lsn, TransactionId};
-    ///
-    /// let snapshot = TransactionSnapshot::new(
-    ///     TransactionId::new(10),
-    ///     Lsn::new(500),
-    ///     vec![TransactionId::new(8), TransactionId::new(9)]
-    /// );
-    ///
-    /// assert_eq!(snapshot.txn_id, TransactionId::new(10));
-    /// ```ignore
-    pub fn new(txn_id: TransactionId, snapshot_lsn: Lsn, active: Vec<TransactionId>) -> Self {
+    /// The horizon defaults to `u64::MAX` (every begun transaction is
+    /// potentially visible, subject to the commit/active rules); stamp the
+    /// real horizon with [`TransactionSnapshot::with_horizon`] when the
+    /// generator is handy.
+    pub fn new(txn_id: TransactionId, snapshot_lsn: Lsn) -> Self {
         Self {
             txn_id,
             snapshot_lsn,
-            active_txns: active.into_iter().collect(),
-            // Unbounded horizon: preserves the historical visibility rules
-            // (commit set + active set only). Production snapshots narrow this
-            // via `with_horizon`.
             horizon: TransactionId::new(u64::MAX),
         }
     }
 
-    /// Stamps a visibility horizon on this snapshot.
-    ///
-    /// Transactions with IDs at or above `horizon` began after the snapshot
-    /// was taken; their versions (and their deletes) are invisible to it,
-    /// even if they committed in the meantime.
+    /// Stamps the visibility horizon: the next transaction ID the generator
+    /// would hand out at snapshot time.
     pub fn with_horizon(mut self, horizon: TransactionId) -> Self {
         self.horizon = horizon;
         self
     }
 
-    /// Checks if a given transaction was active (uncommitted) when this snapshot was created.
+    /// Was `txn_id` still running (uncommitted) when this snapshot was taken?
     ///
-    /// This is the primary method used by the visibility engine. If a tuple version
-    /// was created or deleted by a transaction that returns `true` here, that version's
-    /// state is considered "in flux" and must be ignored by the transaction holding this snapshot.
-    ///
-    /// # Arguments
-    /// * `txn_id` - The transaction ID to check.
-    ///
-    /// # Returns
-    /// `true` if the transaction was active (uncommitted) at snapshot time, `false` otherwise.
-    ///
-    /// ## Examples
-    ///
-    /// ```ignore
-    /// use relvar_storage::mvcc::TransactionSnapshot;
-    /// use relvar_storage::wal::{Lsn, TransactionId};
-    ///
-    /// let t1 = TransactionId::new(1);
-    /// let t2 = TransactionId::new(2);
-    ///
-    /// let snapshot = TransactionSnapshot::new(t2, Lsn::new(100), vec![t1]);
-    ///
-    /// assert!(snapshot.is_active(t1)); // T1 was running
-    /// assert!(!snapshot.is_active(TransactionId::new(0))); // T0 was not running
-    /// ```ignore
-    pub fn is_active(&self, txn_id: TransactionId) -> bool {
-        self.active_txns.contains(&txn_id)
+    /// The snapshotting transaction itself never counts as active: its own
+    /// versions are visible to it through the committed path, not the active
+    /// path.
+    pub fn is_active(&self, txn_id: TransactionId, pool: &TxnPool) -> bool {
+        txn_id != self.txn_id && pool.is_active_at(txn_id, self.snapshot_lsn)
     }
 }
 
@@ -142,155 +81,58 @@ impl TransactionSnapshot {
 mod tests {
     use super::*;
 
-    // Helper to create test LSN
     fn test_lsn(value: u64) -> Lsn {
         Lsn::new(value)
     }
 
-    // Helper to create test TransactionId
     fn test_txn(value: u64) -> TransactionId {
         TransactionId::new(value)
     }
 
     #[test]
-    fn test_snapshot_creation_captures_lsn() {
-        let txn_id = test_txn(1);
-        let lsn = test_lsn(100);
-        let active = vec![test_txn(2), test_txn(3)];
-
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
-
-        assert_eq!(snapshot.txn_id, txn_id);
-        assert_eq!(snapshot.snapshot_lsn, lsn);
-    }
-
-    #[test]
-    fn test_snapshot_tracks_active_txns() {
-        let txn_id = test_txn(1);
-        let lsn = test_lsn(100);
-        let active = vec![test_txn(2), test_txn(3)];
-
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active.clone());
-
-        assert_eq!(snapshot.active_txns.len(), 2);
-        assert!(snapshot.active_txns.contains(&test_txn(2)));
-        assert!(snapshot.active_txns.contains(&test_txn(3)));
-    }
-
-    #[test]
-    fn test_snapshot_is_active_check() {
-        let txn_id = test_txn(1);
-        let lsn = test_lsn(100);
-        let active = vec![test_txn(2), test_txn(3)];
-
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
-
-        assert!(snapshot.is_active(test_txn(2)));
-        assert!(snapshot.is_active(test_txn(3)));
-        assert!(!snapshot.is_active(test_txn(4)));
-    }
-
-    #[test]
-    fn test_snapshot_empty_active_list() {
-        let txn_id = test_txn(1);
-        let lsn = test_lsn(100);
-        let active = vec![];
-
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
-
-        assert_eq!(snapshot.active_txns.len(), 0);
-        assert!(!snapshot.is_active(test_txn(2)));
-    }
-
-    #[test]
-    fn test_snapshot_does_not_include_self_in_active() {
-        let txn_id = test_txn(1);
-        let lsn = test_lsn(100);
-        let active = vec![test_txn(1), test_txn(2)]; // Including self
-
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
-
-        // Self should be in active_txns set (it's up to caller to exclude if needed)
-        assert!(snapshot.active_txns.contains(&test_txn(1)));
-        assert!(snapshot.active_txns.contains(&test_txn(2)));
-    }
-
-    #[test]
-    fn test_snapshot_duplicate_active_txns() {
-        let txn_id = test_txn(1);
-        let lsn = test_lsn(100);
-        let active = vec![test_txn(2), test_txn(2), test_txn(3)]; // Duplicate
-
-        let snapshot = TransactionSnapshot::new(txn_id, lsn, active);
-
-        // HashSet should deduplicate
-        assert_eq!(snapshot.active_txns.len(), 2);
-        assert!(snapshot.active_txns.contains(&test_txn(2)));
-        assert!(snapshot.active_txns.contains(&test_txn(3)));
-    }
-
-    #[test]
-    fn test_snapshot_clone() {
-        let txn_id = test_txn(1);
-        let lsn = test_lsn(100);
-        let active = vec![test_txn(2), test_txn(3)];
-
-        let snapshot1 = TransactionSnapshot::new(txn_id, lsn, active);
-        let snapshot2 = snapshot1.clone();
-
-        assert_eq!(snapshot1, snapshot2);
-        assert_eq!(snapshot1.txn_id, snapshot2.txn_id);
-        assert_eq!(snapshot1.snapshot_lsn, snapshot2.snapshot_lsn);
-        assert_eq!(snapshot1.active_txns, snapshot2.active_txns);
-    }
-
-    #[test]
-    fn test_snapshot_equality() {
-        let txn_id = test_txn(1);
-        let lsn = test_lsn(100);
-        let active = vec![test_txn(2), test_txn(3)];
-
-        let snapshot1 = TransactionSnapshot::new(txn_id, lsn, active.clone());
-        let snapshot2 = TransactionSnapshot::new(txn_id, lsn, active);
-
-        assert_eq!(snapshot1, snapshot2);
-    }
-
-    #[test]
-    fn test_snapshot_inequality_different_txn_id() {
-        let lsn = test_lsn(100);
-        let active = vec![test_txn(2)];
-
-        let snapshot1 = TransactionSnapshot::new(test_txn(1), lsn, active.clone());
-        let snapshot2 = TransactionSnapshot::new(test_txn(2), lsn, active);
-
-        assert_ne!(snapshot1, snapshot2);
-    }
-
-    #[test]
-    fn test_snapshot_inequality_different_lsn() {
-        let txn_id = test_txn(1);
-        let active = vec![test_txn(2)];
-
-        let snapshot1 = TransactionSnapshot::new(txn_id, test_lsn(100), active.clone());
-        let snapshot2 = TransactionSnapshot::new(txn_id, test_lsn(200), active);
-
-        assert_ne!(snapshot1, snapshot2);
-    }
-
-    #[test]
-    fn test_horizon_defaults_to_unbounded() {
-        let snapshot = TransactionSnapshot::new(test_txn(1), test_lsn(100), vec![]);
+    fn test_snapshot_new_defaults_to_open_horizon() {
+        let snapshot = TransactionSnapshot::new(test_txn(1), test_lsn(100));
+        assert_eq!(snapshot.txn_id, test_txn(1));
+        assert_eq!(snapshot.snapshot_lsn, test_lsn(100));
         assert_eq!(snapshot.horizon, test_txn(u64::MAX));
     }
 
     #[test]
-    fn test_with_horizon_stamps_bound() {
+    fn test_snapshot_with_horizon() {
         let snapshot =
-            TransactionSnapshot::new(test_txn(1), test_lsn(100), vec![]).with_horizon(test_txn(7));
-        assert_eq!(snapshot.horizon, test_txn(7));
-        // Other fields are preserved.
-        assert_eq!(snapshot.txn_id, test_txn(1));
-        assert_eq!(snapshot.snapshot_lsn, test_lsn(100));
+            TransactionSnapshot::new(test_txn(1), test_lsn(100)).with_horizon(test_txn(42));
+        assert_eq!(snapshot.horizon, test_txn(42));
+    }
+
+    #[test]
+    fn test_snapshot_is_copy() {
+        let snapshot = TransactionSnapshot::new(test_txn(1), test_lsn(100));
+        let copy = snapshot;
+        assert_eq!(snapshot, copy);
+    }
+
+    #[test]
+    fn test_snapshot_is_active_delegates_to_pool() {
+        let mut pool = TxnPool::new(4);
+        pool.begin(test_txn(2), test_lsn(50), test_txn(u64::MAX))
+            .unwrap();
+        let snapshot = pool
+            .begin(test_txn(1), test_lsn(100), test_txn(u64::MAX))
+            .unwrap();
+        // T2 is live in the pool: active at T1's snapshot.
+        assert!(snapshot.is_active(test_txn(2), &pool));
+        // T1 never counts itself as active.
+        assert!(!snapshot.is_active(test_txn(1), &pool));
+        // Unknown transactions are not active.
+        assert!(!snapshot.is_active(test_txn(999), &pool));
+        // T2 commits at 150, after the snapshot at 100: it was still running
+        // when the snapshot was taken, so it counts as active-at-100.
+        pool.commit(test_txn(2), test_lsn(150)).unwrap();
+        assert!(snapshot.is_active(test_txn(2), &pool));
+        // A later snapshot taken after the commit sees T2 as inactive.
+        let later = pool
+            .begin(test_txn(3), test_lsn(200), test_txn(u64::MAX))
+            .unwrap();
+        assert!(!later.is_active(test_txn(2), &pool));
     }
 }

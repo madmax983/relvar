@@ -292,3 +292,160 @@ fn test_sentry_extract_raw_tuple_data_out_of_bounds() {
         assert!(msg.contains("Corrupted slot points outside page data"));
     }
 }
+
+// ---------------------------------------------------------------------------
+// v0.9 claim/rollback protocol: every pooled write claims its version
+// record before mutating any page, and a failure after the claim hands
+// the record back. These tests prove no claim leaks on the failure paths.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_insert_buffer_exhaustion_releases_claim() {
+    // One page working buffer: it can be held across the insert below so
+    // the claim succeeds but the buffer checkout fails.
+    let mut vpool = crate::mvcc::VersionPool::with_capacities(4, 1, 4);
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    // Permanently check out the only buffer (`mem::forget` skips the
+    // guard's Drop so the checkout survives while `vpool` is reused).
+    let held = vpool.acquire_buffer().unwrap();
+    std::mem::forget(held);
+
+    let tuple = tuple! { id: 1i64, name: "Alice" };
+    let err = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            HeapError::Mvcc(crate::mvcc::MvccError::VersionBuffersExhausted { .. })
+        ),
+        "expected typed VersionBuffersExhausted, got {err:?}"
+    );
+    // The claim rolled back: nothing is leaked and the pool is reusable.
+    assert_eq!(vpool.used_versions(), 0);
+}
+
+#[test]
+fn test_update_missing_tuple_releases_claim() {
+    let mut vpool = test_version_pool();
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let tuple = tuple! { id: 1i64, name: "Alice" };
+    heap.insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
+    vpool.release_for_txn(test_txn(1));
+
+    // Slot 99 does not exist on the otherwise healthy page 0: the update
+    // claims first, then fails the lookup before mutating anything.
+    let missing = TupleId {
+        page_id: 0,
+        slot: 99,
+    };
+    let replacement = tuple! { id: 1i64, name: "Nobody" };
+    let err = heap
+        .update_tuple_versioned(missing, &replacement, test_txn(2), &mut vpool)
+        .unwrap_err();
+    assert!(matches!(err, HeapError::TupleNotFound));
+    assert_eq!(vpool.used_versions(), 0);
+
+    // The pool still serves writes afterwards.
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(3), &mut vpool)
+        .unwrap();
+    assert_eq!(vpool.used_versions(), 1);
+    vpool.release_for_txn(test_txn(3));
+    assert_eq!(vpool.used_versions(), 0);
+    let _ = tuple_id;
+}
+
+#[test]
+fn test_delete_missing_tuple_releases_claim() {
+    let mut vpool = test_version_pool();
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let missing = TupleId {
+        page_id: 0,
+        slot: 7,
+    };
+    let err = heap
+        .delete_tuple_versioned(missing, test_txn(1), &mut vpool)
+        .unwrap_err();
+    assert!(matches!(err, HeapError::TupleNotFound));
+    assert_eq!(vpool.used_versions(), 0);
+}
+
+#[test]
+fn test_version_pool_exhaustion_is_typed_and_leaves_pool_usable() {
+    // Exactly one version record: the second concurrent write cannot
+    // happen, and the failure must be typed, not a panic.
+    let mut vpool = crate::mvcc::VersionPool::with_capacities(1, 1, 4);
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let first = tuple! { id: 1i64, name: "Alice" };
+    heap.insert_tuple_versioned(&first, test_txn(1), &mut vpool)
+        .unwrap();
+    assert_eq!(vpool.used_versions(), 1);
+
+    let second = tuple! { id: 2i64, name: "Bob" };
+    let err = heap
+        .insert_tuple_versioned(&second, test_txn(2), &mut vpool)
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            HeapError::Mvcc(crate::mvcc::MvccError::VersionPoolExhausted {
+                used: 1,
+                capacity: 1
+            })
+        ),
+        "expected typed VersionPoolExhausted, got {err:?}"
+    );
+    // The failed claim left the pool exactly as it found it.
+    assert_eq!(vpool.used_versions(), 1);
+
+    // Ending the first transaction frees its record; the write succeeds.
+    vpool.release_for_txn(test_txn(1));
+    heap.insert_tuple_versioned(&second, test_txn(2), &mut vpool)
+        .unwrap();
+    assert_eq!(vpool.used_versions(), 1);
+}
+
+#[test]
+fn test_write_path_does_not_grow_pool_backing_storage() {
+    // A realistic mix of pooled writes across several transactions must
+    // not grow any of the pool's backing vectors after construction:
+    // the write path is allocation-free past setup.
+    let mut vpool = test_version_pool();
+    let before = vpool.backing_capacities();
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
+
+    let mut ids = Vec::new();
+    for i in 0..50 {
+        let t = tuple! { id: i as i64, name: "Name" };
+        ids.push(
+            heap.insert_tuple_versioned(&t, test_txn(1), &mut vpool)
+                .unwrap(),
+        );
+    }
+    for id in ids.iter().copied() {
+        let t = tuple! { id: 1000i64, name: "Updated" };
+        heap.update_tuple_versioned(id, &t, test_txn(2), &mut vpool)
+            .unwrap();
+    }
+    for id in ids.iter().copied().take(25) {
+        heap.delete_tuple_versioned(id, test_txn(3), &mut vpool)
+            .unwrap();
+    }
+    vpool.release_for_txn(test_txn(1));
+    vpool.release_for_txn(test_txn(2));
+    vpool.release_for_txn(test_txn(3));
+
+    assert_eq!(vpool.backing_capacities(), before);
+    assert_eq!(vpool.used_versions(), 0);
+}

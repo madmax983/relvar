@@ -95,6 +95,23 @@ pub struct WalManager {
 
     /// LSN of the last flushed record.
     flush_lsn: Lsn,
+
+    /// Test-only failure injection: when set, the next [`WalManager::log`]
+    /// call fails with an I/O error instead of logging.
+    #[cfg(test)]
+    fail_next_log: bool,
+
+    /// Test-only failure injection: when set, the next [`WalManager::flush`]
+    /// call fails with an I/O error instead of flushing.
+    #[cfg(test)]
+    fail_next_flush: bool,
+
+    /// Test-only failure injection: when `Some(n)`, the `n`th upcoming
+    /// [`WalManager::flush`] call fails with an I/O error instead of
+    /// flushing (0 = the next flush). Lets tests target a specific flush
+    /// in a multi-flush operation such as commit.
+    #[cfg(test)]
+    fail_flush_in: Option<u32>,
 }
 
 impl WalManager {
@@ -124,6 +141,12 @@ impl WalManager {
             buffer: Vec::with_capacity(DEFAULT_BUFFER_SIZE),
             buffer_capacity: DEFAULT_BUFFER_SIZE,
             flush_lsn: Lsn::new(0),
+            #[cfg(test)]
+            fail_next_log: false,
+            #[cfg(test)]
+            fail_next_flush: false,
+            #[cfg(test)]
+            fail_flush_in: None,
         })
     }
 
@@ -168,6 +191,12 @@ impl WalManager {
             buffer: Vec::with_capacity(DEFAULT_BUFFER_SIZE),
             buffer_capacity: DEFAULT_BUFFER_SIZE,
             flush_lsn,
+            #[cfg(test)]
+            fail_next_log: false,
+            #[cfg(test)]
+            fail_next_flush: false,
+            #[cfg(test)]
+            fail_flush_in: None,
         })
     }
 
@@ -185,6 +214,15 @@ impl WalManager {
     /// Returns `WalError::Record` if serialization fails.
     /// Returns `WalError::Io` if flush fails.
     pub fn log(&mut self, record: WalRecord) -> Result<Lsn, WalError> {
+        // Test-only failure injection (see `fail_next_log`).
+        #[cfg(test)]
+        if self.fail_next_log {
+            self.fail_next_log = false;
+            return Err(WalError::Io(std::io::Error::other(
+                "injected WAL log failure",
+            )));
+        }
+
         let lsn = self.current_lsn;
 
         // Frame the record in the file's format (never mix V1 and V2).
@@ -228,6 +266,28 @@ impl WalManager {
     ///
     /// Returns `WalError::Io` if write or sync fails.
     pub fn flush(&mut self) -> Result<(), WalError> {
+        // Test-only failure injection (see `fail_next_flush`).
+        #[cfg(test)]
+        if self.fail_next_flush {
+            self.fail_next_flush = false;
+            return Err(WalError::Io(std::io::Error::other(
+                "injected WAL flush failure",
+            )));
+        }
+        // Test-only failure injection (see `fail_flush_in`): count down to
+        // the targeted flush. Note `log`'s auto-flush on buffer overflow
+        // also consumes the countdown.
+        #[cfg(test)]
+        if let Some(n) = self.fail_flush_in {
+            if n == 0 {
+                self.fail_flush_in = None;
+                return Err(WalError::Io(std::io::Error::other(
+                    "injected WAL flush failure",
+                )));
+            }
+            self.fail_flush_in = Some(n - 1);
+        }
+
         if self.buffer.is_empty() {
             return Ok(());
         }
@@ -274,6 +334,31 @@ impl WalManager {
     /// Returns true if the buffer is empty.
     pub fn is_buffer_empty(&self) -> bool {
         self.buffer.is_empty()
+    }
+
+    /// Test-only: the next [`WalManager::log`] call fails with an I/O
+    /// error instead of logging. Used to exercise the engine's WAL failure
+    /// paths (begin/commit/abort ordering) deterministically.
+    #[cfg(test)]
+    pub fn inject_next_log_failure(&mut self) {
+        self.fail_next_log = true;
+    }
+
+    /// Test-only: the next [`WalManager::flush`] call fails with an I/O
+    /// error instead of flushing. Used to exercise the engine's WAL
+    /// failure paths (begin/commit ordering) deterministically.
+    #[cfg(test)]
+    pub fn inject_next_flush_failure(&mut self) {
+        self.fail_next_flush = true;
+    }
+
+    /// Test-only: the `n`th upcoming [`WalManager::flush`] call fails with
+    /// an I/O error instead of flushing (`n = 0` is the next flush).
+    /// Used to target a specific flush inside multi-flush operations such
+    /// as commit (whose commit-point flush is the second WAL flush).
+    #[cfg(test)]
+    pub fn inject_flush_failure_in(&mut self, n: u32) {
+        self.fail_flush_in = Some(n);
     }
 
     /// Scans the WAL file and yields all records in order.

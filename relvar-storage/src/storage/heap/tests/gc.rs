@@ -10,6 +10,7 @@ use tempfile::NamedTempFile;
 
 #[test]
 fn test_heap_gc_on_corrupted_page_fails() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
     let rel_type = create_test_relation_type();
@@ -46,9 +47,14 @@ fn test_heap_gc_on_corrupted_page_fails() {
     let page = Page::from_data(0, page_data).unwrap();
     heap.store_page(&page).unwrap();
 
-    // 2. Run GC
-    let result =
-        heap.gc_remove_dead_versions(crate::wal::Lsn::new(100), &std::collections::HashSet::new());
+    // 2. Run GC (fails before the pool is consulted; any pool works)
+    let txn_pool = TxnPool::new(4);
+    let result = heap.gc_remove_dead_versions(
+        crate::wal::Lsn::new(100),
+        &std::collections::HashSet::new(),
+        &txn_pool,
+        &mut vpool,
+    );
 
     // 3. Assert failure
     assert!(result.is_err(), "GC should fail on corrupted page");
@@ -66,6 +72,7 @@ fn test_heap_gc_on_corrupted_page_fails() {
 
 #[test]
 fn test_gc_identifies_dead_versions() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -74,21 +81,26 @@ fn test_gc_identifies_dead_versions() {
 
     // T1: Insert and commit
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
 
     // T2: Delete and commit
-    heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
     committed.insert(test_txn(2));
 
-    // No active transactions (oldest_active_lsn after T2)
+    // No active transactions: T2's delete committed at LSN 40, well
+    // before the oldest active LSN.
+    let txn_pool = pool_with_commits(&[(1, 20), (2, 40)]);
     let oldest_active = test_lsn(300);
 
     // GC should identify and remove the dead version
     let removed = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
 
     assert_eq!(removed, 1);
@@ -96,6 +108,7 @@ fn test_gc_identifies_dead_versions() {
 
 #[test]
 fn test_gc_preserves_needed_versions() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -104,55 +117,64 @@ fn test_gc_preserves_needed_versions() {
 
     // T1: Insert and commit
     let tuple = tuple! { id: 1i64, name: "Active" };
-    heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    heap.insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
 
-    // Tuple has no xmax (not deleted), should be preserved
+    // Tuple has no xmax (not deleted), should be preserved. The pool is
+    // never consulted for versions without xmax.
+    let txn_pool = TxnPool::new(4);
     let oldest_active = test_lsn(200);
 
     let removed = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
 
     assert_eq!(removed, 0); // Nothing removed
 }
 
 #[test]
-fn test_gc_respects_oldest_active() {
+fn test_gc_reclaims_when_oldest_active_reaches_commit_lsn() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
     let rel_type = create_test_relation_type();
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
-    // T1: Insert and commit
+    // T1: Insert and commit at LSN 100
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
 
     // T2: Delete and commit at LSN 200
-    heap.delete_tuple_versioned(tuple_id, test_txn(200))
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
         .unwrap();
-    committed.insert(test_txn(200));
+    committed.insert(test_txn(2));
 
-    // Active transaction started before T2 deleted (LSN 150 < 200)
-    // NOTE: Without commit LSN tracking, we use txn ID as proxy for LSN
-    // GC should NOT remove (might still be visible to older snapshot)
-    let oldest_active = test_lsn(150);
+    // Boundary: the oldest active LSN is exactly the deleter's commit
+    // LSN. Every live snapshot started at or after the commit, so none
+    // can observe the old version — it is dead (`commit_lsn <=
+    // oldest_active_lsn`).
+    let txn_pool = pool_with_commits(&[(1, 100), (2, 200)]);
+    let oldest_active = test_lsn(200);
 
     let removed = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
 
-    assert_eq!(removed, 0); // Nothing removed
+    assert_eq!(removed, 1);
 }
 
 #[test]
 fn test_gc_uncommitted_xmax_preserved() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -161,20 +183,25 @@ fn test_gc_uncommitted_xmax_preserved() {
 
     // T1: Insert and commit
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
 
     // T2: Delete but NOT committed
-    heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
-    // T2 not in committed set
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
+    // T2 not in committed set. The pool is never consulted for
+    // uncommitted deleters.
+    let txn_pool = TxnPool::new(4);
 
     let oldest_active = test_lsn(300);
 
     // Should NOT remove (xmax not committed)
     let removed = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
 
     assert_eq!(removed, 0);
@@ -182,6 +209,7 @@ fn test_gc_uncommitted_xmax_preserved() {
 
 #[test]
 fn test_gc_multiple_tuples() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -193,23 +221,32 @@ fn test_gc_multiple_tuples() {
     let t2 = tuple! { id: 2i64, name: "Two" };
     let t3 = tuple! { id: 3i64, name: "Three" };
 
-    let tid1 = heap.insert_tuple_versioned(&t1, test_txn(1)).unwrap();
-    let tid2 = heap.insert_tuple_versioned(&t2, test_txn(1)).unwrap();
-    heap.insert_tuple_versioned(&t3, test_txn(1)).unwrap();
+    let tid1 = heap
+        .insert_tuple_versioned(&t1, test_txn(1), &mut vpool)
+        .unwrap();
+    let tid2 = heap
+        .insert_tuple_versioned(&t2, test_txn(1), &mut vpool)
+        .unwrap();
+    heap.insert_tuple_versioned(&t3, test_txn(1), &mut vpool)
+        .unwrap();
 
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
 
     // Delete first two
-    heap.delete_tuple_versioned(tid1, test_txn(2)).unwrap();
-    heap.delete_tuple_versioned(tid2, test_txn(2)).unwrap();
+    heap.delete_tuple_versioned(tid1, test_txn(2), &mut vpool)
+        .unwrap();
+    heap.delete_tuple_versioned(tid2, test_txn(2), &mut vpool)
+        .unwrap();
     committed.insert(test_txn(2));
 
+    // Both deletes committed at LSN 40, before the oldest active LSN.
+    let txn_pool = pool_with_commits(&[(1, 20), (2, 40)]);
     let oldest_active = test_lsn(300);
 
     // Should remove 2 versions
     let removed = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
 
     assert_eq!(removed, 2);
@@ -217,6 +254,7 @@ fn test_gc_multiple_tuples() {
 
 #[test]
 fn test_gc_empty_heap() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -224,11 +262,12 @@ fn test_gc_empty_heap() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     let committed = HashSet::new();
+    let txn_pool = TxnPool::new(4);
     let oldest_active = test_lsn(100);
 
     // GC on empty heap should succeed
     let removed = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
 
     assert_eq!(removed, 0);
@@ -236,6 +275,7 @@ fn test_gc_empty_heap() {
 
 #[test]
 fn test_gc_preserves_live_versions_after_gc() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -244,25 +284,30 @@ fn test_gc_preserves_live_versions_after_gc() {
 
     // T1: Insert
     let old = tuple! { id: 1i64, name: "Old" };
-    let tid_old = heap.insert_tuple_versioned(&old, test_txn(1)).unwrap();
+    let tid_old = heap
+        .insert_tuple_versioned(&old, test_txn(1), &mut vpool)
+        .unwrap();
 
     // T2: Update
     let new = tuple! { id: 1i64, name: "New" };
-    heap.update_tuple_versioned(tid_old, &new, test_txn(2))
+    heap.update_tuple_versioned(tid_old, &new, test_txn(2), &mut vpool)
         .unwrap();
 
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
-    committed.insert(test_txn(2));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 100);
+    fx.begin(test_txn(2), 150);
+    fx.commit(test_txn(2), 200);
 
-    // GC old version
+    // GC old version. The fixture's pool records T2's commit at LSN 200,
+    // before the oldest active LSN, so the old version is dead.
     let oldest_active = test_lsn(300);
-    heap.gc_remove_dead_versions(oldest_active, &committed)
+    heap.gc_remove_dead_versions(oldest_active, &fx.committed, &fx.pool, &mut vpool)
         .unwrap();
 
     // New version should still be visible
-    let snapshot = TransactionSnapshot::new(test_txn(3), test_lsn(300), vec![]);
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let snapshot = fx.begin(test_txn(3), 300);
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     assert_eq!(visible.len(), 1);
     assert_eq!(visible[0], new);
@@ -270,6 +315,7 @@ fn test_gc_preserves_live_versions_after_gc() {
 
 #[test]
 fn test_gc_counts_removed_correctly() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -279,17 +325,22 @@ fn test_gc_counts_removed_correctly() {
     // Create multiple dead versions
     for i in 1..=5 {
         let tuple = tuple! { id: i, name: "Test" };
-        let tid = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
-        heap.delete_tuple_versioned(tid, test_txn(2)).unwrap();
+        let tid = heap
+            .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+            .unwrap();
+        heap.delete_tuple_versioned(tid, test_txn(2), &mut vpool)
+            .unwrap();
     }
 
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
     committed.insert(test_txn(2));
 
+    // Both deletes committed at LSN 40, before the oldest active LSN.
+    let txn_pool = pool_with_commits(&[(1, 20), (2, 40)]);
     let oldest_active = test_lsn(300);
     let removed = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
 
     assert_eq!(removed, 5);
@@ -297,6 +348,7 @@ fn test_gc_counts_removed_correctly() {
 
 #[test]
 fn test_gc_idempotent() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -305,25 +357,92 @@ fn test_gc_idempotent() {
 
     // Insert and delete
     let tuple = tuple! { id: 1i64, name: "Test" };
-    let tid = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tid = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     let mut committed = HashSet::new();
     committed.insert(test_txn(1));
 
-    heap.delete_tuple_versioned(tid, test_txn(2)).unwrap();
+    heap.delete_tuple_versioned(tid, test_txn(2), &mut vpool)
+        .unwrap();
     committed.insert(test_txn(2));
 
     let oldest_active = test_lsn(300);
 
+    // The delete committed at LSN 40, before the oldest active LSN.
+    let txn_pool = pool_with_commits(&[(1, 20), (2, 40)]);
+
     // First GC
     let removed1 = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
     assert_eq!(removed1, 1);
 
     // Second GC should remove nothing
     let removed2 = heap
-        .gc_remove_dead_versions(oldest_active, &committed)
+        .gc_remove_dead_versions(oldest_active, &committed, &txn_pool, &mut vpool)
         .unwrap();
     assert_eq!(removed2, 0);
+}
+
+use crate::mvcc::TxnPool;
+use crate::wal::TransactionId;
+
+#[test]
+fn test_gc_keeps_version_visible_to_live_snapshot() {
+    // Regression test: GC used to decide death by comparing the deleting
+    // transaction's ID against the oldest active LSN (`xmax <
+    // oldest_active_lsn`). IDs and LSNs are different sequences — IDs stay
+    // tiny while the LSN grows with every WAL record — so in any
+    // long-lived database the comparison was true for every deleter, and
+    // GC reclaimed versions a live snapshot could still observe. Death
+    // must be decided from the deleter's *commit LSN*, resolved through
+    // the transaction pool.
+    let mut vpool = test_version_pool();
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path();
+    let rel_type = create_test_relation_type();
+    let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+    // T1 inserts; T2 deletes. Small IDs, realistic LSNs.
+    let tuple = tuple! { id: 1i64, name: "Doomed" };
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
+
+    let mut txn_pool = TxnPool::new(8);
+    let horizon = TransactionId::new(u64::MAX);
+    txn_pool.begin(test_txn(1), test_lsn(10), horizon).unwrap();
+    txn_pool.commit(test_txn(1), test_lsn(20)).unwrap();
+
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
+    txn_pool.begin(test_txn(2), test_lsn(30), horizon).unwrap();
+    txn_pool.commit(test_txn(2), test_lsn(200)).unwrap();
+
+    let mut committed = HashSet::new();
+    committed.insert(test_txn(1));
+    committed.insert(test_txn(2));
+
+    // A live snapshot taken at LSN 150 — before T2's delete committed at
+    // LSN 200 — can still observe the old version. GC must keep it, even
+    // though the deleter's ID (2) is far below the oldest active LSN.
+    let removed = heap
+        .gc_remove_dead_versions(test_lsn(150), &committed, &txn_pool, &mut vpool)
+        .unwrap();
+    assert_eq!(
+        removed, 0,
+        "GC must not reclaim a version visible to a live snapshot"
+    );
+
+    // Once the oldest live snapshot starts at or after the delete's commit
+    // LSN, no snapshot can observe the old version: GC reclaims it.
+    let removed = heap
+        .gc_remove_dead_versions(test_lsn(200), &committed, &txn_pool, &mut vpool)
+        .unwrap();
+    assert_eq!(
+        removed, 1,
+        "GC must reclaim the version once no snapshot can observe it"
+    );
 }

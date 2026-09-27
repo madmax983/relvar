@@ -10,6 +10,7 @@ use tempfile::NamedTempFile;
 
 #[test]
 fn test_delete_sets_xmax() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -18,10 +19,13 @@ fn test_delete_sets_xmax() {
 
     // Insert tuple
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     // Delete tuple
-    heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
 
     // Verify xmax is set
     let page = heap.load_page(tuple_id.page_id).unwrap();
@@ -36,6 +40,7 @@ fn test_delete_sets_xmax() {
 
 #[test]
 fn test_delete_invisible_after_commit() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -44,24 +49,30 @@ fn test_delete_invisible_after_commit() {
 
     // T1: Insert and commit
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 100);
 
     // T2: Delete and commit
-    heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
-    committed.insert(test_txn(2));
+    fx.begin(test_txn(2), 150);
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
+    fx.commit(test_txn(2), 200);
 
     // T3: Should not see deleted tuple
-    let snapshot_t3 = TransactionSnapshot::new(test_txn(3), test_lsn(300), vec![]);
-    let visible = heap.scan_visible(&snapshot_t3, &committed).unwrap();
+    let snapshot_t3 = fx.begin(test_txn(3), 300);
+    let visible = fx.scan_visible(&mut heap, &snapshot_t3).unwrap();
 
     assert_eq!(visible.len(), 0); // Deleted tuple not visible
 }
 
 #[test]
 fn test_delete_concurrent_txn_sees_tuple() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -70,27 +81,33 @@ fn test_delete_concurrent_txn_sees_tuple() {
 
     // T1: Insert and commit
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 100);
 
     // T2: Begin (concurrent with T3)
-    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
+    let snapshot_t2 = fx.begin(test_txn(2), 200);
 
     // T3: Delete and commit
-    heap.delete_tuple_versioned(tuple_id, test_txn(3)).unwrap();
-    committed.insert(test_txn(3));
+    fx.begin(test_txn(3), 210);
+    heap.delete_tuple_versioned(tuple_id, test_txn(3), &mut vpool)
+        .unwrap();
+    fx.commit(test_txn(3), 220);
 
     // NOTE: With Read Committed, T2 sees the deletion.
     // Full snapshot isolation would preserve visibility.
-    let visible = heap.scan_visible(&snapshot_t2, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot_t2).unwrap();
 
     assert_eq!(visible.len(), 0); // Read Committed: sees deletion
 }
 
 #[test]
 fn test_delete_deleting_txn_doesnt_see_tuple() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -99,23 +116,28 @@ fn test_delete_deleting_txn_doesnt_see_tuple() {
 
     // T1: Insert and commit
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 100);
 
-    // T2: Delete
-    heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
+    // T2: Delete (uncommitted)
+    let snapshot_t2 = fx.begin(test_txn(2), 200);
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
 
     // T2 should not see the tuple it deleted
-    let snapshot_t2 = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
-    let visible = heap.scan_visible(&snapshot_t2, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot_t2).unwrap();
 
     assert_eq!(visible.len(), 0);
 }
 
 #[test]
 fn test_delete_nonexistent_tuple_fails() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -127,13 +149,14 @@ fn test_delete_nonexistent_tuple_fails() {
         slot: 0,
     };
 
-    let result = heap.delete_tuple_versioned(bogus_id, test_txn(1));
+    let result = heap.delete_tuple_versioned(bogus_id, test_txn(1), &mut vpool);
     assert!(result.is_err());
     assert!(matches!(result, Err(HeapError::TupleNotFound)));
 }
 
 #[test]
 fn test_delete_preserves_xmin() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -142,10 +165,13 @@ fn test_delete_preserves_xmin() {
 
     // T1: Insert
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     // T2: Delete
-    heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
 
     // Verify xmin unchanged
     let page = heap.load_page(tuple_id.page_id).unwrap();
@@ -161,6 +187,7 @@ fn test_delete_preserves_xmin() {
 
 #[test]
 fn test_delete_preserves_tuple_data() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -169,10 +196,13 @@ fn test_delete_preserves_tuple_data() {
 
     // Insert tuple
     let original = tuple! { id: 42i64, name: "DataToPreserve" };
-    let tuple_id = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&original, test_txn(1), &mut vpool)
+        .unwrap();
 
     // Delete tuple
-    heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
 
     // Tuple data should still be readable (though invisible)
     let tuple = heap.read_tuple_versioned(tuple_id).unwrap();
@@ -181,6 +211,7 @@ fn test_delete_preserves_tuple_data() {
 
 #[test]
 fn test_delete_multiple_tuples() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -192,20 +223,29 @@ fn test_delete_multiple_tuples() {
     let t2 = tuple! { id: 2i64, name: "Second" };
     let t3 = tuple! { id: 3i64, name: "Third" };
 
-    let _tid1 = heap.insert_tuple_versioned(&t1, test_txn(1)).unwrap();
-    let tid2 = heap.insert_tuple_versioned(&t2, test_txn(1)).unwrap();
-    let _tid3 = heap.insert_tuple_versioned(&t3, test_txn(1)).unwrap();
+    let _tid1 = heap
+        .insert_tuple_versioned(&t1, test_txn(1), &mut vpool)
+        .unwrap();
+    let tid2 = heap
+        .insert_tuple_versioned(&t2, test_txn(1), &mut vpool)
+        .unwrap();
+    let _tid3 = heap
+        .insert_tuple_versioned(&t3, test_txn(1), &mut vpool)
+        .unwrap();
 
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 100);
 
     // Delete middle tuple
-    heap.delete_tuple_versioned(tid2, test_txn(2)).unwrap();
-    committed.insert(test_txn(2));
+    fx.begin(test_txn(2), 150);
+    heap.delete_tuple_versioned(tid2, test_txn(2), &mut vpool)
+        .unwrap();
+    fx.commit(test_txn(2), 200);
 
     // Should see first and third, but not second
-    let snapshot = TransactionSnapshot::new(test_txn(3), test_lsn(300), vec![]);
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let snapshot = fx.begin(test_txn(3), 300);
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     assert_eq!(visible.len(), 2);
     assert!(visible.contains(&t1));
@@ -215,6 +255,7 @@ fn test_delete_multiple_tuples() {
 
 #[test]
 fn test_heap_delete_on_corrupted_page_fails() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
     let rel_type = create_test_relation_type();
@@ -222,7 +263,9 @@ fn test_heap_delete_on_corrupted_page_fails() {
 
     // 1. Insert a tuple to get a valid TupleId
     let tuple = tuple! { id: 1i64, name: "Original" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     // 2. Corrupt the page (slot pointing outside)
     {
@@ -250,7 +293,7 @@ fn test_heap_delete_on_corrupted_page_fails() {
     }
 
     // 3. Try to delete the tuple
-    let result = heap.delete_tuple_versioned(tuple_id, test_txn(2));
+    let result = heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool);
 
     // 4. Assert failure
     assert!(result.is_err(), "Delete should fail on corrupted page");

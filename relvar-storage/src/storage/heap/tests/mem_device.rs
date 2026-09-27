@@ -34,17 +34,18 @@ fn test_heap_on_mem_device_insert_scan_roundtrip() {
 
 #[test]
 fn test_heap_on_mem_device_versioned_roundtrip() {
+    let mut vpool = test_version_pool();
     // The MVCC path also works on a non-file device.
     let device = MemBlockDevice::new();
     let mut heap = HeapFile::create_on_device(device, create_test_relation_type());
 
     let txn_id = test_txn(1);
-    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, txn_id)
+    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, txn_id, &mut vpool)
         .unwrap();
 
-    let snapshot = crate::mvcc::TransactionSnapshot::new(txn_id, test_lsn(1), vec![]);
-    let mut committed = HashSet::new();
-    committed.insert(txn_id);
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let mut fx = MvccFixture::new();
+    let snapshot = fx.begin(txn_id, 1);
+    fx.commit(txn_id, 2);
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
     assert_eq!(visible.len(), 1);
 }
