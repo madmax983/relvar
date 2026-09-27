@@ -1,6 +1,7 @@
 //! Database Data Manipulation (DML) and Query operations.
 
 use super::dml::{compute_relation_after_delete, compute_relation_after_update};
+use super::insert_plan::{InsertContentPlan, InsertKeyPlan};
 use super::key_index::StagedKeyValues;
 use crate::collections::HashSet;
 use crate::constraints::assertion::AssertionError;
@@ -119,26 +120,30 @@ impl<E: StorageEngine> Database<E> {
         }
 
         // Validate every tuple up front so a failure leaves the relation
-        // unchanged (atomic batch).
+        // unchanged (atomic batch). v0.11: the content plan hoists the
+        // heading fetch and the type/CHECK/foreign-key definition lookups
+        // out of the per-tuple loop (referenced relations are loaded once
+        // per FK per batch, on first use); same checks, same order, same
+        // errors.
+        let mut content_plan = InsertContentPlan::prepare(self, relation_name)?;
         for tuple in &tuples {
-            self.constraints
-                .validate_tuple_type(&self.engine, relation_name, tuple)?;
-            self.constraints.validate_tuple_content_constraints(
-                &mut self.engine,
-                relation_name,
-                tuple,
-            )?;
+            content_plan.validate_tuple_content(tuple)?;
         }
 
         // Check key constraints for the whole batch against the key index,
         // catching duplicates both against existing data and within the
-        // batch. Staged values are applied to the index only after all
-        // writes below succeed.
+        // batch. The key index is warmed once here (after the content
+        // phase, preserving the previous error precedence) and the key
+        // plan precomputes the attribute lists and index lookup keys.
+        // Staged values are applied to the index only after all writes
+        // below succeed.
+        self.ensure_key_index(relation_name)?;
+        let key_plan = InsertKeyPlan::prepare(self, relation_name);
         let mut batch_sets: Vec<HashSet<Vec<ScalarValue>>> = Vec::new();
         let mut staged_batch: Vec<StagedKeyValues> = Vec::with_capacity(tuples.len());
         for tuple in &tuples {
-            staged_batch.push(self.check_key_values_indexed(
-                relation_name,
+            staged_batch.push(key_plan.validate_tuple_keys(
+                &self.key_index,
                 tuple,
                 &mut batch_sets,
             )?);
@@ -586,22 +591,20 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         tuple: &Tuple,
     ) -> Result<StagedKeyValues, DatabaseError> {
-        // Pure checks and Type validations
-        self.constraints
-            .validate_tuple_type(&self.engine, relation_name, tuple)?;
-
-        self.constraints.validate_tuple_content_constraints(
-            &mut self.engine,
-            relation_name,
-            tuple,
-        )?;
+        // v0.11: prepared per-batch plans; same checks, same order, same
+        // errors as the unbatched validators.
+        let mut content_plan = InsertContentPlan::prepare(self, relation_name)?;
+        content_plan.validate_tuple_content(tuple)?;
 
         // Key validation against the in-memory key index (#23): O(1) per key
-        // with no relation load. Returns the key values staged for index
-        // insertion once the write succeeds.
+        // with no relation load. The index is warmed once here (after the
+        // content phase, preserving the previous error precedence).
+        // Returns the key values staged for index insertion once the write
+        // succeeds.
+        self.ensure_key_index(relation_name)?;
+        let key_plan = InsertKeyPlan::prepare(self, relation_name);
         let mut batch_sets = Vec::new();
-        let staged = self.check_key_values_indexed(relation_name, tuple, &mut batch_sets)?;
-        Ok(staged)
+        key_plan.validate_tuple_keys(&self.key_index, tuple, &mut batch_sets)
     }
 
     pub(crate) fn validate_relation_constraints(

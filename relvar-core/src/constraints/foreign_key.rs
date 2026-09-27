@@ -296,6 +296,70 @@ impl ForeignKey {
         Ok(true) // No match found, violation
     }
 
+    /// Build the set of referenced-attribute value combinations present in
+    /// `referenced`, for O(1) per-tuple probing (v0.11 batch optimization).
+    ///
+    /// Same extraction and error semantics as
+    /// [`would_violate_on_insert`](Self::would_violate_on_insert): the set
+    /// holds one owned value vector per referenced tuple, in
+    /// `referenced_attributes` order, so probing it with the new tuple's
+    /// `foreign_key_attributes` values is equivalent to the linear scan.
+    pub(crate) fn referenced_key_set(
+        &self,
+        referenced: &Relation,
+    ) -> Result<HashSet<Vec<ScalarValue>>, ForeignKeyError> {
+        let mut set = HashSet::with_capacity(referenced.cardinality());
+        for ref_tuple in referenced.tuples() {
+            let mut referenced_values = Vec::with_capacity(self.referenced_attributes.len());
+            for attr in &self.referenced_attributes {
+                referenced_values.push(
+                    ref_tuple
+                        .get(attr)
+                        .ok_or_else(|| ForeignKeyError::MissingAttribute(attr.clone()))?
+                        .clone(),
+                );
+            }
+            set.insert(referenced_values);
+        }
+        Ok(set)
+    }
+
+    /// Probe-based variant of
+    /// [`would_violate_on_insert`](Self::would_violate_on_insert) against a
+    /// pre-built referenced key set. Returns `Ok(true)` when the insert
+    /// would violate the foreign key.
+    ///
+    /// The single-attribute fast path probes with a borrowed one-element
+    /// slice, so the optimized path performs no per-tuple allocation for the
+    /// common single-column foreign key. Composite keys still build one small
+    /// [`Vec`] per tuple (the referenced values are not contiguous in the
+    /// tuple, so they cannot be borrowed as a slice).
+    pub(crate) fn would_violate_against_set(
+        &self,
+        new_tuple: &Tuple,
+        referenced_keys: &HashSet<Vec<ScalarValue>>,
+    ) -> Result<bool, ForeignKeyError> {
+        if self.foreign_key_attributes.len() == 1 {
+            let attr = &self.foreign_key_attributes[0];
+            let value = new_tuple
+                .get(attr)
+                .ok_or_else(|| ForeignKeyError::MissingAttribute(attr.clone()))?;
+            // `Vec<ScalarValue>` borrows as `[ScalarValue]`, so a borrowed
+            // slice probes the set without allocating.
+            return Ok(!referenced_keys.contains(core::slice::from_ref(value)));
+        }
+        let mut new_values = Vec::with_capacity(self.foreign_key_attributes.len());
+        for attr in &self.foreign_key_attributes {
+            new_values.push(
+                new_tuple
+                    .get(attr)
+                    .ok_or_else(|| ForeignKeyError::MissingAttribute(attr.clone()))?
+                    .clone(),
+            );
+        }
+        Ok(!referenced_keys.contains(&new_values))
+    }
+
     /// Check if deleting a tuple from the referenced relation would violate this constraint
     /// Check if deleting a tuple from the referenced relation would violate this constraint
     ///

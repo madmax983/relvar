@@ -83,6 +83,7 @@ mod dml;
 pub(crate) mod virtual_relvar;
 
 mod data;
+mod insert_plan;
 mod integrity;
 mod key_index;
 mod schema;

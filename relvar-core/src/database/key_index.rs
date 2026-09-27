@@ -49,7 +49,9 @@ pub(crate) type StagedKeyValues = Vec<(Vec<String>, Vec<ScalarValue>)>;
 ///
 /// Mirrors [`CandidateKey`](crate::constraints::CandidateKey)'s extraction so
 /// index entries compare equal to what constraint validation checks.
-fn extract_key_values(
+///
+/// v0.11: `pub(crate)` so the prepared insert validation plan can reuse it.
+pub(crate) fn extract_key_values(
     key_attributes: &[String],
     tuple: &Tuple,
 ) -> Result<Vec<ScalarValue>, KeyConstraintError> {
@@ -66,7 +68,10 @@ fn extract_key_values(
 /// Key attribute lists for a relation, primary key first.
 ///
 /// Returns `None` when the relation has no key constraints.
-fn key_attribute_lists<E: StorageEngine>(
+///
+/// v0.11: `pub(crate)` so the prepared insert validation plan shares the
+/// key-ordering logic.
+pub(crate) fn key_attribute_lists<E: StorageEngine>(
     db: &Database<E>,
     relation_name: &str,
 ) -> Option<Vec<(bool, Vec<String>)>> {
@@ -84,7 +89,9 @@ fn key_attribute_lists<E: StorageEngine>(
 
 /// Map a key-extraction failure the same way
 /// [`ConstraintManager::validate_key_constraints_single_tuple`] does.
-fn key_extraction_error(error: KeyConstraintError) -> DatabaseError {
+///
+/// v0.11: `pub(crate)` so the prepared insert validation plan can reuse it.
+pub(crate) fn key_extraction_error(error: KeyConstraintError) -> DatabaseError {
     DatabaseError::Constraint(ConstraintManagerError::TransactionError(error.to_string()))
 }
 
@@ -147,53 +154,6 @@ impl<E: StorageEngine> Database<E> {
 
     /// Check one tuple's key values against the index.
     ///
-    /// `batch_sets` tracks key values seen earlier in the current batch (one
-    /// set per key, primary key first) so bulk inserts also catch
-    /// within-batch duplicates. It is grown as needed, so callers validating
-    /// a single tuple can pass an empty vector.
-    ///
-    /// Returns the extracted key values staged for index insertion. The
-    /// caller must apply them via
-    /// [`apply_staged_key_values`](Self::apply_staged_key_values) only after
-    /// the write succeeds.
-    pub(crate) fn check_key_values_indexed(
-        &mut self,
-        relation_name: &str,
-        tuple: &Tuple,
-        batch_sets: &mut Vec<HashSet<Vec<ScalarValue>>>,
-    ) -> Result<StagedKeyValues, DatabaseError> {
-        let Some(key_lists) = key_attribute_lists(self, relation_name) else {
-            return Ok(Vec::new());
-        };
-        self.ensure_key_index(relation_name)?;
-        while batch_sets.len() < key_lists.len() {
-            batch_sets.push(HashSet::new());
-        }
-
-        let mut staged = Vec::with_capacity(key_lists.len());
-        for ((is_primary, attributes), seen) in key_lists.iter().zip(batch_sets.iter_mut()) {
-            let values = extract_key_values(attributes, tuple).map_err(key_extraction_error)?;
-            let index_key = (relation_name.to_string(), attributes.clone());
-            // `ensure_key_index` guarantees the entry exists.
-            debug_assert!(self.key_index.contains_key(&index_key));
-            let dominated = self
-                .key_index
-                .get(&index_key)
-                .is_some_and(|existing| existing.contains(&values))
-                // `HashSet::insert` returns false when the value was present.
-                || !seen.insert(values.clone());
-            if dominated {
-                return Err(if *is_primary {
-                    DatabaseError::Constraint(ConstraintManagerError::PrimaryKeyViolation)
-                } else {
-                    DatabaseError::Constraint(ConstraintManagerError::CandidateKeyViolation)
-                });
-            }
-            staged.push((attributes.clone(), values));
-        }
-        Ok(staged)
-    }
-
     /// Apply staged key values to the index after a successful write.
     ///
     /// Must only be called once the corresponding tuples are stored; never

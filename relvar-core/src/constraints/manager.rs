@@ -552,6 +552,25 @@ impl ConstraintManager {
         self.foreign_key_constraints.get(relation_name)
     }
 
+    /// Get the type constraints for a relation.
+    ///
+    /// v0.11: lets the insert path resolve the definitions once per batch
+    /// instead of once per tuple.
+    pub(crate) fn get_type_constraints(
+        &self,
+        relation_name: &str,
+    ) -> Option<&HashMap<String, AttributeConstraints>> {
+        self.type_constraints.get(relation_name)
+    }
+
+    /// Get the CHECK constraints for a relation.
+    ///
+    /// v0.11: lets the insert path resolve the definitions once per batch
+    /// instead of once per tuple.
+    pub(crate) fn get_check_constraints(&self, relation_name: &str) -> Option<&CheckConstraints> {
+        self.check_constraints.get(relation_name)
+    }
+
     /// Validate that deleting tuples won't violate foreign keys in other relations.
     ///
     /// # Examples
