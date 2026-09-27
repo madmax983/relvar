@@ -77,10 +77,22 @@ jobs:
         with:
           targets: thumbv8m.main-none-eabihf
       - uses: Swatinem/rust-cache@v2
-      - name: Build relvar-core for Cortex-M without std
+      # Default features are `#![no_std]` + `alloc` (v0.12): bare-metal builds
+      # must work out of the box.
+      - name: Build relvar-core for Cortex-M (default features)
+        run: cargo build -p relvar-core --target thumbv8m.main-none-eabihf
+      - name: Build relvar-storage-core for Cortex-M (default features)
+        run: cargo build -p relvar-storage-core --target thumbv8m.main-none-eabihf
+      # The explicit opt-out must keep working too.
+      - name: Build relvar-core for Cortex-M without default features
         run: cargo build -p relvar-core --no-default-features --target thumbv8m.main-none-eabihf
-      - name: Build relvar-storage-core for Cortex-M without std
+      - name: Build relvar-storage-core for Cortex-M without default features
         run: cargo build -p relvar-storage-core --no-default-features --target thumbv8m.main-none-eabihf
+      # Smoke-test the default (no_std) feature set on the host as well.
+      - name: Test relvar-core with default features
+        run: cargo test -p relvar-core
+      - name: Test relvar-storage-core with default features
+        run: cargo test -p relvar-storage-core
 
   coverage:
     name: Code Coverage

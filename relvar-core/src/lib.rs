@@ -97,7 +97,10 @@
 
 #![warn(missing_docs)]
 // `#![no_std]` + `alloc` when the `std` feature is off (see the `no_std` CI job).
-#![cfg_attr(not(feature = "std"), no_std)]
+// Test builds keep `std` linked: the `#[cfg(not(feature = "std"))]` no_std code
+// paths are still compiled and exercised, but unit tests may use std conveniences.
+// (`cargo build --target thumbv8m…` is the true no_std proof; it has no `test` cfg.)
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 
 // `#[macro_use]` brings alloc's `vec!`/`format!` into textual scope crate-wide,
 // so only types and traits need per-file imports in `no_std` builds.

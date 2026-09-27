@@ -20,7 +20,8 @@ hashbrown.workspace = true
 postcard = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [features]
-default = ["std"]
-# `std` enables standard-library conveniences. Disable default features for a
-# `#![no_std]` + `alloc` build (mirrors relvar-core v0.6's no_std pattern).
+# Default is `#![no_std]` + `alloc`: bare-metal builds work out of the box
+# (see the `no_std` CI job). Opt into `std` for standard-library conveniences
+# (std-backed dependency features).
+default = []
 std = ["serde/std", "thiserror/std", "postcard/use-std"]

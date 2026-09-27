@@ -38,8 +38,9 @@ name = "expression_in"
 harness = false
 
 [features]
-default = ["std"]
-# `std` enables standard-library conveniences. Disable default features for a
-# `#![no_std]` + `alloc` build (see the `no_std` CI job).
+# Default is `#![no_std]` + `alloc`: bare-metal builds work out of the box
+# (see the `no_std` CI job). Opt into `std` for standard-library conveniences
+# (thread-local fast paths, std-backed dependency features).
+default = []
 std = ["serde/std", "thiserror/std"]
 nova = []

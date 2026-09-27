@@ -53,7 +53,10 @@
 //! (TTM Proscription 6).
 
 // `#![no_std]` + `alloc` when the `std` feature is off (mirrors relvar-core).
-#![cfg_attr(not(feature = "std"), no_std)]
+// Test builds keep `std` linked so unit tests can use std conveniences while
+// still compiling the `#[cfg(not(feature = "std"))]` no_std code paths.
+// (`cargo build --target thumbv8m…` is the true no_std proof; it has no `test` cfg.)
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![warn(missing_docs)]
 
 extern crate alloc;
