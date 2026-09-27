@@ -30,9 +30,9 @@ use relvar_core::values::{Relation, Tuple};
 // (Private `use` items are visible to the child test modules via `::*`.)
 use relvar_storage_core::device::BlockDevice;
 use relvar_storage_core::slotted::{
-    SlotEntry, SlottedError, SlottedPage, TupleId, USABLE_PAGE_SIZE_V1, USABLE_PAGE_SIZE_V2,
-    VERSIONED_PAGE_MAGIC, VersionedSlotEntry, decode_slotted_page, decode_versioned_page_into,
-    encode_versioned_header_into, is_versioned_page, slot_bytes,
+    MAX_XMAX_SLOT_GROWTH, SlotEntry, SlottedError, SlottedPage, TupleId, USABLE_PAGE_SIZE_V1,
+    USABLE_PAGE_SIZE_V2, VERSIONED_PAGE_MAGIC, VersionedSlotEntry, decode_slotted_page,
+    decode_versioned_page_into, encode_versioned_header_into, is_versioned_page, slot_bytes,
 };
 // Re-exported for the page-layout tests (child modules import via `::*`);
 // unused in the non-test build.
@@ -1011,9 +1011,15 @@ impl<D: BlockDevice> HeapFile<D> {
         let total_header = FORMAT_HEADER_SIZE.checked_add(header_size).ok_or_else(|| {
             HeapError::Serialization("Format header + header size overflow".to_string())
         })?;
-        let required_space = total_header.checked_add(tuple_data_len).ok_or_else(|| {
-            HeapError::Serialization("Header size + tuple data length overflow".to_string())
-        })?;
+        // The new version is a live slot, so it also needs its worst-case
+        // xmax reserve; without it a max-size tuple would pass this check
+        // yet never fit a fresh page.
+        let required_space = total_header
+            .checked_add(MAX_XMAX_SLOT_GROWTH)
+            .and_then(|size| size.checked_add(tuple_data_len))
+            .ok_or_else(|| {
+                HeapError::Serialization("Header size + tuple data length overflow".to_string())
+            })?;
 
         if required_space > USABLE_PAGE_SIZE {
             return Err(HeapError::TupleTooLarge(tuple_data_len));
@@ -1163,9 +1169,30 @@ impl<D: BlockDevice> HeapFile<D> {
             encode_versioned_header_into(page, scratch, image)?
         };
 
-        // 3. Verify no tuple overlaps the header.
+        // 3. Verify no tuple overlaps the header, and that the page keeps a
+        // worst-case xmax reserve: setting xmax on a live version grows the
+        // serialized slot directory by up to MAX_XMAX_SLOT_GROWTH bytes
+        // (postcard varint of the deleter id), so every live slot must retain
+        // that headroom now — a later delete/update on this page must never
+        // fail with PageFull. The reserve is computed up front because slot
+        // order is unrelated to offset order (the repack above runs in
+        // reverse), so an incremental check would test the lowest tuple
+        // against the smallest requirement.
+        let live_slots = buffer
+            .page
+            .slots
+            .iter()
+            .flatten()
+            .filter(|slot| slot.xmax.is_none())
+            .count();
+        let reserve = live_slots
+            .checked_mul(MAX_XMAX_SLOT_GROWTH)
+            .ok_or(HeapError::PageFull)?;
+        let required_size = header_size
+            .checked_add(reserve)
+            .ok_or(HeapError::PageFull)?;
         for slot_option in buffer.page.slots.iter().flatten() {
-            if (slot_option.offset as usize) < header_size {
+            if (slot_option.offset as usize) < required_size {
                 return Err(HeapError::PageFull);
             }
         }

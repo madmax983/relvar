@@ -156,6 +156,19 @@ pub const USABLE_PAGE_SIZE_V1: usize = PAGE_SIZE - 8;
 /// length header).
 pub const USABLE_PAGE_SIZE_V2: usize = PAGE_SIZE - 8;
 
+/// Maximum bytes the slot directory can grow when a single slot's `xmax`
+/// flips from `None` to `Some`.
+///
+/// postcard encodes `None` as one `0x00` byte and `Some(t)` as a `0x01` tag
+/// plus the varint-encoded [`TransactionId`] (`u64`: at most 10 bytes), so
+/// the growth is exactly the varint length — at most this constant. The
+/// heap insert path reserves this many bytes per live slot, which is what
+/// keeps a later delete/update (which must grow the directory) from failing
+/// with [`SlottedError::PageFull`] on a page the insert path itself filled.
+/// Pinned to the real encoding by
+/// `tests::test_max_xmax_slot_growth_bounds_real_encoding`.
+pub const MAX_XMAX_SLOT_GROWTH: usize = (u64::BITS as usize).div_ceil(7);
+
 /// Checks whether a page payload holds a versioned (MVCC) slot directory.
 ///
 /// Detects both the v2 format (version byte + length + magic at offset 5)
@@ -844,6 +857,39 @@ mod tests {
         assert_eq!(V2_HEADER_SIZE, 5);
         assert_eq!(USABLE_PAGE_SIZE_V1, PAGE_SIZE - 8);
         assert_eq!(USABLE_PAGE_SIZE_V2, PAGE_SIZE - 8);
+    }
+
+    #[test]
+    fn test_max_xmax_slot_growth_bounds_real_encoding() {
+        // The per-live-slot reserve the heap insert path leaves must cover
+        // the real postcard growth of an xmax None -> Some transition,
+        // even for the largest possible transaction id.
+        let none_page = VersionedSlottedPage {
+            magic: VERSIONED_PAGE_MAGIC,
+            slot_count: 1,
+            slots: vec![Some(VersionedSlotEntry {
+                offset: 100,
+                length: 10,
+                xmin: TransactionId::new(1),
+                xmax: None,
+                prev_version: None,
+            })],
+        };
+        let mut some_page = none_page.clone();
+        some_page.slots[0].as_mut().unwrap().xmax = Some(TransactionId::new(u64::MAX));
+
+        let none_len = postcard::to_allocvec(&none_page).unwrap().len();
+        let some_len = postcard::to_allocvec(&some_page).unwrap().len();
+        assert!(some_len > none_len, "setting xmax must grow the directory");
+        let growth = some_len - none_len;
+        assert!(
+            growth <= MAX_XMAX_SLOT_GROWTH,
+            "xmax growth {growth} exceeds the per-slot reserve {MAX_XMAX_SLOT_GROWTH}"
+        );
+        assert_eq!(
+            MAX_XMAX_SLOT_GROWTH, 10,
+            "u64 varint ceiling: keep the constant honest if the id type changes"
+        );
     }
 
     #[test]
