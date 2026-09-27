@@ -191,6 +191,10 @@ pub struct HeapFile<D: BlockDevice = FileBlockDevice> {
     device: D,
     /// The type of tuples stored in this heap file.
     relation_type: RelationType,
+    /// Page-search hint for inserts: the page of the most recent successful
+    /// insertion. Pure optimization — not persisted, never affects
+    /// correctness (see [`find_page_for_insertion`](Self::find_page_for_insertion)).
+    insert_hint: PageId,
 }
 
 // The slotted-page types (`SlotEntry`, `SlottedPage`, `VersionedSlotEntry`,
@@ -275,6 +279,7 @@ impl<D: BlockDevice> HeapFile<D> {
         Self {
             device,
             relation_type,
+            insert_hint: 0,
         }
     }
 
@@ -286,6 +291,7 @@ impl<D: BlockDevice> HeapFile<D> {
         Self {
             device,
             relation_type,
+            insert_hint: 0,
         }
     }
 
@@ -520,23 +526,55 @@ impl<D: BlockDevice> HeapFile<D> {
         Ok(existing_tuples)
     }
 
-    /// Finds the first page that can accommodate the insertion.
-    /// Retries on PageFull error by incrementing the page ID.
+    /// Finds a page with room for an insertion, starting from the insert hint.
+    ///
+    /// The hint is the page of the most recent successful insert, so the
+    /// common append case probes exactly one page instead of re-scanning
+    /// every page from zero — each failed probe costs a device read plus a
+    /// full page repack whose image is then discarded. Earlier pages are
+    /// still scanned on the second pass, so space freed by deletes or GC
+    /// is reused exactly as before; only when every existing page is full
+    /// is a fresh page allocated.
     fn find_page_for_insertion<F, R>(&mut self, mut insert_fn: F) -> Result<R, HeapError>
     where
         F: FnMut(&mut Self, PageId) -> Result<R, HeapError>,
     {
-        let mut page_id = 0;
-        loop {
+        // `page_count` bounds the first two passes; the trailing fresh page
+        // (pass 3) always has room, so the search terminates.
+        let page_count = self.device.page_count();
+        let start = self.insert_hint.min(page_count);
+
+        // Pass 1: the hint page and everything after it.
+        let mut page_id = start;
+        while page_id < page_count {
             match insert_fn(self, page_id) {
-                Ok(result) => return Ok(result),
-                Err(HeapError::PageFull) => {
-                    page_id += 1;
-                    continue;
+                Ok(result) => {
+                    self.insert_hint = page_id;
+                    return Ok(result);
                 }
-                Err(e) => return Err(e),
+                Err(HeapError::PageFull) => page_id += 1,
+                Err(error) => return Err(error),
             }
         }
+        // Pass 2: earlier pages, which may hold space freed by deletes/GC.
+        page_id = 0;
+        while page_id < start {
+            match insert_fn(self, page_id) {
+                Ok(result) => {
+                    self.insert_hint = page_id;
+                    return Ok(result);
+                }
+                Err(HeapError::PageFull) => page_id += 1,
+                Err(error) => return Err(error),
+            }
+        }
+        // Pass 3: every existing page is full — allocate a fresh page. A
+        // never-written page reads back as zeros (the `BlockDevice`
+        // contract), so the insert always fits unless the tuple itself is
+        // oversized, which was already rejected before the page search.
+        let result = insert_fn(self, page_count)?;
+        self.insert_hint = page_count;
+        Ok(result)
     }
 
     /// Try to insert tuple data into a specific page.
@@ -1039,8 +1077,11 @@ impl<D: BlockDevice> HeapFile<D> {
             Some((tuple, tuple_len, slot_number as usize)),
         )?;
 
-        // Write the pooled image straight to the device.
-        self.store_page_bytes(page_id, &buffer.page_image)?;
+        // Write the page image to the device without flushing: the engine's
+        // commit protocol flushes heap files before the commit record
+        // becomes durable (WAL-before-data), so a per-insert fsync would
+        // buy nothing but latency. See `write_page_bytes`.
+        self.write_page_bytes(page_id, &buffer.page_image)?;
 
         Ok(slot_number)
     }
@@ -1137,7 +1178,18 @@ impl<D: BlockDevice> HeapFile<D> {
     /// Mirrors [`Page::to_bytes`](super::page::Page::to_bytes): an 8-byte
     /// little-endian length prefix, the payload, then zero padding to
     /// [`PAGE_SIZE`].
-    fn store_page_bytes(&mut self, page_id: PageId, data: &[u8]) -> Result<(), HeapError> {
+    /// Writes a page image to the device WITHOUT flushing.
+    ///
+    /// # Durability contract
+    ///
+    /// The caller takes responsibility for durability. The engine's
+    /// in-transaction mutation paths use this and flush once per commit:
+    /// the durable-commit protocol flushes WAL records before heap pages
+    /// and heap files before the commit record becomes durable, so a
+    /// per-write fsync would buy nothing but latency. Standalone users
+    /// must call [`sync`](Self::sync) themselves, or use
+    /// [`store_page_bytes`](Self::store_page_bytes).
+    fn write_page_bytes(&mut self, page_id: PageId, data: &[u8]) -> Result<(), HeapError> {
         if data.len() > PAGE_SIZE - 8 {
             return Err(HeapError::Page(PageError::PageTooLarge));
         }
@@ -1147,6 +1199,16 @@ impl<D: BlockDevice> HeapFile<D> {
         self.device
             .write_page(page_id, &buffer)
             .map_err(device_error)?;
+        Ok(())
+    }
+
+    /// Writes a page image and flushes it to stable storage.
+    ///
+    /// For standalone (non-transactional) page writes. The engine's
+    /// in-transaction mutation paths use [`write_page_bytes`](Self::write_page_bytes)
+    /// and rely on the commit protocol's heap flush instead.
+    fn store_page_bytes(&mut self, page_id: PageId, data: &[u8]) -> Result<(), HeapError> {
+        self.write_page_bytes(page_id, data)?;
         self.device.flush().map_err(device_error)?;
         Ok(())
     }

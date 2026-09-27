@@ -695,3 +695,125 @@ fn test_try_insert_into_page_returns_page_full_when_no_space() {
     assert!(slotted_page.slot_count > 0);
     assert!(slotted_page.slots.iter().all(|s| s.is_some()));
 }
+
+#[test]
+fn test_insert_hint_spans_pages_without_losing_tuples() {
+    // The insert hint changes WHERE the page search starts; every tuple
+    // must still land exactly once and stay readable across page
+    // boundaries.
+    let mut vpool = test_version_pool();
+    let temp_file = NamedTempFile::new().unwrap();
+    let rel_type = create_test_relation_type();
+    let mut heap = HeapFile::create(temp_file.path(), rel_type).unwrap();
+
+    let mut fx = MvccFixture::new();
+    let _snapshot = fx.begin(test_txn(1), 50);
+    let count = 500i64;
+    for i in 0..count {
+        let tuple = tuple! { id: i, name: format!("tuple_{i}") };
+        heap.insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+            .unwrap();
+    }
+    fx.commit(test_txn(1), 100);
+
+    let snapshot = fx.begin(test_txn(2), 150);
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
+    assert_eq!(
+        visible.len(),
+        count as usize,
+        "every inserted tuple must stay visible across page boundaries"
+    );
+    let mut ids: Vec<i64> = visible
+        .iter()
+        .map(|t| match t.get("id") {
+            Some(relvar_core::values::ScalarValue::Int(id)) => *id,
+            other => panic!("expected Int id, got {other:?}"),
+        })
+        .collect();
+    ids.sort_unstable();
+    let expected: Vec<i64> = (0..count).collect();
+    assert_eq!(
+        ids, expected,
+        "no tuple lost or duplicated by the hinted search"
+    );
+}
+
+#[test]
+fn test_find_page_for_insertion_probes_hint_first_then_wraps() {
+    // The two-pass search must probe the hint page first, then later
+    // pages, then wrap to earlier pages (which may hold freed space),
+    // and only then allocate a fresh page.
+    use relvar_storage_core::device::MemBlockDevice;
+
+    let mut heap = HeapFile::create_on_device(MemBlockDevice::new(), create_test_relation_type());
+    // Grow the device to 4 pages (page_count drives the search bounds).
+    heap.write_page_bytes(3, &[]).unwrap();
+    heap.insert_hint = 2;
+
+    let mut probed = Vec::new();
+    let result = heap.find_page_for_insertion(|_heap, page_id| {
+        probed.push(page_id);
+        if page_id == 0 {
+            Ok("found")
+        } else {
+            Err(HeapError::PageFull)
+        }
+    });
+    assert_eq!(result.unwrap(), "found");
+    assert_eq!(
+        probed,
+        vec![2, 3, 0],
+        "must probe hint, later pages, then wrap to earlier pages"
+    );
+    assert_eq!(
+        heap.insert_hint, 0,
+        "a successful insert must advance the hint"
+    );
+}
+
+#[test]
+fn test_find_page_for_insertion_allocates_fresh_page_when_all_full() {
+    // When every existing page reports PageFull, the search must fall
+    // through to a fresh page rather than looping forever.
+    use relvar_storage_core::device::MemBlockDevice;
+
+    let mut heap = HeapFile::create_on_device(MemBlockDevice::new(), create_test_relation_type());
+    heap.write_page_bytes(1, &[]).unwrap(); // 2 existing pages
+    heap.insert_hint = 1;
+
+    let mut probed = Vec::new();
+    let result = heap.find_page_for_insertion(|_heap, page_id| {
+        probed.push(page_id);
+        if page_id == 2 {
+            Ok("fresh")
+        } else {
+            Err(HeapError::PageFull)
+        }
+    });
+    assert_eq!(result.unwrap(), "fresh");
+    assert_eq!(
+        probed,
+        vec![1, 0, 2],
+        "must scan hint, earlier pages, then the fresh page"
+    );
+    assert_eq!(heap.insert_hint, 2);
+}
+
+#[test]
+fn test_find_page_for_insertion_propagates_real_errors() {
+    // Only PageFull advances the search; any other error aborts it.
+    use relvar_storage_core::device::MemBlockDevice;
+
+    let mut heap = HeapFile::create_on_device(MemBlockDevice::new(), create_test_relation_type());
+    heap.write_page_bytes(0, &[]).unwrap();
+
+    let result: Result<(), HeapError> = heap.find_page_for_insertion(|_heap, _page_id| {
+        Err(HeapError::Page(
+            crate::storage::page::PageError::PageTooLarge,
+        ))
+    });
+    assert!(
+        matches!(result, Err(HeapError::Page(_))),
+        "non-PageFull errors must abort the search, got {result:?}"
+    );
+}

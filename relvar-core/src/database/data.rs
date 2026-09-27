@@ -148,13 +148,40 @@ impl<E: StorageEngine> Database<E> {
         // assertion is violated (no-op when no assertions are registered).
         self.begin_assertion_guard()?;
 
+        // Run the whole batch inside a single engine transaction when no
+        // other transaction is active: the assertion-guard path already
+        // batches this way (each per-tuple insert joins the guard's ambient
+        // transaction via `ensure_transaction`), and a user transaction
+        // does the same — but the assertion-free autocommit path would
+        // otherwise pay a full durable begin/commit, two WAL flushes, per
+        // tuple. The batch stays atomic: any write failure rolls the
+        // transaction back before the error is returned.
+        let batch_snapshot = if !self.in_transaction && self.assertions.is_empty() {
+            Some(self.engine.begin_transaction()?)
+        } else {
+            None
+        };
+
         // All validation passed: write the batch, restoring the pre-batch
         // state if any write fails.
+        let mut write_error: Option<DatabaseError> = None;
         for tuple in tuples {
             if let Err(op_error) = self.engine.insert_tuple(relation_name, tuple) {
-                self.abort_assertion_guard()?;
-                return Err(op_error.into());
+                write_error = Some(op_error.into());
+                break;
             }
+        }
+        if let Some(error) = write_error {
+            if let Some(snapshot) = batch_snapshot {
+                // Best-effort rollback; the original write error is what
+                // the caller sees.
+                let _ = self.engine.rollback_transaction(snapshot);
+            }
+            self.abort_assertion_guard()?;
+            return Err(error);
+        }
+        if let Some(snapshot) = batch_snapshot {
+            self.engine.commit_transaction(snapshot)?;
         }
 
         // Enforce database assertions against the post-batch state,

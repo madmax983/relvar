@@ -327,3 +327,50 @@ fn test_insert_without_key_constraints_succeeds() {
 
     assert_eq!(db.query("TEST").unwrap().cardinality(), 50);
 }
+
+#[test]
+fn test_bulk_insert_joins_ambient_user_transaction() {
+    // The single-transaction batching must not commit early when the caller
+    // already has a transaction open: rollback must undo the whole batch.
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    db.begin().unwrap();
+    db.bulk_insert(
+        "TEST",
+        vec![
+            tuple! { id: 1i64, name: "Alice" },
+            tuple! { id: 2i64, name: "Bob" },
+        ],
+    )
+    .unwrap();
+    db.rollback().unwrap();
+
+    let result = db.query("TEST").unwrap();
+    assert_eq!(
+        result.cardinality(),
+        0,
+        "rollback must undo the batched bulk_insert"
+    );
+}
+
+#[test]
+fn test_bulk_insert_inside_user_transaction_commits_with_it() {
+    // The batch joins the ambient transaction: commit makes it visible.
+    let mut db: Database<InMemoryEngine> = Database::new(InMemoryEngine::new());
+    db.create_relvar("TEST", test_rel_type()).unwrap();
+
+    db.begin().unwrap();
+    db.bulk_insert(
+        "TEST",
+        vec![
+            tuple! { id: 1i64, name: "Alice" },
+            tuple! { id: 2i64, name: "Bob" },
+        ],
+    )
+    .unwrap();
+    db.commit().unwrap();
+
+    let result = db.query("TEST").unwrap();
+    assert_eq!(result.cardinality(), 2);
+}
