@@ -356,3 +356,49 @@ fn test_insert_then_load_uses_cached_file() {
 }
 
 // WAL Integration Tests (Step 5)
+
+#[test]
+fn test_failed_store_relation_leaves_old_data_intact() {
+    use relvar_core::storage_engine::{StorageEngine, StorageError};
+
+    let temp_dir = TempDir::new().unwrap();
+    // Tiny version pool: at most 2 uncommitted version records at a time.
+    let mut engine =
+        PersistentEngine::open_with_pool_capacities(temp_dir.path(), 16, 2, 2).unwrap();
+
+    engine.create_relation("TEST", test_rel_type()).unwrap();
+    let snapshot = engine.begin_transaction().unwrap();
+    engine
+        .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" })
+        .unwrap();
+    engine
+        .insert_tuple("TEST", tuple! { id: 2i64, name: "Bob" })
+        .unwrap();
+    engine.commit_transaction(snapshot).unwrap();
+
+    // Replacing with 3 tuples needs 3 version records but the pool holds
+    // only 2: the store must fail with a typed exhaustion error...
+    let mut replacement = Relation::new(test_rel_type());
+    replacement
+        .insert(tuple! { id: 3i64, name: "Carol" })
+        .unwrap();
+    replacement
+        .insert(tuple! { id: 4i64, name: "Dave" })
+        .unwrap();
+    replacement
+        .insert(tuple! { id: 5i64, name: "Erin" })
+        .unwrap();
+    let snapshot = engine.begin_transaction().unwrap();
+    let result = engine.store_relation("TEST", &replacement);
+    assert!(
+        matches!(result, Err(StorageError::VersionPoolExhausted { .. })),
+        "expected typed pool exhaustion, got: {result:?}"
+    );
+    engine.rollback_transaction(snapshot).unwrap();
+
+    // ...and the old data must be untouched: the failed store is atomic.
+    let loaded = engine.load_relation("TEST").unwrap();
+    assert_eq!(loaded.cardinality(), 2);
+    assert!(loaded.contains(&tuple! { id: 1i64, name: "Alice" }));
+    assert!(loaded.contains(&tuple! { id: 2i64, name: "Bob" }));
+}

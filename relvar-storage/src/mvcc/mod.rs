@@ -44,26 +44,37 @@
 //!
 //! # Architecture
 //!
-//! - [`ActiveTransactionTable`]: Tracks all currently running transactions. Used to generate
-//!   snapshots by capturing the set of active transaction IDs.
-//! - [`TransactionSnapshot`]: A lightweight object carried by a transaction containing its
-//!   visibility boundaries (its ID and the list of concurrent transactions to ignore).
+//! - [`TxnPool`]: Bounded, caller-owned pool of transaction records. All live
+//!   slots and finished-transaction history are pre-allocated at construction,
+//!   so begin/commit/abort and snapshot liveness checks never allocate.
+//! - [`VersionPool`]: Bounded, caller-owned pool of uncommitted-version
+//!   records plus reusable page working buffers. Every versioned heap write
+//!   claims a record before touching a page; exhaustion is the typed
+//!   [`MvccError::VersionPoolExhausted`]. Page work checks out a
+//!   [`PageWorkingSet`] instead of allocating, so snapshot reads iterate
+//!   pools without allocating per version.
+//! - [`MvccError`]: Typed pool errors (`PoolExhausted`, `HistoryExhausted`);
+//!   capacity exhaustion is recoverable, never a panic.
+//! - [`TransactionSnapshot`]: A `Copy`, allocation-free visibility boundary
+//!   (its ID, snapshot LSN, and horizon). Liveness is derived from the pool.
 //! - [`VersionMetadata`]: The header stored with every tuple on disk (in `HeapFile`).
 //! - **Garbage Collection (GC)**: Old versions that are no longer visible to any active
 //!   transaction are cleaned up by background processes or during checkpoints.
 //!
 //! # Transaction Lifecycle
 //!
-//! 1. **Begin**: Transaction `T` starts. The `ActiveTransactionTable` records `T` and
-//!    returns a `TransactionSnapshot` listing all other currently active transactions.
-//! 2. **Read**: `T` scans the `HeapFile`. For each tuple, `is_visible(version, snapshot)`
-//!    determines which version (if any) to return.
+//! 1. **Begin**: Transaction `T` starts. The `TxnPool` claims a free slot for `T`
+//!    and returns a `TransactionSnapshot` (no active-set copy).
+//! 2. **Read**: `T` scans the `HeapFile`. For each tuple,
+//!    `is_visible(version, snapshot, pool, committed)` determines which version
+//!    (if any) to return.
 //! 3. **Write (Insert)**: `T` creates a new tuple with `xmin = T`, `xmax = None`.
 //! 4. **Write (Update)**: `T` marks the old version's `xmax = T` and inserts a new version
 //!    with `xmin = T`.
 //! 5. **Write (Delete)**: `T` marks the current version's `xmax = T`.
-//! 6. **Commit**: `T` is removed from the `ActiveTransactionTable`. Its changes become
-//!    visible to *new* transactions starting after this point.
+//! 6. **Commit**: `T`'s slot drains into the pool's history ring with the commit
+//!    LSN; its changes become visible to *new* transactions starting after
+//!    this point.
 //!
 //! # TTM Compliance
 //!
@@ -71,10 +82,46 @@
 //! The logical layer (`relvar-core`) interacts with `Database` and `Relation` abstractions,
 //! unaware of versions, snapshots, or transaction IDs.
 
-pub(crate) mod active_txn_table;
+#[cfg(test)]
+mod allocation_tests;
+pub(crate) mod pool;
 pub(crate) mod snapshot;
+pub(crate) mod version_pool;
 pub(crate) mod visibility;
 
-pub use active_txn_table::ActiveTransactionTable;
+pub use pool::{DEFAULT_TXN_POOL_CAPACITY, MvccError, TxnPool};
 pub use snapshot::TransactionSnapshot;
+pub use version_pool::{
+    DEFAULT_VERSION_BUFFER_CAPACITY, DEFAULT_VERSION_POOL_CAPACITY, PageWorkingSet, VersionHandle,
+    VersionPool,
+};
 pub use visibility::VersionMetadata;
+
+impl From<MvccError> for relvar_core::storage_engine::StorageError {
+    /// Lifts pool exhaustion to the public engine boundary without losing
+    /// its type: callers can match on
+    /// [`StorageError::TransactionPoolExhausted`](relvar_core::storage_engine::StorageError::TransactionPoolExhausted),
+    /// [`StorageError::VersionPoolExhausted`](relvar_core::storage_engine::StorageError::VersionPoolExhausted),
+    /// [`StorageError::VersionClaimantsExhausted`](relvar_core::storage_engine::StorageError::VersionClaimantsExhausted),
+    /// and the other exhaustion variants instead of parsing a string.
+    fn from(error: MvccError) -> Self {
+        use relvar_core::storage_engine::StorageError;
+        match error {
+            MvccError::PoolExhausted { active, capacity } => {
+                StorageError::TransactionPoolExhausted { active, capacity }
+            }
+            MvccError::HistoryExhausted { len, capacity } => {
+                StorageError::TransactionHistoryExhausted { len, capacity }
+            }
+            MvccError::VersionPoolExhausted { used, capacity } => {
+                StorageError::VersionPoolExhausted { used, capacity }
+            }
+            MvccError::VersionClaimantsExhausted { active, capacity } => {
+                StorageError::VersionClaimantsExhausted { active, capacity }
+            }
+            MvccError::VersionBuffersExhausted { used, capacity } => {
+                StorageError::VersionBufferExhausted { used, capacity }
+            }
+        }
+    }
+}

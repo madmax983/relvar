@@ -8,7 +8,7 @@
 //! It abstracts the physical storage details from the transaction management layer.
 
 use crate::FileBlockDevice;
-use crate::mvcc::TransactionSnapshot;
+use crate::mvcc::{DEFAULT_VERSION_POOL_CAPACITY, TransactionSnapshot, TxnPool, VersionPool};
 use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
 use crate::wal::TransactionId;
 use relvar_core::storage_engine::{RelationMetadata, StorageError};
@@ -27,11 +27,31 @@ pub struct StorageManager {
     catalog: Catalog,
     /// Open heap files, keyed by relation name.
     heap_files: HashMap<String, HeapFile<FileBlockDevice>>,
+    /// Caller-owned, fixed-capacity MVCC version pool.
+    ///
+    /// All versioned heap operations (`insert`/`scan`/`gc`) claim version
+    /// records and check out page working buffers from this pool instead of
+    /// allocating per version. Exhaustion fails with a typed
+    /// [`StorageError`](relvar_core::storage_engine::StorageError) and never
+    /// panics.
+    version_pool: VersionPool,
 }
 
 impl StorageManager {
     /// Create a new StorageManager instance.
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
+        Self::with_version_pool(path, VersionPool::new(DEFAULT_VERSION_POOL_CAPACITY))
+    }
+
+    /// Create a new StorageManager with an explicit version pool.
+    ///
+    /// The pool is caller-owned and fixed-capacity: pass a smaller pool to
+    /// bound memory on constrained targets. Exhaustion of the pool during
+    /// versioned operations fails with a typed error, never a panic.
+    pub fn with_version_pool<P: AsRef<Path>>(
+        path: P,
+        version_pool: VersionPool,
+    ) -> Result<Self, StorageError> {
         let db_path = path.as_ref().to_path_buf();
 
         if !db_path.exists() {
@@ -52,6 +72,7 @@ impl StorageManager {
             catalog_path,
             catalog,
             heap_files: HashMap::new(),
+            version_pool,
         })
     }
 
@@ -77,8 +98,14 @@ impl StorageManager {
     }
 
     /// Convert HeapError to StorageError.
+    ///
+    /// MVCC pool exhaustion keeps its typed variant (never downgraded to
+    /// `Other`): callers can match on it and retry after commit/abort.
     fn convert_heap_error(e: HeapError) -> StorageError {
-        StorageError::Other(format!("Heap error: {}", e))
+        match e {
+            HeapError::Mvcc(mvcc_err) => StorageError::from(mvcc_err),
+            _ => StorageError::Other(format!("Heap error: {}", e)),
+        }
     }
 
     /// Validate that a relvar name is safe for use in file paths.
@@ -186,16 +213,20 @@ impl StorageManager {
     }
 
     /// Get or open a heap file for a relation.
-    fn get_or_open_heap_file(
-        &mut self,
+    ///
+    /// Takes the catalog and heap-file cache as separate parameters (rather
+    /// than `&mut self`) so callers can hold disjoint borrows of the version
+    /// pool alongside the returned heap file.
+    fn get_or_open_heap_file<'a>(
+        catalog: &Catalog,
+        heap_files: &'a mut HashMap<String, HeapFile<FileBlockDevice>>,
         name: &str,
-    ) -> Result<&mut HeapFile<FileBlockDevice>, StorageError> {
+    ) -> Result<&'a mut HeapFile<FileBlockDevice>, StorageError> {
         use std::collections::hash_map::Entry;
-        match self.heap_files.entry(name.to_string()) {
+        match heap_files.entry(name.to_string()) {
             Entry::Occupied(entry) => Ok(entry.into_mut()),
             Entry::Vacant(entry) => {
-                let metadata = self
-                    .catalog
+                let metadata = catalog
                     .get_relation(name)
                     .map_err(Self::convert_catalog_error)?;
 
@@ -213,6 +244,7 @@ impl StorageManager {
         &mut self,
         name: &str,
         snapshot: &TransactionSnapshot,
+        pool: &crate::mvcc::TxnPool,
         committed_txns: &HashSet<TransactionId>,
     ) -> Result<Relation, StorageError> {
         // Get metadata
@@ -224,12 +256,14 @@ impl StorageManager {
         // Need relation type for building result
         let rel_type = metadata.relation_type.clone();
 
-        // Get or open heap file
-        let heap_file = self.get_or_open_heap_file(name)?;
+        // Get or open heap file. The heap-file cache and the version pool are
+        // disjoint fields, so both borrows can be live at once.
+        let heap_file = Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)?;
+        let version_pool = &mut self.version_pool;
 
         // Scan with visibility filtering
         let tuples = heap_file
-            .scan_visible(snapshot, committed_txns)
+            .scan_visible(snapshot, pool, version_pool, committed_txns)
             .map_err(Self::convert_heap_error)?;
 
         // Build relation from visible tuples
@@ -244,9 +278,10 @@ impl StorageManager {
         tuple: Tuple,
         txn_id: TransactionId,
     ) -> Result<(), StorageError> {
-        let heap_file = self.get_or_open_heap_file(name)?;
+        let heap_file = Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)?;
+        let version_pool = &mut self.version_pool;
         heap_file
-            .insert_tuple_versioned(&tuple, txn_id)
+            .insert_tuple_versioned(&tuple, txn_id, version_pool)
             .map_err(Self::convert_heap_error)?;
         Ok(())
     }
@@ -265,34 +300,76 @@ impl StorageManager {
             .get_relation(name)
             .map_err(Self::convert_catalog_error)?;
 
-        // Remove old heap file and create new one.
-        // Inspect the error kind directly instead of a Path::exists() re-check
-        // (avoids the TOCTOU race and an extra syscall); a missing file is fine.
-        if let Err(e) = std::fs::remove_file(&metadata.heap_file_path)
+        // Build the replacement in a temp file and rename it over the old
+        // heap atomically: if any insert fails (pool exhaustion, device
+        // error, oversized tuple) the old heap is untouched and the temp
+        // file is removed, so a failed store never destroys the relation.
+        // The temp name appends a suffix in the same directory, so the
+        // rename stays on one filesystem (and is atomic on POSIX).
+        let mut tmp_path = metadata.heap_file_path.clone();
+        tmp_path.as_mut_os_string().push(".tmp");
+        // A stale temp file means a previous store crashed mid-replace;
+        // the old heap is still canonical, so dropping the stale temp is
+        // safe. Inspect the error kind directly instead of a Path::exists()
+        // re-check (avoids the TOCTOU race and an extra syscall).
+        if let Err(e) = std::fs::remove_file(&tmp_path)
             && e.kind() != std::io::ErrorKind::NotFound
         {
             return Err(StorageError::Other(format!(
-                "Failed to remove old heap file: {}",
-                e
+                "Failed to remove stale store temp file: {e}"
             )));
         }
 
-        // Remove from cache
-        self.heap_files.remove(name);
+        // Create the replacement heap in the temp file.
+        let mut new_heap_file = HeapFile::create(&tmp_path, metadata.relation_type.clone())
+            .map_err(Self::convert_heap_error)?;
 
-        // Create new heap file
-        let mut new_heap_file =
-            HeapFile::create(&metadata.heap_file_path, metadata.relation_type.clone())
-                .map_err(Self::convert_heap_error)?;
-
-        // Insert all tuples with MVCC versioning
-        for tuple in relation.tuples() {
-            new_heap_file
-                .insert_tuple_versioned(tuple, txn_id)
-                .map_err(Self::convert_heap_error)?;
+        // Insert all tuples with MVCC versioning. Any failure removes the
+        // temp file and leaves the old heap (and its cache entry) intact.
+        let insert_result: Result<(), StorageError> = (|| {
+            for tuple in relation.tuples() {
+                new_heap_file
+                    .insert_tuple_versioned(tuple, txn_id, &mut self.version_pool)
+                    .map_err(Self::convert_heap_error)?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = insert_result {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(error);
         }
 
-        // Cache the new heap file
+        // Durability before publish: flush the replacement's contents to
+        // the device so a crash after the rename cannot surface a heap
+        // whose pages never reached stable storage. A sync failure keeps
+        // the old heap canonical and removes the temp file.
+        if let Err(error) = new_heap_file.sync().map_err(Self::convert_heap_error) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(error);
+        }
+
+        // Atomic publish: the rename swaps the replacement in all at once.
+        // Only now is the old heap dropped and its cache entry replaced.
+        // Durability notes: the temp file lives in the same directory, so
+        // the rename stays on one filesystem. Atomic replacement is a
+        // POSIX guarantee (rename(2)); on Windows `rename` fails when the
+        // destination exists, so the store fails typed with the old heap
+        // intact rather than replacing non-atomically. The rename's own
+        // directory entry is not fsynced — a crash in that narrow window
+        // could leave the old name visible after reopen; the WAL still
+        // records the committed transaction, so no committed data is
+        // silently lost, only the bulk replace may need re-running.
+        if let Err(e) = std::fs::rename(&tmp_path, &metadata.heap_file_path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(StorageError::Other(format!(
+                "Failed to publish replaced heap file: {e}"
+            )));
+        }
+
+        // Remove the stale cache entry and cache the replaced heap. The
+        // handle was created on the temp path, but rename preserves the
+        // inode, so it now refers to the canonical file.
+        self.heap_files.remove(name);
         self.heap_files.insert(name.to_string(), new_heap_file);
 
         Ok(())
@@ -309,17 +386,34 @@ impl StorageManager {
     }
 
     /// Garbage collect old versions.
+    ///
+    /// A version is reclaimed only when its deleter's commit settled before
+    /// `gc_lsn` (resolved through `txn_pool`): no live or future snapshot
+    /// can still observe it. See [`TxnPool::committed_before`].
     pub fn garbage_collect_versions(
         &mut self,
         gc_lsn: crate::wal::Lsn,
         committed_txns: &HashSet<TransactionId>,
+        txn_pool: &TxnPool,
     ) -> Result<(), StorageError> {
+        let version_pool = &mut self.version_pool;
         for heap_file in self.heap_files.values_mut() {
             heap_file
-                .gc_remove_dead_versions(gc_lsn, committed_txns)
-                .map_err(|e| StorageError::Other(format!("GC error: {}", e)))?;
+                .gc_remove_dead_versions(gc_lsn, committed_txns, txn_pool, version_pool)
+                // Keep MVCC exhaustion typed (never downgraded to `Other`):
+                // callers can match on it and retry after commit/abort.
+                .map_err(Self::convert_heap_error)?;
         }
         Ok(())
+    }
+
+    /// Recycles all version-pool records claimed by `txn_id`.
+    ///
+    /// Called when a transaction commits or aborts: its versions are then
+    /// committed (visible per MVCC rules) or dead (reclaimed by GC), so the
+    /// pool records can back new writes. Infallible.
+    pub fn release_versions_for_txn(&mut self, txn_id: TransactionId) {
+        self.version_pool.release_for_txn(txn_id);
     }
 }
 
@@ -338,8 +432,16 @@ mod tests {
         )
     }
 
-    fn dummy_snapshot() -> TransactionSnapshot {
-        TransactionSnapshot::new(TransactionId::new(1), crate::wal::Lsn::new(0), vec![])
+    fn dummy_snapshot() -> (crate::mvcc::TxnPool, TransactionSnapshot) {
+        let mut pool = crate::mvcc::TxnPool::new(4);
+        let snapshot = pool
+            .begin(
+                TransactionId::new(1),
+                crate::wal::Lsn::new(0),
+                TransactionId::new(u64::MAX),
+            )
+            .unwrap();
+        (pool, snapshot)
     }
 
     fn committed_set() -> HashSet<TransactionId> {
@@ -360,8 +462,9 @@ mod tests {
             .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" }, txn_id)
             .unwrap();
 
+        let (pool, snapshot) = dummy_snapshot();
         let relation = manager
-            .scan_relation("TEST", &dummy_snapshot(), &committed_set())
+            .scan_relation("TEST", &snapshot, &pool, &committed_set())
             .unwrap();
         assert_eq!(relation.cardinality(), 1);
     }
@@ -414,8 +517,9 @@ mod tests {
             .store_relation("TEST", &new_relation, txn_id)
             .unwrap();
 
+        let (pool, snapshot) = dummy_snapshot();
         let loaded = manager
-            .scan_relation("TEST", &dummy_snapshot(), &committed_set())
+            .scan_relation("TEST", &snapshot, &pool, &committed_set())
             .unwrap();
         assert_eq!(loaded.cardinality(), 1);
         assert!(loaded.contains(&tuple! { id: 100i64, name: "Charlie" }));

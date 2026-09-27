@@ -128,6 +128,7 @@ fn test_heap_scan_large_volume() {
 
 #[test]
 fn test_scan_visible_sees_only_visible() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -135,21 +136,23 @@ fn test_scan_visible_sees_only_visible() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     // T1 inserts and commits
-    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1), &mut vpool)
         .unwrap();
 
     // T2 starts after T1 committed
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 100);
+    let snapshot = fx.begin(test_txn(2), 200);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     assert_eq!(visible.len(), 1);
 }
 
 #[test]
 fn test_scan_visible_skips_uncommitted() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -157,14 +160,15 @@ fn test_scan_visible_skips_uncommitted() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     // T1 inserts but doesn't commit
-    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1), &mut vpool)
         .unwrap();
 
     // T2 starts
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
-    let committed = HashSet::new(); // T1 not committed
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50); // T1 live: uncommitted
+    let snapshot = fx.begin(test_txn(2), 200);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     // T2 should not see T1's uncommitted tuple
     assert_eq!(visible.len(), 0);
@@ -172,6 +176,7 @@ fn test_scan_visible_skips_uncommitted() {
 
 #[test]
 fn test_scan_visible_sees_own_changes() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -181,14 +186,14 @@ fn test_scan_visible_sees_own_changes() {
     let txn_id = test_txn(1);
 
     // T1 inserts (uncommitted)
-    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, txn_id)
+    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, txn_id, &mut vpool)
         .unwrap();
 
     // T1's snapshot
-    let snapshot = TransactionSnapshot::new(txn_id, test_lsn(100), vec![]);
-    let committed = HashSet::new(); // T1 not committed yet
+    let mut fx = MvccFixture::new();
+    let snapshot = fx.begin(txn_id, 100); // T1 not committed yet
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     // T1 should see its own uncommitted tuple
     assert_eq!(visible.len(), 1);
@@ -196,6 +201,7 @@ fn test_scan_visible_sees_own_changes() {
 
 #[test]
 fn test_scan_visible_concurrent_uncommitted() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -203,15 +209,16 @@ fn test_scan_visible_concurrent_uncommitted() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     // T1 inserts
-    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1), &mut vpool)
         .unwrap();
 
-    // T2 starts while T1 is active
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(100), vec![test_txn(1)]);
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1)); // T1 committed after T2 started
+    // T2 starts while T1 is active; T1 commits after T2's snapshot
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    let snapshot = fx.begin(test_txn(2), 100);
+    fx.commit(test_txn(1), 150);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     // T2 should not see T1's tuple (was active when T2 started)
     assert_eq!(visible.len(), 0);
@@ -225,16 +232,17 @@ fn test_scan_visible_empty_relation() {
     let rel_type = create_test_relation_type();
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
-    let snapshot = TransactionSnapshot::new(test_txn(1), test_lsn(100), vec![]);
-    let committed = HashSet::new();
+    let mut fx = MvccFixture::new();
+    let snapshot = fx.begin(test_txn(1), 100);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     assert_eq!(visible.len(), 0);
 }
 
 #[test]
 fn test_scan_visible_multiple_committed() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -242,27 +250,35 @@ fn test_scan_visible_multiple_committed() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     // T1, T2, T3 insert and commit
-    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1), &mut vpool)
         .unwrap();
-    heap.insert_tuple_versioned(&tuple! { id: 2i64, name: "Bob" }, test_txn(2))
+    heap.insert_tuple_versioned(&tuple! { id: 2i64, name: "Bob" }, test_txn(2), &mut vpool)
         .unwrap();
-    heap.insert_tuple_versioned(&tuple! { id: 3i64, name: "Charlie" }, test_txn(3))
-        .unwrap();
+    heap.insert_tuple_versioned(
+        &tuple! { id: 3i64, name: "Charlie" },
+        test_txn(3),
+        &mut vpool,
+    )
+    .unwrap();
 
     // T4 starts after all committed
-    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
-    committed.insert(test_txn(2));
-    committed.insert(test_txn(3));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 60);
+    fx.begin(test_txn(2), 70);
+    fx.commit(test_txn(2), 80);
+    fx.begin(test_txn(3), 90);
+    fx.commit(test_txn(3), 100);
+    let snapshot = fx.begin(test_txn(4), 400);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     assert_eq!(visible.len(), 3);
 }
 
 #[test]
 fn test_scan_visible_mixed_committed_uncommitted() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -270,25 +286,31 @@ fn test_scan_visible_mixed_committed_uncommitted() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     // T1 inserts and commits
-    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1), &mut vpool)
         .unwrap();
 
     // T2 inserts but doesn't commit
-    heap.insert_tuple_versioned(&tuple! { id: 2i64, name: "Bob" }, test_txn(2))
+    heap.insert_tuple_versioned(&tuple! { id: 2i64, name: "Bob" }, test_txn(2), &mut vpool)
         .unwrap();
 
     // T3 inserts and commits
-    heap.insert_tuple_versioned(&tuple! { id: 3i64, name: "Charlie" }, test_txn(3))
-        .unwrap();
+    heap.insert_tuple_versioned(
+        &tuple! { id: 3i64, name: "Charlie" },
+        test_txn(3),
+        &mut vpool,
+    )
+    .unwrap();
 
     // T4 starts
-    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
-    // T2 not committed
-    committed.insert(test_txn(3));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 60);
+    fx.begin(test_txn(2), 70); // T2 not committed
+    fx.begin(test_txn(3), 80);
+    fx.commit(test_txn(3), 90);
+    let snapshot = fx.begin(test_txn(4), 400);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     // Should see T1 and T3, but not T2
     assert_eq!(visible.len(), 2);
@@ -296,6 +318,7 @@ fn test_scan_visible_mixed_committed_uncommitted() {
 
 #[test]
 fn test_scan_visible_across_pages() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -307,20 +330,23 @@ fn test_scan_visible_across_pages() {
     // Insert large tuples to span multiple pages
     let data = vec![0u8; 3000];
 
-    heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(1))
+    heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(1), &mut vpool)
         .unwrap();
-    heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(2))
+    heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(2), &mut vpool)
         .unwrap();
-    heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(3))
+    heap.insert_tuple_versioned(&tuple! { data: data.clone() }, test_txn(3), &mut vpool)
         .unwrap();
 
-    let snapshot = TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
-    committed.insert(test_txn(2));
-    committed.insert(test_txn(3));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 60);
+    fx.begin(test_txn(2), 70);
+    fx.commit(test_txn(2), 80);
+    fx.begin(test_txn(3), 90);
+    fx.commit(test_txn(3), 100);
+    let snapshot = fx.begin(test_txn(4), 400);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     // Should see all 3 tuples across multiple pages
     assert_eq!(visible.len(), 3);
@@ -328,6 +354,7 @@ fn test_scan_visible_across_pages() {
 
 #[test]
 fn test_scan_visible_no_committed_set() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -335,14 +362,15 @@ fn test_scan_visible_no_committed_set() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     // Insert tuples
-    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1))
+    heap.insert_tuple_versioned(&tuple! { id: 1i64, name: "Alice" }, test_txn(1), &mut vpool)
         .unwrap();
 
     // Empty committed set
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
-    let committed = HashSet::new();
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50); // T1 live: uncommitted
+    let snapshot = fx.begin(test_txn(2), 200);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     // Should not see any tuples (none committed)
     assert_eq!(visible.len(), 0);
@@ -350,6 +378,7 @@ fn test_scan_visible_no_committed_set() {
 
 #[test]
 fn test_scan_visible_preserves_tuple_data() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -357,14 +386,15 @@ fn test_scan_visible_preserves_tuple_data() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     let original_tuple = tuple! { id: 42i64, name: "TestData" };
-    heap.insert_tuple_versioned(&original_tuple, test_txn(1))
+    heap.insert_tuple_versioned(&original_tuple, test_txn(1), &mut vpool)
         .unwrap();
 
-    let snapshot = TransactionSnapshot::new(test_txn(2), test_lsn(200), vec![]);
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 100);
+    let snapshot = fx.begin(test_txn(2), 200);
 
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     assert_eq!(visible.len(), 1);
     // Tuple data should be preserved (exact content verified by serialization)
@@ -375,6 +405,7 @@ fn test_scan_visible_preserves_tuple_data() {
 
 #[test]
 fn test_delete_already_deleted_sets_xmax_again() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -383,13 +414,17 @@ fn test_delete_already_deleted_sets_xmax_again() {
 
     // Insert tuple
     let tuple = tuple! { id: 1i64, name: "ToDelete" };
-    let tuple_id = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     // Delete by T2
-    heap.delete_tuple_versioned(tuple_id, test_txn(2)).unwrap();
+    heap.delete_tuple_versioned(tuple_id, test_txn(2), &mut vpool)
+        .unwrap();
 
     // Delete again by T3 (should succeed and update xmax)
-    heap.delete_tuple_versioned(tuple_id, test_txn(3)).unwrap();
+    heap.delete_tuple_versioned(tuple_id, test_txn(3), &mut vpool)
+        .unwrap();
 
     // Verify xmax is now T3
     let page = heap.load_page(tuple_id.page_id).unwrap();
@@ -794,6 +829,7 @@ mod offset_overflow_tests {
 
 #[cfg(test)]
 mod security_tests {
+    use super::super::common::test_version_pool;
     use crate::storage::heap::*;
     use relvar_core::tuple;
     use relvar_core::types::{ScalarType, TupleType};
@@ -801,6 +837,7 @@ mod security_tests {
 
     #[test]
     fn test_update_versioned_tuple_too_large_prevents_loop() {
+        let mut vpool = test_version_pool();
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
 
@@ -823,14 +860,16 @@ mod security_tests {
             let tuple_data_len = tuple_data.len();
 
             // Check if it fits with None (insert)
-            let fits_insert = heap
-                .check_versioned_tuple_size_limit(tuple_data_len, false)
-                .is_ok();
+            let fits_insert = HeapFile::<FileBlockDevice>::check_versioned_tuple_size_limit(
+                tuple_data_len,
+                false,
+            )
+            .is_ok();
 
             // Check if it fits with Some (update)
-            let fits_update = heap
-                .check_versioned_tuple_size_limit(tuple_data_len, true)
-                .is_ok();
+            let fits_update =
+                HeapFile::<FileBlockDevice>::check_versioned_tuple_size_limit(tuple_data_len, true)
+                    .is_ok();
 
             if fits_insert && !fits_update {
                 println!("Found critical payload length: {}", len);
@@ -845,13 +884,14 @@ mod security_tests {
 
         // Insert should succeed
         let tid = heap
-            .insert_tuple_versioned(&tuple, crate::wal::TransactionId::new(1))
+            .insert_tuple_versioned(&tuple, crate::wal::TransactionId::new(1), &mut vpool)
             .expect("Insert failed");
 
         // Update should fail with TupleTooLarge, NOT loop forever
         // If the bug exists, this call would loop forever (or timeout)
         // With the fix, it should return TupleTooLarge
-        let result = heap.update_tuple_versioned(tid, &tuple, crate::wal::TransactionId::new(2));
+        let result =
+            heap.update_tuple_versioned(tid, &tuple, crate::wal::TransactionId::new(2), &mut vpool);
 
         assert!(result.is_err());
         match result {
@@ -987,12 +1027,17 @@ fn test_read_tuple_out_of_bounds() {
 
 #[test]
 fn test_read_tuple_versioned_integer_overflow() {
+    let mut vpool = test_version_pool();
     let temp_file = tempfile::NamedTempFile::new().unwrap();
     let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
     let txn_id = test_txn(1);
-    heap.insert_tuple_versioned(&relvar_core::tuple! { id: 1i64, name: "Alice" }, txn_id)
-        .unwrap();
+    heap.insert_tuple_versioned(
+        &relvar_core::tuple! { id: 1i64, name: "Alice" },
+        txn_id,
+        &mut vpool,
+    )
+    .unwrap();
 
     // Corrupt the page
     let mut file = std::fs::OpenOptions::new()
@@ -1046,12 +1091,17 @@ fn test_read_tuple_versioned_integer_overflow() {
 
 #[test]
 fn test_read_tuple_versioned_out_of_bounds() {
+    let mut vpool = test_version_pool();
     let temp_file = tempfile::NamedTempFile::new().unwrap();
     let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
     let txn_id = test_txn(1);
-    heap.insert_tuple_versioned(&relvar_core::tuple! { id: 1i64, name: "Alice" }, txn_id)
-        .unwrap();
+    heap.insert_tuple_versioned(
+        &relvar_core::tuple! { id: 1i64, name: "Alice" },
+        txn_id,
+        &mut vpool,
+    )
+    .unwrap();
 
     // Corrupt the page
     let mut file = std::fs::OpenOptions::new()
@@ -1106,12 +1156,17 @@ fn test_read_tuple_versioned_out_of_bounds() {
 
 #[test]
 fn test_scan_visible_integer_overflow() {
+    let mut vpool = test_version_pool();
     let temp_file = tempfile::NamedTempFile::new().unwrap();
     let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
     let txn_id = test_txn(1);
-    heap.insert_tuple_versioned(&relvar_core::tuple! { id: 1i64, name: "Alice" }, txn_id)
-        .unwrap();
+    heap.insert_tuple_versioned(
+        &relvar_core::tuple! { id: 1i64, name: "Alice" },
+        txn_id,
+        &mut vpool,
+    )
+    .unwrap();
 
     // Corrupt the page
     let mut file = std::fs::OpenOptions::new()
@@ -1149,10 +1204,16 @@ fn test_scan_visible_integer_overflow() {
 
     // Test
     let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
-    let snapshot =
-        crate::mvcc::TransactionSnapshot::new(test_txn(2), crate::wal::Lsn::new(100), vec![]);
-    let committed = std::collections::HashSet::from([test_txn(1)]);
-    let result = heap.scan_visible(&snapshot, &committed);
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 60);
+    let snapshot = fx.begin(test_txn(2), 100);
+    let result = heap.scan_visible(
+        &snapshot,
+        &fx.pool,
+        &mut fx.version_pool.borrow_mut(),
+        &fx.committed,
+    );
 
     match result {
         Err(HeapError::Page(crate::storage::PageError::Serialization(msg)))
@@ -1165,12 +1226,17 @@ fn test_scan_visible_integer_overflow() {
 
 #[test]
 fn test_scan_visible_out_of_bounds() {
+    let mut vpool = test_version_pool();
     let temp_file = tempfile::NamedTempFile::new().unwrap();
     let mut heap = HeapFile::create(temp_file.path(), create_test_relation_type()).unwrap();
 
     let txn_id = test_txn(1);
-    heap.insert_tuple_versioned(&relvar_core::tuple! { id: 1i64, name: "Alice" }, txn_id)
-        .unwrap();
+    heap.insert_tuple_versioned(
+        &relvar_core::tuple! { id: 1i64, name: "Alice" },
+        txn_id,
+        &mut vpool,
+    )
+    .unwrap();
 
     // Corrupt the page
     let mut file = std::fs::OpenOptions::new()
@@ -1209,10 +1275,16 @@ fn test_scan_visible_out_of_bounds() {
 
     // Test
     let mut heap = HeapFile::open(temp_file.path(), create_test_relation_type()).unwrap();
-    let snapshot =
-        crate::mvcc::TransactionSnapshot::new(test_txn(2), crate::wal::Lsn::new(100), vec![]);
-    let committed = std::collections::HashSet::from([test_txn(1)]);
-    let result = heap.scan_visible(&snapshot, &committed);
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 60);
+    let snapshot = fx.begin(test_txn(2), 100);
+    let result = heap.scan_visible(
+        &snapshot,
+        &fx.pool,
+        &mut fx.version_pool.borrow_mut(),
+        &fx.committed,
+    );
 
     match result {
         Err(HeapError::Page(crate::storage::PageError::Serialization(msg)))

@@ -76,6 +76,7 @@ fn test_store_relation_returns_unit() {
 
 #[test]
 fn test_insert_versioned_sets_xmin() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -85,7 +86,9 @@ fn test_insert_versioned_sets_xmin() {
     let tuple = tuple! { id: 1i64, name: "Alice" };
     let txn_id = test_txn(10);
 
-    let tuple_id = heap.insert_tuple_versioned(&tuple, txn_id).unwrap();
+    let tuple_id = heap
+        .insert_tuple_versioned(&tuple, txn_id, &mut vpool)
+        .unwrap();
 
     // Verify TupleId was returned
     assert_eq!(tuple_id.page_id, 0);
@@ -94,6 +97,7 @@ fn test_insert_versioned_sets_xmin() {
 
 #[test]
 fn test_insert_versioned_xmax_is_none() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -103,7 +107,8 @@ fn test_insert_versioned_xmax_is_none() {
     let tuple = tuple! { id: 1i64, name: "Bob" };
     let txn_id = test_txn(20);
 
-    heap.insert_tuple_versioned(&tuple, txn_id).unwrap();
+    heap.insert_tuple_versioned(&tuple, txn_id, &mut vpool)
+        .unwrap();
 
     // Would need to read the page to verify xmax is None
     // For now, just verify insertion succeeded
@@ -111,6 +116,7 @@ fn test_insert_versioned_xmax_is_none() {
 
 #[test]
 fn test_insert_versioned_multiple_versions_same_page() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -122,9 +128,15 @@ fn test_insert_versioned_multiple_versions_same_page() {
     let tuple2 = tuple! { id: 2i64, name: "Version2" };
     let tuple3 = tuple! { id: 3i64, name: "Version3" };
 
-    let tid1 = heap.insert_tuple_versioned(&tuple1, test_txn(1)).unwrap();
-    let tid2 = heap.insert_tuple_versioned(&tuple2, test_txn(2)).unwrap();
-    let tid3 = heap.insert_tuple_versioned(&tuple3, test_txn(3)).unwrap();
+    let tid1 = heap
+        .insert_tuple_versioned(&tuple1, test_txn(1), &mut vpool)
+        .unwrap();
+    let tid2 = heap
+        .insert_tuple_versioned(&tuple2, test_txn(2), &mut vpool)
+        .unwrap();
+    let tid3 = heap
+        .insert_tuple_versioned(&tuple3, test_txn(3), &mut vpool)
+        .unwrap();
 
     // All should be on page 0 (small tuples)
     assert_eq!(tid1.page_id, 0);
@@ -139,6 +151,7 @@ fn test_insert_versioned_multiple_versions_same_page() {
 
 #[test]
 fn test_insert_versioned_returns_tuple_id() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -148,7 +161,7 @@ fn test_insert_versioned_returns_tuple_id() {
     let tuple = tuple! { id: 42i64, name: "Test" };
     let txn_id = test_txn(100);
 
-    let result = heap.insert_tuple_versioned(&tuple, txn_id);
+    let result = heap.insert_tuple_versioned(&tuple, txn_id, &mut vpool);
 
     assert!(result.is_ok());
     let tuple_id = result.unwrap();
@@ -160,6 +173,7 @@ fn test_insert_versioned_returns_tuple_id() {
 
 #[test]
 fn test_insert_versioned_different_transactions() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -169,8 +183,12 @@ fn test_insert_versioned_different_transactions() {
     // Same tuple data, different transactions
     let tuple = tuple! { id: 1i64, name: "Same" };
 
-    let tid1 = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
-    let tid2 = heap.insert_tuple_versioned(&tuple, test_txn(2)).unwrap();
+    let tid1 = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
+    let tid2 = heap
+        .insert_tuple_versioned(&tuple, test_txn(2), &mut vpool)
+        .unwrap();
 
     // Should create separate versions
     assert_ne!(tid1, tid2);
@@ -178,6 +196,7 @@ fn test_insert_versioned_different_transactions() {
 
 #[test]
 fn test_insert_versioned_page_overflow() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -190,8 +209,12 @@ fn test_insert_versioned_page_overflow() {
     let data = vec![0u8; 3000];
     let tuple = tuple! { data: data };
 
-    let tid1 = heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
-    let tid2 = heap.insert_tuple_versioned(&tuple, test_txn(2)).unwrap();
+    let tid1 = heap
+        .insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
+    let tid2 = heap
+        .insert_tuple_versioned(&tuple, test_txn(2), &mut vpool)
+        .unwrap();
 
     // Should go to different pages
     assert_eq!(tid1.page_id, 0);
@@ -200,6 +223,7 @@ fn test_insert_versioned_page_overflow() {
 
 #[test]
 fn test_insert_versioned_empty_tuple() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -216,7 +240,7 @@ fn test_insert_versioned_empty_tuple() {
         .cloned()
         .unwrap_or_else(|| tuple! {});
 
-    let result = heap.insert_tuple_versioned(&tuple, test_txn(1));
+    let result = heap.insert_tuple_versioned(&tuple, test_txn(1), &mut vpool);
 
     // Should succeed even with empty tuple
     assert!(result.is_ok());
@@ -224,6 +248,7 @@ fn test_insert_versioned_empty_tuple() {
 
 #[test]
 fn test_insert_versioned_preserves_prev_version_none() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -231,7 +256,8 @@ fn test_insert_versioned_preserves_prev_version_none() {
     let mut heap = HeapFile::create(path, rel_type).unwrap();
 
     let tuple = tuple! { id: 1i64, name: "Initial" };
-    heap.insert_tuple_versioned(&tuple, test_txn(1)).unwrap();
+    heap.insert_tuple_versioned(&tuple, test_txn(1), &mut vpool)
+        .unwrap();
 
     // prev_version should be None for new inserts
     // (will be tested more thoroughly in Phase 5)
@@ -239,6 +265,7 @@ fn test_insert_versioned_preserves_prev_version_none() {
 
 #[test]
 fn test_insert_versioned_sequential_slots() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -249,7 +276,7 @@ fn test_insert_versioned_sequential_slots() {
     for i in 0..5 {
         let tuple = tuple! { id: i as i64, name: format!("Tuple{}", i) };
         let tid = heap
-            .insert_tuple_versioned(&tuple, test_txn(i + 1))
+            .insert_tuple_versioned(&tuple, test_txn(i + 1), &mut vpool)
             .unwrap();
 
         assert_eq!(tid.page_id, 0);
@@ -259,12 +286,9 @@ fn test_insert_versioned_sequential_slots() {
 
 // Phase 2.3: Scan with Visibility tests
 
-fn test_lsn(value: u64) -> crate::wal::Lsn {
-    crate::wal::Lsn::new(value)
-}
-
 #[test]
 fn test_delete_and_insert_new_version() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -273,23 +297,30 @@ fn test_delete_and_insert_new_version() {
 
     // Insert original
     let original = tuple! { id: 1i64, name: "Original" };
-    let tid1 = heap.insert_tuple_versioned(&original, test_txn(1)).unwrap();
+    let tid1 = heap
+        .insert_tuple_versioned(&original, test_txn(1), &mut vpool)
+        .unwrap();
 
-    let mut committed = HashSet::new();
-    committed.insert(test_txn(1));
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(1), 50);
+    fx.commit(test_txn(1), 100);
 
     // Delete
-    heap.delete_tuple_versioned(tid1, test_txn(2)).unwrap();
-    committed.insert(test_txn(2));
+    fx.begin(test_txn(2), 150);
+    heap.delete_tuple_versioned(tid1, test_txn(2), &mut vpool)
+        .unwrap();
+    fx.commit(test_txn(2), 200);
 
     // Insert new version with same logical key
     let new_ver = tuple! { id: 1i64, name: "Reinserted" };
-    heap.insert_tuple_versioned(&new_ver, test_txn(3)).unwrap();
-    committed.insert(test_txn(3));
+    fx.begin(test_txn(3), 250);
+    heap.insert_tuple_versioned(&new_ver, test_txn(3), &mut vpool)
+        .unwrap();
+    fx.commit(test_txn(3), 300);
 
     // Should see only the new version
-    let snapshot = crate::mvcc::TransactionSnapshot::new(test_txn(4), test_lsn(400), vec![]);
-    let visible = heap.scan_visible(&snapshot, &committed).unwrap();
+    let snapshot = fx.begin(test_txn(4), 400);
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
 
     assert_eq!(visible.len(), 1);
     assert_eq!(visible[0], new_ver);
@@ -344,6 +375,7 @@ fn test_heap_insert_on_corrupted_page_fails() {
 }
 #[test]
 fn test_heap_insert_versioned_on_corrupted_page_fails() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
     let rel_type = create_test_relation_type();
@@ -383,7 +415,7 @@ fn test_heap_insert_versioned_on_corrupted_page_fails() {
     // 2. Try to insert a new versioned tuple
     // This should fail when extracting existing tuples
     let tuple = tuple! { id: 1i64, name: "NewTuple" };
-    let result = heap.insert_tuple_versioned(&tuple, test_txn(2));
+    let result = heap.insert_tuple_versioned(&tuple, test_txn(2), &mut vpool);
 
     // 3. Assert failure
     assert!(
@@ -429,6 +461,7 @@ fn test_heap_insert_too_large_fails() {
 
 #[test]
 fn test_heap_insert_versioned_too_large_fails() {
+    let mut vpool = test_version_pool();
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
 
@@ -441,7 +474,7 @@ fn test_heap_insert_versioned_too_large_fails() {
     let data = vec![0u8; 5000];
     let tuple = tuple! { data: data };
 
-    let result = heap.insert_tuple_versioned(&tuple, test_txn(1));
+    let result = heap.insert_tuple_versioned(&tuple, test_txn(1), &mut vpool);
 
     assert!(result.is_err());
     match result {

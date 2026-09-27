@@ -1,6 +1,9 @@
 //! Persistent storage engine implementation using heap files and catalog.
 
-use crate::mvcc::ActiveTransactionTable;
+use crate::mvcc::{
+    DEFAULT_TXN_POOL_CAPACITY, DEFAULT_VERSION_BUFFER_CAPACITY, DEFAULT_VERSION_POOL_CAPACITY,
+    TxnPool, VersionPool,
+};
 use crate::storage::StorageManager;
 use crate::sync::RwLock;
 use crate::wal::{TransactionId, TransactionIdGenerator, WalManager, WalRecord, recover};
@@ -101,7 +104,7 @@ pub struct PersistentEngine {
     /// Transaction ID generator.
     txn_id_gen: TransactionIdGenerator,
     /// Active transaction table for MVCC.
-    active_txns: ActiveTransactionTable,
+    txn_pool: TxnPool,
     /// Set of committed transaction IDs for visibility checks.
     committed_txns: HashSet<TransactionId>,
     /// Current transaction context for operations.
@@ -130,11 +133,72 @@ impl PersistentEngine {
     /// let opened = PersistentEngine::open(dir.path()).unwrap();
     /// ```
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
+        Self::open_with_capacity(path, DEFAULT_TXN_POOL_CAPACITY)
+    }
+
+    /// Opens a database with a bounded transaction pool of `txn_pool_capacity`
+    /// concurrently live transactions.
+    ///
+    /// [`PersistentEngine::open`] uses [`DEFAULT_TXN_POOL_CAPACITY`]. Pass a
+    /// smaller bound on memory-constrained targets; beginning past it fails
+    /// with a typed
+    /// [`StorageError::TransactionPoolExhausted`](relvar_core::storage_engine::StorageError::TransactionPoolExhausted)
+    /// instead of growing past it.
+    ///
+    /// The version pool uses [`DEFAULT_VERSION_POOL_CAPACITY`] records and
+    /// [`DEFAULT_VERSION_BUFFER_CAPACITY`] page working buffers; see
+    /// [`open_with_pool_capacities`](Self::open_with_pool_capacities) to tune
+    /// it.
+    ///
+    /// # Errors
+    ///
+    /// Yields an error if I/O operations fail.
+    pub fn open_with_capacity<P: AsRef<Path>>(
+        path: P,
+        txn_pool_capacity: usize,
+    ) -> Result<Self, StorageError> {
+        Self::open_with_pool_capacities(
+            path,
+            txn_pool_capacity,
+            DEFAULT_VERSION_POOL_CAPACITY,
+            DEFAULT_VERSION_BUFFER_CAPACITY,
+        )
+    }
+
+    /// Opens a database with bounded transaction and version pools.
+    ///
+    /// `version_pool_capacity` bounds the number of concurrently uncommitted
+    /// tuple versions; `version_buffer_capacity` bounds the checked-out page
+    /// working buffers. Exhausting either fails the write with a typed
+    /// [`StorageError::VersionPoolExhausted`](relvar_core::storage_engine::StorageError::VersionPoolExhausted)
+    /// or
+    /// [`StorageError::VersionBufferExhausted`](relvar_core::storage_engine::StorageError::VersionBufferExhausted)
+    /// instead of allocating past the bound or panicking.
+    ///
+    /// The version pool's claimant table is sized from `txn_pool_capacity`:
+    /// outstanding claims always belong to live transactions, so the bound
+    /// can never trigger spuriously.
+    ///
+    /// # Errors
+    ///
+    /// Yields an error if I/O operations fail.
+    pub fn open_with_pool_capacities<P: AsRef<Path>>(
+        path: P,
+        txn_pool_capacity: usize,
+        version_pool_capacity: usize,
+        version_buffer_capacity: usize,
+    ) -> Result<Self, StorageError> {
         let db_path = path.as_ref().to_path_buf();
         let wal_path = db_path.join("wal.log");
 
-        // Initialize StorageManager (handles DB dir and catalog)
-        let storage_manager = StorageManager::new(&db_path)?;
+        // Initialize StorageManager (handles DB dir and catalog) with a
+        // caller-owned, fixed-capacity version pool.
+        let version_pool = VersionPool::with_capacities(
+            version_pool_capacity,
+            version_buffer_capacity,
+            txn_pool_capacity,
+        );
+        let storage_manager = StorageManager::with_version_pool(&db_path, version_pool)?;
 
         let mut wal = Self::open_wal_manager(&wal_path)?;
 
@@ -150,7 +214,7 @@ impl PersistentEngine {
             txn_id_gen: TransactionIdGenerator::from_start(TransactionId::new(
                 recovery_result.max_txn_id.value() + 1,
             )),
-            active_txns: ActiveTransactionTable::new(),
+            txn_pool: TxnPool::new(txn_pool_capacity),
             committed_txns: recovery_result.committed_txns, // Populate from recovery
             current_txn: None,
             txn_tracker: RwLock::new(TxnTracker::default()),
@@ -174,7 +238,7 @@ impl PersistentEngine {
             if self
                 .storage_manager
                 .read()
-                .unwrap()
+                .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
                 .relation_exists(&relation_name)
             {
                 self.cleanup_relation_uncommitted_inserts(&relation_name)?;
@@ -208,7 +272,12 @@ impl PersistentEngine {
             .storage_manager
             .write()
             .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
-            .scan_relation(relation_name, &snapshot, &self.committed_txns)?;
+            .scan_relation(
+                relation_name,
+                &snapshot,
+                &self.txn_pool,
+                &self.committed_txns,
+            )?;
 
         // Store back (effectively removing uncommitted garbage from the heap file)
         self.store_relation(relation_name, &relation)?;
@@ -254,12 +323,15 @@ impl PersistentEngine {
         // Flush WAL to ensure checkpoint is durable
         self.flush_wal()?;
 
-        // Garbage collect old versions
+        // Garbage collect old versions. The pool resolves each deleter's
+        // commit LSN, so reclamation stays constrained by live snapshots.
         let gc_lsn = self.get_checkpoint_lsn();
+        let txn_pool = &self.txn_pool;
+        let committed_txns = &self.committed_txns;
         self.storage_manager
             .write()
-            .unwrap()
-            .garbage_collect_versions(gc_lsn, &self.committed_txns)?;
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .garbage_collect_versions(gc_lsn, committed_txns, txn_pool)?;
 
         Ok(())
     }
@@ -273,7 +345,7 @@ impl PersistentEngine {
 
     /// Get the LSN to checkpoint from (oldest active or current).
     fn get_checkpoint_lsn(&self) -> crate::wal::Lsn {
-        self.active_txns
+        self.txn_pool
             .oldest_active_lsn()
             .unwrap_or_else(|| self.wal.current_lsn())
     }
@@ -309,12 +381,13 @@ impl PersistentEngine {
             self.snapshot_for_txn(txn_id)
         } else {
             // Outside transaction - see all committed data
-            Ok(crate::mvcc::TransactionSnapshot::new(
-                TransactionId::new(0),
-                self.wal.current_lsn(),
-                vec![],
+            Ok(
+                crate::mvcc::TransactionSnapshot::new(
+                    TransactionId::new(0),
+                    self.wal.current_lsn(),
+                )
+                .with_horizon(self.txn_id_gen.peek_next()),
             )
-            .with_horizon(self.txn_id_gen.peek_next()))
         }
     }
 
@@ -338,30 +411,22 @@ impl PersistentEngine {
         match level {
             IsolationLevel::ReadCommitted => {
                 // Fresh snapshot on every read: observe the latest committed
-                // state. Other active transactions stay in the active list so
-                // their uncommitted changes remain invisible; the transaction
-                // itself is excluded so its own writes stay visible. The
-                // horizon is the current generator value: transactions that
-                // begin after this read are invisible to it.
-                let active: Vec<TransactionId> = self
-                    .active_txns
-                    .active_ids()
-                    .into_iter()
-                    .filter(|id| *id != txn_id)
-                    .collect();
+                // state. The snapshot is a Copy value — no active-set copy.
+                // Liveness is resolved against the pool at visibility time:
+                // other live transactions' uncommitted changes stay invisible
+                // (the transaction itself is excluded so its own writes stay
+                // visible). The horizon is the current generator value:
+                // transactions that begin after this read are invisible to it.
                 Ok(
-                    crate::mvcc::TransactionSnapshot::new(txn_id, self.wal.current_lsn(), active)
+                    crate::mvcc::TransactionSnapshot::new(txn_id, self.wal.current_lsn())
                         .with_horizon(self.txn_id_gen.peek_next()),
                 )
             }
             IsolationLevel::RepeatableRead | IsolationLevel::Serializable => {
                 // Fixed begin snapshot: repeatable reads for the whole transaction.
-                self.active_txns
-                    .get_snapshot(txn_id)
-                    .cloned()
-                    .ok_or_else(|| {
-                        StorageError::Other(format!("Transaction {} not found", txn_id.value()))
-                    })
+                self.txn_pool.get_snapshot(txn_id).ok_or_else(|| {
+                    StorageError::Other(format!("Transaction {} not found", txn_id.value()))
+                })
             }
         }
     }
@@ -411,7 +476,7 @@ impl StorageEngine for PersistentEngine {
     ) -> Result<(), StorageError> {
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
             .create_relation(name, relation_type)
     }
 
@@ -432,7 +497,7 @@ impl StorageEngine for PersistentEngine {
     fn get_relation_metadata(&self, name: &str) -> Result<RelationMetadata, StorageError> {
         self.storage_manager
             .read()
-            .unwrap()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
             .get_relation_metadata(name)
     }
 
@@ -451,11 +516,10 @@ impl StorageEngine for PersistentEngine {
             self.load_relation_for_txn(name, txn_id)
         } else {
             let snapshot = self.get_snapshot_for_current_context()?;
-            self.storage_manager.write().unwrap().scan_relation(
-                name,
-                &snapshot,
-                &self.committed_txns,
-            )
+            self.storage_manager
+                .write()
+                .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+                .scan_relation(name, &snapshot, &self.txn_pool, &self.committed_txns)
         }
     }
 
@@ -464,7 +528,7 @@ impl StorageEngine for PersistentEngine {
 
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
             .store_relation(name, relation, txn_id)?;
 
         self.note_write(txn_id, name)?;
@@ -509,11 +573,28 @@ impl StorageEngine for PersistentEngine {
         // begin after this snapshot are invisible to it.
         let horizon = self.txn_id_gen.peek_next();
 
-        self.wal
-            .log(WalRecord::Begin { txn_id })
-            .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
-
-        let _snapshot = self.active_txns.begin(txn_id, current_lsn, horizon);
+        // Claim the pool slot BEFORE writing the WAL record. If the pool is
+        // exhausted we fail typed without leaving a logged begin behind; if
+        // the WAL write then fails we release the slot again so no live
+        // transaction is stranded.
+        self.txn_pool
+            .begin(txn_id, current_lsn, horizon)
+            .map_err(StorageError::from)?;
+        if let Err(e) = self.wal.log(WalRecord::Begin { txn_id }) {
+            let _ = self.txn_pool.abort(txn_id);
+            return Err(StorageError::Other(format!("WAL error: {e}")));
+        }
+        // The Begin record must be durable before the transaction writes
+        // anything: recovery seeds the transaction-ID generator from the
+        // WAL, and a Begin lost to the log buffer would let a later engine
+        // reopen reuse this ID — resurrecting this transaction's
+        // uncommitted versions as the new transaction's own writes. A
+        // flush failure releases the pool slot like a log failure does, so
+        // no live transaction is stranded.
+        if let Err(e) = self.wal.flush() {
+            let _ = self.txn_pool.abort(txn_id);
+            return Err(StorageError::Other(format!("WAL flush error: {e}")));
+        }
 
         let mut tracker = self
             .txn_tracker
@@ -555,14 +636,13 @@ impl StorageEngine for PersistentEngine {
             }
         }
 
-        if let Err(error) = self.commit_txn_durable(snapshot) {
-            // Contract (`StorageEngine::commit_transaction`): a failed commit
-            // never strands a transaction. Abort best-effort so the engine is
-            // left without an active transaction; if the abort itself fails
-            // there is nothing further that can be done.
-            let _ = self.abort_txn(txn_id);
-            return Err(error);
-        }
+        // `commit_txn_durable` ends the transaction itself on every failure
+        // path — aborted before the commit point, or committed when the
+        // commit-point flush left the outcome uncertain — so the trait
+        // contract ("on Err the transaction is no longer active") holds
+        // without a second abort here (which would only append a duplicate
+        // Abort record).
+        self.commit_txn_durable(snapshot)?;
         Ok(())
     }
 
@@ -630,15 +710,31 @@ impl PersistentEngine {
     /// isolation bookkeeping, and clears the ambient context when it was
     /// this transaction.
     ///
+    /// The Abort record is logged BEFORE any in-memory state mutates: a
+    /// WAL failure then leaves the transaction live and retryable instead
+    /// of half-aborted. (If the Abort record itself never reaches the
+    /// WAL, recovery still treats the transaction as aborted — a Begin
+    /// with no Commit replays as aborted — so the lost record resolves in
+    /// the safe direction.)
+    ///
     /// Aborted tuples stay in the heap but are invisible: their creating
     /// transaction never joins `committed_txns`, so MVCC visibility rules
     /// hide them from every other transaction (they are reclaimed by GC).
     fn abort_txn(&mut self, txn_id: TransactionId) -> Result<(), StorageError> {
         self.wal
             .log(WalRecord::Abort { txn_id })
-            .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
+            .map_err(|e| StorageError::Other(format!("WAL error: {e}")))?;
 
-        self.active_txns.abort(txn_id);
+        // Recycle the transaction's pool slot. A history-ring exhaustion
+        // fails typed while the transaction is still live and retryable.
+        self.txn_pool.abort(txn_id).map_err(StorageError::from)?;
+
+        // Recycle the transaction's version records (infallible): its
+        // versions stay on disk but invisible, for GC to reclaim.
+        self.storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .release_versions_for_txn(txn_id);
 
         self.txn_tracker
             .write()
@@ -656,26 +752,115 @@ impl PersistentEngine {
     /// Makes `snapshot`'s transaction durable: WAL commit record, heap flush,
     /// and MVCC bookkeeping.
     ///
-    /// On error the caller is responsible for ending the transaction (see
-    /// `commit_transaction`).
+    /// Ordering contract: the WAL commit record is the single commit
+    /// point. No in-memory state claims the transaction is committed
+    /// before that record is durable, so a failed commit can never leave
+    /// the pool disagreeing with the WAL about whether the transaction
+    /// committed (the old order mutated the pool first, and a WAL failure
+    /// then stranded a "committed" history record behind a fallback abort
+    /// that could not retract it).
+    ///
+    /// On every failure path the transaction is already ended when this
+    /// returns `Err` — aborted before the commit point, or ended as
+    /// committed when the commit-point flush left the outcome uncertain —
+    /// satisfying the [`StorageEngine::commit_transaction`] contract
+    /// without the caller needing a second abort.
     fn commit_txn_durable(&mut self, snapshot: PersistentSnapshot) -> Result<(), StorageError> {
-        self.wal
-            .log(WalRecord::Commit {
-                txn_id: snapshot.txn_id,
-            })
-            .map_err(|e| StorageError::Other(format!("WAL error: {}", e)))?;
+        // 1. Pre-flight the history ring: `can_finish` dry-runs the
+        //    post-commit pool finish. If the ring is exhausted the commit
+        //    fails here — typed, transaction still live, nothing durable —
+        //    instead of stranding a durable commit the pool cannot record.
+        //    (Sound: the engine drives the pool single-threaded, so no
+        //    finish can intervene before the real one in `complete_commit`.)
+        if let Err(error) = self.txn_pool.can_finish(snapshot.txn_id) {
+            let _ = self.abort_txn(snapshot.txn_id);
+            return Err(StorageError::from(error));
+        }
 
-        self.wal
-            .flush()
-            .map_err(|e| StorageError::Other(format!("WAL flush error: {}", e)))?;
+        // 2. Make all write records durable BEFORE heap pages go out
+        //    (WAL-before-data): a crash must never leave heap pages whose
+        //    log records are still in the buffer.
+        if let Err(error) = self.wal.flush() {
+            let _ = self.abort_txn(snapshot.txn_id);
+            return Err(StorageError::Other(format!("WAL flush error: {error}")));
+        }
 
-        self.storage_manager
+        // 3. Flush heap pages while the commit is still undecided: a
+        //    failure here aborts the transaction with nothing durable.
+        //    (The lock guard drops at the end of this statement so the
+        //    abort below can borrow `&mut self`.)
+        let heap_flush = self
+            .storage_manager
             .write()
             .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
-            .flush_heap_files()?;
+            .flush_heap_files();
+        if let Err(error) = heap_flush {
+            let _ = self.abort_txn(snapshot.txn_id);
+            return Err(error);
+        }
+
+        // The commit LSN is the pre-append WAL position — no snapshot can
+        // be taken between here and the WAL append (`&mut self`), so every
+        // later snapshot still orders after the commit.
+        let commit_lsn = self.wal.current_lsn();
+
+        // 4. Log the commit record. A failure here aborts with no commit
+        //    record in the WAL.
+        if let Err(error) = self.wal.log(WalRecord::Commit {
+            txn_id: snapshot.txn_id,
+        }) {
+            let _ = self.abort_txn(snapshot.txn_id);
+            return Err(StorageError::Other(format!("WAL error: {error}")));
+        }
+
+        // 5. THE COMMIT POINT: the commit record becomes durable. Past this
+        //    line the transaction is committed — there is no path back to
+        //    "live" or "aborted".
+        if let Err(error) = self.wal.flush() {
+            // The record may or may not have reached stable storage: the
+            // outcome is unknowable, and the WAL is the source of truth.
+            // The engine ends the transaction as COMMITTED — ending it as
+            // aborted here could resurrect it as committed on recovery
+            // (a Commit record replays as committed) while memory says
+            // aborted. The error names the uncertainty: the caller must
+            // reconcile, not blindly retry.
+            self.complete_commit(snapshot, commit_lsn)?;
+            return Err(StorageError::Other(format!(
+                "WAL commit flush failed ({error}); commit outcome uncertain — \
+                 transaction ended as committed, do not blindly retry"
+            )));
+        }
+
+        // 6. Post-commit bookkeeping. Infallible by construction: the
+        //    history ring was pre-flighted, the version release cannot
+        //    fail, and the rest is in-memory (lock poisoning is a
+        //    bug-state, reported as `Other` like everywhere else).
+        self.complete_commit(snapshot, commit_lsn)
+    }
+
+    /// Ends `snapshot`'s transaction as committed in memory: pool history,
+    /// committed set, isolation bookkeeping, ambient context, and version
+    /// claim recycling.
+    ///
+    /// May only be called at or after the WAL commit point — the commit
+    /// record is durable, or its durability is uncertain and the engine
+    /// has chosen presumed-commit. There is no abort path back from here.
+    /// The history-ring push cannot fail: the caller pre-flighted it with
+    /// [`TxnPool::can_finish`].
+    fn complete_commit(
+        &mut self,
+        snapshot: PersistentSnapshot,
+        commit_lsn: crate::wal::Lsn,
+    ) -> Result<(), StorageError> {
+        self.txn_pool
+            .commit(snapshot.txn_id, commit_lsn)
+            .map_err(|e| {
+                StorageError::Other(format!(
+                    "internal error: pre-flighted transaction-pool commit failed: {e}"
+                ))
+            })?;
 
         self.committed_txns.insert(snapshot.txn_id);
-        self.active_txns.commit(snapshot.txn_id);
 
         // Bookkeeping: the committed transaction becomes a committed writer
         // of everything it wrote, and joins the commit order used to detect
@@ -700,6 +885,13 @@ impl PersistentEngine {
         if self.current_txn == Some(snapshot.txn_id) {
             self.current_txn = None;
         }
+
+        // The transaction's versions are now committed: recycle its version
+        // records. Infallible, so it cannot fail a durable commit.
+        self.storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .release_versions_for_txn(snapshot.txn_id);
 
         Ok(())
     }
@@ -738,7 +930,7 @@ impl PersistentEngine {
                 "a transaction is already active in this context".to_string(),
             ));
         }
-        if self.active_txns.get_snapshot(snapshot.txn_id).is_none() {
+        if self.txn_pool.get_snapshot(snapshot.txn_id).is_none() {
             return Err(StorageError::Other(format!(
                 "transaction {} is no longer active",
                 snapshot.txn_id.value()
@@ -791,8 +983,8 @@ impl PersistentEngine {
 
         self.storage_manager
             .write()
-            .unwrap()
-            .scan_relation(name, &snapshot, &self.committed_txns)
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .scan_relation(name, &snapshot, &self.txn_pool, &self.committed_txns)
     }
 
     #[allow(dead_code)]
@@ -816,7 +1008,7 @@ impl PersistentEngine {
 
         self.storage_manager
             .write()
-            .unwrap()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
             .insert_tuple(name, tuple, txn_id)?;
 
         self.note_write(txn_id, name)?;

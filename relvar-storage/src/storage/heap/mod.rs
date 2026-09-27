@@ -22,6 +22,7 @@
 
 use super::page::{PAGE_SIZE, Page, PageError, PageId};
 use crate::device::FileBlockDevice;
+use crate::mvcc::{MvccError, VersionPool};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
 // Slotted-page types, wire formats, and codecs live in the no_std storage
@@ -30,14 +31,16 @@ use relvar_core::values::{Relation, Tuple};
 use relvar_storage_core::device::BlockDevice;
 use relvar_storage_core::slotted::{
     SlotEntry, SlottedError, SlottedPage, TupleId, USABLE_PAGE_SIZE_V1, USABLE_PAGE_SIZE_V2,
-    V2_HEADER_SIZE, VERSIONED_PAGE_MAGIC, VersionedSlotEntry, VersionedSlottedPage,
-    decode_slotted_page, decode_versioned_page, encode_versioned_page, is_versioned_page,
-    slot_bytes,
+    VERSIONED_PAGE_MAGIC, VersionedSlotEntry, decode_slotted_page, decode_versioned_page_into,
+    encode_versioned_header_into, is_versioned_page, slot_bytes,
 };
 // Re-exported for the page-layout tests (child modules import via `::*`);
 // unused in the non-test build.
 #[cfg(test)]
-use relvar_storage_core::slotted::{PAGE_FORMAT_VERSION, encode_slotted_page};
+use relvar_storage_core::slotted::{
+    PAGE_FORMAT_VERSION, VersionedSlottedPage, decode_versioned_page, encode_slotted_page,
+    encode_versioned_page,
+};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -57,9 +60,12 @@ fn serialize_compat<T: Serialize>(value: &T) -> Result<Vec<u8>, HeapError> {
 }
 
 /// Helper for calculating serialized size matching `serialize_compat`.
+///
+/// Uses `postcard::experimental::serialized_size`: no allocation, unlike serializing to a
+/// temporary vector.
 fn serialized_size_compat<T: Serialize>(value: &T) -> Result<u64, HeapError> {
-    postcard::to_allocvec(value)
-        .map(|v| v.len() as u64)
+    postcard::experimental::serialized_size(value)
+        .map(|v| v as u64)
         .map_err(|e| HeapError::Serialization(e.to_string()))
 }
 
@@ -102,6 +108,29 @@ pub enum HeapError {
     /// The tuple is too large to fit in a page.
     #[error("Tuple too large: {0} bytes")]
     TupleTooLarge(usize),
+
+    /// An MVCC pool error: version-pool or version-buffer exhaustion.
+    /// Exhaustion is typed and recoverable, never a panic.
+    #[error("MVCC pool error: {0}")]
+    Mvcc(#[from] MvccError),
+
+    /// An update's replacement insert failed and the compensating rollback
+    /// of the old version's `xmax` marking failed as well.
+    ///
+    /// The old version remains marked deleted by this transaction. The
+    /// transaction is poisoned: the caller MUST abort it — committing
+    /// would hide the old version without its replacement, silently
+    /// losing the tuple. Both failures are carried (neither is discarded)
+    /// so the abort path can report what happened.
+    #[error(
+        "update lost atomicity: insert failed ({insert_error}); rollback of the old version's deletion marking also failed ({rollback_error}); the transaction must abort, never commit"
+    )]
+    UpdateRollbackFailed {
+        /// The replacement-insert failure that triggered the rollback.
+        insert_error: String,
+        /// The rollback failure that left the old version marked.
+        rollback_error: String,
+    },
 }
 
 /// Stores tuples in an unordered collection of slotted pages.
@@ -391,38 +420,10 @@ impl<D: BlockDevice> HeapFile<D> {
     /// Helper to repack versioned slots and calculate offsets.
     /// Computes the required header size (V2_HEADER_SIZE + slot directory length).
     /// Returns an error if the page would overflow.
-    fn repack_and_verify_space(
-        versioned_page: &mut VersionedSlottedPage,
-        tuples: &[Vec<u8>],
-        usable_size: usize,
-    ) -> Result<usize, HeapError> {
-        // 1. Repack slots. Since tuples grow downward from `usable_size` (which is constant),
-        //    the assigned offsets are final and deterministic on the first pass.
-        Self::repack_versioned_slots(&mut versioned_page.slots, tuples, usable_size)?;
-
-        // 2. Serialize the updated slot directory. Now that the offsets are the large final values,
-        //    the varint encoding will take its true maximum size.
-        let slot_dir = serialize_compat(&versioned_page)?;
-        let header_size = V2_HEADER_SIZE.checked_add(slot_dir.len()).ok_or_else(|| {
-            HeapError::Serialization("Header size + slot directory length overflow".to_string())
-        })?;
-
-        // 3. Verify no overlap between the downward-growing tuples and the upward-growing header.
-        for (idx, slot_entry) in versioned_page.slots.iter().enumerate() {
-            if let Some(entry) = slot_entry {
-                let offset = entry.offset as usize;
-                if idx < tuples.len() && !tuples[idx].is_empty() && offset < header_size {
-                    return Err(HeapError::PageFull);
-                }
-            }
-        }
-
-        Ok(header_size)
-    }
-
     /// Helper to repack versioned slots and calculate offsets.
     /// Iterates backward from the end of the available space.
     /// Assumes slots are already populated (Some) for valid tuples.
+    #[cfg(test)]
     fn repack_versioned_slots(
         slots: &mut [Option<VersionedSlotEntry>],
         tuples: &[Vec<u8>],
@@ -504,27 +505,6 @@ impl<D: BlockDevice> HeapFile<D> {
         &self,
         page: &Page,
         slots: &[Option<SlotEntry>],
-    ) -> Result<Vec<Vec<u8>>, HeapError> {
-        let mut existing_tuples: Vec<Vec<u8>> = Vec::with_capacity(slots.len());
-        // Maintain alignment with slots: push empty Vec for None slots
-        for slot_option in slots.iter() {
-            if let Some(slot_entry) = slot_option {
-                let raw_data =
-                    self.extract_raw_tuple_data(page, slot_entry.offset, slot_entry.length)?;
-                existing_tuples.push(raw_data);
-            } else {
-                existing_tuples.push(Vec::new());
-            }
-        }
-        Ok(existing_tuples)
-    }
-
-    /// Helper to extract all tuples from a page based on versioned slot entries.
-    /// This abstracts the common logic used in insert, update, delete, and GC operations.
-    fn extract_all_versioned_tuples(
-        &self,
-        page: &Page,
-        slots: &[Option<VersionedSlotEntry>],
     ) -> Result<Vec<Vec<u8>>, HeapError> {
         let mut existing_tuples: Vec<Vec<u8>> = Vec::with_capacity(slots.len());
         // Maintain alignment with slots: push empty Vec for None slots
@@ -702,10 +682,10 @@ impl<D: BlockDevice> HeapFile<D> {
             return Err(HeapError::TupleNotFound);
         }
 
-        let versioned_page = decode_versioned_page(page.data())?;
+        let mut slots = Vec::new();
+        decode_versioned_page_into(page.data(), &mut slots)?;
 
-        let slot_entry = versioned_page
-            .slots
+        let slot_entry = slots
             .get(tuple_id.slot as usize)
             .and_then(|s| s.as_ref())
             .ok_or(HeapError::TupleNotFound)?;
@@ -779,11 +759,11 @@ impl<D: BlockDevice> HeapFile<D> {
 
             if is_versioned_page(page.data()) {
                 // Versioned page format (MVCC)
-                let versioned_page = decode_versioned_page(page.data())?;
-                results.extend(self.extract_tuples_from_versioned_slots(
-                    &page,
-                    versioned_page.slots.iter().flatten(),
-                )?);
+                let mut slots = Vec::new();
+                decode_versioned_page_into(page.data(), &mut slots)?;
+                results.extend(
+                    self.extract_tuples_from_versioned_slots(&page, slots.iter().flatten())?,
+                );
             } else {
                 // Old slotted page format (non-MVCC)
                 let slotted_page = decode_slotted_page(page.data())?;
@@ -874,52 +854,118 @@ impl<D: BlockDevice> HeapFile<D> {
     /// # Errors
     /// Returns [`HeapError::Serialization`] if tuple cannot be serialized.
     /// Returns [`HeapError::Page`] if page I/O error occurs.
+    /// Inserts a tuple as a new MVCC version using the caller's version pool.
+    ///
+    /// The write path performs no per-version allocation after the pool is
+    /// constructed: one version record is claimed from the pool, and page
+    /// work reuses a pooled [`PageWorkingSet`](crate::mvcc::PageWorkingSet)
+    /// (slot directory, page image, serialization scratch). The tuple is
+    /// serialized directly into the page image; existing tuple bytes are
+    /// copied straight from the source page.
+    ///
+    /// The version record is claimed *before* any page is mutated, so pool
+    /// exhaustion fails typed ([`HeapError::Mvcc`]) while the write is still
+    /// atomic (nothing mutated). The record is released when the
+    /// transaction commits or aborts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::TupleTooLarge`] if the tuple can never fit.
+    /// Returns [`HeapError::Mvcc`] with
+    /// [`MvccError::VersionPoolExhausted`](crate::mvcc::MvccError::VersionPoolExhausted)
+    /// when the version pool is full, or
+    /// [`MvccError::VersionBuffersExhausted`](crate::mvcc::MvccError::VersionBuffersExhausted)
+    /// when no page working buffer is free. Never panics.
     pub(crate) fn insert_tuple_versioned(
         &mut self,
         tuple: &Tuple,
         txn_id: crate::wal::TransactionId,
+        version_pool: &mut VersionPool,
     ) -> Result<TupleId, HeapError> {
-        // Serialize the tuple
-        let tuple_data = serialize_compat(tuple)?;
+        // Pure validation before the claim: the serialized length and the
+        // size limit depend only on the tuple, so failures here mutate
+        // nothing and need no rollback.
+        let tuple_len = postcard::experimental::serialized_size(tuple)
+            .map_err(|e| HeapError::Serialization(e.to_string()))?;
 
-        // Check if tuple is too large to ever fit
-        // New inserts have no previous version (prev_version = None)
-        self.check_versioned_tuple_size_limit(tuple_data.len(), false)?;
+        // Check if tuple is too large to ever fit (allocation-free).
+        // New inserts have no previous version (prev_version = None).
+        Self::check_versioned_tuple_size_limit(tuple_len, false)?;
 
-        // Find a page with enough space, or create a new one
+        // Claim the version record BEFORE any page mutation: exhaustion then
+        // fails typed while the write is still atomic. The handle rolls the
+        // claim back if the fallible work below fails.
+        let handle: crate::mvcc::VersionHandle = version_pool.claim(txn_id)?;
+        let result = self.insert_tuple_versioned_claimed(tuple, tuple_len, txn_id, version_pool);
+        if result.is_err() {
+            version_pool.release(handle);
+        }
+        result
+    }
+
+    /// Insert body; runs with a claimed version record.
+    ///
+    /// See [`insert_tuple_versioned`](Self::insert_tuple_versioned) for the
+    /// claim/rollback protocol.
+    fn insert_tuple_versioned_claimed(
+        &mut self,
+        tuple: &Tuple,
+        tuple_len: usize,
+        txn_id: crate::wal::TransactionId,
+        version_pool: &mut VersionPool,
+    ) -> Result<TupleId, HeapError> {
+        // Check out one page working buffer for the whole insertion; the
+        // guard returns it on drop, so PageFull retries reuse it.
+        let mut buffer = version_pool.acquire_buffer()?;
+
+        // Find a page with enough space, or create a new one.
+        // The tuple is serialized directly into the page image inside.
         self.find_page_for_insertion(|heap, page_id| {
-            heap.try_insert_into_page_versioned(page_id, &tuple_data, txn_id, None)
-                .map(|slot| TupleId { page_id, slot })
+            heap.try_insert_into_page_versioned(
+                page_id,
+                tuple,
+                tuple_len,
+                txn_id,
+                None,
+                &mut buffer,
+            )
+            .map(|slot| TupleId { page_id, slot })
         })
     }
 
-    /// Check if a versioned tuple can theoretically fit in an empty page
+    /// Check if a versioned tuple can theoretically fit in an empty page.
+    ///
+    /// Allocation-free: instead of building a dummy page with a one-element
+    /// slot vector, the probe serializes `(magic, slot_count, [entry])`.
+    /// postcard is not self-describing — a struct encodes as the
+    /// concatenation of its fields — so this measures exactly what the
+    /// dummy page would (pinned by
+    /// `test_versioned_size_probe_matches_dummy_page`).
     fn check_versioned_tuple_size_limit(
-        &self,
         tuple_data_len: usize,
         is_update: bool,
     ) -> Result<(), HeapError> {
-        // Create a dummy versioned page with one slot
-        let dummy_page = VersionedSlottedPage {
-            magic: VERSIONED_PAGE_MAGIC,
-            slot_count: 1,
-            slots: vec![Some(VersionedSlotEntry {
-                offset: 0,
-                length: tuple_data_len as u32,
-                xmin: crate::wal::TransactionId::new(0),
-                xmax: None,
-                prev_version: if is_update {
-                    Some(TupleId {
-                        page_id: 0,
-                        slot: 0,
-                    })
-                } else {
-                    None
-                },
-            })],
+        let entry = VersionedSlotEntry {
+            offset: 0,
+            length: tuple_data_len as u32,
+            xmin: crate::wal::TransactionId::new(0),
+            xmax: None,
+            prev_version: if is_update {
+                Some(TupleId {
+                    page_id: 0,
+                    slot: 0,
+                })
+            } else {
+                None
+            },
         };
-
-        let header_size = serialized_size_compat(&dummy_page)? as usize;
+        let probe = [Some(entry)];
+        let header_size = postcard::experimental::serialized_size(&(
+            VERSIONED_PAGE_MAGIC,
+            1u32,
+            probe.as_slice(),
+        ))
+        .map_err(|e| HeapError::Serialization(e.to_string()))? as usize;
 
         const USABLE_PAGE_SIZE: usize = PAGE_SIZE - 8;
         const FORMAT_HEADER_SIZE: usize = 5; // 1 byte version + 4 bytes length
@@ -937,82 +983,172 @@ impl<D: BlockDevice> HeapFile<D> {
         Ok(())
     }
 
-    /// Try to insert tuple data into a specific page with version metadata
+    /// Try to insert a tuple into a specific versioned page using a pooled
+    /// page working buffer instead of allocating.
+    ///
+    /// The caller must hold a claimed version record (see
+    /// [`insert_tuple_versioned`](Self::insert_tuple_versioned)) and pass a
+    /// checked-out buffer. The tuple is serialized directly into the page
+    /// image; existing tuple bytes are copied straight from the source page.
+    ///
+    /// Returns [`HeapError::PageFull`] (without mutating the source page)
+    /// when the tuple does not fit, so the caller can retry on another page.
     fn try_insert_into_page_versioned(
         &mut self,
         page_id: PageId,
-        tuple_data: &[u8],
+        tuple: &Tuple,
+        tuple_len: usize,
         txn_id: crate::wal::TransactionId,
         prev_version: Option<TupleId>,
+        buffer: &mut crate::mvcc::PageWorkingSet,
     ) -> Result<u32, HeapError> {
-        // Read the page (or create empty if doesn't exist)
+        // Read the page (or start from an empty directory if it doesn't exist yet).
         let page = self.load_page(page_id)?;
 
-        // Read existing tuples from the page
-        let (mut versioned_page, mut existing_tuples) = if page.is_empty() {
-            (
-                VersionedSlottedPage {
-                    magic: VERSIONED_PAGE_MAGIC,
-                    slot_count: 0,
-                    slots: Vec::new(),
-                },
-                Vec::new(),
-            )
+        // Decode only the slot directory into the pooled working set.
+        if page.is_empty() {
+            buffer.reset();
         } else {
-            let vp = decode_versioned_page(page.data())?;
-            let tuples = self.extract_all_versioned_tuples(&page, &vp.slots)?;
-            (vp, tuples)
-        };
-
-        let slot_number = Self::prepare_insert_versioned(
-            &mut versioned_page,
-            &mut existing_tuples,
-            tuple_data,
-            txn_id,
-            prev_version,
-        )?;
-
-        // Serialize the updated page with all tuples
-        let page_data = encode_versioned_page(&versioned_page, &existing_tuples)?;
-
-        // Write the page
-        let updated_page = Page::from_data(page_id, page_data)?;
-        self.store_page(&updated_page)?;
-
-        Ok(slot_number)
-    }
-
-    fn prepare_insert_versioned(
-        versioned_page: &mut VersionedSlottedPage,
-        existing_tuples: &mut Vec<Vec<u8>>,
-        tuple_data: &[u8],
-        txn_id: crate::wal::TransactionId,
-        prev_version: Option<TupleId>,
-    ) -> Result<u32, HeapError> {
-        // Find free slot or add new one
-        // NOTE: We do this BEFORE space calculation so we know the final slot count
-        let slot_number =
-            Self::find_or_allocate_slot(&mut versioned_page.slots, &mut versioned_page.slot_count);
-
-        // Add new tuple to the list (overwrite if reusing slot, append if new)
-        if (slot_number as usize) < existing_tuples.len() {
-            existing_tuples[slot_number as usize] = tuple_data.to_vec();
-        } else {
-            existing_tuples.push(tuple_data.to_vec());
+            let header = decode_versioned_page_into(page.data(), &mut buffer.page.slots)?;
+            buffer.page.magic = header.magic;
+            buffer.page.slot_count = header.slot_count;
         }
 
-        // Initialize the new slot
-        versioned_page.slots[slot_number as usize] = Some(VersionedSlotEntry {
+        // Allocate a slot for the new version (reuses a freed slot when one
+        // exists). Done BEFORE space calculation so the slot directory has
+        // its final size.
+        let slot_number =
+            Self::find_or_allocate_slot(&mut buffer.page.slots, &mut buffer.page.slot_count);
+
+        // Initialize the new version's entry (offset assigned by the repack
+        // inside `emit_versioned_page`).
+        buffer.page.slots[slot_number as usize] = Some(VersionedSlotEntry {
             offset: 0,
-            length: tuple_data.len() as u32,
+            length: tuple_len as u32,
             xmin: txn_id,
             xmax: None,
             prev_version,
         });
 
-        Self::repack_and_verify_space(versioned_page, existing_tuples, USABLE_PAGE_SIZE_V2)?;
+        // Repack, verify space, and emit the page image into the pooled
+        // buffer: existing bytes are copied from the source page, the new
+        // tuple is serialized in place.
+        Self::emit_versioned_page(
+            buffer,
+            page.data(),
+            Some((tuple, tuple_len, slot_number as usize)),
+        )?;
+
+        // Write the pooled image straight to the device.
+        self.store_page_bytes(page_id, &buffer.page_image)?;
 
         Ok(slot_number)
+    }
+
+    /// Rebuilds a versioned page image in the pooled working set without
+    /// allocating.
+    ///
+    /// `source` is the previous page payload; live tuple bytes are copied
+    /// from it using their current slot offsets. `new_tuple`, when present,
+    /// is `(tuple, serialized_len, slot_index)`: the tuple is serialized
+    /// directly into its final image position instead of a temporary vector.
+    ///
+    /// Steps (mirroring the previous allocating implementation):
+    ///
+    /// 1. Repack: assign final offsets from the end of usable space,
+    ///    placing tuple bytes in the same pass (old offsets are read before
+    ///    being overwritten, so no auxiliary offset table is needed).
+    /// 2. Frame the v2 header + slot directory into the image head (needs
+    ///    final offsets for true varint sizes; the tuple region is untouched).
+    /// 3. Verify no tuple overlaps the header; else [`HeapError::PageFull`].
+    ///
+    /// On `PageFull` the working set is left dirty but the source page is
+    /// untouched, so the caller can retry on another page.
+    fn emit_versioned_page(
+        buffer: &mut crate::mvcc::PageWorkingSet,
+        source: &[u8],
+        new_tuple: Option<(&Tuple, usize, usize)>,
+    ) -> Result<(), HeapError> {
+        // Size the image first: tuples are placed at absolute offsets below.
+        // Capacity was reserved at pool construction, so this never allocates.
+        buffer.page_image.resize(USABLE_PAGE_SIZE_V2, 0);
+
+        // 1. Repack + place bytes in one reverse pass.
+        let mut current_offset = USABLE_PAGE_SIZE_V2;
+        // Disjoint field borrows: slots are read/mutated while the image is written.
+        let (slots, image) = (&mut buffer.page.slots, &mut buffer.page_image);
+        for (index, slot_option) in slots.iter_mut().enumerate().rev() {
+            let Some(slot) = slot_option else {
+                continue;
+            };
+            let length = slot.length as usize;
+            let old_offset = slot.offset;
+            current_offset = current_offset
+                .checked_sub(length)
+                .ok_or(HeapError::PageFull)?;
+            let offset = current_offset;
+            slot.offset = offset as u32;
+
+            let dest = &mut image[offset..offset + length];
+            // The new tuple is serialized directly into its final image
+            // position; every other version's bytes are copied from the
+            // source page at their old offsets.
+            match new_tuple {
+                Some((tuple, expected_len, slot_index)) if slot_index == index => {
+                    debug_assert_eq!(expected_len, length);
+                    let written = postcard::to_slice(tuple, dest)
+                        .map_err(|e| HeapError::Serialization(e.to_string()))?;
+                    if written.len() != length {
+                        return Err(HeapError::Serialization(format!(
+                            "tuple serialized size changed during insert: expected {length}, wrote {}",
+                            written.len()
+                        )));
+                    }
+                }
+                _ => {
+                    let src = slot_bytes(source, old_offset, length as u32)?;
+                    dest.copy_from_slice(src);
+                }
+            }
+        }
+
+        // 2. Frame the v2 header + slot directory into the image head.
+        let header_size = {
+            let (page, image, scratch) = (
+                &buffer.page,
+                &mut buffer.page_image,
+                &mut buffer.slot_scratch,
+            );
+            encode_versioned_header_into(page, scratch, image)?
+        };
+
+        // 3. Verify no tuple overlaps the header.
+        for slot_option in buffer.page.slots.iter().flatten() {
+            if (slot_option.offset as usize) < header_size {
+                return Err(HeapError::PageFull);
+            }
+        }
+        Ok(())
+    }
+
+    /// Writes raw page payload bytes through the device with the standard
+    /// page framing, without allocating a [`Page`].
+    ///
+    /// Mirrors [`Page::to_bytes`](super::page::Page::to_bytes): an 8-byte
+    /// little-endian length prefix, the payload, then zero padding to
+    /// [`PAGE_SIZE`].
+    fn store_page_bytes(&mut self, page_id: PageId, data: &[u8]) -> Result<(), HeapError> {
+        if data.len() > PAGE_SIZE - 8 {
+            return Err(HeapError::Page(PageError::PageTooLarge));
+        }
+        let mut buffer = [0u8; PAGE_SIZE];
+        buffer[..8].copy_from_slice(&(data.len() as u64).to_le_bytes());
+        buffer[8..8 + data.len()].copy_from_slice(data);
+        self.device
+            .write_page(page_id, &buffer)
+            .map_err(device_error)?;
+        self.device.flush().map_err(device_error)?;
+        Ok(())
     }
 
     /// Extracts a tuple from a page at the given offset and length.
@@ -1027,6 +1163,7 @@ impl<D: BlockDevice> HeapFile<D> {
     }
 
     /// Extracts raw tuple data from a page at the given offset and length.
+    #[cfg(test)]
     fn extract_raw_tuple_data(
         &self,
         page: &Page,
@@ -1055,6 +1192,12 @@ impl<D: BlockDevice> HeapFile<D> {
     /// Returns [`HeapError::TupleNotFound`] if old_tuple_id doesn't exist.
     /// Returns [`HeapError::Serialization`] if tuple cannot be serialized.
     /// Returns [`HeapError::Page`] if page I/O error occurs.
+    /// Returns [`HeapError::UpdateRollbackFailed`] if the replacement
+    /// insert failed and the compensating rollback of the old version's
+    /// deletion marking failed as well. That error poisons the
+    /// transaction: the old version stays marked deleted by this
+    /// transaction, so the caller MUST abort — committing would hide the
+    /// old version without its replacement and silently lose the tuple.
     ///
     /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
     #[allow(dead_code)]
@@ -1063,18 +1206,63 @@ impl<D: BlockDevice> HeapFile<D> {
         old_tuple_id: TupleId,
         new_tuple: &Tuple,
         txn_id: crate::wal::TransactionId,
+        version_pool: &mut VersionPool,
     ) -> Result<TupleId, HeapError> {
-        // Step 1: Mark old version's xmax
+        // Pure validation before the claim: the serialized length and the
+        // size limit depend only on the new tuple, so failures here mutate
+        // nothing and need no rollback.
+        let tuple_len = postcard::experimental::serialized_size(new_tuple)
+            .map_err(|e| HeapError::Serialization(e.to_string()))?;
+        // Updates link to previous version (prev_version = Some(...)).
+        Self::check_versioned_tuple_size_limit(tuple_len, true)?;
+
+        // One version record for the whole update, claimed before any page
+        // is mutated so exhaustion stays atomic (nothing mutated). The
+        // handle rolls the claim back if the fallible work below fails.
+        let handle: crate::mvcc::VersionHandle = version_pool.claim(txn_id)?;
+        let result = self.update_tuple_versioned_claimed(
+            old_tuple_id,
+            new_tuple,
+            tuple_len,
+            txn_id,
+            version_pool,
+        );
+        if result.is_err() {
+            version_pool.release(handle);
+        }
+        result
+    }
+
+    /// Update body; runs with a claimed version record.
+    ///
+    /// Validation that needs no mutation (page decode, old-slot lookup)
+    /// happens before the first page write, so validation failures stay
+    /// atomic; see [`update_tuple_versioned`](Self::update_tuple_versioned)
+    /// for the claim/rollback protocol.
+    fn update_tuple_versioned_claimed(
+        &mut self,
+        old_tuple_id: TupleId,
+        new_tuple: &Tuple,
+        tuple_len: usize,
+        txn_id: crate::wal::TransactionId,
+        version_pool: &mut VersionPool,
+    ) -> Result<TupleId, HeapError> {
+        let mut buffer = version_pool.acquire_buffer()?;
+
+        // Step 1: Mark old version's xmax on its page.
         let page = self.load_page(old_tuple_id.page_id)?;
 
         if page.is_empty() {
             return Err(HeapError::TupleNotFound);
         }
 
-        let mut versioned_page = decode_versioned_page(page.data())?;
+        let header = decode_versioned_page_into(page.data(), &mut buffer.page.slots)?;
+        buffer.page.magic = header.magic;
+        buffer.page.slot_count = header.slot_count;
 
         // Find the old slot
-        let old_slot = versioned_page
+        let old_slot = buffer
+            .page
             .slots
             .get_mut(old_tuple_id.slot as usize)
             .and_then(|s| s.as_mut())
@@ -1083,31 +1271,80 @@ impl<D: BlockDevice> HeapFile<D> {
         // Mark old version as deleted by this transaction
         old_slot.xmax = Some(txn_id);
 
-        // Extract all existing tuple data
-        let existing_tuples = self.extract_all_versioned_tuples(&page, &versioned_page.slots)?;
+        // Re-emit the page with the old version marked: all tuple bytes are
+        // copied from the source page, no new tuple, no allocation.
+        Self::emit_versioned_page(&mut buffer, page.data(), None)?;
+        self.store_page_bytes(old_tuple_id.page_id, &buffer.page_image)?;
 
-        // Serialize and write updated page with old version marked
-        let page_data = encode_versioned_page(&versioned_page, &existing_tuples)?;
-        let updated_page = Page::from_data(old_tuple_id.page_id, page_data)?;
-        self.store_page(&updated_page)?;
-
-        // Step 2: Insert new version
-        let new_tuple_data = serialize_compat(new_tuple)?;
-
-        // Check if new tuple is too large
-        // Updates link to previous version (prev_version = Some(...))
-        self.check_versioned_tuple_size_limit(new_tuple_data.len(), true)?;
-
-        // Find a page with space for new version
-        self.find_page_for_insertion(|heap, page_id| {
+        // Step 2: Insert new version (reuses the checked-out buffer).
+        let insert_result = self.find_page_for_insertion(|heap, page_id| {
             heap.try_insert_into_page_versioned(
                 page_id,
-                &new_tuple_data,
+                new_tuple,
+                tuple_len,
                 txn_id,
                 Some(old_tuple_id),
+                &mut buffer,
             )
             .map(|slot| TupleId { page_id, slot })
-        })
+        });
+
+        if insert_result.is_err() {
+            // The replacement failed after the old version was marked:
+            // undo the xmax marking so the failed update leaves the
+            // database unchanged. The restore rewrites the exact prior page
+            // image, so `PageFull` is impossible — but a device error can
+            // still strike (correlated with the insert's failure). If the
+            // rollback also fails, the old version stays marked deleted by
+            // this transaction and the transaction is poisoned: the caller
+            // MUST abort it, because committing would hide the old version
+            // without its replacement and silently lose the tuple. Both
+            // errors are reported; neither is discarded.
+            if let Err(insert_error) = insert_result {
+                if let Err(rollback_error) = self.clear_version_xmax(old_tuple_id, &mut buffer) {
+                    return Err(HeapError::UpdateRollbackFailed {
+                        insert_error: insert_error.to_string(),
+                        rollback_error: rollback_error.to_string(),
+                    });
+                }
+                return Err(insert_error);
+            }
+        }
+
+        insert_result
+    }
+
+    /// Clears `xmax` on a version slot, restoring the page image.
+    ///
+    /// Rolls back the old-version marking when an update's replacement
+    /// insert fails, keeping the failed update atomic: either both the
+    /// xmax marking and the new version land, or neither does. Only the
+    /// xmax varint shrinks, so the re-emit cannot fail with
+    /// [`HeapError::PageFull`].
+    fn clear_version_xmax(
+        &mut self,
+        tuple_id: TupleId,
+        buffer: &mut crate::mvcc::PageWorkingSet,
+    ) -> Result<(), HeapError> {
+        let page = self.load_page(tuple_id.page_id)?;
+        if page.is_empty() {
+            return Err(HeapError::TupleNotFound);
+        }
+        let header = decode_versioned_page_into(page.data(), &mut buffer.page.slots)?;
+        buffer.page.magic = header.magic;
+        buffer.page.slot_count = header.slot_count;
+        let slot = buffer
+            .page
+            .slots
+            .get_mut(tuple_id.slot as usize)
+            .and_then(|s| s.as_mut())
+            .ok_or(HeapError::TupleNotFound)?;
+        slot.xmax = None;
+        // Re-emit the page with the marking removed: all tuple bytes are
+        // copied from the source page, no new tuple, no allocation.
+        Self::emit_versioned_page(buffer, page.data(), None)?;
+        self.store_page_bytes(tuple_id.page_id, &buffer.page_image)?;
+        Ok(())
     }
 
     /// Deletes a tuple by marking it with xmax (MVCC soft delete).
@@ -1120,11 +1357,13 @@ impl<D: BlockDevice> HeapFile<D> {
     /// # Arguments
     /// * `tuple_id` - TupleId of the tuple to delete
     /// * `txn_id` - Transaction performing the delete
+    /// * `version_pool` - Caller-owned version pool (one record claimed)
     ///
     /// # Errors
     /// Returns [`HeapError::TupleNotFound`] if tuple_id doesn't exist.
     /// Returns [`HeapError::Serialization`] if page cannot be serialized.
     /// Returns [`HeapError::Page`] if page I/O error occurs.
+    /// Returns [`HeapError::Mvcc`] on pool exhaustion (typed, never panics).
     ///
     /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
     #[allow(dead_code)]
@@ -1132,7 +1371,33 @@ impl<D: BlockDevice> HeapFile<D> {
         &mut self,
         tuple_id: TupleId,
         txn_id: crate::wal::TransactionId,
+        version_pool: &mut VersionPool,
     ) -> Result<(), HeapError> {
+        // One version record for the delete, claimed before any page is
+        // mutated so exhaustion stays atomic (nothing mutated). The handle
+        // rolls the claim back if the fallible work below fails.
+        let handle: crate::mvcc::VersionHandle = version_pool.claim(txn_id)?;
+        let result = self.delete_tuple_versioned_claimed(tuple_id, txn_id, version_pool);
+        if result.is_err() {
+            version_pool.release(handle);
+        }
+        result
+    }
+
+    /// Delete body; runs with a claimed version record.
+    ///
+    /// The tuple lookup happens before the first page write, so
+    /// validation failures stay atomic; see
+    /// [`delete_tuple_versioned`](Self::delete_tuple_versioned) for the
+    /// claim/rollback protocol.
+    fn delete_tuple_versioned_claimed(
+        &mut self,
+        tuple_id: TupleId,
+        txn_id: crate::wal::TransactionId,
+        version_pool: &mut VersionPool,
+    ) -> Result<(), HeapError> {
+        let mut buffer = version_pool.acquire_buffer()?;
+
         // Read the page containing the tuple
         let page = self.load_page(tuple_id.page_id)?;
 
@@ -1140,10 +1405,13 @@ impl<D: BlockDevice> HeapFile<D> {
             return Err(HeapError::TupleNotFound);
         }
 
-        let mut versioned_page = decode_versioned_page(page.data())?;
+        let header = decode_versioned_page_into(page.data(), &mut buffer.page.slots)?;
+        buffer.page.magic = header.magic;
+        buffer.page.slot_count = header.slot_count;
 
         // Find and mark the tuple
-        let slot = versioned_page
+        let slot = buffer
+            .page
             .slots
             .get_mut(tuple_id.slot as usize)
             .and_then(|s| s.as_mut())
@@ -1152,13 +1420,10 @@ impl<D: BlockDevice> HeapFile<D> {
         // Mark as deleted by this transaction
         slot.xmax = Some(txn_id);
 
-        // Extract all existing tuple data
-        let existing_tuples = self.extract_all_versioned_tuples(&page, &versioned_page.slots)?;
-
-        // Serialize and write updated page
-        let page_data = encode_versioned_page(&versioned_page, &existing_tuples)?;
-        let updated_page = Page::from_data(tuple_id.page_id, page_data)?;
-        self.store_page(&updated_page)?;
+        // Re-emit the page with the version marked: all tuple bytes are
+        // copied from the source page, no allocation.
+        Self::emit_versioned_page(&mut buffer, page.data(), None)?;
+        self.store_page_bytes(tuple_id.page_id, &buffer.page_image)?;
 
         Ok(())
     }
@@ -1183,9 +1448,15 @@ impl<D: BlockDevice> HeapFile<D> {
         &mut self,
         oldest_active_lsn: crate::wal::Lsn,
         committed: &std::collections::HashSet<crate::wal::TransactionId>,
+        txn_pool: &crate::mvcc::TxnPool,
+        version_pool: &mut VersionPool,
     ) -> Result<usize, HeapError> {
         let mut removed_count = 0;
         let mut page_id = 0;
+
+        // One page working buffer reused across all pages: GC performs no
+        // per-page allocation.
+        let mut buffer = version_pool.acquire_buffer()?;
 
         loop {
             let page = self.load_page(page_id)?;
@@ -1199,7 +1470,14 @@ impl<D: BlockDevice> HeapFile<D> {
                 continue;
             }
 
-            removed_count += self.gc_process_page(page_id, &page, oldest_active_lsn, committed)?;
+            removed_count += self.gc_process_page(
+                page_id,
+                &page,
+                oldest_active_lsn,
+                committed,
+                txn_pool,
+                &mut buffer,
+            )?;
 
             page_id += 1;
         }
@@ -1213,27 +1491,36 @@ impl<D: BlockDevice> HeapFile<D> {
         page: &Page,
         oldest_active_lsn: crate::wal::Lsn,
         committed: &std::collections::HashSet<crate::wal::TransactionId>,
+        txn_pool: &crate::mvcc::TxnPool,
+        buffer: &mut crate::mvcc::PageWorkingSet,
     ) -> Result<usize, HeapError> {
-        // Try to deserialize as versioned page
-        let mut versioned_page = match decode_versioned_page(page.data()) {
-            Ok(vp) => vp,
+        // Try to deserialize as versioned page, into the pooled working set.
+        let header = match decode_versioned_page_into(page.data(), &mut buffer.page.slots) {
+            Ok(header) => header,
             Err(_) => return Ok(0), // Not a versioned page or corrupted, skip
         };
+        buffer.page.magic = header.magic;
+        buffer.page.slot_count = header.slot_count;
 
-        // Extract existing tuple data
-        let mut existing_tuples = self.extract_all_versioned_tuples(page, &versioned_page.slots)?;
+        // Preserve the pre-pooling contract: a slot whose
+        // `[offset, offset+length)` lies outside the page is corruption, and
+        // GC must fail on it rather than silently keep it. `slot_bytes`
+        // performs the bounds check without copying any tuple data.
+        for slot in buffer.page.slots.iter().flatten() {
+            slot_bytes(page.data(), slot.offset, slot.length)?;
+        }
 
         let mut removed_count = 0;
         let mut page_modified = false;
 
         // Check each slot for dead versions
-        for (idx, slot_option) in versioned_page.slots.iter_mut().enumerate() {
+        for slot_option in buffer.page.slots.iter_mut() {
             if let Some(slot) = slot_option
-                && Self::is_dead_version(slot, oldest_active_lsn, committed)
+                && Self::is_dead_version(slot, oldest_active_lsn, committed, txn_pool)
             {
-                // This version is dead - remove it
+                // This version is dead - remove it (its bytes are dropped by
+                // the re-emit below, freeing the slot for reuse).
                 *slot_option = None;
-                existing_tuples[idx] = Vec::new();
                 removed_count += 1;
                 page_modified = true;
             }
@@ -1241,16 +1528,8 @@ impl<D: BlockDevice> HeapFile<D> {
 
         // Write page back if modified
         if page_modified {
-            // Repack slots
-            Self::repack_versioned_slots(
-                &mut versioned_page.slots,
-                &existing_tuples,
-                USABLE_PAGE_SIZE_V2,
-            )?;
-
-            let page_data = encode_versioned_page(&versioned_page, &existing_tuples)?;
-            let updated_page = Page::from_data(page_id, page_data)?;
-            self.store_page(&updated_page)?;
+            Self::emit_versioned_page(buffer, page.data(), None)?;
+            self.store_page_bytes(page_id, &buffer.page_image)?;
         }
 
         Ok(removed_count)
@@ -1260,17 +1539,25 @@ impl<D: BlockDevice> HeapFile<D> {
         slot: &VersionedSlotEntry,
         oldest_active_lsn: crate::wal::Lsn,
         committed: &std::collections::HashSet<crate::wal::TransactionId>,
+        txn_pool: &crate::mvcc::TxnPool,
     ) -> bool {
-        // Check if this version is dead
-        if let Some(xmax) = slot.xmax {
-            // Has xmax - was deleted or updated
-            if committed.contains(&xmax) {
-                // xmax transaction committed
-                // Check if it's old enough (before oldest active)
-                // Note: We need to compare transaction IDs as proxy for LSN
-                // since we don't track commit LSNs yet
-                return xmax.value() < oldest_active_lsn.value();
-            }
+        // A version is dead only when its deleter's commit settled before
+        // the oldest live snapshot: then no live or future snapshot can
+        // observe the old version. The commit LSN is resolved through the
+        // transaction pool — comparing the deleter's transaction ID
+        // against the LSN would be unsound, because IDs and LSNs are
+        // different sequences (IDs stay tiny while the LSN grows with every
+        // WAL record).
+        if let Some(xmax) = slot.xmax
+            && committed.contains(&xmax)
+        {
+            // `None` (history evicted, or committed before this pool
+            // existed) still means settled: eviction only drops records
+            // whose commit LSN predates the oldest live snapshot, and a
+            // pre-pool commit predates every snapshot this pool can take.
+            return txn_pool
+                .committed_before(xmax, oldest_active_lsn)
+                .unwrap_or(true);
         }
         false
     }
@@ -1278,9 +1565,15 @@ impl<D: BlockDevice> HeapFile<D> {
     /// Scans all visible tuples for a given transaction snapshot.
     ///
     /// Only returns tuples that are visible according to MVCC visibility rules.
+    /// The scan iterates a pooled page working buffer instead of allocating
+    /// per version: the slot directory is decoded into the buffer and each
+    /// visible tuple is deserialized straight from the page. Only the
+    /// returned `Vec` itself allocates (once, amortized).
     ///
     /// # Arguments
     /// * `snapshot` - Transaction snapshot determining visibility
+    /// * `txn_pool` - Bounded transaction pool for snapshot liveness checks
+    /// * `version_pool` - Caller-owned version pool lending the page buffer
     /// * `committed` - Set of all committed transaction IDs
     ///
     /// # Returns
@@ -1289,15 +1582,38 @@ impl<D: BlockDevice> HeapFile<D> {
     /// # Errors
     /// Returns [`HeapError::Serialization`] if tuples cannot be deserialized.
     /// Returns [`HeapError::Page`] if page I/O error occurs.
-    ///
-    /// NOTE: Currently unused - reserved for future MVCC transaction implementation.
-    #[allow(dead_code)]
+    /// Returns [`HeapError::Mvcc`] if no page working buffer is free.
     pub(crate) fn scan_visible(
         &mut self,
         snapshot: &crate::mvcc::TransactionSnapshot,
+        txn_pool: &crate::mvcc::TxnPool,
+        version_pool: &mut VersionPool,
         committed: &std::collections::HashSet<crate::wal::TransactionId>,
     ) -> Result<Vec<Tuple>, HeapError> {
         let mut results = Vec::new();
+        self.for_each_visible(snapshot, txn_pool, version_pool, committed, &mut |tuple| {
+            results.push(tuple);
+        })?;
+        Ok(results)
+    }
+
+    /// Visits each tuple visible to `snapshot`, without allocating per version.
+    ///
+    /// Allocation-free iteration over the version pool's working buffer:
+    /// pages are decoded into the pooled slot directory and visible tuples
+    /// are deserialized straight from the page image into the visitor. The
+    /// only allocation per visited tuple is the [`Tuple`] itself, which is
+    /// the visitor's output.
+    pub(crate) fn for_each_visible(
+        &mut self,
+        snapshot: &crate::mvcc::TransactionSnapshot,
+        txn_pool: &crate::mvcc::TxnPool,
+        version_pool: &mut VersionPool,
+        committed: &std::collections::HashSet<crate::wal::TransactionId>,
+        visit: &mut dyn FnMut(Tuple),
+    ) -> Result<(), HeapError> {
+        // One page working buffer for the whole scan: no per-page allocation.
+        let mut buffer = version_pool.acquire_buffer()?;
         let mut page_id = 0;
 
         loop {
@@ -1308,18 +1624,20 @@ impl<D: BlockDevice> HeapFile<D> {
                 break;
             }
 
-            // Try to deserialize as VersionedSlottedPage
-            let versioned_page = match decode_versioned_page(page.data()) {
-                Ok(vp) => vp,
+            // Decode the slot directory into the pooled working set.
+            let header = match decode_versioned_page_into(page.data(), &mut buffer.page.slots) {
+                Ok(header) => header,
                 Err(_) => {
                     // Not a versioned page, skip
                     page_id += 1;
                     continue;
                 }
             };
+            buffer.page.magic = header.magic;
+            buffer.page.slot_count = header.slot_count;
 
             // Check each slot for visibility
-            for slot_entry in versioned_page.slots.iter().flatten() {
+            for slot_entry in buffer.page.slots.iter().flatten() {
                 // Create version metadata
                 let version_metadata = crate::mvcc::VersionMetadata {
                     xmin: slot_entry.xmin,
@@ -1327,31 +1645,23 @@ impl<D: BlockDevice> HeapFile<D> {
                 };
 
                 // Check visibility
-                if crate::mvcc::visibility::is_visible(&version_metadata, snapshot, committed) {
-                    // Extract tuple data from page
-                    let start = slot_entry.offset as usize;
-                    let end = start
-                        .checked_add(slot_entry.length as usize)
-                        .ok_or_else(|| {
-                            HeapError::Serialization("Tuple end offset overflow".to_string())
-                        })?;
-
-                    if end > page.data().len() {
-                        return Err(HeapError::Serialization(
-                            "Corrupted slot points outside page data".to_string(),
-                        ));
-                    }
-
-                    let tuple_data = &page.data()[start..end];
+                if crate::mvcc::visibility::is_visible(
+                    &version_metadata,
+                    snapshot,
+                    txn_pool,
+                    committed,
+                ) {
+                    // Deserialize the tuple straight from the page image.
+                    let tuple_data = slot_bytes(page.data(), slot_entry.offset, slot_entry.length)?;
                     let tuple: Tuple = deserialize_bounded(tuple_data)?;
-                    results.push(tuple);
+                    visit(tuple);
                 }
             }
 
             page_id += 1;
         }
 
-        Ok(results)
+        Ok(())
     }
 }
 

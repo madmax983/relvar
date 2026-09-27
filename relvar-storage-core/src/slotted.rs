@@ -355,6 +355,18 @@ fn copy_versioned_tuples_to_buffer(
 /// declared slot-directory length exceeds the payload, or postcard
 /// deserialization fails.
 pub fn decode_versioned_page(payload: &[u8]) -> Result<VersionedSlottedPage, SlottedError> {
+    let dir_bytes = versioned_slot_dir_bytes(payload)?;
+    deserialize_bounded(dir_bytes)
+}
+
+/// Splits a versioned page payload into its postcard slot-directory bytes.
+///
+/// Handles both the v2 framed format (`[version:1][slot_dir_len:4 LE][slot
+/// directory][tuple data]`) and the legacy v1 bare-postcard format
+/// (`[slot directory][tuple data]`). Shared by the allocating
+/// [`decode_versioned_page`] and the allocation-free
+/// [`decode_versioned_page_into`].
+fn versioned_slot_dir_bytes(payload: &[u8]) -> Result<&[u8], SlottedError> {
     if !payload.is_empty() && payload[0] == PAGE_FORMAT_VERSION {
         if payload.len() < V2_HEADER_SIZE {
             return Err(SlottedError::Serialization(String::from(
@@ -382,11 +394,173 @@ pub fn decode_versioned_page(payload: &[u8]) -> Result<VersionedSlottedPage, Slo
             )));
         }
 
-        deserialize_bounded(&payload[V2_HEADER_SIZE..end_of_header])
+        Ok(&payload[V2_HEADER_SIZE..end_of_header])
     } else {
         // Old format: [slot_dir][tuples]
-        deserialize_bounded(payload)
+        Ok(payload)
     }
+}
+
+/// Header fields of a decoded versioned page.
+///
+/// Returned by [`decode_versioned_page_into`] alongside the slot directory
+/// it fills into the caller's buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VersionedPageHeader {
+    /// Magic number identifying the page as a versioned page.
+    pub magic: u32,
+    /// Number of slots the page directory tracks.
+    pub slot_count: u32,
+}
+
+/// Scratch capacity (in bytes) for [`encode_versioned_header_into`].
+///
+/// The scratch must hold the postcard-serialized versioned slot directory.
+/// A versioned page holds at most a few hundred slots (the page itself is
+/// [`PAGE_SIZE`] bytes); 8 KiB is several times the largest realistic slot
+/// directory. Exceeding it is a codec error, never a reallocation: the
+/// scratch is caller-owned with fixed capacity.
+pub const SLOT_DIR_SCRATCH_SIZE: usize = 8192;
+
+/// Maximum slot-directory entries any page payload can address.
+///
+/// A slot-directory entry needs at least one byte on the wire (an encoded
+/// `None`), so no honest page payload of [`USABLE_PAGE_SIZE_V2`] bytes can
+/// name more entries than that. The pooled page working sets pre-reserve
+/// exactly this many slots at construction, and the decoder below rejects
+/// any page claiming more as corrupt — decoding can therefore never grow
+/// the caller's vector, however hostile the input.
+pub const MAX_SLOT_DIR_ENTRIES: usize = USABLE_PAGE_SIZE_V2;
+
+/// Decodes a versioned page payload's slot directory into `slots` without
+/// allocating.
+///
+/// This is the allocation-free counterpart of [`decode_versioned_page`]:
+/// instead of deserializing into a fresh [`VersionedSlottedPage`] (which
+/// allocates the slot vector), the slot directory is read field by field
+/// and each entry is pushed into the caller-owned `slots` vector, whose
+/// capacity is reused across calls. `slots` is cleared first. Tuple bytes
+/// are never read.
+///
+/// The decoded bytes are identical to [`decode_versioned_page`]'s: the
+/// struct is read in field order (`magic`, `slot_count`, `slots`), exactly
+/// as its derived `Deserialize` implementation would.
+///
+/// # Errors
+///
+/// Returns [`SlottedError::Serialization`] under the same conditions as
+/// [`decode_versioned_page`].
+pub fn decode_versioned_page_into(
+    payload: &[u8],
+    slots: &mut Vec<Option<VersionedSlotEntry>>,
+) -> Result<VersionedPageHeader, SlottedError> {
+    let data = versioned_slot_dir_bytes(payload)?;
+    slots.clear();
+
+    let mut de = postcard::Deserializer::from_bytes(data);
+    let magic = u32::deserialize(&mut de).map_err(|e| {
+        SlottedError::Serialization(format!("Versioned page magic deserialization failed: {e}"))
+    })?;
+    let slot_count = u32::deserialize(&mut de).map_err(|e| {
+        SlottedError::Serialization(format!(
+            "Versioned page slot count deserialization failed: {e}"
+        ))
+    })?;
+    // A page payload cannot name more entries than it has bytes (each
+    // entry needs at least one wire byte); anything larger is corrupt.
+    // Rejecting up front keeps the sequence decode below from growing
+    // the caller's vector on hostile input.
+    if (slot_count as usize) > MAX_SLOT_DIR_ENTRIES {
+        return Err(SlottedError::Serialization(format!(
+            "Versioned slot directory claims {slot_count} entries, exceeding the page bound of {MAX_SLOT_DIR_ENTRIES}"
+        )));
+    }
+    serde::de::Deserializer::deserialize_seq(&mut de, SlotVecWriter(slots)).map_err(|e| {
+        SlottedError::Serialization(format!(
+            "Versioned slot directory deserialization failed: {e}"
+        ))
+    })?;
+    // The header count and the decoded sequence must agree; a mismatch is
+    // corruption (encoders always write them equal).
+    if slots.len() != slot_count as usize {
+        return Err(SlottedError::Serialization(format!(
+            "Versioned slot directory header claims {slot_count} entries but decoded {}",
+            slots.len()
+        )));
+    }
+
+    Ok(VersionedPageHeader { magic, slot_count })
+}
+
+/// serde visitor that pushes a versioned slot sequence into a caller-owned
+/// vector instead of allocating one.
+struct SlotVecWriter<'a>(&'a mut Vec<Option<VersionedSlotEntry>>);
+
+impl<'de, 'a> serde::de::Visitor<'de> for SlotVecWriter<'a> {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str("a sequence of versioned slot entries")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<(), A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        while let Some(entry) = seq.next_element::<Option<VersionedSlotEntry>>()? {
+            // Belt and suspenders with the up-front `slot_count` check in
+            // `decode_versioned_page_into`: the sequence length prefix, not
+            // the header count, drives this loop, so a corrupt prefix must
+            // not grow the caller's vector either.
+            if self.0.len() >= MAX_SLOT_DIR_ENTRIES {
+                return Err(serde::de::Error::custom(format!(
+                    "Versioned slot directory exceeds the page bound of {MAX_SLOT_DIR_ENTRIES} entries"
+                )));
+            }
+            self.0.push(entry);
+        }
+        Ok(())
+    }
+}
+
+/// Serializes a versioned page's slot directory into `scratch` and writes
+/// the v2 frame header (`[version:1][slot_dir_len:4 LE][slot directory]`)
+/// at the start of `out`, without allocating.
+///
+/// Bytes past the written header are left untouched, so `out` can already
+/// hold tuple data placed at absolute page offsets (see
+/// [`USABLE_PAGE_SIZE_V2`]). Returns the header size (`5 + slot_dir_len`);
+/// tuple data starts there.
+///
+/// # Errors
+///
+/// Returns [`SlottedError::Serialization`] if the slot directory does not
+/// serialize or does not fit in `scratch` (use [`SLOT_DIR_SCRATCH_SIZE`]).
+pub fn encode_versioned_header_into(
+    page: &VersionedSlottedPage,
+    scratch: &mut [u8],
+    out: &mut Vec<u8>,
+) -> Result<usize, SlottedError> {
+    let dir_len = {
+        let dir = postcard::to_slice(page, scratch).map_err(|e| {
+            SlottedError::Serialization(format!(
+                "Versioned slot directory serialization failed: {e}"
+            ))
+        })?;
+        dir.len()
+    };
+    let header_size = V2_HEADER_SIZE.checked_add(dir_len).ok_or_else(|| {
+        SlottedError::Serialization(String::from("Slot directory length overflow"))
+    })?;
+
+    if out.len() < header_size {
+        out.resize(header_size, 0);
+    }
+    out[0] = PAGE_FORMAT_VERSION;
+    out[1..V2_HEADER_SIZE].copy_from_slice(&(dir_len as u32).to_le_bytes());
+    out[V2_HEADER_SIZE..header_size].copy_from_slice(&scratch[..dir_len]);
+
+    Ok(header_size)
 }
 
 /// Returns the tuple bytes a slot points to, bounds-checked.
@@ -680,5 +854,94 @@ mod tests {
         };
         let copy = id;
         assert_eq!(id, copy);
+    }
+
+    // ---- slot-directory entry bound ----
+
+    /// Frames a postcard-serialized versioned slot directory in the v2 page
+    /// layout: `[version:1][slot_dir_len:4 LE][slot directory]`, zero-padded
+    /// to the usable page size.
+    fn frame_corrupt_payload(dir: &[u8]) -> Vec<u8> {
+        // Sized from the directory, not the page: a corrupt directory can
+        // claim more entries than any honest payload could hold.
+        let mut payload = vec![0u8; V2_HEADER_SIZE + dir.len()];
+        payload[0] = PAGE_FORMAT_VERSION;
+        payload[1..V2_HEADER_SIZE].copy_from_slice(&(dir.len() as u32).to_le_bytes());
+        payload[V2_HEADER_SIZE..].copy_from_slice(dir);
+        payload
+    }
+
+    #[test]
+    fn test_decode_rejects_slot_dir_beyond_entry_bound() {
+        // A slot-directory entry needs at least one byte on the wire (an
+        // encoded `None`), so no honest page can address more entries than
+        // there are usable payload bytes. A page claiming more is corrupt,
+        // and decoding it must fail instead of growing the caller's vector
+        // without bound.
+        let bound = USABLE_PAGE_SIZE_V2;
+        let corrupt_page = VersionedSlottedPage {
+            magic: VERSIONED_PAGE_MAGIC,
+            slot_count: (bound + 1) as u32,
+            slots: vec![None; bound + 1],
+        };
+        let dir = postcard::to_allocvec(&corrupt_page).unwrap();
+        let payload = frame_corrupt_payload(&dir);
+
+        let mut slots = Vec::with_capacity(bound);
+        let result = decode_versioned_page_into(&payload, &mut slots);
+        assert!(
+            result.is_err(),
+            "decoder must reject a slot directory beyond the entry bound"
+        );
+        assert_eq!(
+            slots.capacity(),
+            bound,
+            "rejected decode must not grow the caller's vector"
+        );
+    }
+
+    #[test]
+    fn test_decode_dense_but_valid_slot_dir_without_growth() {
+        // A dense page of empty slots is unusual but valid; the bound must
+        // not reject it, and decoding must reuse the caller's capacity.
+        let count = 2000usize;
+        let page = VersionedSlottedPage {
+            magic: VERSIONED_PAGE_MAGIC,
+            slot_count: count as u32,
+            slots: vec![None; count],
+        };
+        let tuples: Vec<Vec<u8>> = vec![];
+        let payload = encode_versioned_page(&page, &tuples).unwrap();
+
+        let mut slots = Vec::with_capacity(USABLE_PAGE_SIZE_V2);
+        let header = decode_versioned_page_into(&payload, &mut slots).unwrap();
+        assert_eq!(header.slot_count, count as u32);
+        assert_eq!(slots.len(), count);
+        assert_eq!(
+            slots.capacity(),
+            USABLE_PAGE_SIZE_V2,
+            "valid decode must reuse the pre-reserved capacity"
+        );
+    }
+
+    #[test]
+    fn test_pooled_header_framing_matches_allocating_encoder() {
+        // The pooled header framer must stay byte-exact with the allocating
+        // page encoder: same version byte, same length prefix, same slot
+        // directory bytes.
+        let tuples = sample_tuples();
+        let page = sample_versioned_page(&tuples);
+
+        let full = encode_versioned_page(&page, &tuples).unwrap();
+
+        let mut scratch = [0u8; SLOT_DIR_SCRATCH_SIZE];
+        let mut out = vec![0u8; USABLE_PAGE_SIZE_V2];
+        let header_size = encode_versioned_header_into(&page, &mut scratch, &mut out).unwrap();
+
+        assert_eq!(
+            &out[..header_size],
+            &full[..header_size],
+            "pooled header framing must be byte-exact with the allocating encoder"
+        );
     }
 }

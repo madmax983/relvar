@@ -300,11 +300,11 @@ fn failed_commit_strands_no_transaction() {
     assert!(matches!(err, StorageError::SerializationFailure(_)));
 
     // ...and the engine is left idle: no ambient transaction, and the
-    // aborted transaction is gone from the active table (contract:
+    // aborted transaction is gone from the transaction pool (contract:
     // `StorageEngine::commit_transaction` never strands a transaction
     // on error).
     assert_eq!(engine.current_txn, None);
-    assert!(engine.active_txns.get_snapshot(t1_id).is_none());
+    assert!(engine.txn_pool.get_snapshot(t1_id).is_none());
 
     // A fresh transaction begins cleanly on the idle engine.
     let t3 = engine.begin_transaction().unwrap();
