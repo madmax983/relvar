@@ -339,6 +339,38 @@ impl Arena {
         }
     }
 
+    /// Allocates a mutable slice of `len` copies of `value`, with `T`'s alignment.
+    ///
+    /// This is the exclusive-access counterpart to [`Arena::alloc_slice`]: the
+    /// caller receives `&mut [T]` to fill in place. It backs arena-resident
+    /// hash-table buckets and reusable scratch buffers in the algebra layer
+    /// ([`crate::algebra::arena_ops`]), keeping the zero-alloc operator
+    /// pipeline free of heap allocation beyond the arena bump.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError::SizeOverflow`] if `len * size_of::<T>()`
+    /// overflows or cannot be represented in a [`core::alloc::Layout`].
+    // See `alloc_bytes`: disjoint regions per allocation make `&self -> &mut`
+    // sound here.
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_mut<T: Copy>(&self, len: usize, value: T) -> Result<&mut [T], AllocError> {
+        if len == 0 {
+            return Ok(&mut []);
+        }
+        let bytes = len
+            .checked_mul(core::mem::size_of::<T>())
+            .ok_or(AllocError::SizeOverflow(len))?;
+        let ptr = self.alloc_raw(bytes, core::mem::align_of::<T>())? as *mut T;
+        // SAFETY: `ptr` addresses `len` properly-aligned slots of fresh,
+        // disjoint arena memory; every slot is written exactly once (via
+        // `fill`, valid for `T: Copy`) before the exclusive slice is formed.
+        // Same invariants as `alloc_slice`, plus exclusive access.
+        let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+        slice.fill(value);
+        Ok(slice)
+    }
+
     /// Moves `value` into arena memory and returns an exclusive borrow of it.
     ///
     /// Used to place non-`Copy` structures (nested [`SlotRelation`]s, nested

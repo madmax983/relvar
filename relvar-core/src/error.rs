@@ -90,4 +90,12 @@ pub enum DatabaseError {
     /// crate-wide error type.
     #[error("Arena allocation failed: {0}")]
     AllocError(#[from] AllocError),
+
+    /// Arena-native algebra operator failure (v0.8).
+    ///
+    /// The `*_in` operators in [`crate::algebra::arena_ops`] surface
+    /// [`ArenaOpError`](crate::algebra::ArenaOpError); this variant lets them
+    /// compose with the crate-wide error type.
+    #[error("Arena algebra operator failed: {0}")]
+    ArenaOpError(#[from] crate::algebra::ArenaOpError),
 }
