@@ -87,6 +87,19 @@
 //! - Tuple ordering is not guaranteed
 //! - Results are always valid relations
 
+/// Arena-native relational algebra operators (v0.8 "zero-alloc values").
+///
+/// Zero-alloc counterparts of the owned operators above: every operator
+/// consumes [`crate::values::SlotRelation`] tuples and produces a new
+/// [`crate::values::SlotRelation`], with all value data living in the
+/// caller-owned [`crate::values::Arena`]. New, additive API — the owned
+/// operators are untouched.
+pub(crate) mod arena_ops;
+pub use arena_ops::{
+    ArenaOpError, difference_in, extend_in, intersect_in, join_in, project_in, restrict_in,
+    union_in,
+};
+
 /// Relational Delta operator.
 pub(crate) mod delta;
 pub use delta::Delta;
