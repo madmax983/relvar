@@ -1541,13 +1541,24 @@ impl<D: BlockDevice> HeapFile<D> {
         committed: &std::collections::HashSet<crate::wal::TransactionId>,
         txn_pool: &crate::mvcc::TxnPool,
     ) -> bool {
-        // A version is dead only when its deleter's commit settled before
-        // the oldest live snapshot: then no live or future snapshot can
-        // observe the old version. The commit LSN is resolved through the
-        // transaction pool — comparing the deleter's transaction ID
-        // against the LSN would be unsound, because IDs and LSNs are
-        // different sequences (IDs stay tiny while the LSN grows with every
-        // WAL record).
+        // A version whose creator can never commit is dead: no past,
+        // present, or future snapshot can ever observe it. A creator that
+        // is neither committed nor live is aborted, crashed
+        // mid-transaction, or never begun — none of which can ever
+        // transition to committed — so its versions are safe to reclaim.
+        // This reclaims inserts left behind by aborted transactions, whose
+        // `xmax` stays `None` forever and which the deleter-based rule
+        // below can never catch.
+        if !committed.contains(&slot.xmin) && !txn_pool.is_live(slot.xmin) {
+            return true;
+        }
+        // A version is otherwise dead only when its deleter's commit
+        // settled before the oldest live snapshot: then no live or future
+        // snapshot can observe the old version. The commit LSN is resolved
+        // through the transaction pool — comparing the deleter's
+        // transaction ID against the LSN would be unsound, because IDs and
+        // LSNs are different sequences (IDs stay tiny while the LSN grows
+        // with every WAL record).
         if let Some(xmax) = slot.xmax
             && committed.contains(&xmax)
         {

@@ -706,16 +706,27 @@ impl PersistentEngine {
         Ok(None)
     }
 
-    /// Aborts `txn_id`: logs the abort, drops its MVCC snapshot and
-    /// isolation bookkeeping, and clears the ambient context when it was
-    /// this transaction.
+    /// Aborts `txn_id`: logs the abort, makes it durable, drops its MVCC
+    /// snapshot and isolation bookkeeping, and clears the ambient context
+    /// when it was this transaction.
     ///
-    /// The Abort record is logged BEFORE any in-memory state mutates: a
-    /// WAL failure then leaves the transaction live and retryable instead
-    /// of half-aborted. (If the Abort record itself never reaches the
-    /// WAL, recovery still treats the transaction as aborted — a Begin
-    /// with no Commit replays as aborted — so the lost record resolves in
-    /// the safe direction.)
+    /// The Abort record is logged AND flushed BEFORE any in-memory state
+    /// mutates, mirroring the durable Begin in `begin_transaction`: a
+    /// crash past this point replays the abort from the WAL instead of
+    /// relying on the Begin-with-no-Commit fallback. (If the Abort record
+    /// itself never reaches the WAL — e.g. the process dies before this
+    /// call — recovery still treats the transaction as aborted, since a
+    /// Begin with no Commit replays as aborted — so a lost record resolves
+    /// in the safe direction.)
+    ///
+    /// A flush failure leaves the transaction live and retryable instead
+    /// of half-aborted: the pool slot is recycled only after the Abort is
+    /// durable. (Leaving the transaction live is the safe choice even
+    /// though the flush may have persisted the record: either durable
+    /// outcome — Abort present, or Begin without Commit — recovers as
+    /// aborted. Letting a later commit proceed after a buffered Abort
+    /// would strand a durable "aborted" record in front of a committed
+    /// transaction's writes.)
     ///
     /// Aborted tuples stay in the heap but are invisible: their creating
     /// transaction never joins `committed_txns`, so MVCC visibility rules
@@ -724,6 +735,13 @@ impl PersistentEngine {
         self.wal
             .log(WalRecord::Abort { txn_id })
             .map_err(|e| StorageError::Other(format!("WAL error: {e}")))?;
+
+        // Durability fence: the abort must survive a crash before the
+        // engine forgets the transaction. A failed flush keeps the
+        // transaction live (see above), so the caller can retry.
+        self.wal
+            .flush()
+            .map_err(|e| StorageError::Other(format!("WAL flush error: {e}")))?;
 
         // Recycle the transaction's pool slot. A history-ring exhaustion
         // fails typed while the transaction is still live and retryable.

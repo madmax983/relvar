@@ -182,6 +182,33 @@ fn bench_repeated_loads(c: &mut Criterion) {
     });
 }
 
+/// Benchmark transaction rollback (exercises the durable-abort path:
+/// Abort record log + flush before the pool slot is recycled).
+fn bench_rollback(c: &mut Criterion) {
+    c.bench_function("mvcc_rollback_single_insert", |b| {
+        b.iter_batched(
+            || {
+                let temp_dir = TempDir::new().unwrap();
+                let mut engine = PersistentEngine::open(temp_dir.path()).unwrap();
+                let rel_type = create_test_relation_type();
+                engine.create_relation("TEST", rel_type).unwrap();
+                (engine, temp_dir)
+            },
+            |(mut engine, _temp_dir)| {
+                // Benchmark: begin, insert one tuple, roll back (durable
+                // abort: logs the Abort record and flushes the WAL).
+                let snapshot = engine.begin_transaction().unwrap();
+                engine
+                    .insert_tuple("TEST", tuple! { id: 1i64, name: "Bench", value: 1i64 })
+                    .unwrap();
+                engine.rollback_transaction(snapshot).unwrap();
+                black_box(());
+            },
+            BatchSize::SmallInput,
+        );
+    });
+}
+
 criterion_group!(
     benches,
     bench_load_relation,
@@ -189,6 +216,7 @@ criterion_group!(
     bench_checkpoint,
     bench_create_relation,
     bench_repeated_loads,
+    bench_rollback,
 );
 
 criterion_main!(benches);

@@ -387,9 +387,11 @@ impl StorageManager {
 
     /// Garbage collect old versions.
     ///
-    /// A version is reclaimed only when its deleter's commit settled before
-    /// `gc_lsn` (resolved through `txn_pool`): no live or future snapshot
-    /// can still observe it. See [`TxnPool::committed_before`].
+    /// A version is reclaimed when no past, present, or future snapshot can
+    /// observe it: either its deleter's commit settled before `gc_lsn`
+    /// (resolved through `txn_pool`), or its creator can never commit
+    /// (neither committed nor live — e.g. an aborted transaction's
+    /// inserts). See [`TxnPool::committed_before`] and [`TxnPool::is_live`].
     pub fn garbage_collect_versions(
         &mut self,
         gc_lsn: crate::wal::Lsn,

@@ -393,6 +393,21 @@ impl TxnPool {
             })
     }
 
+    /// Is `txn_id` live right now — holding a pool slot?
+    ///
+    /// Garbage collection uses this to tell "may still commit" apart from
+    /// "can never commit": transaction IDs are never reused (the engine
+    /// seeds its generator from the WAL's maximum ID on every open), the
+    /// committed set is never pruned and recovery replays the whole WAL,
+    /// and every live transaction holds a pool slot. So a transaction that
+    /// is neither committed nor live is aborted, crashed mid-transaction,
+    /// or never begun — none of which can ever transition to committed.
+    pub fn is_live(&self, txn_id: TransactionId) -> bool {
+        self.slots
+            .iter()
+            .any(|slot| slot.occupied && slot.txn_id == txn_id)
+    }
+
     /// Was `txn_id` still running (uncommitted) at the snapshot taken at
     /// `snapshot_lsn`?
     ///

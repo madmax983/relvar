@@ -1,5 +1,6 @@
 #![cfg(test)]
 
+mod abort;
 mod basic;
 mod common;
 mod gc;

@@ -446,3 +446,124 @@ fn test_gc_keeps_version_visible_to_live_snapshot() {
         "GC must reclaim the version once no snapshot can observe it"
     );
 }
+
+#[test]
+fn test_gc_reclaims_aborted_xmin_version() {
+    // A version created by an aborted transaction has xmax=None forever,
+    // so the deleter-based rule can never catch it. The creator-death rule
+    // (not committed, not live) must reclaim it.
+    let mut vpool = test_version_pool();
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path();
+    let rel_type = create_test_relation_type();
+    let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+    let tuple = tuple! { id: 1i64, name: "Aborted" };
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(5), 10);
+    heap.insert_tuple_versioned(&tuple, test_txn(5), &mut vpool)
+        .unwrap();
+    fx.pool.abort(test_txn(5)).unwrap();
+
+    let removed = heap
+        .gc_remove_dead_versions(test_lsn(300), &fx.committed, &fx.pool, &mut vpool)
+        .unwrap();
+    assert_eq!(
+        removed, 1,
+        "GC must reclaim the aborted transaction's version"
+    );
+
+    // The reclaimed version stays invisible: a fresh snapshot sees nothing.
+    let snapshot = fx.begin(test_txn(6), 300);
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
+    assert!(visible.is_empty(), "aborted version must stay invisible");
+}
+
+#[test]
+fn test_gc_keeps_uncommitted_version_of_live_txn() {
+    // The mirror image of the abort case: a version whose creator is
+    // uncommitted but STILL LIVE may yet commit, so GC must keep it even
+    // though it is invisible to every current snapshot.
+    let mut vpool = test_version_pool();
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path();
+    let rel_type = create_test_relation_type();
+    let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+    let tuple = tuple! { id: 1i64, name: "InFlight" };
+    let mut fx = MvccFixture::new();
+    fx.begin(test_txn(5), 10);
+    heap.insert_tuple_versioned(&tuple, test_txn(5), &mut vpool)
+        .unwrap();
+    // T5 is neither committed nor aborted — still live.
+
+    let removed = heap
+        .gc_remove_dead_versions(test_lsn(300), &fx.committed, &fx.pool, &mut vpool)
+        .unwrap();
+    assert_eq!(
+        removed, 0,
+        "GC must keep versions of a still-live transaction"
+    );
+
+    // Its own snapshot still sees its write.
+    let snapshot = fx.pool.get_snapshot(test_txn(5)).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
+    assert_eq!(visible.len(), 1);
+    assert_eq!(visible[0], tuple);
+}
+
+#[test]
+fn test_gc_reclaims_only_aborted_among_mixed_versions() {
+    // Mixed page: an aborted insert, a live transaction's uncommitted
+    // insert, and a committed insert. GC must reclaim exactly the aborted
+    // one and leave the other two observable by the right snapshots.
+    let mut vpool = test_version_pool();
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path();
+    let rel_type = create_test_relation_type();
+    let mut heap = HeapFile::create(path, rel_type).unwrap();
+
+    let mut fx = MvccFixture::new();
+
+    let aborted_tuple = tuple! { id: 1i64, name: "Aborted" };
+    fx.begin(test_txn(5), 10);
+    heap.insert_tuple_versioned(&aborted_tuple, test_txn(5), &mut vpool)
+        .unwrap();
+    fx.pool.abort(test_txn(5)).unwrap();
+
+    let live_tuple = tuple! { id: 2i64, name: "Live" };
+    fx.begin(test_txn(6), 20);
+    heap.insert_tuple_versioned(&live_tuple, test_txn(6), &mut vpool)
+        .unwrap();
+
+    let committed_tuple = tuple! { id: 3i64, name: "Committed" };
+    fx.begin(test_txn(7), 30);
+    heap.insert_tuple_versioned(&committed_tuple, test_txn(7), &mut vpool)
+        .unwrap();
+    fx.commit(test_txn(7), 40);
+
+    let removed = heap
+        .gc_remove_dead_versions(test_lsn(300), &fx.committed, &fx.pool, &mut vpool)
+        .unwrap();
+    assert_eq!(removed, 1, "GC must reclaim exactly the aborted version");
+
+    // Second pass is idempotent.
+    let removed = heap
+        .gc_remove_dead_versions(test_lsn(300), &fx.committed, &fx.pool, &mut vpool)
+        .unwrap();
+    assert_eq!(removed, 0);
+
+    // A fresh snapshot sees the committed tuple and neither the aborted
+    // nor the other transaction's uncommitted one.
+    let snapshot = fx.begin(test_txn(8), 300);
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
+    assert_eq!(visible.len(), 1);
+    assert_eq!(visible[0], committed_tuple);
+
+    // The live transaction still sees its own write plus the committed one.
+    let snapshot = fx.pool.get_snapshot(test_txn(6)).unwrap();
+    let visible = fx.scan_visible(&mut heap, &snapshot).unwrap();
+    assert_eq!(visible.len(), 2);
+    assert!(visible.contains(&live_tuple));
+    assert!(visible.contains(&committed_tuple));
+}
