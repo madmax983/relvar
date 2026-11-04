@@ -42,7 +42,7 @@
 
 use crate::collections::{HashMap, HashSet};
 use crate::error::DatabaseError;
-use crate::types::{RelationType, TupleType};
+use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
@@ -50,13 +50,79 @@ use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
+use thiserror::Error;
+
+/// Errors that can occur during natural join and theta join.
+///
+/// TTM: RM Prescription 7 - every relational operator must be closed and
+/// well-typed. An invocation whose operands cannot produce a relation of a
+/// statically determined heading is rejected rather than silently producing
+/// an arbitrary result.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::JoinError;
+///
+/// let err = JoinError::SharedAttribute("id".to_string());
+/// assert!(err.to_string().contains("'id'"));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum JoinError {
+    /// A common attribute (same name in both operands) has different types
+    /// on each side.
+    ///
+    /// TTM: the common attributes of a natural join must have the same type;
+    /// otherwise the join is a type error.
+    #[error(
+        "Common attribute '{attribute}' has type {left:?} in the left operand but {right:?} in the right operand"
+    )]
+    AttributeTypeMismatch {
+        /// The name of the common attribute.
+        attribute: String,
+        /// The attribute's type in the left operand.
+        left: ScalarType,
+        /// The attribute's type in the right operand.
+        right: ScalarType,
+    },
+
+    /// The operands of a theta join share an attribute name.
+    ///
+    /// TTM: a theta join is `TIMES` followed by a restriction, and `TIMES`
+    /// is defined only over operands with disjoint headings. Rename one side
+    /// first.
+    #[error(
+        "Theta join operands share attribute '{0}'; rename one side so the headings are disjoint"
+    )]
+    SharedAttribute(String),
+
+    /// An attribute expected in an operand tuple was missing (internal
+    /// invariant violation; tuples always conform to their relation's
+    /// heading).
+    #[error("Attribute '{0}' not found in {1}")]
+    AttributeNotFound(String, String),
+}
+
+impl From<JoinError> for DatabaseError {
+    fn from(err: JoinError) -> Self {
+        match err {
+            JoinError::AttributeNotFound(attribute, relation) => {
+                DatabaseError::AttributeNotFound(attribute, relation)
+            }
+            other => DatabaseError::AlgebraError(other.to_string()),
+        }
+    }
+}
 
 impl Relation {
     /// Performs a natural join with another relation.
     ///
     /// The natural join combines tuples from two relations based on matching values
-    /// in their common attributes (attributes with the same name and type). The
-    /// result contains combined tuples where all common attributes have equal values.
+    /// in their common attributes (attributes with the same name). The result
+    /// contains combined tuples where all common attributes have equal values.
+    ///
+    /// TTM: RM Prescription 7. Common attributes must have the same type in
+    /// both operands; a name match with differing types is a type error.
     ///
     /// # Arguments
     ///
@@ -107,8 +173,13 @@ impl Relation {
     /// let result = employees.join(&departments).unwrap();
     /// assert_eq!(result.cardinality(), 1);  // Only emp 1 matches (dept 10)
     /// ```
-    pub fn join(&self, other: &Relation) -> Result<Self, DatabaseError> {
-        let common_attrs = compute_common_attributes(self, other);
+    ///
+    /// # Errors
+    ///
+    /// Returns [`JoinError::AttributeTypeMismatch`] if a common attribute has
+    /// a different type in each operand.
+    pub fn join(&self, other: &Relation) -> Result<Self, JoinError> {
+        let common_attrs = compute_common_attributes(self, other)?;
         let result_heading = compute_natural_join_heading(self, other);
 
         let result_rel_type = RelationType::new(result_heading.clone());
@@ -266,13 +337,27 @@ impl Relation {
 }
 
 /// Helper to compute common attributes between two relations.
-fn compute_common_attributes(left: &Relation, right: &Relation) -> Vec<String> {
-    left.relation_type()
-        .heading()
-        .attribute_names()
-        .filter(|attr| right.relation_type().heading().has_attribute(attr))
-        .cloned()
-        .collect()
+///
+/// # Errors
+///
+/// Returns [`JoinError::AttributeTypeMismatch`] for the first common
+/// attribute whose type differs between the two headings.
+fn compute_common_attributes(left: &Relation, right: &Relation) -> Result<Vec<String>, JoinError> {
+    let right_heading = right.relation_type().heading();
+    let mut common = Vec::new();
+    for (name, left_type) in left.relation_type().heading().attributes() {
+        if let Some(right_type) = right_heading.get_attribute_type(name) {
+            if left_type != right_type {
+                return Err(JoinError::AttributeTypeMismatch {
+                    attribute: name.clone(),
+                    left: left_type.clone(),
+                    right: right_type.clone(),
+                });
+            }
+            common.push(name.clone());
+        }
+    }
+    Ok(common)
 }
 
 /// Helper to compute the heading for a natural join (or theta join).
@@ -296,13 +381,13 @@ fn compute_natural_join_heading(left: &Relation, right: &Relation) -> TupleType 
 fn build_join_map_single<'a>(
     build_rel: &'a Relation,
     attr: &str,
-) -> Result<HashMap<&'a ScalarValue, Vec<&'a Tuple>>, DatabaseError> {
+) -> Result<HashMap<&'a ScalarValue, Vec<&'a Tuple>>, JoinError> {
     let mut build_map: HashMap<&ScalarValue, Vec<&Tuple>> =
         HashMap::with_capacity(build_rel.cardinality());
 
     for tuple in build_rel.tuples() {
         let val = tuple.get(attr).ok_or_else(|| {
-            DatabaseError::AttributeNotFound(attr.to_string(), "build relation".to_string())
+            JoinError::AttributeNotFound(attr.to_string(), "build relation".to_string())
         })?;
         build_map.entry(val).or_default().push(tuple);
     }
@@ -315,7 +400,7 @@ fn probe_and_combine_single<'a>(
     build_map: &HashMap<&'a ScalarValue, Vec<&'a Tuple>>,
     attr: &str,
     result_heading: &Arc<TupleType>,
-) -> Result<HashSet<Tuple>, DatabaseError> {
+) -> Result<HashSet<Tuple>, JoinError> {
     // Optimization: Pre-allocate a `HashSet` instead of a `Vec` to accumulate tuples.
     // This directly avoids the redundant intermediate heap allocation of a `Vec`
     // which would otherwise just be iterated over and consumed to construct the final `HashSet`.
@@ -323,7 +408,7 @@ fn probe_and_combine_single<'a>(
 
     for probe_tuple in probe_rel.tuples() {
         let val = probe_tuple.get(attr).ok_or_else(|| {
-            DatabaseError::AttributeNotFound(attr.to_string(), "probe relation".to_string())
+            JoinError::AttributeNotFound(attr.to_string(), "probe relation".to_string())
         })?;
 
         if let Some(matching_tuples) = build_map.get(val) {
@@ -372,7 +457,7 @@ impl<'t, 'a> Hash for JoinKey<'t, 'a> {
 fn build_join_map<'t, 'a>(
     build_rel: &'t Relation,
     common_attrs: &'a [String],
-) -> Result<HashMap<JoinKey<'t, 'a>, Vec<&'t Tuple>>, DatabaseError> {
+) -> Result<HashMap<JoinKey<'t, 'a>, Vec<&'t Tuple>>, JoinError> {
     let mut build_map: HashMap<JoinKey<'t, 'a>, Vec<&Tuple>> =
         HashMap::with_capacity(build_rel.cardinality());
 
@@ -392,7 +477,7 @@ fn probe_and_combine<'t, 'a>(
     build_map: &HashMap<JoinKey<'t, 'a>, Vec<&'t Tuple>>,
     common_attrs: &'a [String],
     result_heading: &Arc<TupleType>,
-) -> Result<HashSet<Tuple>, DatabaseError> {
+) -> Result<HashSet<Tuple>, JoinError> {
     // Optimization: Pre-allocate a `HashSet` instead of a `Vec` to accumulate tuples.
     // This directly avoids the redundant intermediate heap allocation of a `Vec`
     // which would otherwise just be iterated over and consumed to construct the final `HashSet`.
@@ -432,7 +517,7 @@ fn perform_hash_join(
     probe_rel: &Relation,
     common_attrs: &[String],
     result_heading: &Arc<TupleType>,
-) -> Result<HashSet<Tuple>, DatabaseError> {
+) -> Result<HashSet<Tuple>, JoinError> {
     if common_attrs.len() == 1 {
         // Optimization for single-attribute joins
         let attr = &common_attrs[0];
@@ -483,7 +568,7 @@ fn combine_tuples(
     primary: &Tuple,
     secondary: &Tuple,
     result_heading: &Arc<TupleType>,
-) -> Result<Tuple, DatabaseError> {
+) -> Result<Tuple, JoinError> {
     let values = merge_tuple_values(primary, secondary);
 
     // Safety:
@@ -825,6 +910,33 @@ mod tests {
         assert_eq!(
             result.relation_type().heading().get_attribute_type("id"),
             Some(&ScalarType::Int)
+        );
+    }
+
+    /// TTM: common attributes of a natural join must have the same type on
+    /// both sides; a name-only match is a type error, not an empty result.
+    #[test]
+    fn test_join_rejects_common_attribute_type_mismatch() {
+        let left_heading = TupleType::new()
+            .with_attribute("id", ScalarType::Int)
+            .with_attribute("a", ScalarType::Int);
+        let mut left = Relation::new(RelationType::new(left_heading));
+        left.insert(tuple! { id: 1i64, a: 1i64 }).unwrap();
+
+        let right_heading = TupleType::new()
+            .with_attribute("id", ScalarType::String)
+            .with_attribute("b", ScalarType::Int);
+        let mut right = Relation::new(RelationType::new(right_heading));
+        right.insert(tuple! { id: "1", b: 2i64 }).unwrap();
+
+        let result = left.join(&right);
+        assert!(
+            matches!(
+                result,
+                Err(super::JoinError::AttributeTypeMismatch { ref attribute, .. })
+                    if attribute == "id"
+            ),
+            "expected AttributeTypeMismatch, got {result:?}"
         );
     }
 

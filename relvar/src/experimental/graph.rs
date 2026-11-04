@@ -194,7 +194,7 @@ impl Graph {
             .difference(&visited_ids)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        new_ids.join(&next_frontier_candidates)
+        Ok(new_ids.join(&next_frontier_candidates)?)
     }
 
     /// Computes PageRank for all nodes in the graph.

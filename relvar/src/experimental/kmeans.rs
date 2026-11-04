@@ -109,7 +109,7 @@ impl KMeans {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 6. Join back with points to include x and y
-        points.join(&exact_assignments)
+        Ok(points.join(&exact_assignments)?)
     }
 
     /// Computes the next iteration of centroids.

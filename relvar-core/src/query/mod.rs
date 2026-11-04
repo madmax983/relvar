@@ -40,6 +40,7 @@
 //! ```
 
 use crate::algebra::Aggregation;
+use crate::algebra::JoinError;
 use crate::constraints::{ConstraintExpression, ExpressionError};
 use crate::database::Database;
 use crate::error::DatabaseError;
@@ -154,6 +155,11 @@ pub enum QueryError {
     /// Error in relational algebra operation.
     #[error("Algebra error: {0}")]
     Algebra(String),
+
+    /// A natural join was ill-typed (a common attribute has a different type
+    /// on each side).
+    #[error("Join error: {0}")]
+    Join(#[from] JoinError),
 }
 
 impl Query {

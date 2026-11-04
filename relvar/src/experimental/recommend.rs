@@ -206,7 +206,7 @@ impl CollaborativeFilter {
 
         // Join to keep only ratings for unseen items
         // unseen_ratings: (user_id, item_id, score)
-        other_users_ratings.join(&unseen_item_ids)
+        Ok(other_users_ratings.join(&unseen_item_ids)?)
     }
 
     fn compute_prediction_components(

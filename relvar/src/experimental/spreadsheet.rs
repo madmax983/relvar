@@ -147,7 +147,7 @@ impl Spreadsheet {
             .difference(&resolved_ids)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        self.formulas.join(&unresolved_ids)
+        Ok(self.formulas.join(&unresolved_ids)?)
     }
 
     fn join_resolved_arguments(
@@ -163,7 +163,7 @@ impl Spreadsheet {
         // Join unresolved formulas with arg1 values
         let with_arg1 = unresolved_formulas.join(&values_arg1)?;
         // Join with arg2 values
-        with_arg1.join(&values_arg2)
+        Ok(with_arg1.join(&values_arg2)?)
     }
 
     fn compute_formula_evaluations(

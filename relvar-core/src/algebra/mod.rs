@@ -126,6 +126,7 @@ pub use intersect::IntersectError;
 
 /// Natural join and theta join operators.
 pub(crate) mod join;
+pub use join::JoinError;
 
 /// Project operator for attribute selection (π).
 pub(crate) mod project;
