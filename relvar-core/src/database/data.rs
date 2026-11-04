@@ -4,7 +4,6 @@ use super::dml::{compute_relation_after_delete, compute_relation_after_update};
 use super::insert_plan::{InsertContentPlan, InsertKeyPlan};
 use super::key_index::StagedKeyValues;
 use crate::collections::HashSet;
-use crate::constraints::assertion::AssertionError;
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
@@ -541,32 +540,15 @@ impl<E: StorageEngine> Database<E> {
             return Ok(());
         }
 
-        // Move the assertions out of `self` while evaluating: predicates take
-        // `&mut Database<E>` (they query relvars), which cannot coexist with
-        // an outstanding borrow of `self.assertions`.
-        let assertions = core::mem::take(&mut self.assertions);
-        let mut violated: Option<AssertionError> = None;
-        for assertion in &assertions {
-            if !assertion.is_satisfied_by(self) {
-                violated = Some(AssertionError::Violation {
-                    assertion_name: assertion.name().to_string(),
-                    description: assertion.description().to_string(),
-                });
-                break;
-            }
-        }
-        // Always restore the assertion list, even on violation.
-        self.assertions = assertions;
-
-        match violated {
-            Some(assertion_error) => {
+        match self.evaluate_assertions() {
+            Err(assertion_error) => {
                 // Roll back the operation that triggered the violation.
                 if let Some(snapshot) = self.assertion_snapshot.take() {
                     self.engine.rollback_transaction(snapshot)?;
                 }
                 Err(assertion_error.into())
             }
-            None => {
+            Ok(()) => {
                 // All assertions hold: release the pre-operation snapshot.
                 if let Some(snapshot) = self.assertion_snapshot.take() {
                     self.engine.commit_transaction(snapshot)?;

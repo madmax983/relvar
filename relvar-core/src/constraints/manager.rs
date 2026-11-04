@@ -71,7 +71,7 @@ pub enum ConstraintManagerError {
 /// - Foreign key constraints
 /// - Type constraints
 /// - CHECK constraints
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ConstraintManager {
     /// Key constraints (primary and candidate) per relation.
     key_constraints: HashMap<String, KeyConstraints>,
@@ -605,12 +605,35 @@ impl ConstraintManager {
         Ok(())
     }
 
+    /// Every foreign key declared in the database, as
+    /// `(referencing relation, foreign key)` pairs.
+    pub(crate) fn all_foreign_keys(&self) -> impl Iterator<Item = (&str, &ForeignKey)> {
+        self.foreign_key_constraints
+            .iter()
+            .flat_map(|(name, constraints)| {
+                constraints
+                    .foreign_keys()
+                    .iter()
+                    .map(move |fk| (name.as_str(), fk))
+            })
+    }
+
+    /// Names of every relation that has at least one declared constraint.
+    ///
+    /// May contain duplicates (one entry per constraint kind).
+    pub(crate) fn constrained_relations(&self) -> impl Iterator<Item = &str> {
+        self.key_constraints
+            .keys()
+            .chain(self.foreign_key_constraints.keys())
+            .chain(self.type_constraints.keys())
+            .chain(self.check_constraints.keys())
+            .map(String::as_str)
+    }
+
     /// Foreign keys that reference `relation_name`, as
     /// `(referencing relation, foreign key)` pairs (#25).
     ///
     /// Returns an empty slice when no relation references `relation_name`.
-    ///
-    /// Test-only probe: production code routes through the map internally.
     #[cfg(test)]
     pub(crate) fn referencing_foreign_keys(&self, relation_name: &str) -> &[(String, ForeignKey)] {
         self.reverse_foreign_key_index

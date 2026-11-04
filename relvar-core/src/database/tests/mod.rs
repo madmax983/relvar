@@ -1,6 +1,7 @@
 mod assertions;
 pub(crate) mod common;
 mod data;
+mod golden_rule;
 mod integrity;
 mod key_index;
 mod schema;
