@@ -91,6 +91,52 @@ pub enum ConstraintManagerError {
         /// The smaller declared key contained in `superkey`.
         key: Vec<String>,
     },
+
+    /// A foreign key's referenced attributes are not exactly a declared
+    /// (primary or candidate) key of the referenced relvar.
+    ///
+    /// TTM: a foreign key references a candidate key.
+    #[error(
+        "Foreign key on {referencing} references {referenced}{attributes:?}, which is not a declared key of {referenced}"
+    )]
+    ForeignKeyTargetNotKey {
+        /// The relvar declaring the foreign key.
+        referencing: String,
+        /// The referenced relvar.
+        referenced: String,
+        /// The referenced attributes.
+        attributes: Vec<String>,
+    },
+
+    /// A foreign key attribute's type differs from the type of the
+    /// attribute it references.
+    #[error(
+        "Foreign key attribute {referencing}.{attribute} does not have the type of {referenced}.{referenced_attribute}"
+    )]
+    ForeignKeyTypeMismatch {
+        /// The relvar declaring the foreign key.
+        referencing: String,
+        /// The referencing attribute.
+        attribute: String,
+        /// The referenced relvar.
+        referenced: String,
+        /// The referenced attribute.
+        referenced_attribute: String,
+    },
+
+    /// Replacing a relvar's keys would drop a key that a foreign key of
+    /// another (or the same) relvar references.
+    #[error(
+        "Key {attributes:?} of {relation} is referenced by a foreign key of {referencing} and cannot be removed"
+    )]
+    KeyReferencedByForeignKey {
+        /// The relvar whose keys were being replaced.
+        relation: String,
+        /// The referenced key that would be dropped.
+        attributes: Vec<String>,
+        /// The relvar whose foreign key references it.
+        referencing: String,
+    },
 }
 
 /// Manages integrity constraints for the database.
@@ -170,6 +216,18 @@ impl ConstraintManager {
         let metadata = engine.get_relation_metadata(relation_name)?;
         validate_key_declarations(relation_name, &metadata.relation_type, &constraints)?;
 
+        // A foreign key references a candidate key: replacing the keys must
+        // keep every key that some foreign key references.
+        for (referencing, fk) in self.referencing_foreign_keys(relation_name) {
+            if !declares_key(&constraints, fk.referenced_attributes()) {
+                return Err(ConstraintManagerError::KeyReferencedByForeignKey {
+                    relation: relation_name.to_string(),
+                    attributes: fk.referenced_attributes().to_vec(),
+                    referencing: referencing.clone(),
+                });
+            }
+        }
+
         // Validate constraints against existing data
         let relation = engine.load_relation(relation_name)?;
         self.validate_key_constraints_bulk(&relation, &constraints)?;
@@ -198,6 +256,13 @@ impl ConstraintManager {
             ));
         }
 
+        // Validate each declaration: attributes exist, the target is a
+        // declared key of an existing relvar, and the types line up.
+        let heading = engine.get_relation_metadata(relation_name)?.relation_type;
+        for fk in constraints.foreign_keys() {
+            self.validate_foreign_key_declaration(engine, relation_name, &heading, fk)?;
+        }
+
         // Validate constraints against existing data
         let relation = engine.load_relation(relation_name)?;
         self.validate_foreign_keys_against_existing_data(engine, &relation, &constraints)?;
@@ -208,6 +273,62 @@ impl ConstraintManager {
         // constraint set (#25): old entries are dropped first, so replacing
         // constraints cannot leave stale references behind.
         self.rebuild_reverse_foreign_key_index_for(relation_name);
+        Ok(())
+    }
+
+    /// Validates one foreign key declared on `relation_name` (whose heading
+    /// is `heading`): the referencing attributes exist and are distinct,
+    /// the referenced relvar exists, the referenced attributes are exactly
+    /// one of its declared keys (as a set), and each referencing attribute
+    /// has the type of the attribute it references.
+    fn validate_foreign_key_declaration<E: StorageEngine>(
+        &self,
+        engine: &E,
+        relation_name: &str,
+        heading: &RelationType,
+        fk: &ForeignKey,
+    ) -> Result<(), ConstraintManagerError> {
+        attribute_set(relation_name, heading, fk.foreign_key_attributes())?;
+
+        let referenced = fk.referenced_relation_name();
+        if !engine.relation_exists(referenced) {
+            return Err(ConstraintManagerError::RelationNotFound(
+                referenced.to_string(),
+            ));
+        }
+        let referenced_heading = engine.get_relation_metadata(referenced)?.relation_type;
+        attribute_set(referenced, &referenced_heading, fk.referenced_attributes())?;
+
+        let targets_key = self
+            .key_constraints
+            .get(referenced)
+            .is_some_and(|keys| declares_key(keys, fk.referenced_attributes()));
+        if !targets_key {
+            return Err(ConstraintManagerError::ForeignKeyTargetNotKey {
+                referencing: relation_name.to_string(),
+                referenced: referenced.to_string(),
+                attributes: fk.referenced_attributes().to_vec(),
+            });
+        }
+
+        for (attribute, referenced_attribute) in fk
+            .foreign_key_attributes()
+            .iter()
+            .zip(fk.referenced_attributes())
+        {
+            let own = heading.heading().get_attribute_type(attribute);
+            let target = referenced_heading
+                .heading()
+                .get_attribute_type(referenced_attribute);
+            if own != target {
+                return Err(ConstraintManagerError::ForeignKeyTypeMismatch {
+                    referencing: relation_name.to_string(),
+                    attribute: attribute.clone(),
+                    referenced: referenced.to_string(),
+                    referenced_attribute: referenced_attribute.clone(),
+                });
+            }
+        }
         Ok(())
     }
 
@@ -668,7 +789,6 @@ impl ConstraintManager {
     /// `(referencing relation, foreign key)` pairs (#25).
     ///
     /// Returns an empty slice when no relation references `relation_name`.
-    #[cfg(test)]
     pub(crate) fn referencing_foreign_keys(&self, relation_name: &str) -> &[(String, ForeignKey)] {
         self.reverse_foreign_key_index
             .get(relation_name)
@@ -733,6 +853,21 @@ pub(crate) fn attribute_set<'a>(
         }
     }
     Ok(set)
+}
+
+/// Whether `attributes`, taken as a set, is exactly one of the keys
+/// (primary or candidate) declared in `constraints`.
+fn declares_key(constraints: &KeyConstraints, attributes: &[String]) -> bool {
+    let wanted: BTreeSet<&str> = attributes.iter().map(String::as_str).collect();
+    let matches =
+        |key: &[String]| key.iter().map(String::as_str).collect::<BTreeSet<_>>() == wanted;
+    constraints
+        .primary_key()
+        .is_some_and(|pk| matches(pk.attributes()))
+        || constraints
+            .candidate_keys()
+            .iter()
+            .any(|ck| matches(ck.attributes()))
 }
 
 /// Validates a key declaration against the relation's heading
@@ -963,6 +1098,16 @@ mod tests {
         assert!(manager.get_key_constraints("users").is_none());
     }
 
+    /// A manager with key {id} declared on `relation`, so foreign keys may
+    /// reference it.
+    fn manager_with_id_key(engine: &mut InMemoryEngine, relation: &str) -> ConstraintManager {
+        let mut manager = ConstraintManager::new();
+        let keys = KeyConstraints::new()
+            .with_primary_key(PrimaryKey::new(vec!["id".to_string()]).unwrap());
+        manager.set_key_constraints(engine, relation, keys).unwrap();
+        manager
+    }
+
     fn setup_engine_with_posts() -> InMemoryEngine {
         let mut engine = setup_engine();
 
@@ -1001,7 +1146,7 @@ mod tests {
     #[test]
     fn should_set_foreign_keys_when_data_is_valid() {
         let mut engine = setup_engine_with_posts();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "users");
 
         let fk = crate::constraints::ForeignKey::new(
             vec!["user_id".to_string()],
@@ -1019,7 +1164,7 @@ mod tests {
     #[test]
     fn should_return_error_when_setting_foreign_keys_violates_existing_data() {
         let mut engine = setup_engine_with_posts();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "users");
 
         // Insert a post with a non-existent user_id
         let mut posts = engine.load_relation("posts").unwrap();
@@ -1045,7 +1190,7 @@ mod tests {
     #[test]
     fn should_validate_foreign_keys_for_single_tuple() {
         let mut engine = setup_engine_with_posts();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "users");
 
         let fk = crate::constraints::ForeignKey::new(
             vec!["user_id".to_string()],
@@ -1076,7 +1221,7 @@ mod tests {
     #[test]
     fn should_validate_referencing_foreign_keys_on_delete() {
         let mut engine = setup_engine_with_posts();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "users");
 
         let fk = crate::constraints::ForeignKey::new(
             vec!["user_id".to_string()],
@@ -1118,7 +1263,7 @@ mod tests {
     #[test]
     fn should_validate_tuple_content_constraints() {
         let mut engine = setup_engine_with_posts();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "users");
 
         // 1. Add Type Constraint on posts.id (min: 10)
         let type_cons = TypeConstraint::Range {
@@ -1282,7 +1427,7 @@ mod tests {
     #[test]
     fn reverse_fk_map_is_built_when_constraints_are_set() {
         let mut engine = setup_fk_engine();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "parents");
 
         manager
             .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())
@@ -1305,7 +1450,7 @@ mod tests {
     #[test]
     fn reverse_fk_map_holds_each_fk_of_a_referencing_relation() {
         let mut engine = setup_fk_engine();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "parents");
 
         let two_fks = ForeignKeyConstraints::new()
             .with_foreign_key(
@@ -1336,7 +1481,7 @@ mod tests {
     #[test]
     fn reverse_fk_map_is_replaced_when_constraints_are_reset() {
         let mut engine = setup_fk_engine();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "parents");
 
         manager
             .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())
@@ -1357,7 +1502,7 @@ mod tests {
     #[test]
     fn reverse_fk_map_is_cleared_when_constraints_are_removed() {
         let mut engine = setup_fk_engine();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "parents");
 
         manager
             .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())
@@ -1377,7 +1522,7 @@ mod tests {
         // Behavioral net for #25: orphaning deletes are still rejected when
         // validation is routed through the reverse map.
         let mut engine = setup_fk_engine();
-        let mut manager = ConstraintManager::new();
+        let mut manager = manager_with_id_key(&mut engine, "parents");
 
         manager
             .set_foreign_key_constraints(&mut engine, "children_a", fk_to_parents())

@@ -8,6 +8,13 @@ use relvar_core::storage_engine::InMemoryEngine;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 
+/// Declares key {attribute} on `relvar`: a foreign key must reference a key.
+fn declare_key(db: &mut Database<InMemoryEngine>, relvar: &str, attribute: &str) {
+    let pk = PrimaryKey::new(vec![attribute.to_string()]).unwrap();
+    db.set_key_constraints(relvar, KeyConstraints::new().with_primary_key(pk))
+        .unwrap();
+}
+
 fn setup() -> Database<InMemoryEngine> {
     let mut db = Database::new(InMemoryEngine::new());
     let rel_type = RelationType::new(
@@ -59,6 +66,7 @@ fn test_database_set_foreign_key_constraints_fails() {
     .unwrap();
     let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
 
+    declare_key(&mut db, "TEST", "id");
     let result = db.set_foreign_key_constraints("CHILD", constraints);
     assert!(result.is_err());
     assert!(matches!(result, Err(DatabaseError::Constraint(_))));
@@ -190,6 +198,7 @@ fn test_database_set_foreign_key_constraints_success() {
     .unwrap();
     let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
 
+    declare_key(&mut db, "TEST", "id");
     let result = db.set_foreign_key_constraints("CHILD", constraints);
     assert!(result.is_ok());
 }
@@ -401,6 +410,7 @@ fn test_database_set_foreign_key_constraints_coverage() {
     .unwrap();
     let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
 
+    declare_key(&mut db, "DEPT", "dept_id");
     db.set_foreign_key_constraints("EMP", constraints).unwrap();
 }
 
@@ -553,6 +563,7 @@ fn test_constraint_manager_validate_referencing_fks_error() {
     )
     .unwrap();
     let constraints = ForeignKeyConstraints::new().with_foreign_key(fk);
+    declare_key(&mut db, "DEPT", "dept_id");
     db.set_foreign_key_constraints("EMP", constraints).unwrap();
 
     db.insert("EMP", tuple! { id: 10i64, dept_id: 1i64 })

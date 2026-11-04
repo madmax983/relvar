@@ -9,6 +9,14 @@ use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::ScalarValue;
 
+/// Declares key {id} on `relvar`: a foreign key must reference a key.
+fn declare_id_key(db: &mut Database<InMemoryEngine>, relvar: &str) {
+    let keys = relvar_core::constraints::KeyConstraints::new().with_primary_key(
+        relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap(),
+    );
+    db.set_key_constraints(relvar, keys).unwrap();
+}
+
 fn setup() -> Database<InMemoryEngine> {
     let mut db = Database::new(InMemoryEngine::new());
     let rel_type = RelationType::new(
@@ -41,6 +49,7 @@ fn test_database_delete_foreign_key_violation() {
     .unwrap();
     let fk_constraints =
         relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    declare_id_key(&mut db, "TEST");
     db.set_foreign_key_constraints("CHILD", fk_constraints)
         .unwrap();
 
@@ -159,6 +168,7 @@ fn test_database_update_referencing_foreign_keys_violation() {
     .unwrap();
     let fk_constraints =
         relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    declare_id_key(&mut db, "TEST");
     db.set_foreign_key_constraints("CHILD", fk_constraints)
         .unwrap();
 
@@ -240,6 +250,7 @@ fn test_database_insert_foreign_key_violation() {
     .unwrap();
     let fk_constraints =
         relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    declare_id_key(&mut db, "TEST");
     db.set_foreign_key_constraints("CHILD", fk_constraints)
         .unwrap();
 
@@ -268,6 +279,7 @@ fn test_database_update_foreign_key_violation() {
     .unwrap();
     let fk_constraints =
         relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    declare_id_key(&mut db, "TEST");
     db.set_foreign_key_constraints("CHILD", fk_constraints)
         .unwrap();
 
@@ -343,6 +355,7 @@ fn test_database_update_parent_violates_child_foreign_key() {
     .unwrap();
     let fk_constraints =
         relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    declare_id_key(&mut db, "TEST");
     db.set_foreign_key_constraints("CHILD", fk_constraints)
         .unwrap();
 
@@ -390,6 +403,7 @@ fn test_database_delete_parent_violates_child_foreign_key() {
     .unwrap();
     let fk_constraints =
         relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    declare_id_key(&mut db, "TEST");
     db.set_foreign_key_constraints("CHILD", fk_constraints)
         .unwrap();
 
@@ -562,6 +576,7 @@ fn test_database_update_parent_violates_referencing_foreign_key() {
     .unwrap();
     let fk_constraints =
         relvar_core::constraints::ForeignKeyConstraints::new().with_foreign_key(fk);
+    declare_id_key(&mut db, "TEST");
     db.set_foreign_key_constraints("CHILD", fk_constraints)
         .unwrap();
 
