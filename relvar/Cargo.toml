@@ -45,3 +45,8 @@ name = "insert_path"
 harness = false
 # Benchmarks PersistentEngine alongside InMemoryEngine.
 required-features = ["storage"]
+
+[[example]]
+name = "bolt_workload"
+# Opens a PersistentEngine database (`relvar::open`).
+required-features = ["storage"]
