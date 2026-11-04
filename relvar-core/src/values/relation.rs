@@ -125,11 +125,44 @@ pub struct RelationError;
 ///
 /// See the [`algebra`](crate::algebra) module for detailed documentation on each operator.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RelationUnchecked")]
 pub struct Relation {
     /// The relation type (heading) that defines the structure.
     relation_type: RelationType,
     /// The body: a set of tuples conforming to the heading.
     pub(crate) body: HashSet<Tuple>,
+}
+
+/// Wire shape of [`Relation`]: decoded first, then validated by `TryFrom` so
+/// a deserialized relation upholds the invariant [`Relation::insert`] does.
+/// Field names match [`Relation`]'s, so the serialized format is unchanged.
+/// (Each [`Tuple`] is itself validated against its own heading while
+/// decoding; duplicate tuples collapse into the set.)
+#[derive(Deserialize)]
+struct RelationUnchecked {
+    relation_type: RelationType,
+    body: HashSet<Tuple>,
+}
+
+impl TryFrom<RelationUnchecked> for Relation {
+    type Error = RelationError;
+
+    /// Accepts the decoded relation only if every tuple of the body has
+    /// exactly the relation's heading.
+    fn try_from(unchecked: RelationUnchecked) -> Result<Self, Self::Error> {
+        let heading = unchecked.relation_type.heading();
+        if unchecked
+            .body
+            .iter()
+            .any(|tuple| tuple.tuple_type() != heading)
+        {
+            return Err(RelationError);
+        }
+        Ok(Self {
+            relation_type: unchecked.relation_type,
+            body: unchecked.body,
+        })
+    }
 }
 
 // Custom Hash implementation for Relation
@@ -903,5 +936,72 @@ mod tests {
                 "a tuple whose heading differs from the relation's was accepted"
             );
         }
+    }
+}
+
+/// Deserialization must uphold the same invariant as [`Relation::insert`]:
+/// every tuple of the body has exactly the relation's heading.
+#[cfg(test)]
+mod deserialize_validation_tests {
+    use super::*;
+    use crate::tuple;
+    use crate::types::ScalarType;
+    use crate::values::ScalarValue;
+
+    fn id_type() -> RelationType {
+        RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int))
+    }
+
+    /// A relation whose body bypassed the heading check, i.e. what a
+    /// corrupted or hostile serialized payload decodes to.
+    fn forged(tuples: impl IntoIterator<Item = Tuple>) -> Relation {
+        Relation::from_tuples_unchecked(id_type(), tuples)
+    }
+
+    fn assert_rejected(forged: &Relation) {
+        let json = serde_json::to_string(forged).unwrap();
+        assert!(
+            serde_json::from_str::<Relation>(&json).is_err(),
+            "JSON accepted a non-conforming relation: {json}"
+        );
+        let bytes = postcard::to_allocvec(forged).unwrap();
+        assert!(
+            postcard::from_bytes::<Relation>(&bytes).is_err(),
+            "postcard accepted a non-conforming relation"
+        );
+    }
+
+    #[test]
+    fn deserialize_round_trips_valid_relation() {
+        let rel =
+            Relation::from_tuples(id_type(), [tuple! { id: 1i64 }, tuple! { id: 2i64 }]).unwrap();
+        let json = serde_json::to_string(&rel).unwrap();
+        assert_eq!(serde_json::from_str::<Relation>(&json).unwrap(), rel);
+        let bytes = postcard::to_allocvec(&rel).unwrap();
+        assert_eq!(postcard::from_bytes::<Relation>(&bytes).unwrap(), rel);
+    }
+
+    #[test]
+    fn deserialize_rejects_tuple_of_another_heading() {
+        assert_rejected(&forged([tuple! { id: 1i64 }, tuple! { name: "x" }]));
+    }
+
+    #[test]
+    fn deserialize_rejects_tuple_with_wider_heading() {
+        assert_rejected(&forged([tuple! { id: 1i64, x: 2i64 }]));
+    }
+
+    #[test]
+    fn deserialize_rejects_tuple_with_attribute_of_other_type() {
+        assert_rejected(&forged([tuple! { id: "one" }]));
+    }
+
+    #[test]
+    fn deserialize_rejects_nested_relation_value_with_foreign_tuple() {
+        // An RVA value smuggling a foreign tuple is rejected too: the nested
+        // relation goes through the same validation.
+        let value = ScalarValue::Relation(forged([tuple! { id: "one" }]));
+        let json = serde_json::to_string(&value).unwrap();
+        assert!(serde_json::from_str::<ScalarValue>(&json).is_err());
     }
 }

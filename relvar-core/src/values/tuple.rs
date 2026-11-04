@@ -144,12 +144,73 @@ pub enum TupleError {
 /// assert_eq!(age, 30);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "TupleUnchecked")]
 pub struct Tuple {
     /// The tuple type (heading) that this tuple conforms to.
     #[serde(with = "arc_serde")]
     tuple_type: Arc<TupleType>,
     /// The attribute values, keyed by attribute name.
     values: BTreeMap<String, ScalarValue>,
+}
+
+/// Wire shape of [`Tuple`]: decoded first, then validated by `TryFrom` so a
+/// deserialized tuple upholds every invariant [`Tuple::new`] does. Field names
+/// match [`Tuple`]'s, so the serialized format is unchanged.
+#[derive(Deserialize)]
+struct TupleUnchecked {
+    #[serde(with = "arc_serde")]
+    tuple_type: Arc<TupleType>,
+    values: BTreeMap<String, ScalarValue>,
+}
+
+impl TryFrom<TupleUnchecked> for Tuple {
+    type Error = TupleError;
+
+    /// Accepts the decoded tuple only if its values exactly conform to its
+    /// heading: the same attribute names, each value of its declared type.
+    fn try_from(unchecked: TupleUnchecked) -> Result<Self, Self::Error> {
+        check_conformance(&unchecked.tuple_type, &unchecked.values)?;
+        Ok(Self {
+            tuple_type: unchecked.tuple_type,
+            values: unchecked.values,
+        })
+    }
+}
+
+/// Checks that `values` exactly conforms to `tuple_type`: no value for an
+/// attribute outside the heading, every value of its attribute's type, and
+/// (TTM Proscription 1) a value for every attribute of the heading.
+///
+/// # Errors
+///
+/// The first violation found, as the same [`TupleError`] variant
+/// [`Tuple::new`] reports for it.
+fn check_conformance(
+    tuple_type: &TupleType,
+    values: &BTreeMap<String, ScalarValue>,
+) -> Result<(), TupleError> {
+    for (attr_name, value) in values {
+        let expected_type = tuple_type
+            .get_attribute_type(attr_name)
+            .ok_or_else(|| TupleError::AttributeNotFound(attr_name.clone()))?;
+        if !value.is_type(expected_type) {
+            return Err(TupleError::TypeMismatch(
+                attr_name.clone(),
+                expected_type.name().to_string(),
+                value.scalar_type().name().to_string(),
+            ));
+        }
+    }
+    // Every value names a heading attribute, so equal counts mean every
+    // heading attribute has a value.
+    if values.len() != tuple_type.degree()
+        && let Some(missing) = tuple_type
+            .attribute_names()
+            .find(|name| !values.contains_key(name.as_str()))
+    {
+        return Err(TupleError::MissingValue(missing.clone()));
+    }
+    Ok(())
 }
 
 impl Tuple {
@@ -966,5 +1027,75 @@ mod sentry_tuple_missing_coverage {
         assert_eq!(names.len(), 2);
         assert_eq!(names[0], &"id".to_string());
         assert_eq!(names[1], &"name".to_string());
+    }
+}
+
+/// Deserialization must uphold the same invariants as [`Tuple::new`]: the
+/// values exactly conform to the heading (TTM Proscription 1: no missing
+/// values; every value of its attribute's declared type).
+#[cfg(test)]
+mod deserialize_validation_tests {
+    use super::*;
+    use crate::types::ScalarType;
+
+    fn id_heading() -> Arc<TupleType> {
+        Arc::new(TupleType::new().with_attribute("id", ScalarType::Int))
+    }
+
+    /// Builds a tuple that bypasses validation, i.e. what a corrupted or
+    /// hostile serialized payload decodes to.
+    fn forged(values: &[(&str, ScalarValue)]) -> Tuple {
+        let values = values
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), value.clone()))
+            .collect();
+        Tuple::new_unchecked(id_heading(), values)
+    }
+
+    fn assert_rejected(forged: &Tuple) {
+        let json = serde_json::to_string(forged).unwrap();
+        assert!(
+            serde_json::from_str::<Tuple>(&json).is_err(),
+            "JSON accepted a non-conforming tuple: {json}"
+        );
+        let bytes = postcard::to_allocvec(forged).unwrap();
+        assert!(
+            postcard::from_bytes::<Tuple>(&bytes).is_err(),
+            "postcard accepted a non-conforming tuple"
+        );
+    }
+
+    #[test]
+    fn deserialize_round_trips_valid_tuple() {
+        let t = tuple! { id: 1i64, name: "Alice" };
+        let json = serde_json::to_string(&t).unwrap();
+        let back: Tuple = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, t);
+        let bytes = postcard::to_allocvec(&t).unwrap();
+        assert_eq!(postcard::from_bytes::<Tuple>(&bytes).unwrap(), t);
+    }
+
+    #[test]
+    fn deserialize_rejects_value_of_wrong_type() {
+        assert_rejected(&forged(&[("id", ScalarValue::String("x".into()))]));
+    }
+
+    #[test]
+    fn deserialize_rejects_missing_value() {
+        assert_rejected(&forged(&[]));
+    }
+
+    #[test]
+    fn deserialize_rejects_value_for_unknown_attribute() {
+        assert_rejected(&forged(&[
+            ("id", ScalarValue::Int(1)),
+            ("extra", ScalarValue::Int(2)),
+        ]));
+    }
+
+    #[test]
+    fn deserialize_rejects_renamed_attribute() {
+        // Same degree, different attribute name.
+        assert_rejected(&forged(&[("ident", ScalarValue::Int(1))]));
     }
 }
