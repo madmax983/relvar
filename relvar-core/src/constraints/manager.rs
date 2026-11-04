@@ -9,8 +9,10 @@ use crate::constraints::{
     ForeignKeyConstraints, KeyConstraints,
 };
 use crate::storage_engine::{StorageEngine, StorageError};
+use crate::types::RelationType;
 use crate::values::relation::RelationError;
 use crate::values::{Relation, Tuple};
+use alloc::collections::BTreeSet;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -62,6 +64,33 @@ pub enum ConstraintManagerError {
     /// Transaction error.
     #[error("Transaction error: {0}")]
     TransactionError(String),
+
+    /// A key (or foreign key) names the same attribute more than once.
+    ///
+    /// TTM: a key is a *set* of attributes (RM Prescription 15).
+    #[error("Attribute {attribute} appears more than once in a key of relation {relation}")]
+    DuplicateKeyAttribute {
+        /// The relation the key is declared on.
+        relation: String,
+        /// The repeated attribute.
+        attribute: String,
+    },
+
+    /// A declared key is a proper superset of another declared key, so it
+    /// is a superkey rather than a candidate key.
+    ///
+    /// TTM: candidate keys are irreducible (RM Prescription 15).
+    #[error(
+        "Key {superkey:?} of relation {relation} is reducible: it is a proper superset of key {key:?}"
+    )]
+    ReducibleKey {
+        /// The relation the keys are declared on.
+        relation: String,
+        /// The reducible key (a proper superset of `key`).
+        superkey: Vec<String>,
+        /// The smaller declared key contained in `superkey`.
+        key: Vec<String>,
+    },
 }
 
 /// Manages integrity constraints for the database.
@@ -135,6 +164,11 @@ impl ConstraintManager {
                 relation_name.to_string(),
             ));
         }
+
+        // Validate the declaration itself (TTM RM Prescription 15) before
+        // touching data: attributes exist, are distinct, keys irreducible.
+        let metadata = engine.get_relation_metadata(relation_name)?;
+        validate_key_declarations(relation_name, &metadata.relation_type, &constraints)?;
 
         // Validate constraints against existing data
         let relation = engine.load_relation(relation_name)?;
@@ -674,6 +708,75 @@ impl ConstraintManager {
             !entries.is_empty()
         });
     }
+}
+
+/// Collects `attributes` as a set, rejecting names missing from `heading`
+/// and names that occur more than once.
+pub(crate) fn attribute_set<'a>(
+    relation_name: &str,
+    heading: &RelationType,
+    attributes: &'a [String],
+) -> Result<BTreeSet<&'a str>, ConstraintManagerError> {
+    let mut set = BTreeSet::new();
+    for attribute in attributes {
+        if !heading.has_attribute(attribute) {
+            return Err(ConstraintManagerError::AttributeNotFound(
+                attribute.clone(),
+                relation_name.to_string(),
+            ));
+        }
+        if !set.insert(attribute.as_str()) {
+            return Err(ConstraintManagerError::DuplicateKeyAttribute {
+                relation: relation_name.to_string(),
+                attribute: attribute.clone(),
+            });
+        }
+    }
+    Ok(set)
+}
+
+/// Validates a key declaration against the relation's heading
+/// (TTM RM Prescription 15).
+///
+/// Every key attribute must exist in the heading and appear at most once,
+/// and no declared key may be a proper superset of another declared key
+/// (candidate keys are irreducible; a proper superset is merely a superkey).
+/// The empty key is legal: it constrains the relvar to at most one tuple.
+/// Declaring the same key twice (e.g. as both primary and candidate key) is
+/// redundant but harmless, so equal keys are accepted.
+fn validate_key_declarations(
+    relation_name: &str,
+    heading: &RelationType,
+    constraints: &KeyConstraints,
+) -> Result<(), ConstraintManagerError> {
+    let declared: Vec<&[String]> = constraints
+        .primary_key()
+        .map(|pk| pk.attributes())
+        .into_iter()
+        .chain(
+            constraints
+                .candidate_keys()
+                .iter()
+                .map(|ck| ck.attributes()),
+        )
+        .collect();
+    let sets = declared
+        .iter()
+        .map(|attributes| attribute_set(relation_name, heading, attributes))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for (i, superkey) in sets.iter().enumerate() {
+        for (j, key) in sets.iter().enumerate() {
+            if i != j && key.len() < superkey.len() && key.is_subset(superkey) {
+                return Err(ConstraintManagerError::ReducibleKey {
+                    relation: relation_name.to_string(),
+                    superkey: declared[i].to_vec(),
+                    key: declared[j].to_vec(),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

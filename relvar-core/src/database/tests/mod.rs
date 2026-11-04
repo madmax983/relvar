@@ -6,5 +6,6 @@ mod integrity;
 mod key_index;
 mod schema;
 mod transaction;
+mod ttm_keys;
 mod v11_constraints;
 mod virtual_relvar;

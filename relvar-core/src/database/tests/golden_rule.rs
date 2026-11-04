@@ -18,7 +18,7 @@ use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::ScalarValue;
 use alloc::string::ToString;
 
-fn id_name_type() -> RelationType {
+pub(super) fn id_name_type() -> RelationType {
     RelationType::new(
         TupleType::new()
             .with_attribute("id", ScalarType::Int)
@@ -26,13 +26,13 @@ fn id_name_type() -> RelationType {
     )
 }
 
-fn pk(attributes: &[&str]) -> KeyConstraints {
+pub(super) fn pk(attributes: &[&str]) -> KeyConstraints {
     KeyConstraints::new().with_primary_key(
         PrimaryKey::new(attributes.iter().map(|a| a.to_string()).collect()).unwrap(),
     )
 }
 
-fn fk(from: &[&str], to_relvar: &str, to: &[&str]) -> ForeignKeyConstraints {
+pub(super) fn fk(from: &[&str], to_relvar: &str, to: &[&str]) -> ForeignKeyConstraints {
     ForeignKeyConstraints::new().with_foreign_key(
         ForeignKey::new(
             from.iter().map(|a| a.to_string()).collect(),
@@ -45,7 +45,7 @@ fn fk(from: &[&str], to_relvar: &str, to: &[&str]) -> ForeignKeyConstraints {
 
 /// DEPT{dept_id} with key {dept_id}; EMP{emp_id, dept_id} with key {emp_id}
 /// and FK dept_id -> DEPT.dept_id.
-fn dept_emp_db() -> Database<InMemoryEngine> {
+pub(super) fn dept_emp_db() -> Database<InMemoryEngine> {
     let mut db = Database::new(InMemoryEngine::new());
     db.create_relvar(
         "DEPT",
