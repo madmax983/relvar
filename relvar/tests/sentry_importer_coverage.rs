@@ -1,3 +1,6 @@
+// Exercises std-only modules (`tools::{importer, exporter}` / `experimental`).
+#![cfg(feature = "std")]
+
 use relvar::tools::importer::{ImporterError, from_csv, from_json};
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 

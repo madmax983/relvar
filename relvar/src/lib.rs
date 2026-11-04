@@ -121,6 +121,15 @@
 //! ```
 
 #![warn(missing_docs)]
+// `#![no_std]` + `alloc` when the `std` feature is off (mirrors relvar-core;
+// see the `no_std` CI job). Test builds keep `std` linked so unit tests may use
+// std conveniences. (`cargo build --target thumbv8m…` is the true no_std proof.)
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+
+// `#[macro_use]` brings alloc's `vec!`/`format!` into textual scope crate-wide,
+// so only types and traits need per-file imports in `no_std` builds.
+#[cfg_attr(not(feature = "std"), macro_use)]
+extern crate alloc;
 
 /// Common types and traits.
 pub mod prelude;
@@ -146,6 +155,9 @@ pub use relvar_core::constraints;
 pub use relvar_core::tuple;
 
 /// Experimental features that may be unstable or subject to change.
+///
+/// Requires the `std` feature (float math, std collections and I/O).
+#[cfg(feature = "std")]
 pub mod experimental;
 
 /// Developer tools and utilities.
@@ -154,7 +166,8 @@ pub mod tools;
 #[deprecated(note = "Use `relvar::tools::visualizer` instead")]
 pub use tools::visualizer;
 
-/// Data import and export functionality.
+/// Data import and export functionality (requires the `std` feature).
+#[cfg(feature = "std")]
 #[deprecated(note = "Use `relvar::tools` instead")]
 pub mod data {
     pub use crate::tools::exporter;

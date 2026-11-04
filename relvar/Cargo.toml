@@ -10,26 +10,38 @@ keywords = ["database", "relational", "dbms", "date", "relational-algebra"]
 categories = ["database-implementations"]
 
 [features]
+# Default keeps the full host experience (persistent storage, import/export,
+# experimental modules). `--no-default-features` gives a `#![no_std]` + `alloc`
+# facade over relvar-core (in-memory engine, algebra, constraints, the
+# schema visualizer) that builds for bare-metal targets (see the `no_std` CI job).
 default = ["storage", "std"]
-storage = ["dep:relvar-storage"]
-std = ["serde/std", "thiserror/std"]
+# relvar-storage is file-backed (std::fs), so persistence implies `std`.
+storage = ["dep:relvar-storage", "std"]
+# `tools::{importer, exporter}` and `experimental` need std (std::io, serde_json,
+# float math), so they are only compiled with this feature.
+std = ["dep:serde_json", "relvar-core/std", "serde/std", "thiserror/std"]
 
 [dependencies]
 relvar-core.workspace = true
 relvar-storage = { workspace = true, optional = true }
-serde_json.workspace = true
+serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 criterion.workspace = true
 
 [[bench]]
 name = "database"
 harness = false
+# Benchmarks PersistentEngine alongside InMemoryEngine.
+required-features = ["storage"]
 
 [[bench]]
 name = "insert_path"
 harness = false
+# Benchmarks PersistentEngine alongside InMemoryEngine.
+required-features = ["storage"]

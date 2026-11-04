@@ -1,3 +1,6 @@
+// Exercises std-only modules (`tools::{importer, exporter}` / `experimental`).
+#![cfg(feature = "std")]
+
 use relvar::tools::exporter;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};

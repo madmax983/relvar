@@ -50,6 +50,8 @@
 //! assert!(dot.contains("\"EMP\" -> \"DEPT\""));
 //! ```
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use relvar_core::database::Database;
 use relvar_core::storage_engine::StorageEngine;
 
