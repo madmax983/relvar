@@ -148,8 +148,8 @@ impl PhysicsEngine {
         let p_base = self.particles.rename(&[("id", "id1")]);
         let particles_with_forces = p_base.join(&net_forces)?;
 
-        let p_ids = self.particles.project(&["id"]);
-        let force_ids = net_forces.project(&["id1"]).rename(&[("id1", "id")]);
+        let p_ids = self.particles.project(&["id"])?;
+        let force_ids = net_forces.project(&["id1"])?.rename(&[("id1", "id")]);
         let missing_ids = p_ids
             .difference(&force_ids)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
@@ -207,7 +207,7 @@ impl PhysicsEngine {
 
         // 7. Project back to original schema and rename
         let next_state = updated
-            .project(&["id1", "new_x", "new_y", "new_vx", "new_vy", "mass"])
+            .project(&["id1", "new_x", "new_y", "new_vx", "new_vy", "mass"])?
             .rename(&[
                 ("id1", "id"),
                 ("new_x", "x"),

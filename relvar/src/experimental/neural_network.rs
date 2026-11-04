@@ -126,7 +126,7 @@ impl NeuralNetwork {
                 ScalarValue::Float(relu)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["layer", "node", "val"]);
+            .project(&["layer", "node", "val"])?;
 
         // 8. Union the new activations into the network state
         self.activations = self

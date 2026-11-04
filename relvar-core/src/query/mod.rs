@@ -40,7 +40,7 @@
 //! ```
 
 use crate::algebra::Aggregation;
-use crate::algebra::JoinError;
+use crate::algebra::{JoinError, ProjectError};
 use crate::constraints::{ConstraintExpression, ExpressionError};
 use crate::database::Database;
 use crate::error::DatabaseError;
@@ -160,6 +160,10 @@ pub enum QueryError {
     /// on each side).
     #[error("Join error: {0}")]
     Join(#[from] JoinError),
+
+    /// A projection named an attribute that is not in its input's heading.
+    #[error("Project error: {0}")]
+    Project(#[from] ProjectError),
 }
 
 impl Query {
@@ -246,7 +250,7 @@ impl Query {
             Query::Project { input, attributes } => {
                 let relation = input.execute(db)?;
                 let attrs_ref: Vec<&str> = attributes.iter().map(|s| s.as_str()).collect();
-                Ok(relation.project_into(&attrs_ref))
+                Ok(relation.project_into(&attrs_ref)?)
             }
             Query::Rename { input, mappings } => {
                 let relation = input.execute(db)?;

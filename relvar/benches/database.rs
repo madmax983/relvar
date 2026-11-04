@@ -314,7 +314,8 @@ fn bench_query_with_operations(c: &mut Criterion) {
                     .query("EMP")
                     .unwrap()
                     .restrict(|t| t.get_typed::<i64>("dept_id").unwrap() == 5)
-                    .project(&["emp_id", "name", "salary"]);
+                    .project(&["emp_id", "name", "salary"])
+                    .unwrap();
                 black_box(result);
             });
         });

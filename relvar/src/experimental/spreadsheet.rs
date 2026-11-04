@@ -140,8 +140,8 @@ impl Spreadsheet {
     ) -> Result<Relation, DatabaseError> {
         // Find unresolved formulas by antijoining/difference with resolved values
         // We only want formulas whose 'id' is NOT yet in current_values
-        let resolved_ids = current_values.project(&["id"]);
-        let formula_ids = self.formulas.project(&["id"]);
+        let resolved_ids = current_values.project(&["id"])?;
+        let formula_ids = self.formulas.project(&["id"])?;
 
         let unresolved_ids = formula_ids
             .difference(&resolved_ids)
@@ -195,7 +195,7 @@ impl Spreadsheet {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Project back to (id, val)
-        Ok(evaluated.project(&["id", "val"]))
+        Ok(evaluated.project(&["id", "val"])?)
     }
 }
 

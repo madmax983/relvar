@@ -185,7 +185,7 @@ impl KnowledgeGraph {
             rename_map.push(("object", var_name));
         }
 
-        let projected: Relation = rel.project(&vars);
+        let projected: Relation = rel.project(&vars)?;
 
         let mut final_rename_map = Vec::new();
         for (old, new) in &rename_map {

@@ -152,7 +152,7 @@ impl KMeans {
                 ScalarValue::Float(sum_y / count)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["cluster_id", "c_x", "c_y"]);
+            .project(&["cluster_id", "c_x", "c_y"])?;
 
         // Check for convergence (if difference is empty, they are the same)
         let diff1 = new_centroids

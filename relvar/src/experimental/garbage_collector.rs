@@ -132,7 +132,7 @@ impl GarbageCollector {
 
         // Ensure that to_addr has same schema as roots by projecting and renaming
         let reachable_indirect = reachable_from_roots
-            .project(&["to_addr"])
+            .project(&["to_addr"])?
             .rename(&[("to_addr", "address")]);
 
         // 3. Union with direct roots to get all reachable objects
@@ -141,7 +141,7 @@ impl GarbageCollector {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 4. Find garbage addresses (heap addresses MINUS reachable addresses)
-        let all_heap_addresses = self.heap.project(&["address"]);
+        let all_heap_addresses = self.heap.project(&["address"])?;
         let garbage_addresses = all_heap_addresses
             .difference(&all_reachable)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;

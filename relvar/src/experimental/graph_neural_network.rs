@@ -137,7 +137,7 @@ impl RelationalGNN {
 
         // 3. Rename target_id back to node_id, and drop source_id
         let messages_at_target = messages
-            .project(&["target_id", "feature_idx", "value"])
+            .project(&["target_id", "feature_idx", "value"])?
             .rename(&[("target_id", "node_id")]);
 
         // 4. Aggregate messages for each node and feature_idx using SUM

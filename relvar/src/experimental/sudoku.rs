@@ -132,7 +132,7 @@ impl SudokuSolver {
                 let invalid = all_possibilities
                     .join(&known_renamed)
                     .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-                Ok(invalid.project(&["row", "col", "box_id", "val"]))
+                Ok(invalid.project(&["row", "col", "box_id", "val"])?)
             };
 
         // 1. Invalid due to same row:
@@ -202,7 +202,7 @@ impl SudokuSolver {
 
             // Also we shouldn't consider cells that are already known
             // To do this, project known cells to just row, col and difference them out
-            let known_cells = known.project(&["row", "col"]);
+            let known_cells = known.project(&["row", "col"])?;
             let joined_known = valid_possibilities
                 .join(&known_cells)
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
@@ -222,7 +222,7 @@ impl SudokuSolver {
             let joined_det = unknown_possibilities
                 .join(&determined_cells)
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
-            let new_known = joined_det.project(&["row", "col", "val"]);
+            let new_known = joined_det.project(&["row", "col", "val"])?;
 
             known = known
                 .union(&new_known)

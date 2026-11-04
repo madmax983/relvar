@@ -1661,7 +1661,8 @@ mod tests {
             .join(&departments)
             .unwrap()
             .restrict(|tuple| tuple.get_typed::<i64>("dept_id").unwrap() == 10)
-            .project(&["dept_name", "name"]);
+            .project(&["dept_name", "name"])
+            .unwrap();
 
         // Arena pipeline.
         let arena = Arena::new();

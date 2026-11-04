@@ -103,7 +103,7 @@ impl LogicSimulator {
                 ScalarValue::Bool(res)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["out", "out_val"])
+            .project(&["out", "out_val"])?
             .rename(&[("out", "wire"), ("out_val", "val")]);
 
         Ok(eval_binary)
@@ -126,7 +126,7 @@ impl LogicSimulator {
                 ScalarValue::Bool(res)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["out", "out_val"])
+            .project(&["out", "out_val"])?
             .rename(&[("out", "wire"), ("out_val", "val")]);
 
         Ok(eval_unary)
@@ -142,7 +142,7 @@ impl LogicSimulator {
             .union(eval_unary)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        let input_wire_names = inputs.project(&["wire"]);
+        let input_wire_names = inputs.project(&["wire"])?;
         let gates_out_safe = gates_out
             .difference(&gates_out.join(&input_wire_names)?)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;

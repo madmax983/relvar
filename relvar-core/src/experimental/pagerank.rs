@@ -131,7 +131,7 @@ fn apply_damping_factor(
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
     // Project out the temporary sum_contribution to return only (node, rank)
-    Ok(final_ranks.project(&["node", "rank"]))
+    Ok(final_ranks.project(&["node", "rank"])?)
 }
 
 #[cfg(test)]

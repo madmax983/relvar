@@ -144,8 +144,8 @@ impl GeneticAlgorithm {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Left outer join simulation for the best individual(s) which have no one better (rank 0 implicitly)
-        let ids_with_rank = ranks.project(&["id1"]);
-        let all_ids = eval_p1.project(&["id1"]);
+        let ids_with_rank = ranks.project(&["id1"])?;
+        let all_ids = eval_p1.project(&["id1"])?;
         let top_ids = all_ids.difference(&ids_with_rank).unwrap(); // These are rank 0
         let top_with_zero = top_ids
             .extend("rank", ScalarType::Int, |_| ScalarValue::Int(0))
@@ -161,12 +161,12 @@ impl GeneticAlgorithm {
                 let rank = t.get_typed::<i64>("rank").unwrap();
                 rank < elite_count_i64
             })
-            .project(&["id1"])
+            .project(&["id1"])?
             .rename(&[("id1", "id")]);
 
         let parents = evaluated
             .join(&selected_ids)?
-            .project(&["id", "gene_a", "gene_b"]);
+            .project(&["id", "gene_a", "gene_b"])?;
 
         Ok(parents)
     }
@@ -218,7 +218,7 @@ impl GeneticAlgorithm {
                 ScalarValue::Int(avg + mutation)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["new_id", "new_gene_a", "new_gene_b"])
+            .project(&["new_id", "new_gene_a", "new_gene_b"])?
             .rename(&[
                 ("new_id", "id"),
                 ("new_gene_a", "gene_a"),

@@ -32,7 +32,7 @@ impl DecisionTree {
     pub fn predict(&self, features: &Relation) -> Result<Relation, DatabaseError> {
         // 1. Initialize state: every row_id starts at node 0.
         // First, get unique row_ids from features.
-        let row_ids = features.project(&["row_id"]);
+        let row_ids = features.project(&["row_id"])?;
         let mut state = row_ids
             .extend("node_id", ScalarType::Int, |_| ScalarValue::Int(0))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
@@ -53,7 +53,7 @@ impl DecisionTree {
             let leaves = state_nodes.restrict(|t| t.get_typed::<bool>("is_leaf").unwrap_or(false));
             if leaves.cardinality() > 0 {
                 let finished = leaves
-                    .project(&["row_id", "leaf_value"])
+                    .project(&["row_id", "leaf_value"])?
                     .rename(&[("leaf_value", "prediction")]);
                 predictions = predictions
                     .union(&finished)
@@ -85,7 +85,7 @@ impl DecisionTree {
                     }
                 })
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-                .project(&["row_id", "next_node_id"])
+                .project(&["row_id", "next_node_id"])?
                 .rename(&[("next_node_id", "node_id")]);
         }
 

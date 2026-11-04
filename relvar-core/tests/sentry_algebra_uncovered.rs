@@ -59,7 +59,7 @@ fn test_project_ordering() {
     .unwrap();
     let rel = Relation::from_tuples(rel_type, vec![tuple]).unwrap();
 
-    let projected = rel.project(&["z", "a"]);
+    let projected = rel.project(&["z", "a"]).unwrap();
     assert_eq!(projected.relation_type().heading().degree(), 2);
 }
 

@@ -36,6 +36,7 @@
 //! assert_eq!(result.cardinality(), 1);
 //! assert!(result.contains(&Tuple::new(result.relation_type().tuple_type().clone(), vec![("employee_id".to_string(), relvar_core::values::ScalarValue::Int(1))]).unwrap()));
 //! ```
+use crate::algebra::ProjectError;
 use crate::values::Relation;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -136,11 +137,11 @@ impl Relation {
 
         // If divisor is empty, return projection onto remainder
         if divisor.is_empty() {
-            return Ok(project_onto_attrs(self, &remainder_attrs));
+            return project_onto_attrs(self, &remainder_attrs);
         }
 
         // Project dividend onto remainder to get candidate tuples
-        let candidates = project_onto_attrs(self, &remainder_attrs);
+        let candidates = project_onto_attrs(self, &remainder_attrs)?;
 
         // Filter candidates: keep only those where ALL divisor tuples
         // have a matching extended tuple in the dividend
@@ -197,8 +198,13 @@ fn compute_remainder_attributes<'a>(
 }
 
 /// Project relation onto specified attributes.
-fn project_onto_attrs(relation: &Relation, attrs: &[&str]) -> Relation {
-    relation.project(attrs)
+///
+/// The remainder attributes are drawn from the dividend's own heading, so
+/// the projection cannot fail; the error is mapped defensively.
+fn project_onto_attrs(relation: &Relation, attrs: &[&str]) -> Result<Relation, DivideError> {
+    relation.project(attrs).map_err(|err| match err {
+        ProjectError::UnknownAttribute(name) => DivideError::MissingAttribute(name),
+    })
 }
 
 /// Filter candidate tuples, keeping only those where ALL divisor tuples

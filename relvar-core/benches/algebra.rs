@@ -189,7 +189,7 @@ fn bench_project(c: &mut Criterion) {
             let relation = create_employee_relation(size);
 
             b.iter(|| {
-                let result = relation.project(&["emp_id", "name"]);
+                let result = relation.project(&["emp_id", "name"]).unwrap();
                 black_box(result);
             });
         });
@@ -212,7 +212,7 @@ fn bench_project_wide(c: &mut Criterion) {
             let relation = create_wide_relation(size, num_cols);
 
             b.iter(|| {
-                let result = relation.project(&project_cols_refs);
+                let result = relation.project(&project_cols_refs).unwrap();
                 black_box(result);
             });
         });
@@ -235,7 +235,7 @@ fn bench_project_narrow(c: &mut Criterion) {
             let relation = create_wide_relation(size, num_cols);
 
             b.iter(|| {
-                let result = relation.project(&project_cols_refs);
+                let result = relation.project(&project_cols_refs).unwrap();
                 black_box(result);
             });
         });
@@ -514,7 +514,8 @@ fn bench_chained_operations(c: &mut Criterion) {
                         ScalarValue::Float(t.get_typed::<f64>("salary").unwrap() * 0.1)
                     })
                     .unwrap()
-                    .project(&["emp_id", "name", "salary", "bonus"]);
+                    .project(&["emp_id", "name", "salary", "bonus"])
+                    .unwrap();
                 black_box(result);
             });
         });

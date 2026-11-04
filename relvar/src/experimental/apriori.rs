@@ -69,9 +69,9 @@ impl Apriori {
         let freq_1 = self.frequent_1_itemsets(min_support)?;
         let f1 = freq_1
             .clone()
-            .project(&["item"])
+            .project(&["item"])?
             .rename(&[("item", "item1")]);
-        let f2 = freq_1.project(&["item"]).rename(&[("item", "item2")]);
+        let f2 = freq_1.project(&["item"])?.rename(&[("item", "item2")]);
 
         // 2. Cross join to form candidates
         let candidates = f1

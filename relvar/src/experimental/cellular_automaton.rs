@@ -131,12 +131,12 @@ impl CellularAutomaton {
                 let count = t.get_typed::<i64>("n_count").unwrap();
                 count == 2 || count == 3
             })
-            .project(&["x", "y"]);
+            .project(&["x", "y"])?;
 
         // Find new cells (birth): dead cells with exactly 3 neighbors
         let exactly_three = counts_xy
             .restrict(|t| t.get_typed::<i64>("n_count").unwrap() == 3)
-            .project(&["x", "y"]);
+            .project(&["x", "y"])?;
 
         // Dead cells are cells with exactly 3 neighbors minus the currently alive cells
         let births = exactly_three

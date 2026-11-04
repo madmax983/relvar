@@ -187,7 +187,7 @@ impl PetriNet {
         });
 
         // Get transitions that have at least one failing requirement
-        let disabled_transitions = failing.project(&["transition_id"]);
+        let disabled_transitions = failing.project(&["transition_id"]).unwrap();
 
         // Enabled = All - Disabled
         self.transitions.difference(&disabled_transitions).unwrap()
@@ -242,7 +242,8 @@ impl PetriNet {
                 ScalarValue::Int(-weight)
             })
             .unwrap()
-            .project(&["place_id", "delta"]);
+            .project(&["place_id", "delta"])
+            .unwrap();
 
         let produced_deltas = produced
             .extend("delta", ScalarType::Int, |t| {
@@ -250,7 +251,8 @@ impl PetriNet {
                 ScalarValue::Int(weight)
             })
             .unwrap()
-            .project(&["place_id", "delta"]);
+            .project(&["place_id", "delta"])
+            .unwrap();
 
         let all_deltas = consumed_deltas.union(&produced_deltas).unwrap();
 
@@ -269,9 +271,10 @@ impl PetriNet {
             })
             .unwrap()
             .project(&["place_id", "new_tokens"])
+            .unwrap()
             .rename(&[("new_tokens", "tokens")]);
 
-        let modified_place_ids = modified_places.project(&["place_id"]);
+        let modified_place_ids = modified_places.project(&["place_id"]).unwrap();
         let unmodified_places = self.places.semidifference(&modified_place_ids);
 
         self.places = modified_places.union(&unmodified_places).unwrap();

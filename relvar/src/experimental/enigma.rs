@@ -73,7 +73,7 @@ impl EnigmaMachine {
         Ok(rel
             .rename(&[("char", "pin_in")])
             .join(mapping)?
-            .project(&["pos", "pin_out"])
+            .project(&["pos", "pin_out"])?
             .rename(&[("pin_out", "char")]))
     }
 
@@ -98,7 +98,7 @@ impl EnigmaMachine {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         let joined = enter_rel
-            .project(&["pos", "pin_in", "offset"])
+            .project(&["pos", "pin_in", "offset"])?
             .join(rotor)?;
 
         Ok(joined
@@ -108,7 +108,7 @@ impl EnigmaMachine {
                 ScalarValue::Int((pin_out - offset).rem_euclid(26))
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["pos", "out_char"])
+            .project(&["pos", "out_char"])?
             .rename(&[("out_char", "char")]))
     }
 
@@ -133,7 +133,7 @@ impl EnigmaMachine {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         let joined = enter_rel
-            .project(&["pos", "pin_out", "offset"])
+            .project(&["pos", "pin_out", "offset"])?
             .join(rotor)?;
 
         Ok(joined
@@ -143,7 +143,7 @@ impl EnigmaMachine {
                 ScalarValue::Int((pin_in - offset).rem_euclid(26))
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["pos", "out_char"])
+            .project(&["pos", "out_char"])?
             .rename(&[("out_char", "char")]))
     }
 

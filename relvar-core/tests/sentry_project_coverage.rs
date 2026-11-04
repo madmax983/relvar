@@ -18,7 +18,7 @@ fn should_project_into_all_attributes() {
         .insert(tuple! { emp_id: 2i64, name: "Bob" })
         .unwrap();
 
-    let result = relation.project_into(&["emp_id", "name"]);
+    let result = relation.project_into(&["emp_id", "name"]).unwrap();
 
     assert_eq!(result.degree(), 2);
     assert_eq!(result.cardinality(), 2);
@@ -35,7 +35,7 @@ fn should_project_with_ordering_greater_coverage() {
     relation.insert(tuple! { a: 1i64, z: 2i64 }).unwrap();
 
     // Project out "a", leaving "z"
-    let result = relation.project(&["z"]);
+    let result = relation.project(&["z"]).unwrap();
     assert_eq!(result.degree(), 1);
 
     // Test project_into as well
@@ -45,7 +45,7 @@ fn should_project_with_ordering_greater_coverage() {
             .with_attribute("z", ScalarType::Int),
     ));
     relation2.insert(tuple! { a: 1i64, z: 2i64 }).unwrap();
-    let result2 = relation2.project_into(&["z"]);
+    let result2 = relation2.project_into(&["z"]).unwrap();
     assert_eq!(result2.degree(), 1);
 }
 
@@ -63,7 +63,7 @@ fn should_project_with_ordering_greater_coverage_more() {
         .unwrap();
 
     // Project out "a", leaving "b" and "z" - "b" is > "a"
-    let result = relation.project(&["b", "z"]);
+    let result = relation.project(&["b", "z"]).unwrap();
     assert_eq!(result.degree(), 2);
 
     // Test project_into as well
@@ -76,7 +76,7 @@ fn should_project_with_ordering_greater_coverage_more() {
     relation2
         .insert(tuple! { a: 1i64, b: 2i64, z: 3i64 })
         .unwrap();
-    let result2 = relation2.project_into(&["b", "z"]);
+    let result2 = relation2.project_into(&["b", "z"]).unwrap();
     assert_eq!(result2.degree(), 2);
 }
 
@@ -89,10 +89,10 @@ fn should_project_with_ordering_greater() {
     let mut relation = Relation::new(RelationType::new(heading));
     relation.insert(tuple! { c: 1i64, d: 2i64 }).unwrap();
 
-    // Projecting "a" which comes before "c" in the heading attributes
-    // However, it ignores non-existent attributes silently
-    let result = relation.project(&["a", "d"]);
-    assert_eq!(result.degree(), 1); // Only "d" is projected
+    // TTM: projecting on "a" (not in the heading) is a type error.
+    assert!(relation.project(&["a", "d"]).is_err());
+    let result = relation.project(&["d"]).unwrap();
+    assert_eq!(result.degree(), 1);
 
     // Now testing project_into
     let mut relation2 = Relation::new(RelationType::new(
@@ -101,8 +101,9 @@ fn should_project_with_ordering_greater() {
             .with_attribute("d", ScalarType::Int),
     ));
     relation2.insert(tuple! { c: 1i64, d: 2i64 }).unwrap();
-    let result2 = relation2.project_into(&["a", "d"]);
-    assert_eq!(result2.degree(), 1); // Only "d" is projected
+    assert!(relation2.clone().project_into(&["a", "d"]).is_err());
+    let result2 = relation2.project_into(&["d"]).unwrap();
+    assert_eq!(result2.degree(), 1);
 }
 
 #[test]
@@ -114,7 +115,8 @@ fn should_project_with_ordering_less() {
     let mut relation = Relation::new(RelationType::new(heading));
     relation.insert(tuple! { a: 1i64, b: 2i64 }).unwrap();
 
-    let result = relation.project(&["c", "a"]);
+    assert!(relation.project(&["c", "a"]).is_err());
+    let result = relation.project(&["a"]).unwrap();
     assert_eq!(result.degree(), 1);
 
     let mut relation2 = Relation::new(RelationType::new(
@@ -123,7 +125,8 @@ fn should_project_with_ordering_less() {
             .with_attribute("b", ScalarType::Int),
     ));
     relation2.insert(tuple! { a: 1i64, b: 2i64 }).unwrap();
-    let result2 = relation2.project_into(&["c", "a"]);
+    assert!(relation2.clone().project_into(&["c", "a"]).is_err());
+    let result2 = relation2.project_into(&["a"]).unwrap();
     assert_eq!(result2.degree(), 1);
 }
 
@@ -136,7 +139,8 @@ fn should_project_with_ordering_less_owned() {
     let mut relation = Relation::new(RelationType::new(heading));
     relation.insert(tuple! { c: 1i64, d: 2i64 }).unwrap();
 
-    let result = relation.project_into(&["a", "b"]);
+    assert!(relation.clone().project_into(&["a", "b"]).is_err());
+    let result = relation.project_into(&[]).unwrap();
     assert_eq!(result.degree(), 0);
 }
 
@@ -149,7 +153,7 @@ fn should_project_with_ordering_greater_for_project_tuple_values() {
 
     relation.insert(tuple! { z: 1i64, a: 2i64 }).unwrap();
 
-    let result = relation.project(&["z"]); // Heading of result will just have "z"
+    let result = relation.project(&["z"]).unwrap(); // Heading of result will just have "z"
     // "a" is less than "z", so `t_attr.cmp(h_attr)` where t_attr="a", h_attr="z" will be Less
     assert_eq!(result.degree(), 1);
 }

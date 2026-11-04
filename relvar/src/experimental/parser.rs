@@ -132,7 +132,7 @@ impl CykParser {
             .rename(&[("char", "rhs")])
             .join(&self.terminals)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["pos", "lhs"])
+            .project(&["pos", "lhs"])?
             .rename(&[("pos", "start"), ("lhs", "non_terminal")]);
 
         init.extend("length", ScalarType::Int, |_: &Tuple| ScalarValue::Int(1))
@@ -173,7 +173,7 @@ impl CykParser {
                 ScalarValue::Int(len1 + len2)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["start", "length", "lhs"])
+            .project(&["start", "length", "lhs"])?
             .rename(&[("lhs", "non_terminal")]);
 
         Ok(new_entries)

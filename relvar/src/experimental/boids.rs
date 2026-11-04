@@ -239,7 +239,7 @@ impl BoidsSimulation {
 
         // Finally, project and rename to match original relation
         self.boids = updated
-            .project(&["id", "new_x", "new_y", "limited_vx", "limited_vy"])
+            .project(&["id", "new_x", "new_y", "limited_vx", "limited_vy"])?
             .rename(&[
                 ("new_x", "x"),
                 ("new_y", "y"),

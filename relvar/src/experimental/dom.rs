@@ -118,7 +118,7 @@ impl RelationalDom {
                 let val = t.get_typed::<String>("attr_value").unwrap();
                 name == "class" && val == class_name_str
             })
-            .project(&["node_id"]);
+            .project(&["node_id"])?;
         Ok(res)
     }
 
@@ -181,7 +181,7 @@ impl RelationalDom {
         // Extract the child IDs (descendants)
         // schema: (parent_id, child_id) -> (child_id) -> (node_id)
         let descendants = valid_paths
-            .project(&["child_id"])
+            .project(&["child_id"])?
             .rename(&[("child_id", "node_id")]);
 
         // Intersect with the target nodes to filter out nodes that don't match the target selector

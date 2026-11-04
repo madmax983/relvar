@@ -125,7 +125,7 @@ impl RelVcs {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 5. Project to just (path, content)
-        let working_dir = working_dir_full.project(&["path", "content"]);
+        let working_dir = working_dir_full.project(&["path", "content"])?;
 
         Ok(working_dir)
     }
@@ -147,8 +147,8 @@ impl RelVcs {
         let tree_a = self.get_tree_for_commit(commit_a_hash)?;
         let tree_b = self.get_tree_for_commit(commit_b_hash)?;
 
-        let paths_a = tree_a.project(&["path"]);
-        let paths_b = tree_b.project(&["path"]);
+        let paths_a = tree_a.project(&["path"])?;
+        let paths_b = tree_b.project(&["path"])?;
 
         let added = self.compute_added_files(&paths_a, &paths_b)?;
         let removed = self.compute_removed_files(&paths_a, &paths_b)?;
@@ -178,7 +178,7 @@ impl RelVcs {
         Ok(commit
             .join(&self.trees)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["path", "blob_hash"]))
+            .project(&["path", "blob_hash"])?)
     }
 
     fn compute_added_files(
@@ -231,7 +231,7 @@ impl RelVcs {
                 != t.get_typed::<String>("blob_hash_b").unwrap()
         });
 
-        let modified_paths = modified_files.project(&["path"]);
+        let modified_paths = modified_files.project(&["path"])?;
         modified_paths
             .extend("status", ScalarType::String, |_| {
                 ScalarValue::String("modified".to_string())

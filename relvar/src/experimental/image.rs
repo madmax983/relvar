@@ -259,7 +259,9 @@ fn compute_kernel_contributions(relation: &Relation, kernel: &[KernelTap]) -> Ve
             ("wb", "b"),
         ];
 
-        let projected = with_idx.project(&["tx", "ty", "wr", "wg", "wb", "k_idx"]);
+        let projected = with_idx
+            .project(&["tx", "ty", "wr", "wg", "wb", "k_idx"])
+            .unwrap();
         let renamed = projected.rename(&rename_map);
 
         contributions.push(renamed);
@@ -319,6 +321,7 @@ fn summarize_and_normalize(unioned: &Relation, total_weight: i64) -> Relation {
 
     normalized
         .project(&["x", "y", "final_r", "final_g", "final_b"])
+        .unwrap()
         .rename(&rename_map)
 }
 

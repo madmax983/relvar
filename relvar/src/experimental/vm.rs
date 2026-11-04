@@ -207,12 +207,12 @@ impl RelationalVM {
 
         // Extract the new register update
         let new_reg_update = evaluated
-            .project(&["arg1", "new_val"])
+            .project(&["arg1", "new_val"])?
             .rename(&[("arg1", "reg_id"), ("new_val", "value")]);
 
         // Filter out the old register value
         let old_reg = evaluated
-            .project(&["arg1"])
+            .project(&["arg1"])?
             .rename(&[("arg1", "reg_id")])
             .join(&self.registers)?;
 
@@ -234,7 +234,7 @@ impl RelationalVM {
                 ScalarValue::Int(pc + 1)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["new_pc"])
+            .project(&["new_pc"])?
             .rename(&[("new_pc", "pc")]);
         Ok(())
     }

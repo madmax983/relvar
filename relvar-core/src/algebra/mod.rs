@@ -70,7 +70,7 @@
 //! employees.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 }).unwrap();
 //!
 //! // Project to just names
-//! let names = employees.project(&["name"]);
+//! let names = employees.project(&["name"]).unwrap();
 //! assert_eq!(names.degree(), 1);
 //!
 //! // Restrict to dept 10
@@ -130,6 +130,7 @@ pub use join::JoinError;
 
 /// Project operator for attribute selection (π).
 pub(crate) mod project;
+pub use project::ProjectError;
 
 /// Rename operator for attribute renaming (ρ).
 pub(crate) mod rename;

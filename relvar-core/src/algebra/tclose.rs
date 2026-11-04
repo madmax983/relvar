@@ -204,7 +204,7 @@ fn compute_next_paths(
     let joined = delta_renamed.join(edges)?;
 
     // 4. Project: keep (from, to), discard temp
-    let new_paths = joined.project(&[from_attr, to_attr]);
+    let new_paths = joined.project(&[from_attr, to_attr])?;
 
     // 5. Difference: new_paths = new_paths MINUS r_total
     // This filters out paths we already know about.

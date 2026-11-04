@@ -298,12 +298,12 @@ impl Scene {
         let visible_pixels = closest_renamed.join(&hits)?;
 
         // Project down to final image attributes
-        let rendered_hits = visible_pixels.project(&["x", "y", "r", "g", "b"]);
+        let rendered_hits = visible_pixels.project(&["x", "y", "r", "g", "b"])?;
 
         // 8. Background Color
         // Find rays that didn't hit anything: all rays MINUS rays that hit something
-        let all_pixels = rays.project(&["x", "y"]);
-        let hit_pixels = rendered_hits.project(&["x", "y"]);
+        let all_pixels = rays.project(&["x", "y"])?;
+        let hit_pixels = rendered_hits.project(&["x", "y"])?;
 
         let background_pixels = all_pixels
             .difference(&hit_pixels)

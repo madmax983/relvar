@@ -140,7 +140,7 @@ impl BuildSystem {
         });
 
         // 5. Project just the target
-        let stale_targets = stale_edges.project(&["target"]);
+        let stale_targets = stale_edges.project(&["target"])?;
 
         Ok(stale_targets)
     }
