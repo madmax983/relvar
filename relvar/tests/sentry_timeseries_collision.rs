@@ -1,3 +1,6 @@
+// Exercises std-only modules (`tools::{importer, exporter}` / `experimental`).
+#![cfg(feature = "std")]
+
 use relvar::experimental::timeseries::moving_average;
 use relvar::tuple;
 use relvar::{Relation, RelationType, ScalarType, TupleType};

@@ -76,6 +76,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv8m.main-none-eabihf
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       # Default features are `#![no_std]` + `alloc` (v0.12): bare-metal builds
       # must work out of the box.
@@ -88,11 +89,29 @@ jobs:
         run: cargo build -p relvar-core --no-default-features --target thumbv8m.main-none-eabihf
       - name: Build relvar-storage-core for Cortex-M without default features
         run: cargo build -p relvar-storage-core --no-default-features --target thumbv8m.main-none-eabihf
+      # The `relvar` facade defaults to std (persistent storage, import/export);
+      # `--no-default-features` is its `#![no_std]` + `alloc` build.
+      - name: Build relvar facade for Cortex-M without default features
+        run: cargo build -p relvar --no-default-features --target thumbv8m.main-none-eabihf
+      - name: Build relvar facade for Cortex-M (release)
+        run: cargo build -p relvar --no-default-features --release --target thumbv8m.main-none-eabihf
+      # Lint the no_std configurations on the bare-metal target itself: the
+      # host clippy job runs with --all-features and never sees these cfgs.
+      - name: Clippy (no_std, Cortex-M)
+        run: |
+          cargo clippy -p relvar-core --no-default-features --target thumbv8m.main-none-eabihf -- -D warnings
+          cargo clippy -p relvar-storage-core --no-default-features --target thumbv8m.main-none-eabihf -- -D warnings
+          cargo clippy -p relvar --no-default-features --target thumbv8m.main-none-eabihf -- -D warnings
       # Smoke-test the default (no_std) feature set on the host as well.
       - name: Test relvar-core with default features
         run: cargo test -p relvar-core
       - name: Test relvar-storage-core with default features
         run: cargo test -p relvar-storage-core
+      - name: Test relvar facade without default features
+        run: cargo test -p relvar --no-default-features
+      # `std` without `storage` is a supported combination too.
+      - name: Check relvar facade with std but no storage
+        run: cargo check -p relvar --no-default-features --features std --all-targets
 
   coverage:
     name: Code Coverage

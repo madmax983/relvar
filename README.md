@@ -70,6 +70,31 @@ Unlike SQL databases, Relvar adheres strictly to relational theory:
   - Automated formatting checks (`cargo fmt`)
   - Linting with zero warnings (`cargo clippy`)
   - Cross-platform testing (Ubuntu, Windows, macOS)
+  - `no_std` builds, lints and tests on a bare-metal Cortex-M target (`thumbv8m.main-none-eabihf`)
+
+## `no_std` / Bare-Metal Support
+
+The logical model runs without the standard library (`#![no_std]` + `alloc`):
+
+| Crate | `no_std` build | What you get |
+|-------|----------------|--------------|
+| `relvar-core` | default features | Types, relations, algebra, constraints, `Database` + `InMemoryEngine` |
+| `relvar-storage-core` | default features | Page layout, slotted pages, WAL records/framing, CRC-32, `BlockDevice` HAL |
+| `relvar` | `--no-default-features` | The facade over `relvar-core`, plus `tools::visualizer` |
+| `relvar-storage` | — (std only) | File-backed `PersistentEngine` |
+
+The `relvar` facade's `std` feature (on by default) adds `tools::{importer, exporter}`
+and `experimental`; `storage` (on by default, implies `std`) adds `PersistentEngine`.
+
+```bash
+rustup target add thumbv8m.main-none-eabihf
+cargo build -p relvar --no-default-features --target thumbv8m.main-none-eabihf
+```
+
+```toml
+[dependencies]
+relvar = { version = "0.1", default-features = false }
+```
 
 ## New Features in Depth
 

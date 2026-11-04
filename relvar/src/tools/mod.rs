@@ -6,16 +6,22 @@
 //!
 //! # Included Tools
 //!
-//! - **[`exporter`](crate::tools::exporter):** Export relations to standard formats like CSV, JSON, and ASCII tables.
+//! - **`exporter`** (requires `std`): Export relations to standard formats like CSV, JSON, and ASCII tables.
 //!   Useful for reporting, backups, or integrating with other systems.
-//! - **[`importer`](crate::tools::importer):** Import data from JSON and CSV. Features strict type checking
+//! - **`importer`** (requires `std`): Import data from JSON and CSV. Features strict type checking
 //!   and limit enforcement (DoS protection).
+//!
 //! - **[`visualizer`](crate::tools::visualizer):** Generate Graphviz DOT diagrams of your database schema,
 //!   showing tables, columns, keys, and relationships.
+//!
+//! The importer and exporter are built on `std::io` and `serde_json`, so they
+//! require the `std` feature. The visualizer is `no_std` + `alloc`.
 //!
 //! # Example: Import, Visualize, and Export
 //!
 //! ```
+//! # #[cfg(feature = "std")]
+//! # {
 //! use relvar::tools::{importer, exporter};
 //! use relvar_core::types::{RelationType, TupleType, ScalarType};
 //!
@@ -33,8 +39,11 @@
 //! let csv = exporter::to_csv(&relation, ',').unwrap();
 //! assert!(csv.contains("id,name"));
 //! assert!(csv.contains("1,\"Alice\""));
+//! # }
 //! ```
 
+#[cfg(feature = "std")]
 pub mod exporter;
+#[cfg(feature = "std")]
 pub mod importer;
 pub mod visualizer;

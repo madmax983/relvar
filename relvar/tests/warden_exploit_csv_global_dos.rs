@@ -1,3 +1,6 @@
+// Exercises std-only modules (`tools::{importer, exporter}` / `experimental`).
+#![cfg(feature = "std")]
+
 use relvar::tools::importer::{self, ImporterError};
 use relvar_core::types::{RelationType, ScalarType, TupleType};
 use std::io::Cursor;
