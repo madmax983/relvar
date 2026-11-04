@@ -37,6 +37,7 @@ use crate::collections::HashSet;
 use crate::types::{RelationType, TupleType};
 use crate::values::Tuple;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -185,6 +186,46 @@ impl core::hash::Hash for Relation {
             combined_hash ^= core::hash::Hasher::finish(&hasher);
         }
         combined_hash.hash(state);
+    }
+}
+
+impl PartialOrd for Relation {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// A deterministic total order on relation values, consistent with `Eq`
+/// (`cmp` is `Equal` exactly when the relations are equal).
+///
+/// Relations are ordered by cardinality, then heading (see [`TupleType`]'s
+/// `Ord`), then by their bodies compared as sorted tuple sequences (see
+/// [`Tuple`]'s `Ord`). The order carries no relational meaning — bodies are
+/// unordered sets (Proscription 3) — it exists so relation values can be
+/// keys of sorted containers and sorted canonically.
+///
+/// # Performance
+///
+/// Equal relations are detected by set equality in `O(n)`; ordering two
+/// unequal relations of the same cardinality and heading sorts both bodies,
+/// `O(n log n)` with one temporary allocation per side.
+impl Ord for Relation {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
+
+        self.cardinality()
+            .cmp(&other.cardinality())
+            .then_with(|| self.relation_type.cmp(&other.relation_type))
+            .then_with(|| {
+                if self.body == other.body {
+                    return Ordering::Equal;
+                }
+                let mut ours: Vec<&Tuple> = self.body.iter().collect();
+                let mut theirs: Vec<&Tuple> = other.body.iter().collect();
+                ours.sort_unstable();
+                theirs.sort_unstable();
+                ours.cmp(&theirs)
+            })
     }
 }
 

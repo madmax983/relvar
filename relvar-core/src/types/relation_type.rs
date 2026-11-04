@@ -270,6 +270,20 @@ impl TryFrom<RelationTypeUnchecked> for RelationType {
     }
 }
 
+impl PartialOrd for RelationType {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// A deterministic total order consistent with `Eq`: the order of the
+/// headings (see [`TupleType`]'s `Ord`).
+impl Ord for RelationType {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.heading.cmp(&other.heading)
+    }
+}
+
 impl core::hash::Hash for RelationType {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // Just hash the heading

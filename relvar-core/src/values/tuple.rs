@@ -526,6 +526,31 @@ impl core::hash::Hash for Tuple {
     }
 }
 
+impl PartialOrd for Tuple {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// A deterministic total order on tuples, consistent with `Eq`: by heading
+/// (see [`TupleType`]'s `Ord`), then by the attribute values in
+/// attribute-name order (using [`ScalarValue`]'s `Ord`).
+///
+/// The order carries no relational meaning; it exists so tuples (and the
+/// relation values containing them) can be sorted canonically.
+impl Ord for Tuple {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        let headings = if Arc::ptr_eq(&self.tuple_type, &other.tuple_type) {
+            core::cmp::Ordering::Equal
+        } else {
+            self.tuple_type.as_ref().cmp(other.tuple_type.as_ref())
+        };
+        // Equal headings imply equal key sets, so this compares the values
+        // attribute by attribute.
+        headings.then_with(|| self.values.cmp(&other.values))
+    }
+}
+
 /// Enables zero-copy extraction of string attributes from a Tuple.
 /// This prevents unnecessary heap allocations when borrowing as `&str` is sufficient.
 impl<'a> TryFrom<&'a ScalarValue> for &'a str {

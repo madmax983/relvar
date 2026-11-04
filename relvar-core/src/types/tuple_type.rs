@@ -352,6 +352,28 @@ impl Default for TupleType {
     }
 }
 
+impl PartialOrd for TupleType {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// A deterministic total order on headings, consistent with `Eq`: by degree,
+/// then by the `(attribute name, type)` pairs in attribute-name order.
+///
+/// The order carries no relational meaning (Proscription 4: attributes are
+/// unordered); it exists so headings, and the tuple and relation values that
+/// carry them, can be sorted canonically.
+impl Ord for TupleType {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        // `BTreeMap` iterates in attribute-name order, so equal maps yield
+        // equal pair sequences and vice versa.
+        self.degree()
+            .cmp(&other.degree())
+            .then_with(|| self.attributes.iter().cmp(other.attributes.iter()))
+    }
+}
+
 impl core::hash::Hash for TupleType {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // Hash the count first
