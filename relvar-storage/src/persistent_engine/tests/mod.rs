@@ -9,3 +9,4 @@ mod isolation;
 mod lifecycle;
 mod recovery;
 mod transaction;
+mod wal_tail;

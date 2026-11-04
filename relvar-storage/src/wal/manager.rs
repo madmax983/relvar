@@ -157,21 +157,42 @@ impl WalManager {
     /// Appending to a V1 file keeps writing V1 frames (formats are never
     /// mixed within a file).
     ///
+    /// # Torn tails
+    ///
+    /// A crash in the middle of an append can leave the final frame
+    /// incomplete or with a bad checksum. Such a torn FINAL frame was never
+    /// acknowledged as durable (its flush never completed), so `open`
+    /// treats it as the end of the log and truncates the file back to the
+    /// last valid frame — otherwise later appends would land behind
+    /// garbage. A bad frame that is followed by a valid frame is
+    /// corruption in the middle of the log and is rejected; nothing is
+    /// truncated then. A file torn inside its 8-byte magic (a crash during
+    /// [`WalManager::create`]) holds no records and is re-initialized.
+    ///
     /// # Errors
     ///
     /// Returns `WalError::Io` if file open fails.
-    /// Returns `WalError::Corrupted` if the header is invalid.
+    /// Returns `WalError::Corrupted` if the header is invalid or a corrupt
+    /// frame is followed by valid frames.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, WalError> {
         let mut log_file = OpenOptions::new().read(true).write(true).open(path)?;
 
         // Verify magic header and detect format
-        let mut magic = [0u8; 8];
+        let mut magic = Vec::with_capacity(8);
         use std::io::Read;
-        log_file.read_exact(&mut magic)?;
+        (&mut log_file).take(8).read_to_end(&mut magic)?;
 
-        let format = if &magic == WAL_MAGIC_V1 {
+        let format = if magic.as_slice() == WAL_MAGIC_V1 {
             WalFormat::V1
-        } else if &magic == WAL_MAGIC_V2 {
+        } else if magic.as_slice() == WAL_MAGIC_V2 {
+            WalFormat::V2
+        } else if magic.len() < WAL_MAGIC_V2.len() && WAL_MAGIC_V2.starts_with(&magic) {
+            // Torn magic: `create` crashed before its header was durable,
+            // so no record was ever written. Re-initialize as empty V2.
+            log_file.set_len(0)?;
+            log_file.seek(SeekFrom::Start(0))?;
+            log_file.write_all(WAL_MAGIC_V2)?;
+            log_file.sync_all()?;
             WalFormat::V2
         } else {
             return Err(WalError::Corrupted(
@@ -180,8 +201,9 @@ impl WalManager {
             ));
         };
 
-        // Scan WAL to find the actual last LSN
-        // CRITICAL: Can't use file_len heuristic - records are variable length!
+        // Scan WAL to find the actual last LSN (records are variable
+        // length, so the file length alone says nothing), truncating a
+        // torn final frame.
         let (current_lsn, flush_lsn) = Self::scan_for_last_lsn(&mut log_file, format)?;
 
         Ok(Self {
@@ -435,7 +457,11 @@ impl WalManager {
     ///
     /// Returns (next_lsn, last_flushed_lsn) by parsing the entire WAL.
     /// This is necessary because WAL records are variable-length.
-    /// A corrupt/torn tail ends the scan at the last valid record.
+    ///
+    /// A torn final frame (nothing valid follows it) ends the log: the
+    /// file is truncated back to the last valid frame and synced, so later
+    /// appends follow valid data. A bad frame followed by a valid one is
+    /// mid-log corruption and fails with `WalError::Corrupted`.
     fn scan_for_last_lsn(log_file: &mut File, format: WalFormat) -> Result<(Lsn, Lsn), WalError> {
         use std::io::Read;
 
@@ -459,30 +485,117 @@ impl WalManager {
             .take(MAX_WAL_SIZE)
             .read_to_end(&mut buffer)?;
 
-        let decoder: Box<dyn Iterator<Item = Result<(Lsn, WalRecord), CoreWalError>>> = match format
-        {
-            WalFormat::V1 => Box::new(decode_legacy_frames(&buffer)),
-            WalFormat::V2 => Box::new(decode_frames(&buffer)),
-        };
-
-        let mut last_lsn = Lsn::new(0);
-        for item in decoder {
-            // If decoding fails, we treat it as end of valid log (break)
-            if let Ok((lsn, _)) = item {
-                last_lsn = lsn;
-            } else {
-                break;
+        let prefix = valid_prefix(&buffer, format);
+        if prefix.len < buffer.len() {
+            if let Some(error) = prefix.error
+                && has_valid_frame_after(&buffer, prefix.len, prefix.last_lsn, format)
+            {
+                // A bad frame with valid frames behind it is not a torn
+                // append: refuse to open rather than drop durable records.
+                return Err(WalError::Corrupted(prefix.last_lsn, error.to_string()));
             }
+            // Torn final frame: cut it off so appends follow valid data.
+            log_file.set_len(8 + prefix.len as u64)?;
+            log_file.sync_all()?;
         }
+        log_file.seek(SeekFrom::End(0))?;
 
         // Next LSN is last_lsn + 1
-        let next_lsn = last_lsn.next();
+        let next_lsn = prefix.last_lsn.next();
 
         // All scanned records are flushed (they're on disk)
-        let flush_lsn = last_lsn;
+        let flush_lsn = prefix.last_lsn;
 
         Ok((next_lsn, flush_lsn))
     }
+}
+
+/// The valid prefix of a WAL record stream (the bytes after the magic).
+struct ValidPrefix {
+    /// Length in bytes of the decodable prefix.
+    len: usize,
+    /// LSN of the last decodable frame (`0` when there is none).
+    last_lsn: Lsn,
+    /// The decode error that ended the prefix, if any. `None` with
+    /// `len < data.len()` means a legacy tail too short for a header.
+    error: Option<CoreWalError>,
+}
+
+/// Decodes `data` until the first bad frame.
+fn valid_prefix(data: &[u8], format: WalFormat) -> ValidPrefix {
+    match format {
+        WalFormat::V1 => {
+            let mut decoder = decode_legacy_frames(data);
+            walk_frames(&mut decoder, |d| d.offset())
+        }
+        WalFormat::V2 => {
+            let mut decoder = decode_frames(data);
+            walk_frames(&mut decoder, |d| d.offset())
+        }
+    }
+}
+
+/// Drives a frame decoder to its end, recording the valid prefix.
+fn walk_frames<D>(decoder: &mut D, offset: impl Fn(&D) -> usize) -> ValidPrefix
+where
+    D: Iterator<Item = Result<(Lsn, WalRecord), CoreWalError>>,
+{
+    let mut last_lsn = Lsn::new(0);
+    loop {
+        match decoder.next() {
+            Some(Ok((lsn, _))) => last_lsn = lsn,
+            Some(Err(error)) => {
+                return ValidPrefix {
+                    len: offset(decoder),
+                    last_lsn,
+                    error: Some(error),
+                };
+            }
+            None => {
+                return ValidPrefix {
+                    len: offset(decoder),
+                    last_lsn,
+                    error: None,
+                };
+            }
+        }
+    }
+}
+
+/// Smallest possible frame: 16 header bytes, a 1-byte payload and (V2)
+/// a 4-byte CRC. Bounds how many frames the bytes after a bad frame could
+/// hold, which bounds the LSNs a genuine later frame could carry.
+const MIN_FRAME_LEN: usize = 16 + 1;
+
+/// Does a valid frame start anywhere after the bad frame at `bad`?
+///
+/// A genuine later frame continues the LSN sequence: its LSN exceeds
+/// `last_lsn` by at most the number of frames that fit in the remaining
+/// bytes. Only offsets carrying such an LSN are fully decoded (CRC-checked
+/// for V2), so the resync costs O(1) per byte on random data.
+fn has_valid_frame_after(data: &[u8], bad: usize, last_lsn: Lsn, format: WalFormat) -> bool {
+    let remaining = data.len().saturating_sub(bad);
+    let max_lsn = last_lsn
+        .value()
+        .saturating_add((remaining / MIN_FRAME_LEN) as u64 + 1);
+    (bad + 1..data.len().saturating_sub(MIN_FRAME_LEN - 1)).any(|start| {
+        let Some(lsn) = data
+            .get(start..start + 8)
+            .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+            .map(u64::from_le_bytes)
+        else {
+            return false;
+        };
+        if lsn <= last_lsn.value() || lsn > max_lsn {
+            return false;
+        }
+        let candidate = &data[start..];
+        let decoded = match format {
+            WalFormat::V1 => decode_legacy_frames(candidate).next(),
+            WalFormat::V2 => decode_frames(candidate).next(),
+        };
+        matches!(decoded, Some(Ok((found, _))) if found.value() == lsn)
+    })
 }
 
 #[cfg(test)]
@@ -569,10 +682,12 @@ mod tests {
         {
             let mut wal = WalManager::create(&path).unwrap();
             wal.log(WalRecord::Begin { txn_id }).unwrap();
+            wal.log(WalRecord::Commit { txn_id }).unwrap();
             wal.flush().unwrap();
         }
 
-        // Corrupt one payload byte (after magic + lsn + len).
+        // Corrupt one payload byte of the FIRST frame (after magic + lsn +
+        // len): a valid frame follows it, so this is mid-log corruption.
         {
             let mut raw = std::fs::read(&path).unwrap();
             let payload_offset = 8 + 8 + 8;
@@ -580,15 +695,44 @@ mod tests {
             std::fs::write(&path, &raw).unwrap();
         }
 
-        let mut wal = WalManager::open(&path).unwrap();
-        let result = wal.scan();
-        assert!(result.is_err());
-        match result {
+        match WalManager::open(&path) {
             Err(WalError::Corrupted(_, msg)) => {
                 assert!(msg.contains("CRC mismatch"), "unexpected: {msg}");
             }
-            other => panic!("expected Corrupted, got {other:?}"),
+            Err(other) => panic!("expected Corrupted, got {other:?}"),
+            Ok(_) => panic!("expected Corrupted, got Ok"),
         }
+    }
+
+    #[test]
+    fn test_v2_crc_mismatch_on_final_frame_is_truncated() {
+        // A bad CRC on the LAST frame is a torn append: it ends the log
+        // and is truncated, never misread.
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+
+        let txn_id = TransactionId::new(1);
+        {
+            let mut wal = WalManager::create(&path).unwrap();
+            wal.log(WalRecord::Begin { txn_id }).unwrap();
+            wal.log(WalRecord::Commit { txn_id }).unwrap();
+            wal.flush().unwrap();
+        }
+        let mut raw = std::fs::read(&path).unwrap();
+        let first_frame_len = 8 + 8 + WalRecord::Begin { txn_id }.serialize().unwrap().len() + 4;
+        let last = raw.len() - 1;
+        raw[last] ^= 0xFF; // the final frame's CRC
+        std::fs::write(&path, &raw).unwrap();
+
+        let mut wal = WalManager::open(&path).unwrap();
+        assert_eq!(wal.current_lsn(), Lsn::new(2));
+        let records = wal.scan().unwrap();
+        assert_eq!(records.len(), 1);
+        assert!(matches!(records[0].1, WalRecord::Begin { .. }));
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().len() as usize,
+            8 + first_frame_len
+        );
     }
 
     /// Hand-writes a V1 (pre-v0.7) WAL file: magic `RELVAR01` followed by
@@ -688,13 +832,20 @@ mod tests {
             file.write_all(&lsn.to_le_bytes()).unwrap();
             file.write_all(&len.to_le_bytes()).unwrap();
             file.write_all(&bad_payload).unwrap();
+
+            // ...followed by a valid frame, so the bad one is mid-log
+            // corruption rather than a torn tail.
+            let good = WalRecord::Begin {
+                txn_id: TransactionId::new(2),
+            }
+            .serialize()
+            .unwrap();
+            file.write_all(&2u64.to_le_bytes()).unwrap();
+            file.write_all(&(good.len() as u64).to_le_bytes()).unwrap();
+            file.write_all(&good).unwrap();
         }
 
-        let mut wal = WalManager::open(&path).unwrap();
-        let result = wal.scan();
-
-        assert!(result.is_err());
-        match result {
+        match WalManager::open(&path) {
             Err(WalError::Corrupted(_, msg)) => {
                 assert!(msg.contains("WAL record error"), "unexpected: {msg}");
             }
@@ -902,31 +1053,43 @@ mod tests {
             file.write_all(&[1, 2, 3]).unwrap();
         }
 
-        // Open calls scan_for_last_lsn internally.
-        // It handles tail corruption by stopping, so it might return Ok.
-        let result = WalManager::open(&path);
+        // The absurd length is rejected without allocating. Nothing valid
+        // follows the bad frame, so it is a torn tail: open truncates it
+        // and the scan never misreads it.
+        let mut wal = WalManager::open(&path).unwrap();
+        assert!(wal.scan().unwrap().is_empty());
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 8);
+    }
 
-        let mut wal = match result {
-            Ok(w) => w,
-            Err(_) => return, // If it fails, that's also acceptable for this test
-        };
+    #[test]
+    fn test_wal_record_length_overflow_mid_log_is_corruption() {
+        let temp = NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+        {
+            let mut wal = WalManager::create(&path).unwrap();
+            for id in 1..=3 {
+                wal.log(WalRecord::Begin {
+                    txn_id: TransactionId::new(id),
+                })
+                .unwrap();
+            }
+            wal.flush().unwrap();
+        }
+        // Overwrite the first frame's length with u64::MAX.
+        let mut raw = std::fs::read(&path).unwrap();
+        raw[16..24].copy_from_slice(&u64::MAX.to_le_bytes());
+        std::fs::write(&path, &raw).unwrap();
 
-        // However, explicit scan() should catch the corruption and return Error
-        let scan_result = wal.scan();
-
-        assert!(scan_result.is_err());
-        match scan_result {
+        match WalManager::open(&path) {
             Err(WalError::Corrupted(_, msg)) => {
-                // The legacy decoder rejects the absurd length before reading:
-                // "WAL frame payload length <u64::MAX> exceeds maximum record size".
                 assert!(
                     msg.contains("exceeds maximum record size"),
-                    "Unexpected error message: {}",
-                    msg
+                    "Unexpected error message: {msg}"
                 );
             }
+            Err(e) => panic!("Expected WalError::Corrupted, got {e:?}"),
             Ok(_) => panic!("Expected WalError::Corrupted, got Ok"),
-            Err(e) => panic!("Expected WalError::Corrupted, got {:?}", e),
         }
+        assert_eq!(std::fs::read(&path).unwrap(), raw, "nothing truncated");
     }
 }
