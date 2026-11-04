@@ -8,6 +8,12 @@
 //! - Aggregation is performed on tuple values, not physical storage
 //! - Result is a valid relation with the grouped and computed attributes
 //! - Set semantics are maintained
+//! - `r.summarize(by, aggs)` is `SUMMARIZE r PER (r{by})`: exactly one result
+//!   tuple per tuple of `r{by}`. With an empty `by` over an empty `r`,
+//!   `r{}` is TABLE_DUM, so the result is empty.
+//! - Each aggregation's result type is checked against the type its function
+//!   produces for the input heading; ill-typed aggregations are rejected
+//!   before any tuple is built.
 //!
 //! # Example
 //!
@@ -87,6 +93,22 @@ pub enum SummarizeError {
     /// or has an incompatible type.
     #[error("Aggregation error: {0}")]
     AggregationError(String),
+
+    /// An aggregation's declared result type differs from the type its
+    /// function produces for the input heading (e.g. `MIN` over an `Int`
+    /// attribute declared as `String`).
+    ///
+    /// TTM: every result tuple must conform to the statically determined
+    /// result heading.
+    #[error("Aggregation '{result_name}' is declared as {declared:?} but produces {expected:?}")]
+    ResultTypeMismatch {
+        /// The aggregation's result attribute name.
+        result_name: String,
+        /// The result type the aggregation declared.
+        declared: ScalarType,
+        /// The result type its function produces for the input heading.
+        expected: ScalarType,
+    },
 }
 
 /// Specifies the type of aggregation function to apply.
@@ -124,6 +146,11 @@ pub enum AggregationFn {
 ///
 /// An aggregation specifies what to compute (the function), what to call
 /// the result (the name), and what type the result will be.
+///
+/// The declared `result_type` must equal the type the function produces for
+/// the input heading (see [`Aggregation::expected_result_type`]);
+/// [`Relation::summarize`] rejects a mismatch with
+/// [`SummarizeError::ResultTypeMismatch`].
 ///
 /// # Examples
 ///
@@ -255,13 +282,14 @@ impl Aggregation {
     /// Creates a MIN aggregation.
     ///
     /// Finds the minimum value of an attribute across all tuples in each group.
-    /// The result type must be specified and should match the attribute type.
+    /// The result type must be specified and must equal the attribute type
+    /// ([`Relation::summarize`] rejects a mismatch).
     ///
     /// # Arguments
     ///
     /// * `result_name` - The name for the minimum result attribute
     /// * `attr_name` - The attribute to find the minimum of
-    /// * `result_type` - The type of the result (should match the attribute type)
+    /// * `result_type` - The type of the result (must equal the attribute type)
     ///
     /// # Examples
     ///
@@ -282,13 +310,14 @@ impl Aggregation {
     /// Creates a MAX aggregation.
     ///
     /// Finds the maximum value of an attribute across all tuples in each group.
-    /// The result type must be specified and should match the attribute type.
+    /// The result type must be specified and must equal the attribute type
+    /// ([`Relation::summarize`] rejects a mismatch).
     ///
     /// # Arguments
     ///
     /// * `result_name` - The name for the maximum result attribute
     /// * `attr_name` - The attribute to find the maximum of
-    /// * `result_type` - The type of the result (should match the attribute type)
+    /// * `result_type` - The type of the result (must equal the attribute type)
     ///
     /// # Examples
     ///
@@ -304,6 +333,71 @@ impl Aggregation {
             result_type,
             function: AggregationFn::Max(attr_name.to_string()),
         }
+    }
+
+    /// Returns the type this aggregation's function produces over `heading`.
+    ///
+    /// - `COUNT` produces `Int`.
+    /// - `SUM` over `Int` produces `Int`; over `Float`, `Float`.
+    /// - `AVG` over `Int` or `Float` produces `Float`.
+    /// - `MIN` / `MAX` produce the aggregated attribute's type.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SummarizeError::AggregationError`] if the aggregated
+    /// attribute is not in `heading`, or if `SUM` / `AVG` is applied to a
+    /// non-numeric attribute.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::algebra::Aggregation;
+    /// use relvar_core::types::{ScalarType, TupleType};
+    ///
+    /// let heading = TupleType::new().with_attribute("price", ScalarType::Float);
+    /// let agg = Aggregation::sum_float("total", "price");
+    /// assert_eq!(agg.expected_result_type(&heading).unwrap(), ScalarType::Float);
+    /// ```
+    pub fn expected_result_type(&self, heading: &TupleType) -> Result<ScalarType, SummarizeError> {
+        let attribute_type = |attr_name: &str| {
+            heading.get_attribute_type(attr_name).ok_or_else(|| {
+                SummarizeError::AggregationError(format!("Attribute {} not found", attr_name))
+            })
+        };
+        match &self.function {
+            AggregationFn::Count => Ok(ScalarType::Int),
+            AggregationFn::Sum(attr_name) => match attribute_type(attr_name)? {
+                ScalarType::Int => Ok(ScalarType::Int),
+                ScalarType::Float => Ok(ScalarType::Float),
+                other => Err(SummarizeError::AggregationError(format!(
+                    "SUM requires an Int or Float attribute; '{}' is {:?}",
+                    attr_name, other
+                ))),
+            },
+            AggregationFn::Avg(attr_name) => match attribute_type(attr_name)? {
+                ScalarType::Int | ScalarType::Float => Ok(ScalarType::Float),
+                other => Err(SummarizeError::AggregationError(format!(
+                    "Avg requires Int or Float attribute; '{}' is {:?}",
+                    attr_name, other
+                ))),
+            },
+            AggregationFn::Min(attr_name) | AggregationFn::Max(attr_name) => {
+                Ok(attribute_type(attr_name)?.clone())
+            }
+        }
+    }
+
+    /// Checks the declared result type against [`Self::expected_result_type`].
+    fn validated_result_type(&self, heading: &TupleType) -> Result<ScalarType, SummarizeError> {
+        let expected = self.expected_result_type(heading)?;
+        if expected != self.result_type {
+            return Err(SummarizeError::ResultTypeMismatch {
+                result_name: self.result_name.clone(),
+                declared: self.result_type.clone(),
+                expected,
+            });
+        }
+        Ok(expected)
     }
 
     fn compute(&self, tuples: &[&Tuple]) -> Result<ScalarValue, SummarizeError> {
@@ -476,7 +570,8 @@ impl Relation {
     /// # Arguments
     ///
     /// * `group_by` - Attribute names to group by. If empty, all tuples are
-    ///   treated as a single group.
+    ///   treated as a single group (and an empty relation has no group, so
+    ///   the result is empty: `SUMMARIZE r PER (r{})`).
     /// * `aggregations` - The aggregation functions to compute for each group
     ///
     /// # Returns
@@ -491,8 +586,10 @@ impl Relation {
     ///   doesn't exist
     /// - [`SummarizeError::ResultAttributeExists`] - An aggregation result name
     ///   conflicts with a grouping attribute
-    /// - [`SummarizeError::AggregationError`] - An aggregation failed (e.g.,
-    ///   MIN/MAX on empty set)
+    /// - [`SummarizeError::AggregationError`] - An aggregated attribute does
+    ///   not exist or has an unsuitable type, or a computation overflowed
+    /// - [`SummarizeError::ResultTypeMismatch`] - An aggregation's declared
+    ///   result type differs from the type its function produces
     ///
     /// # Performance
     ///
@@ -530,7 +627,7 @@ impl Relation {
         let result_rel_type = RelationType::new(result_heading.clone());
         let result_heading_arc = alloc::sync::Arc::new(result_heading);
 
-        let groups = self.group_tuples(group_by);
+        let groups = self.group_tuples(group_by)?;
 
         let result_tuples =
             self.compute_summarized_tuples(group_by, aggregations, &groups, &result_heading_arc)?;
@@ -597,27 +694,36 @@ impl Relation {
                 .relation_type()
                 .tuple_type()
                 .get_attribute_type(attr)
-                .unwrap();
+                .ok_or_else(|| SummarizeError::GroupingAttributeNotFound(attr.to_string()))?;
             result_heading = result_heading.with_attribute(attr.to_string(), attr_type.clone());
         }
 
-        // Add aggregation result attributes
+        // Add aggregation result attributes, each with the type its function
+        // actually produces (checked against the declared type).
         for agg in aggregations {
             if result_heading.has_attribute(&agg.result_name) {
                 return Err(SummarizeError::ResultAttributeExists(
                     agg.result_name.clone(),
                 ));
             }
-            result_heading =
-                result_heading.with_attribute(agg.result_name.clone(), agg.result_type.clone());
+            let result_type = agg.validated_result_type(self.relation_type().tuple_type())?;
+            result_heading = result_heading.with_attribute(agg.result_name.clone(), result_type);
         }
         Ok(result_heading)
     }
 
+    /// Partitions the body into the groups of `SUMMARIZE r PER (r{group_by})`:
+    /// one group per tuple of `r{group_by}`, so an empty relation has no
+    /// groups at all (even with an empty `group_by`, since `r{}` is then
+    /// TABLE_DUM).
+    #[allow(clippy::type_complexity)] // a local grouping map; naming it adds nothing
     fn group_tuples<'a>(
         &'a self,
         group_by: &[&str],
-    ) -> HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>> {
+    ) -> Result<HashMap<Vec<&'a ScalarValue>, Vec<&'a Tuple>>, SummarizeError> {
+        if self.is_empty() {
+            return Ok(HashMap::new());
+        }
         if group_by.is_empty() {
             // No grouping - all tuples in one group
             let mut map = HashMap::new();
@@ -627,7 +733,7 @@ impl Relation {
                 all_tuples.push(tuple);
             }
             map.insert(Vec::new(), all_tuples);
-            map
+            Ok(map)
         } else {
             // Group by specified attributes
             let mut groups: HashMap<Vec<&'a ScalarValue>, Vec<&Tuple>> = HashMap::new();
@@ -637,7 +743,9 @@ impl Relation {
             for tuple in self.tuples() {
                 key_buffer.clear();
                 for attr in group_by {
-                    key_buffer.push(tuple.get(attr).unwrap());
+                    key_buffer.push(tuple.get(attr).ok_or_else(|| {
+                        SummarizeError::GroupingAttributeNotFound(attr.to_string())
+                    })?);
                 }
 
                 if let Some(group) = groups.get_mut(key_buffer.as_slice()) {
@@ -646,7 +754,7 @@ impl Relation {
                     groups.insert(key_buffer.clone(), vec![tuple]);
                 }
             }
-            groups
+            Ok(groups)
         }
     }
 }
