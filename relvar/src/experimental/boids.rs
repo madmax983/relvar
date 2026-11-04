@@ -109,7 +109,7 @@ impl BoidsSimulation {
             let dx = bx - ax;
             let dy = by - ay;
             dx * dx + dy * dy < perception_sq
-        });
+        })?;
 
         // Compute separation components. If within separation radius and not self, push away.
         let neighbors = neighbors

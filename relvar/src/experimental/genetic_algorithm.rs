@@ -136,7 +136,7 @@ impl GeneticAlgorithm {
             f1 < f2
                 || (f1 == f2
                     && t1.get_typed::<i64>("id1").unwrap() < t2.get_typed::<i64>("id2").unwrap()) // Tie break by ID
-        });
+        })?;
 
         // Count how many `f2` are strictly better than `f1`
         let ranks = joined

@@ -148,8 +148,13 @@ fn test_join_error_paths() {
     let tuple1 = Tuple::new(t_type1, vec![("id".to_string(), ScalarValue::Int(1))]).unwrap();
     let rel1 = Relation::from_tuples(rel_type1, vec![tuple1]).unwrap();
 
+    // A self theta join shares every attribute name: TIMES needs disjoint
+    // headings, so it is rejected.
+    assert!(rel1.theta_join(&rel1, |_, _| false).is_err());
+
     // Theta join empty result because of condition
-    let res = rel1.theta_join(&rel1, |_, _| false);
+    let rel2 = rel1.rename(&[("id", "id2")]);
+    let res = rel1.theta_join(&rel2, |_, _| false).unwrap();
     assert_eq!(res.cardinality(), 0);
 }
 

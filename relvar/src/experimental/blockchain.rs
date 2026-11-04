@@ -155,7 +155,7 @@ impl Blockchain {
             let curr_id = curr.get_typed::<i64>("curr_id").unwrap();
             let prev_id = prev.get_typed::<i64>("prev_id").unwrap();
             curr_id == prev_id.saturating_add(1)
-        });
+        })?;
 
         // Ensure chain is contiguous
         let expected_links = self.blocks.cardinality().saturating_sub(1);

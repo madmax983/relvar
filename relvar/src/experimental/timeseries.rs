@@ -14,7 +14,7 @@
 //! we form groups that represent the rolling window, which can then be aggregated
 //! using standard summation operators.
 
-use relvar_core::algebra::Aggregation;
+use relvar_core::algebra::{Aggregation, JoinError};
 use relvar_core::error::DatabaseError;
 use relvar_core::values::{Relation, ScalarValue};
 
@@ -85,7 +85,7 @@ pub fn moving_average(
         window_size,
         partition_by,
         &prev_attr_suffix,
-    );
+    )?;
 
     summarize_moving_average(relation, &joined, value_attr, &prev_attr_suffix)
 }
@@ -138,7 +138,7 @@ fn perform_window_theta_join(
     window_size: i64,
     partition_by: &[&str],
     prev_attr_suffix: &str,
-) -> Relation {
+) -> Result<Relation, JoinError> {
     let effective_window_start_offset = window_size - 1;
     let time_attr_prev = format!("{}{}", time_attr, prev_attr_suffix);
 

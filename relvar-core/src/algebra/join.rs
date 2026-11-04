@@ -214,18 +214,17 @@ impl Relation {
     ///
     /// # Returns
     ///
-    /// A new relation with the union of both headings. Each result tuple is a
-    /// combination of tuples from both relations for which the predicate
-    /// returns `true`.
+    /// A new relation whose heading is the (disjoint) union of both headings.
+    /// Each result tuple is a combination of tuples from both relations for
+    /// which the predicate returns `true`.
     ///
     /// # Behavior
     ///
-    /// - Attributes from both relations are combined, subject to the collision rule below.
-    /// - **Attribute Collision Warning:** If relations have common attribute names,
-    ///   the attribute from the *second* relation is silently dropped from the result
-    ///   heading, and its values are discarded. The first relation's attribute takes
-    ///   precedence. This is a known limitation; ensure attributes are uniquely named
-    ///   before joining.
+    /// TTM: a theta join is `r1 TIMES r2` followed by a restriction, and
+    /// `TIMES` is defined only over operands with **disjoint** headings.
+    ///
+    /// - The operands must not share any attribute name; rename one side
+    ///   first if they do.
     /// - Result maintains set semantics.
     ///
     /// # Complexity
@@ -261,15 +260,15 @@ impl Relation {
     ///     let salary = emp.get_typed::<i64>("salary").unwrap();
     ///     let min_sal = dept.get_typed::<i64>("min_salary").unwrap();
     ///     salary >= min_sal
-    /// });
+    /// }).unwrap();
     /// // Only employee 2 (salary 75000) qualifies for dept 10 (min 60000)
     /// assert_eq!(result.cardinality(), 1);
     /// ```
     ///
-    /// # Example: Safe Usage (Avoiding Collisions)
+    /// # Example: Shared Attribute Names
     ///
-    /// To avoid silent attribute collisions when both relations share attribute names
-    /// (e.g., both have `id`), rename the attributes before joining:
+    /// When both relations share an attribute name (e.g., both have `id`),
+    /// the theta join is rejected; rename the attributes before joining:
     ///
     /// ```
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
@@ -285,12 +284,13 @@ impl Relation {
     /// let mut r2 = Relation::new(rel_type);
     /// r2.insert(tuple! { id: 2i64 }).unwrap();
     ///
-    /// // DANGEROUS: r1.theta_join(&r2, ...) will drop r2's "id" attribute!
+    /// // Rejected: both operands have an "id" attribute.
+    /// assert!(r1.theta_join(&r2, |_, _| true).is_err());
     ///
-    /// // SAFE: Rename r2's attribute first
+    /// // Rename r2's attribute first
     /// let r2_renamed = r2.rename(&[("id", "r2_id")]);
     ///
-    /// let result = r1.theta_join(&r2_renamed, |t1, t2| true);
+    /// let result = r1.theta_join(&r2_renamed, |t1, t2| true).unwrap();
     ///
     /// // Result now has both: "id" (from r1) and "r2_id" (from r2)
     /// assert!(result.relation_type().has_attribute("id"));
@@ -313,15 +313,30 @@ impl Relation {
     ///
     /// let result = r1.theta_join(&r2, |t1, t2| {
     ///     t1.get_typed::<i64>("x").unwrap() < t2.get_typed::<i64>("y").unwrap()
-    /// });
+    /// }).unwrap();
     /// assert_eq!(result.cardinality(), 1);
     /// ```
-    pub fn theta_join<F>(&self, other: &Relation, predicate: F) -> Self
+    ///
+    /// # Errors
+    ///
+    /// Returns [`JoinError::SharedAttribute`] if the two headings share an
+    /// attribute name.
+    pub fn theta_join<F>(&self, other: &Relation, predicate: F) -> Result<Self, JoinError>
     where
         F: Fn(&Tuple, &Tuple) -> bool,
     {
-        // Build result heading (union of both headings, but must handle conflicts)
-        // Note: In a production system, we'd want to handle conflicts more explicitly
+        // TIMES requires disjoint headings.
+        let other_heading = other.relation_type().heading();
+        if let Some(shared) = self
+            .relation_type()
+            .heading()
+            .attribute_names()
+            .find(|name| other_heading.has_attribute(name))
+        {
+            return Err(JoinError::SharedAttribute(shared.clone()));
+        }
+
+        // Disjoint headings: the result heading is their union.
         let result_heading = compute_natural_join_heading(self, other);
 
         let result_rel_type = RelationType::new(result_heading.clone());
@@ -332,7 +347,10 @@ impl Relation {
 
         // Optimization: Construct the Relation directly from the HashSet buffer,
         // skipping the intermediate `Vec` allocation and `.insert()` iteration sequence entirely.
-        Relation::from_body_unchecked(result_rel_type, joined_tuples)
+        Ok(Relation::from_body_unchecked(
+            result_rel_type,
+            joined_tuples,
+        ))
     }
 }
 
@@ -362,8 +380,9 @@ fn compute_common_attributes(left: &Relation, right: &Relation) -> Result<Vec<St
 
 /// Helper to compute the heading for a natural join (or theta join).
 ///
-/// Result is the union of attributes from both relations.
-/// Attributes present in both are included only once (from the left relation).
+/// Result is the union of attributes from both relations. Attributes present
+/// in both are included only once; callers guarantee they have the same type
+/// (natural join) or that there are none (theta join).
 fn compute_natural_join_heading(left: &Relation, right: &Relation) -> TupleType {
     let mut result_heading = left.relation_type().heading().clone();
 
@@ -563,7 +582,8 @@ where
 
 /// Helper to combine two tuples into a single tuple.
 ///
-/// Attributes from `primary` take precedence over `secondary` if there are collisions.
+/// Common attributes take `primary`'s value; callers guarantee the two values
+/// are equal (natural join key match) or that there are none (theta join).
 fn combine_tuples(
     primary: &Tuple,
     secondary: &Tuple,
@@ -618,7 +638,7 @@ fn merge_next_values<'a>(
     match (iter_p.peek(), iter_s.peek()) {
         (Some(&(k_p, v_p)), Some(&(k_s, v_s))) => {
             if k_p == k_s {
-                // Collision: Primary wins (as per doc)
+                // Common attribute: values are equal by the join key match
                 // Consume both since they match
                 values.push((k_p.clone(), v_p.clone()));
                 iter_p.next();
@@ -815,7 +835,7 @@ mod tests {
 
         // emp_id 1 (50000) matches dept 20 (40000)
         // emp_id 2 (75000) matches both dept 10 (60000) and dept 20 (40000)
-        assert_eq!(result.cardinality(), 3);
+        assert_eq!(result.unwrap().cardinality(), 3);
     }
 
     #[test]
@@ -840,77 +860,43 @@ mod tests {
         assert!(result.is_empty());
     }
 
-    /// Verifies the documented behavior that theta_join drops conflicting attributes
-    /// from the second relation.
+    /// TTM: theta join is TIMES followed by restrict, and TIMES requires
+    /// disjoint headings. A shared attribute name must be rejected, not
+    /// silently resolved in favour of the left operand.
     #[test]
-    fn test_theta_join_attribute_collision_resolution() {
-        // Relation 1: id=1
+    fn test_theta_join_rejects_shared_attribute_names() {
         let heading1 = TupleType::new().with_attribute("id", ScalarType::Int);
         let mut rel1 = Relation::new(RelationType::new(heading1));
         rel1.insert(tuple! { id: 1i64 }).unwrap();
 
-        // Relation 2: id=2 (SAME ATTRIBUTE NAME)
         let heading2 = TupleType::new().with_attribute("id", ScalarType::Int);
         let mut rel2 = Relation::new(RelationType::new(heading2));
         rel2.insert(tuple! { id: 2i64 }).unwrap();
 
-        // Theta join with a predicate that is always true
-        // If this were a proper Cartesian product (renaming aside), we'd expect
-        // something like (id_left: 1, id_right: 2).
-        //
-        // Current behavior: The second 'id' is dropped.
         let result = rel1.theta_join(&rel2, |_, _| true);
-
-        // Assert that the result only has degree 1 (from rel1), not 2
         assert_eq!(
-            result.degree(),
-            1,
-            "Expected colliding attribute to be dropped per current behavior"
-        );
-
-        // Assert that the value preserved is from the first relation (id=1)
-        let tuple = result.tuples().next().expect("Should have one tuple");
-        assert_eq!(
-            tuple.get_typed::<i64>("id").expect("id attribute missing"),
-            1
+            result.map(|r| r.cardinality()),
+            Err(super::JoinError::SharedAttribute("id".to_string()))
         );
     }
 
-    /// Verifies behavior when colliding attributes have DIFFERENT types.
-    ///
-    /// Even if types mismatch, the second attribute is dropped, and the result
-    /// retains the type and value of the first attribute. This ensures no
-    /// type confusion or panic occurs during tuple construction.
+    /// Shared names are rejected even when the types differ (the old
+    /// behaviour kept the left attribute and silently dropped the right).
     #[test]
-    fn test_theta_join_colliding_attributes_different_types() {
-        // Relation 1: id=1 (Int)
+    fn test_theta_join_rejects_shared_attribute_names_with_different_types() {
         let heading1 = TupleType::new().with_attribute("id", ScalarType::Int);
         let mut rel1 = Relation::new(RelationType::new(heading1));
         rel1.insert(tuple! { id: 1i64 }).unwrap();
 
-        // Relation 2: id="2" (String) - Same name, different type
         let heading2 = TupleType::new().with_attribute("id", ScalarType::String);
         let mut rel2 = Relation::new(RelationType::new(heading2));
         rel2.insert(tuple! { id: "2" }).unwrap();
 
-        // Theta join
         let result = rel1.theta_join(&rel2, |_, _| true);
-
-        // Result should have 'id' as Int (from rel1)
-        assert_eq!(result.degree(), 1);
-        let tuple = result.tuples().next().unwrap();
-
-        // Should be able to get as Int
-        assert_eq!(tuple.get_typed::<i64>("id").unwrap(), 1);
-
-        // Should NOT be able to get as String
-        assert!(tuple.get_typed::<String>("id").is_none());
-
-        // Verify type in heading
-        assert_eq!(
-            result.relation_type().heading().get_attribute_type("id"),
-            Some(&ScalarType::Int)
-        );
+        assert!(matches!(
+            result,
+            Err(super::JoinError::SharedAttribute(ref a)) if a == "id"
+        ));
     }
 
     /// TTM: common attributes of a natural join must have the same type on
