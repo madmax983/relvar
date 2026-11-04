@@ -6,5 +6,6 @@ mod basic;
 mod common;
 mod gc;
 mod isolation;
+mod lifecycle;
 mod recovery;
 mod transaction;

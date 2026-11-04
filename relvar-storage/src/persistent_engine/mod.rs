@@ -582,6 +582,11 @@ impl StorageEngine for PersistentEngine {
 
     fn commit_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
         let txn_id = snapshot.txn_id;
+        // Only a live transaction can commit. A stale handle (cloned
+        // before a rollback or a previous commit) is refused with nothing
+        // logged: logging a Commit for an aborted transaction would make
+        // its never-committed versions visible.
+        self.ensure_live(txn_id)?;
 
         // Serializable validation runs before anything is made durable: a
         // conflict aborts the transaction instead of committing it.
@@ -611,6 +616,9 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
+        // Only a live transaction can roll back; an Abort record after a
+        // Commit (or a second Abort) is refused with nothing logged.
+        self.ensure_live(snapshot.txn_id)?;
         self.abort_txn(snapshot.txn_id)
     }
 }
@@ -945,6 +953,22 @@ impl PersistentEngine {
 
 // MVCC methods (internal)
 impl PersistentEngine {
+    /// Fails unless `txn_id` is a live transaction.
+    ///
+    /// Commit and rollback call this first: ending a transaction that
+    /// already ended (a stale or cloned [`PersistentSnapshot`]) is an
+    /// error and logs nothing.
+    fn ensure_live(&self, txn_id: TransactionId) -> Result<(), StorageError> {
+        if self.txn_pool.is_live(txn_id) {
+            Ok(())
+        } else {
+            Err(StorageError::Other(format!(
+                "transaction {} is not active (already committed or rolled back)",
+                txn_id.value()
+            )))
+        }
+    }
+
     /// Ends an autocommit transaction begun by [`ensure_transaction`](Self::ensure_transaction):
     /// commits it when the operation succeeded, aborts it when it failed.
     ///
