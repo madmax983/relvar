@@ -520,12 +520,14 @@ pub proof fn lemma_semijoin_is_projected_join(r1: Relation, r2: Relation, t1: Tu
 // EXTEND
 // ---------------------------------------------------------------------------
 
+/// The per-tuple function of `EXTEND`.
+pub open spec fn extender(name: Name, f: spec_fn(Tuple) -> Val) -> spec_fn(Tuple) -> Tuple {
+    |t: Tuple| t.insert(name, f(t))
+}
+
 /// `EXTEND r : { name := f(t) }`, where every `f(t)` has type `ty`.
 pub open spec fn extend(r: Relation, name: Name, ty: Ty, f: spec_fn(Tuple) -> Val) -> Relation {
-    Relation {
-        heading: r.heading.insert(name, ty),
-        body: r.body.map(|t: Tuple| t.insert(name, f(t))),
-    }
+    Relation { heading: r.heading.insert(name, ty), body: r.body.map(extender(name, f)) }
 }
 
 pub open spec fn extend_ok(r: Relation, name: Name, ty: Ty, f: spec_fn(Tuple) -> Val) -> bool {
@@ -544,7 +546,7 @@ pub proof fn lemma_extend_closed(r: Relation, name: Name, ty: Ty, f: spec_fn(Tup
         cardinality(extend(r, name, ty, f)) == cardinality(r),
 {
     let nh = r.heading.insert(name, ty);
-    let g = |t: Tuple| t.insert(name, f(t));
+    let g = extender(name, f);
     assert forall|u: Tuple| #[trigger] extend(r, name, ty, f).body.contains(u) implies conforms(
         u,
         nh,
@@ -648,10 +650,13 @@ pub proof fn lemma_summarize_groups_nonempty(r: Relation, by: Set<Name>, g: Tupl
 // ---------------------------------------------------------------------------
 
 /// The nested relation body for the group that `t` belongs to.
+/// The tuples of `r` in the same group as `t` (equal outside `names`).
+pub open spec fn same_group(r: Relation, names: Set<Name>, t: Tuple) -> Set<Tuple> {
+    r.body.filter(|u: Tuple| u.remove_keys(names) == t.remove_keys(names))
+}
+
 pub open spec fn nest(r: Relation, names: Set<Name>, t: Tuple) -> Set<Tuple> {
-    r.body.filter(|u: Tuple| u.remove_keys(names) == t.remove_keys(names)).map(
-        |u: Tuple| tuple_project(u, names),
-    )
+    same_group(r, names, t).map(|u: Tuple| tuple_project(u, names))
 }
 
 pub open spec fn group_tuple(r: Relation, names: Set<Name>, rva: Name, t: Tuple) -> Tuple {
@@ -712,9 +717,7 @@ pub proof fn lemma_group_rva_wf(r: Relation, names: Set<Name>, t: Tuple)
         v,
         r.heading.restrict(names),
     ) by {
-        let u = choose|u: Tuple| #[trigger]
-            r.body.filter(|u: Tuple| u.remove_keys(names) == t.remove_keys(names)).contains(u)
-                && v == tuple_project(u, names);
+        let u = choose|u: Tuple| #[trigger] same_group(r, names, t).contains(u) && v == tuple_project(u, names);
         lemma_project_tuple_conforms(u, r.heading, names);
     }
 }
@@ -730,11 +733,15 @@ pub open spec fn unnest(t: Tuple, rva: Name) -> Set<Tuple> {
     rva_body(t[rva]).map(|v: Tuple| t.remove(rva).union_prefer_right(v))
 }
 
+pub open spec fn unnest_parts(r: Relation, rva: Name) -> Set<Set<Tuple>> {
+    r.body.map(|t: Tuple| unnest(t, rva))
+}
+
 /// `r UNGROUP rva`.
 pub open spec fn ungroup(r: Relation, rva: Name, inner: Heading) -> Relation {
     Relation {
         heading: r.heading.remove(rva).union_prefer_right(inner),
-        body: r.body.map(|t: Tuple| unnest(t, rva)).flatten(),
+        body: unnest_parts(r, rva).flatten(),
     }
 }
 
@@ -763,8 +770,7 @@ pub proof fn lemma_ungroup_closed(r: Relation, rva: Name, inner: Heading)
         w,
         nh,
     ) by {
-        let s = choose|s: Set<Tuple>| #[trigger]
-            r.body.map(|t: Tuple| unnest(t, rva)).contains(s) && s.contains(w);
+        let s = choose|s: Set<Tuple>| #[trigger] unnest_parts(r, rva).contains(s) && s.contains(w);
         let t = choose|t: Tuple| #[trigger] r.body.contains(t) && s == unnest(t, rva);
         let v = choose|v: Tuple| #[trigger]
             rva_body(t[rva]).contains(v) && w == t.remove(rva).union_prefer_right(v);
@@ -912,15 +918,27 @@ pub open spec fn reaches(r: Relation, x_name: Name, y_name: Name, x: Val, y: Val
         #[trigger] is_path(r, x_name, y_name, p) && p[0] == x && p[p.len() - 1] == y
 }
 
+/// The values of attribute `a` in `r`.
+pub open spec fn column(r: Relation, a: Name) -> Set<Val> {
+    r.body.map(|t: Tuple| t[a])
+}
+
 /// The values that occur in `r` (both columns).
 pub open spec fn vals(r: Relation, x_name: Name, y_name: Name) -> Set<Val> {
-    r.body.map(|t: Tuple| t[x_name]).union(r.body.map(|t: Tuple| t[y_name]))
+    column(r, x_name).union(column(r, y_name))
+}
+
+/// All pairs `(x, y)` for `y` in `vs`.
+pub open spec fn row_pairs(vs: Set<Val>, x_name: Name, y_name: Name, x: Val) -> Set<Tuple> {
+    vs.map(|y: Val| pair(x_name, y_name, x, y))
+}
+
+pub open spec fn pair_sets(vs: Set<Val>, x_name: Name, y_name: Name) -> Set<Set<Tuple>> {
+    vs.map(|x: Val| row_pairs(vs, x_name, y_name, x))
 }
 
 pub open spec fn candidates(r: Relation, x_name: Name, y_name: Name) -> Set<Tuple> {
-    vals(r, x_name, y_name).map(
-        |x: Val| vals(r, x_name, y_name).map(|y: Val| pair(x_name, y_name, x, y)),
-    ).flatten()
+    pair_sets(vals(r, x_name, y_name), x_name, y_name).flatten()
 }
 
 /// `TCLOSE r`: every pair `(x, y)` with a path from `x` to `y`. Defined as a
@@ -955,7 +973,7 @@ proof fn lemma_vals_typed(r: Relation, x_name: Name, y_name: Name, t: Ty, v: Val
 {
     assert(r.heading.dom().contains(x_name));
     assert(r.heading.dom().contains(y_name));
-    if r.body.map(|t: Tuple| t[x_name]).contains(v) {
+    if column(r, x_name).contains(v) {
         let u = choose|u: Tuple| #[trigger] r.body.contains(u) && v == u[x_name];
         assert(conforms(u, r.heading));
     } else {
@@ -979,11 +997,8 @@ pub proof fn lemma_tclose_closed(r: Relation, x_name: Name, y_name: Name, t: Ty)
         r.heading,
     ) by {
         assert(c.contains(w));
-        let s = choose|s: Set<Tuple>| #[trigger]
-            vs.map(|x: Val| vs.map(|y: Val| pair(x_name, y_name, x, y))).contains(s)
-                && s.contains(w);
-        let x = choose|x: Val| #[trigger]
-            vs.contains(x) && s == vs.map(|y: Val| pair(x_name, y_name, x, y));
+        let s = choose|s: Set<Tuple>| #[trigger] pair_sets(vs, x_name, y_name).contains(s) && s.contains(w);
+        let x = choose|x: Val| #[trigger] vs.contains(x) && s == row_pairs(vs, x_name, y_name, x);
         let y = choose|y: Val| #[trigger] vs.contains(y) && w == pair(x_name, y_name, x, y);
         lemma_vals_typed(r, x_name, y_name, t, x);
         lemma_vals_typed(r, x_name, y_name, t, y);
@@ -1008,12 +1023,12 @@ pub proof fn lemma_tclose_contains_r(r: Relation, x_name: Name, y_name: Name, t:
     let p = seq![x, y];
     assert(is_path(r, x_name, y_name, p));
     assert(reaches(r, x_name, y_name, x, y));
-    assert(r.body.map(|t: Tuple| t[x_name]).contains(x));
-    assert(r.body.map(|t: Tuple| t[y_name]).contains(y));
+    assert(column(r, x_name).contains(x));
+    assert(column(r, y_name).contains(y));
     assert(vs.contains(x) && vs.contains(y));
-    let s = vs.map(|y: Val| pair(x_name, y_name, x, y));
+    let s = row_pairs(vs, x_name, y_name, x);
     assert(s.contains(e));
-    assert(vs.map(|x: Val| vs.map(|y: Val| pair(x_name, y_name, x, y))).contains(s));
+    assert(pair_sets(vs, x_name, y_name).contains(s));
     assert(candidates(r, x_name, y_name).contains(e));
 }
 

@@ -159,9 +159,14 @@ pub proof fn lemma_delete_preserves_key(r: Relation, k: Set<Name>, t: Tuple)
 // The key index (database/key_index.rs): a set of key values per key.
 // ---------------------------------------------------------------------------
 
+/// The key values (projections onto `k`) of a body.
+pub open spec fn key_values(b: Set<Tuple>, k: Set<Name>) -> Set<Tuple> {
+    b.map(|t: Tuple| tuple_project(t, k))
+}
+
 /// The index for key `k` holds exactly the key values of the body.
 pub open spec fn index_inv(r: Relation, k: Set<Name>, idx: Set<Tuple>) -> bool {
-    idx == r.body.map(|t: Tuple| tuple_project(t, k))
+    idx == key_values(r.body, k)
 }
 
 /// Under the index invariant and a valid key, the O(1) index probe the
@@ -180,7 +185,7 @@ pub proof fn lemma_index_probe_is_exact(r: Relation, k: Set<Name>, idx: Set<Tupl
     }
     if !insert_respects_key(r, k, t) {
         let u = choose|u: Tuple| #[trigger] r.body.contains(u) && tuple_project(u, k) == tuple_project(t, k) && u != t;
-        assert(r.body.map(|t: Tuple| tuple_project(t, k)).contains(tuple_project(u, k)));
+        assert(key_values(r.body, k).contains(tuple_project(u, k)));
     }
 }
 
@@ -195,7 +200,7 @@ pub proof fn lemma_index_probe_for_present_tuple(r: Relation, k: Set<Name>, idx:
         idx.contains(tuple_project(t, k)),
         insert(r, t) == r,
 {
-    assert(r.body.map(|t: Tuple| tuple_project(t, k)).contains(tuple_project(t, k)));
+    assert(key_values(r.body, k).contains(tuple_project(t, k)));
     lemma_no_duplicates(r, t);
 }
 
@@ -206,7 +211,26 @@ pub proof fn lemma_index_insert(r: Relation, k: Set<Name>, idx: Set<Tuple>, t: T
     ensures
         index_inv(insert(r, t), k, idx.insert(tuple_project(t, k))),
 {
-    assert(insert(r, t).body.map(|t: Tuple| tuple_project(t, k)) =~= idx.insert(tuple_project(t, k)));
+    let lhs = key_values(insert(r, t).body, k);
+    let rhs = idx.insert(tuple_project(t, k));
+    assert forall|v: Tuple| lhs.contains(v) <==> rhs.contains(v) by {
+        if lhs.contains(v) {
+            let u = choose|u: Tuple| #[trigger] insert(r, t).body.contains(u) && v == tuple_project(u, k);
+            if u != t {
+                assert(r.body.contains(u));
+                assert(key_values(r.body, k).contains(v));
+            }
+        }
+        if rhs.contains(v) {
+            if v == tuple_project(t, k) {
+                assert(insert(r, t).body.contains(t));
+            } else {
+                let u = choose|u: Tuple| #[trigger] r.body.contains(u) && v == tuple_project(u, k);
+                assert(insert(r, t).body.contains(u));
+            }
+        }
+    }
+    assert(lhs =~= rhs);
 }
 
 /// Maintaining the index on delete under a valid key: remove the deleted
@@ -219,13 +243,13 @@ pub proof fn lemma_index_delete(r: Relation, k: Set<Name>, idx: Set<Tuple>, t: T
     ensures
         index_inv(delete(r, t), k, idx.remove(tuple_project(t, k))),
 {
-    let lhs = delete(r, t).body.map(|t: Tuple| tuple_project(t, k));
+    let lhs = key_values(delete(r, t).body, k);
     let rhs = idx.remove(tuple_project(t, k));
     assert forall|v: Tuple| lhs.contains(v) <==> rhs.contains(v) by {
         if lhs.contains(v) {
             let u = choose|u: Tuple| #[trigger] delete(r, t).body.contains(u) && v == tuple_project(u, k);
             assert(r.body.contains(u));
-            assert(r.body.map(|t: Tuple| tuple_project(t, k)).contains(v));
+            assert(key_values(r.body, k).contains(v));
         }
         if rhs.contains(v) {
             let u = choose|u: Tuple| #[trigger] r.body.contains(u) && v == tuple_project(u, k);
