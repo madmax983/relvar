@@ -1,0 +1,50 @@
+name: Verify TTM invariants
+
+# Machine-checked enforcement of The Third Manifesto's invariants.
+# See docs/ttm-invariants.md for what each job proves or checks.
+
+on:
+  push:
+    branches: [ trunk, main ]
+  pull_request:
+    branches: [ trunk, main ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned weekly Verus release. Bump deliberately: vstd's API moves.
+  VERUS_RELEASE: release/0.2026.11.02.8bf68ee
+  # The Rust toolchain that Verus release requires (its rust-toolchain.toml).
+  VERUS_RUST_TOOLCHAIN: 1.99.1
+
+jobs:
+  verus:
+    name: Verus proofs (verify/verus)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No trusted escape hatches in the proofs
+        run: |
+          # Every theorem must be proved: no assume/admit, no external_body,
+          # no axioms. vstd's own axioms are the only trusted base.
+          if grep -nE '\bassume\s*\(|\badmit\s*\(|external_body|verifier::external|\baxiom\b|#\[verifier::truncate\]' verify/verus/*.rs; then
+            echo "::error::trusted escape hatch found in verify/verus"
+            exit 1
+          fi
+
+      - name: Download Verus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$VERUS_RELEASE" --repo verus-lang/verus --pattern '*-x86-linux.zip' --dir "$RUNNER_TEMP"
+          unzip -q "$RUNNER_TEMP"/verus-*-x86-linux.zip -d "$RUNNER_TEMP"
+          echo "VERUS=$RUNNER_TEMP/verus-x86-linux/verus" >> "$GITHUB_ENV"
+
+      - name: Install the Rust toolchain Verus needs
+        run: rustup toolchain install "$VERUS_RUST_TOOLCHAIN" --profile minimal
+
+      - name: Verify
+        run: |
+          "$VERUS" --version
+          "$VERUS" --crate-type=lib verify/verus/lib.rs --multiple-errors 50 --expand-errors
