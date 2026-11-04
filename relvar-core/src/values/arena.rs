@@ -388,8 +388,9 @@ impl Arena {
         let ptr = self.alloc_raw(core::mem::size_of::<T>(), core::mem::align_of::<T>())? as *mut T;
         // SAFETY: `ptr` addresses one properly-aligned slot of fresh arena
         // memory; it is written exactly once here, before the exclusive borrow
-        // is formed. (For zero-sized `T` the pointer is dangling but no memory
-        // is touched, which is valid.)
+        // is formed. (For zero-sized `T` the pointer is dangling but non-null
+        // and aligned for `T` — see `alloc_raw` — and no memory is touched,
+        // which is valid.)
         unsafe {
             core::ptr::write(ptr, value);
             Ok(&mut *ptr)
@@ -402,14 +403,19 @@ impl Arena {
     /// Alignment is applied to the absolute address (chunk base + cursor), so
     /// it holds regardless of the chunk's own alignment.
     fn alloc_raw(&self, size: usize, align: usize) -> Result<*mut u8, AllocError> {
-        if size == 0 {
-            return Ok(core::ptr::NonNull::dangling().as_ptr());
-        }
         // Validates that `align` is a non-zero power of two and that `size`
         // fits the platform's layout rules; the manual arithmetic below relies
-        // on both.
+        // on both. Done first so zero-size requests are validated too.
         let _ = core::alloc::Layout::from_size_align(size, align)
             .map_err(|_| AllocError::SizeOverflow(size))?;
+        if size == 0 {
+            // A zero-size request touches no memory, but callers cast the
+            // pointer to `*mut T` (zero-sized `T`), so it must be non-null
+            // and aligned for `align`: the address `align` itself is both
+            // (`align` is a non-zero power of two). This is exactly what
+            // `NonNull::<T>::dangling()` produces for `align_of::<T>()`.
+            return Ok(core::ptr::without_provenance_mut(align));
+        }
 
         // Fast path: room in the current (last) chunk.
         let reused = {
@@ -1177,6 +1183,53 @@ mod tests {
         let s = arena.alloc_str("").unwrap();
         assert_eq!(s, "");
         assert_eq!(arena.used_bytes(), 0);
+    }
+
+    /// Regression: a zero-size request must still yield a pointer aligned for
+    /// the requested alignment — callers cast it to `*mut T` for zero-sized
+    /// `T` (e.g. `[u64; 0]`), and a misaligned pointer is UB for
+    /// `copy_nonoverlapping` / `slice::from_raw_parts` / `ptr::write`.
+    #[test]
+    fn arena_zero_size_raw_alloc_is_aligned() {
+        let arena = Arena::new();
+        for align in [1usize, 2, 4, 8, 16, 64, 4096] {
+            let ptr = arena.alloc_raw(0, align).unwrap();
+            assert!(!ptr.is_null());
+            assert_eq!(
+                ptr.addr() % align,
+                0,
+                "zero-size alloc misaligned for {align}"
+            );
+        }
+        assert_eq!(arena.used_bytes(), 0);
+    }
+
+    #[test]
+    fn arena_zero_sized_type_allocs_are_aligned() {
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        #[repr(align(64))]
+        struct Aligned64;
+
+        let arena = Arena::new();
+        let slice = arena.alloc_slice(&[[0u64; 0]; 3]).unwrap();
+        assert_eq!(slice.len(), 3);
+        assert_eq!(slice.as_ptr().addr() % core::mem::align_of::<[u64; 0]>(), 0);
+
+        let mutable = arena.alloc_slice_mut(5, Aligned64).unwrap();
+        assert_eq!(mutable.len(), 5);
+        assert_eq!(mutable.as_ptr().addr() % 64, 0);
+
+        let value: &mut Aligned64 = arena.alloc_value(Aligned64).unwrap();
+        assert_eq!((value as *const Aligned64).addr() % 64, 0);
+        assert_eq!(*value, Aligned64);
+        assert_eq!(arena.used_bytes(), 0);
+    }
+
+    #[test]
+    fn arena_zero_size_raw_alloc_rejects_invalid_alignment() {
+        let arena = Arena::new();
+        assert!(arena.alloc_raw(0, 3).is_err());
+        assert!(arena.alloc_raw(0, 0).is_err());
     }
 
     #[test]
