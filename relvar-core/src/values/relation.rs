@@ -36,6 +36,7 @@
 use crate::collections::HashSet;
 use crate::types::{RelationType, TupleType};
 use crate::values::Tuple;
+use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -285,22 +286,26 @@ impl Relation {
 
         let expected_heading = relation_type.heading();
 
-        // Optimization: Cache pointer to last checked TupleType to avoid repeated deep comparisons
-        // when inserting many tuples that share the same Arc<TupleType> (common case).
-        let mut last_checked_type_ptr: Option<*const TupleType> = None;
+        // Optimization: tuples built from one shared `Arc<TupleType>` (the
+        // common case) are checked by pointer identity instead of a deep
+        // heading comparison. The cache *holds* a clone of the last validated
+        // `Arc`, so that heading stays alive and its address can never be
+        // freed and reused by a different heading (e.g. after a duplicate
+        // tuple — and its sole `Arc` — is dropped by the set below).
+        let mut last_checked: Option<Arc<TupleType>> = None;
 
         for tuple in iter {
-            let current_type_ref = tuple.tuple_type();
-            let current_type_ptr = current_type_ref as *const TupleType;
+            let current = tuple.tuple_type_arc();
+            let cached = last_checked
+                .as_ref()
+                .is_some_and(|checked| Arc::ptr_eq(checked, current));
 
-            // Fast path: if pointer is same as last checked (which we know is valid), skip check
-            if Some(current_type_ptr) != last_checked_type_ptr {
-                // Slow path: full comparison
-                if current_type_ref != expected_heading {
+            if !cached {
+                // Slow path: full structural comparison.
+                if current.as_ref() != expected_heading {
                     return Err(RelationError);
                 }
-                // If match, update cache
-                last_checked_type_ptr = Some(current_type_ptr);
+                last_checked = Some(Arc::clone(current));
             }
 
             body.insert(tuple);
@@ -670,6 +675,9 @@ mod tests {
     use super::*;
     use crate::tuple;
     use crate::types::{ScalarType, TupleType};
+    use crate::values::ScalarValue;
+    use alloc::collections::BTreeMap;
+    use alloc::string::ToString;
 
     fn emp_type() -> TupleType {
         TupleType::new()
@@ -851,5 +859,49 @@ mod tests {
         let tuples = vec![invalid_tuple.clone(), valid_tuple.clone()];
         let rel = Relation::from_tuples(rel_type.clone(), tuples);
         assert!(rel.is_err());
+    }
+
+    /// Regression: the heading-check cache in `from_tuples` must not be keyed
+    /// on a raw address. When a duplicate tuple is dropped, its (sole)
+    /// `Arc<TupleType>` is freed and the allocator may hand the same address
+    /// to the *next* tuple's — different — heading. That tuple must still be
+    /// rejected.
+    #[test]
+    fn test_from_tuples_rejects_wrong_heading_after_freed_duplicate_heading() {
+        let heading = emp_type();
+        let wrong_heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("name", ScalarType::Int);
+
+        let make = |heading: &TupleType, id: i64, name: ScalarValue| {
+            let mut values = BTreeMap::new();
+            values.insert("emp_id".to_string(), ScalarValue::Int(id));
+            values.insert("name".to_string(), name);
+            // A fresh, unshared Arc per tuple: dropping the tuple frees it.
+            Tuple::new(Arc::new(heading.clone()), values).unwrap()
+        };
+
+        // Repeat so an allocator that does not reuse the slot on the first
+        // try still gets plenty of chances; every attempt must be rejected.
+        for _ in 0..64 {
+            let mut step = 0;
+            let tuples = core::iter::from_fn(|| {
+                step += 1;
+                match step {
+                    1 => Some(make(&heading, 1, ScalarValue::String("Alice".into()))),
+                    // Duplicate of #1 with its own heading Arc: checked,
+                    // cached, then dropped by the set (freeing the Arc).
+                    2 => Some(make(&heading, 1, ScalarValue::String("Alice".into()))),
+                    // Different heading, built lazily after #2 was dropped.
+                    3 => Some(make(&wrong_heading, 2, ScalarValue::Int(7))),
+                    _ => None,
+                }
+            });
+            let result = Relation::from_tuples(RelationType::new(heading.clone()), tuples);
+            assert!(
+                result.is_err(),
+                "a tuple whose heading differs from the relation's was accepted"
+            );
+        }
     }
 }

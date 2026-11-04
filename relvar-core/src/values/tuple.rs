@@ -277,6 +277,15 @@ impl Tuple {
         &self.tuple_type
     }
 
+    /// The shared handle to this tuple's heading.
+    ///
+    /// Crate-internal: lets bulk constructors cache a heading they have
+    /// already validated by *holding* a clone of the `Arc` (so its address
+    /// cannot be freed and reused) and comparing with [`Arc::ptr_eq`].
+    pub(crate) fn tuple_type_arc(&self) -> &Arc<TupleType> {
+        &self.tuple_type
+    }
+
     /// Get a value by attribute name
     /// # Examples
     ///
