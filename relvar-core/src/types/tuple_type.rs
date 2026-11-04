@@ -66,6 +66,7 @@ use serde::{Deserialize, Serialize};
 /// assert!(!person_type.has_attribute("nonexistent"));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "TupleTypeUnchecked")]
 pub struct TupleType {
     /// The attributes of this tuple type, mapping names to scalar types.
     attributes: BTreeMap<String, ScalarType>,
@@ -323,6 +324,28 @@ impl TupleType {
     }
 }
 
+/// Wire shape of [`TupleType`], validated by `TryFrom` before a heading is
+/// handed out (same field names, so the serialized format is unchanged).
+#[derive(Deserialize)]
+struct TupleTypeUnchecked {
+    attributes: BTreeMap<String, ScalarType>,
+}
+
+impl TryFrom<TupleTypeUnchecked> for TupleType {
+    type Error = crate::types::TypeDepthError;
+
+    /// Enforces the same depth limit as [`TupleType::with_attribute`]
+    /// (heading depth at most [`MAX_TYPE_DEPTH`](crate::types::MAX_TYPE_DEPTH)),
+    /// returning an error where the constructor would panic.
+    fn try_from(unchecked: TupleTypeUnchecked) -> Result<Self, Self::Error> {
+        let heading = Self {
+            attributes: unchecked.attributes,
+        };
+        crate::types::TypeDepthError::check(heading.depth())?;
+        Ok(heading)
+    }
+}
+
 impl Default for TupleType {
     fn default() -> Self {
         Self::new()
@@ -500,5 +523,50 @@ mod tests {
             hash1, hash2,
             "TupleTypes with same attributes but different insertion order must hash identically"
         );
+    }
+
+    /// A scalar type of exactly `depth` (the deepest the scalar
+    /// deserializer accepts is `MAX_TYPE_DEPTH`).
+    fn scalar_of_depth(depth: usize) -> ScalarType {
+        let mut ty = ScalarType::Int;
+        for _ in 1..depth {
+            ty = ScalarType::user_defined("Nested", ty);
+        }
+        ty
+    }
+
+    #[test]
+    fn deserialize_accepts_heading_at_max_depth() {
+        let max = crate::types::MAX_TYPE_DEPTH;
+        let heading = TupleType::new().with_attribute("a", scalar_of_depth(max - 1));
+        assert_eq!(heading.depth(), max);
+        // Checked through `TryFrom` directly: a serde round trip of a
+        // 64-deep type would share the (process-global, under `no_std`)
+        // recursion guard with concurrently running tests.
+        let unchecked = TupleTypeUnchecked {
+            attributes: heading.attributes().clone(),
+        };
+        assert_eq!(TupleType::try_from(unchecked).unwrap(), heading);
+    }
+
+    /// `with_attribute` panics on a heading deeper than `MAX_TYPE_DEPTH`;
+    /// deserialization must reject the same headings with an error instead
+    /// of producing a value that later constructors panic on.
+    #[test]
+    fn deserialize_rejects_heading_deeper_than_max_depth() {
+        let max = crate::types::MAX_TYPE_DEPTH;
+        // Forged directly: the constructor would (rightly) panic.
+        let mut attributes = BTreeMap::new();
+        attributes.insert(String::from("a"), scalar_of_depth(max));
+        let too_deep = TupleType {
+            attributes: attributes.clone(),
+        };
+        assert_eq!(too_deep.depth(), max + 1);
+        assert!(TupleType::try_from(TupleTypeUnchecked { attributes }).is_err());
+
+        let json = serde_json::to_string(&too_deep).unwrap();
+        assert!(serde_json::from_str::<TupleType>(&json).is_err());
+        let bytes = postcard::to_allocvec(&too_deep).unwrap();
+        assert!(postcard::from_bytes::<TupleType>(&bytes).is_err());
     }
 }
