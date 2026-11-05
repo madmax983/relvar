@@ -458,12 +458,28 @@ impl ScalarValue {
         a: &crate::values::Relation,
         b: &crate::values::Relation,
     ) -> core::cmp::Ordering {
-        use core::cmp::Ordering;
-        // For relations, order by cardinality first, then degree
-        match a.cardinality().cmp(&b.cardinality()) {
-            Ordering::Equal => a.degree().cmp(&b.degree()),
-            other => other,
+        // A total order consistent with `==`: cardinality, then degree (both
+        // cheap), then the heading, then the bodies as sorted lists of tuple
+        // values. Two relations compare `Equal` only if they have the same
+        // heading and the same body, so ordered collections never merge two
+        // distinct relation values.
+        fn sorted_body(
+            r: &crate::values::Relation,
+        ) -> Vec<&alloc::collections::BTreeMap<String, ScalarValue>> {
+            let mut body: Vec<_> = r.tuples().map(|t| t.values()).collect();
+            body.sort();
+            body
         }
+        a.cardinality()
+            .cmp(&b.cardinality())
+            .then_with(|| a.degree().cmp(&b.degree()))
+            .then_with(|| {
+                a.relation_type()
+                    .heading()
+                    .attributes()
+                    .cmp(b.relation_type().heading().attributes())
+            })
+            .then_with(|| sorted_body(a).cmp(&sorted_body(b)))
     }
 
     fn eq_user_defined_values(
