@@ -125,6 +125,7 @@ impl<E: StorageEngine> Database<E> {
             .into_iter()
             .map(|(name, relation)| (name.into(), relation))
             .collect();
+        self.ensure_complete()?;
         if assignments.is_empty() {
             return Ok(());
         }

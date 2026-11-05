@@ -482,11 +482,14 @@ type AssertionPredicate<E> = Box<dyn Fn(&mut Database<E>) -> bool + Send + Sync>
 /// # Non-serializable predicates
 ///
 /// The predicate is an arbitrary Rust closure, so it cannot be serialized
-/// into the catalog. Unlike keys, foreign keys, CHECK and type constraints
-/// and [`DeclarativeAssertion`]s — which a persistent database stores and
-/// [`Database::new`] restores — a closure assertion is **not persisted**:
-/// it must be re-registered with [`Database::add_assertion`] every time a
-/// database is opened, before it is modified. Prefer a
+/// into the catalog; only its **name** is stored. Unlike keys, foreign
+/// keys, CHECK and type constraints and [`DeclarativeAssertion`]s — which a
+/// persistent database stores and [`Database::new`] restores — a closure
+/// assertion has to be registered again with [`Database::add_assertion`]
+/// after a persistent database is reopened. It is never silently lost:
+/// until it is registered again (or dropped with
+/// [`Database::forget_assertion`]), the reopened database refuses every
+/// change with [`DatabaseError::UnregisteredAssertion`]. Prefer a
 /// [`DeclarativeAssertion`] whenever the rule can be written as a query
 /// condition.
 ///

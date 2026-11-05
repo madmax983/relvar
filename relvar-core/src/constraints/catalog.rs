@@ -81,17 +81,29 @@ pub struct DatabaseConstraints {
     /// Declarative assertions, in registration order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assertions: Vec<DeclarativeAssertion>,
+    /// The names of the closure-backed assertions
+    /// ([`DatabaseAssertion`](crate::constraints::DatabaseAssertion)), in
+    /// registration order. The closures themselves cannot be stored; the
+    /// names let a reopened database know which ones must be registered
+    /// again before it may be changed, so none is silently lost.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub closure_assertions: Vec<String>,
 }
 
 impl DatabaseConstraints {
     /// Returns `true` if no database-wide constraint is recorded.
     pub fn is_empty(&self) -> bool {
-        self.assertions.is_empty()
+        self.assertions.is_empty() && self.closure_assertions.is_empty()
     }
 
-    /// Whether any database-wide constraint is named `name`.
+    /// Whether any database-wide constraint (declarative assertion or
+    /// recorded closure assertion) is named `name`.
     pub fn has_name(&self, name: &str) -> bool {
         self.assertions.iter().any(|a| a.name() == name)
+            || self
+                .closure_assertions
+                .iter()
+                .any(|recorded| recorded == name)
     }
 
     /// Every relvar a database-wide constraint refers to, with the name of

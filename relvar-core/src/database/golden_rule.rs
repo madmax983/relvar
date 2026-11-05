@@ -50,6 +50,8 @@ impl<E: StorageEngine> Database<E> {
     /// written by other tools, or as a test oracle.
     ///
     /// Checked, in order:
+    /// 0. no recorded closure assertion is unregistered (see
+    ///    [`unregistered_assertions`](Self::unregistered_assertions));
     /// 1. every declared constraint names a base relvar that exists;
     /// 2. per base relvar: every tuple conforms to the relvar's heading,
     ///    then key (primary and candidate) uniqueness, type constraints and
@@ -67,6 +69,7 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns the first violation found:
+    /// [`DatabaseError::UnregisteredAssertion`],
     /// [`DatabaseError::RelationNotFound`] for a constraint on a missing
     /// relvar, [`ConstraintManagerError::TupleMismatch`],
     /// [`ConstraintManagerError::PrimaryKeyViolation`],
@@ -100,6 +103,9 @@ impl<E: StorageEngine> Database<E> {
     /// assert!(db.verify_integrity().is_ok());
     /// ```
     pub fn verify_integrity(&mut self) -> Result<(), DatabaseError> {
+        // 0. The database's whole constraint must be known.
+        self.ensure_complete()?;
+
         // 1. No constraint may outlive (or predate) its relvar.
         let dangling = self
             .constraints

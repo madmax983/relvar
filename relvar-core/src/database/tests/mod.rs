@@ -14,5 +14,6 @@ mod ttm_ddl;
 mod ttm_foreign_keys;
 mod ttm_keys;
 mod ttm_self_reference;
+mod unregistered_assertions;
 mod v11_constraints;
 mod virtual_relvar;

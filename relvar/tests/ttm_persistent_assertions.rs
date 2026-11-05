@@ -5,7 +5,9 @@
 
 #![cfg(feature = "storage")]
 
-use relvar::constraints::{AssertionCondition, AssertionError, DeclarativeAssertion};
+use relvar::constraints::{
+    AssertionCondition, AssertionError, DatabaseAssertion, DeclarativeAssertion,
+};
 use relvar::{
     Database, DatabaseError, PersistentEngine, Query, RelationType, ScalarType, TupleType, tuple,
 };
@@ -165,4 +167,125 @@ fn dropping_a_relvar_an_assertion_refers_to_is_refused() {
     db.drop_relvar("P").unwrap();
     drop(db);
     assert!(!open(dir.path()).relvar_exists("P"));
+}
+
+// --- Closure assertions are never silently lost ------------------------------
+
+/// "P holds at most `max` tuples", as a closure.
+fn small_p(max: usize) -> DatabaseAssertion<PersistentEngine> {
+    DatabaseAssertion::new("small_p", "P holds few tuples", move |db: &mut Db| {
+        db.query("P")
+            .map(|p| p.cardinality() <= max)
+            .unwrap_or(false)
+    })
+}
+
+fn is_unregistered<T>(result: &Result<T, DatabaseError>) -> bool {
+    matches!(result, Err(DatabaseError::UnregisteredAssertion(name)) if name == "small_p")
+}
+
+/// P = {1}, C = {(10, 1)}, with the closure assertion `small_p` (at most 2)
+/// registered, then closed.
+fn build_with_closure_assertion(dir: &Path) {
+    let mut db = build_pc(dir);
+    db.add_assertion(small_p(2)).unwrap();
+}
+
+#[test]
+fn reopened_database_refuses_changes_until_the_closure_assertion_is_registered() {
+    let dir = tempfile::tempdir().unwrap();
+    build_with_closure_assertion(dir.path());
+
+    let mut db = open(dir.path());
+    assert_eq!(db.unregistered_assertions(), vec!["small_p".to_string()]);
+    assert!(is_unregistered(&db.insert("P", tuple! { pid: 2i64 })));
+    assert!(is_unregistered(
+        &db.bulk_insert("P", vec![tuple! { pid: 2i64 }])
+    ));
+    assert!(is_unregistered(&db.delete("C", |_| true)));
+    assert!(is_unregistered(&db.update("C", |_| true, |t| t.clone())));
+    let p = db.query("P").unwrap();
+    assert!(is_unregistered(&db.multiple_assign(vec![("P", p)])));
+    assert!(is_unregistered(&db.drop_relvar("C")));
+    // Queries keep working; the integrity check reports the gap.
+    assert_eq!(cardinalities(&db), (1, 1));
+    assert!(is_unregistered(&db.verify_integrity()));
+
+    // Registering again (validated against the data) restores changes,
+    // and the assertion is enforced again.
+    db.add_assertion(small_p(2)).unwrap();
+    db.insert("P", tuple! { pid: 2i64 }).unwrap();
+    assert!(matches!(
+        db.insert("P", tuple! { pid: 3i64 }),
+        Err(DatabaseError::AssertionViolation(_))
+    ));
+    assert!(db.verify_integrity().is_ok());
+    drop(db);
+
+    // Still recorded: the next open needs it again.
+    assert_eq!(
+        open(dir.path()).unregistered_assertions(),
+        vec!["small_p".to_string()]
+    );
+}
+
+#[test]
+fn re_registration_that_the_data_violates_is_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    build_with_closure_assertion(dir.path());
+
+    let mut db = open(dir.path());
+    assert!(matches!(
+        db.add_assertion(small_p(0)),
+        Err(DatabaseError::AssertionViolation(_))
+    ));
+    assert!(is_unregistered(&db.insert("P", tuple! { pid: 2i64 })));
+}
+
+#[test]
+fn forgotten_closure_assertion_is_gone_after_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    build_with_closure_assertion(dir.path());
+    {
+        let mut db = open(dir.path());
+        assert!(db.forget_assertion("small_p").unwrap());
+        db.insert("P", tuple! { pid: 2i64 }).unwrap();
+        db.insert("P", tuple! { pid: 3i64 }).unwrap();
+    }
+
+    let mut db = open(dir.path());
+    assert!(db.unregistered_assertions().is_empty());
+    db.insert("P", tuple! { pid: 4i64 }).unwrap();
+    assert!(db.verify_integrity().is_ok());
+}
+
+#[test]
+fn removed_closure_assertion_is_not_required_after_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut db = build_pc(dir.path());
+        db.add_assertion(small_p(2)).unwrap();
+        assert!(db.remove_assertion("small_p").unwrap());
+    }
+    let mut db = open(dir.path());
+    assert!(db.unregistered_assertions().is_empty());
+    db.insert("P", tuple! { pid: 2i64 }).unwrap();
+}
+
+#[test]
+fn declarative_and_closure_assertions_together_survive_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut db = build_pc(dir.path());
+        db.add_declarative_assertion(child_has_parent()).unwrap();
+        db.add_assertion(small_p(2)).unwrap();
+    }
+
+    let mut db = open(dir.path());
+    db.add_assertion(small_p(2)).unwrap();
+    assert!(is_violation(
+        &db.insert("C", tuple! { cid: 11i64, pid: 9i64 })
+    ));
+    db.insert("P", tuple! { pid: 2i64 }).unwrap();
+    assert!(db.verify_integrity().is_ok());
 }

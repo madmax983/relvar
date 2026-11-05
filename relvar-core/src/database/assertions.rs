@@ -8,7 +8,11 @@
 //!   other constraints, so a reopened database enforces it without any
 //!   re-registration.
 //! - **closure** ([`DatabaseAssertion`]): an arbitrary Rust predicate. It
-//!   cannot be serialized.
+//!   cannot be serialized, so only its name is stored. A reopened database
+//!   whose catalog names a closure assertion that has not been registered
+//!   again refuses every change
+//!   ([`DatabaseError::UnregisteredAssertion`]) until it is registered or
+//!   explicitly forgotten: no assertion is ever silently lost.
 //!
 //! Both kinds share one name space and are enforced the same way: on
 //! registration against the current state, and after every statement
@@ -18,7 +22,8 @@ use crate::constraints::assertion::{AssertionError, DatabaseAssertion, Declarati
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 impl<E: StorageEngine> Database<E> {
     /// Registers a closure-backed database assertion.
@@ -34,10 +39,19 @@ impl<E: StorageEngine> Database<E> {
     /// # Persistence
     ///
     /// An assertion is a Rust closure and cannot be stored in the catalog,
-    /// unlike the declarative constraints. Prefer
-    /// [`add_declarative_assertion`](Self::add_declarative_assertion)
+    /// unlike the declarative constraints, but its **name** is stored. A
+    /// reopened persistent database whose catalog names a closure
+    /// assertion that has not been registered again is *incomplete*: every
+    /// change fails with [`DatabaseError::UnregisteredAssertion`] (queries
+    /// keep working) until this method registers an assertion with that
+    /// name — validated against the current data like any new one — or
+    /// [`forget_assertion`](Self::forget_assertion) drops it. So an
+    /// assertion is never silently lost. See
+    /// [`unregistered_assertions`](Self::unregistered_assertions).
+    ///
+    /// Prefer [`add_declarative_assertion`](Self::add_declarative_assertion)
     /// whenever the rule can be written as a query condition: it is stored
-    /// and needs no re-registration.
+    /// in full and needs no re-registration.
     ///
     /// # Examples
     ///
@@ -70,12 +84,19 @@ impl<E: StorageEngine> Database<E> {
     ///   already has this name;
     /// - [`DatabaseError::TransactionError`] inside a transaction (a
     ///   rollback could restore a state the assertion was never checked
-    ///   against).
+    ///   against);
+    /// - a storage error if the engine cannot store the catalog (only for a
+    ///   name the catalog does not record yet).
     pub fn add_assertion(&mut self, assertion: DatabaseAssertion<E>) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("add_assertion")?;
-        if self.assertion_name_in_use(assertion.name()) {
-            return Err(AssertionError::DuplicateName(assertion.name().to_string()).into());
+        let name = assertion.name();
+        let database = self.constraints.database_constraints();
+        let declarative_clash = database.assertions.iter().any(|a| a.name() == name);
+        let registered_clash = self.assertions.iter().any(|a| a.name() == name);
+        if declarative_clash || registered_clash {
+            return Err(AssertionError::DuplicateName(name.to_string()).into());
         }
+        let recorded = database.closure_assertions.iter().any(|n| n == name);
         let was_evaluating = core::mem::replace(&mut self.evaluating_assertions, true);
         let satisfied = assertion.is_satisfied_by(self);
         self.evaluating_assertions = was_evaluating;
@@ -85,6 +106,18 @@ impl<E: StorageEngine> Database<E> {
                 description: assertion.description().to_string(),
             }
             .into());
+        }
+        if !recorded {
+            // Record the name first, so a failed write leaves nothing
+            // registered.
+            let name = name.to_string();
+            self.change_constraints(|manager, _| {
+                manager
+                    .database_constraints_mut()
+                    .closure_assertions
+                    .push(name);
+                Ok(())
+            })?;
         }
         self.assertions.push(assertion);
         Ok(())
@@ -177,8 +210,11 @@ impl<E: StorageEngine> Database<E> {
     /// given name.
     ///
     /// Returns `Ok(true)` if an assertion with that name was registered and
-    /// removed, `Ok(false)` otherwise. Removing a declarative assertion
-    /// stores the reduced constraint catalog.
+    /// removed, `Ok(false)` otherwise (an unregistered closure assertion is
+    /// dropped with [`forget_assertion`](Self::forget_assertion)). The
+    /// reduced constraint catalog is stored: a removed declarative
+    /// assertion, or a removed closure assertion's name, does not come back
+    /// when the database is reopened.
     ///
     /// # Examples
     ///
@@ -223,9 +259,122 @@ impl<E: StorageEngine> Database<E> {
             })?;
             return Ok(true);
         }
-        let registered = self.assertions.len();
+        if !self
+            .assertions
+            .iter()
+            .any(|assertion| assertion.name() == name)
+        {
+            return Ok(false);
+        }
+        self.change_constraints(|manager, _| {
+            manager
+                .database_constraints_mut()
+                .closure_assertions
+                .retain(|recorded| recorded != name);
+            Ok(())
+        })?;
         self.assertions.retain(|assertion| assertion.name() != name);
-        Ok(self.assertions.len() != registered)
+        Ok(true)
+    }
+
+    /// Drops a closure assertion that the catalog records but that has not
+    /// been registered since the database was opened.
+    ///
+    /// TTM: RM Prescription 16. This is the explicit way to give up an
+    /// assertion whose closure is no longer available: it removes the name
+    /// from the stored catalog, so the database is no longer incomplete on
+    /// its account (see [`add_assertion`](Self::add_assertion)). Returns
+    /// `Ok(true)` if `name` was such an unregistered assertion, `Ok(false)`
+    /// otherwise; a registered assertion is removed with
+    /// [`remove_assertion`](Self::remove_assertion) instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// assert!(!db.forget_assertion("never_recorded").unwrap());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`DatabaseError::TransactionError`] inside a transaction, or a
+    /// storage error if the engine cannot store the catalog; the name is
+    /// then still recorded.
+    pub fn forget_assertion(&mut self, name: &str) -> Result<bool, DatabaseError> {
+        self.ensure_no_transaction("forget_assertion")?;
+        if !self.unregistered_assertion_names().any(|n| n == name) {
+            return Ok(false);
+        }
+        self.change_constraints(|manager, _| {
+            manager
+                .database_constraints_mut()
+                .closure_assertions
+                .retain(|recorded| recorded != name);
+            Ok(())
+        })?;
+        Ok(true)
+    }
+
+    /// The names of the closure assertions the catalog records but that
+    /// have not been registered since the database was opened, in
+    /// registration order.
+    ///
+    /// While this is not empty the database refuses every change with
+    /// [`DatabaseError::UnregisteredAssertion`]; register each with
+    /// [`add_assertion`](Self::add_assertion) or drop it with
+    /// [`forget_assertion`](Self::forget_assertion).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::database::Database;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    ///
+    /// let db = Database::new(InMemoryEngine::new());
+    /// assert!(db.unregistered_assertions().is_empty());
+    /// ```
+    pub fn unregistered_assertions(&self) -> Vec<String> {
+        self.unregistered_assertion_names()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// See [`unregistered_assertions`](Self::unregistered_assertions).
+    ///
+    /// While assertion predicates run, the registered closures are moved
+    /// out of `self` (see `evaluate_assertions`), so registration cannot be
+    /// told from the list: nothing is reported then. Every statement
+    /// checked completeness before it got that far, and DML from inside a
+    /// predicate is refused by the statement guard anyway.
+    fn unregistered_assertion_names(&self) -> impl Iterator<Item = &str> {
+        let recorded: &[String] = if self.evaluating_assertions {
+            &[]
+        } else {
+            &self.constraints.database_constraints().closure_assertions
+        };
+        recorded
+            .iter()
+            .map(String::as_str)
+            .filter(|name| !self.assertions.iter().any(|a| a.name() == *name))
+    }
+
+    /// Fails with [`DatabaseError::UnregisteredAssertion`] (naming the
+    /// first one) while a recorded closure assertion is unregistered.
+    ///
+    /// Every statement that changes the database's data, relvars or
+    /// relvar constraints calls this first: insert, bulk insert, delete,
+    /// update, multiple assignment, create/drop relvar and the
+    /// `set_*_constraints` methods. Queries, transaction control, and
+    /// registering, removing or forgetting assertions do not, so the
+    /// database can be brought back to a complete state.
+    pub(crate) fn ensure_complete(&self) -> Result<(), DatabaseError> {
+        match self.unregistered_assertion_names().next() {
+            Some(name) => Err(DatabaseError::UnregisteredAssertion(name.to_string())),
+            None => Ok(()),
+        }
     }
 
     /// Returns the closure-backed database assertions registered on this

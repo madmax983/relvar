@@ -96,6 +96,22 @@ pub enum DatabaseError {
     #[error("{0}")]
     Assertion(crate::constraints::AssertionError),
 
+    /// The database records a closure-backed database assertion that has
+    /// not been registered since the database was opened.
+    ///
+    /// TTM: RM Prescriptions 16 and 23. A closure cannot be stored, only
+    /// its name. Until the assertion is registered again with
+    /// [`add_assertion`](crate::database::Database::add_assertion), or
+    /// dropped with
+    /// [`forget_assertion`](crate::database::Database::forget_assertion),
+    /// the database cannot check its whole constraint, so every change is
+    /// refused. See
+    /// [`unregistered_assertions`](crate::database::Database::unregistered_assertions).
+    #[error(
+        "Database assertion '{0}' is recorded but not registered: register it with add_assertion or drop it with forget_assertion"
+    )]
+    UnregisteredAssertion(String),
+
     /// Arena allocation failure in the zero-alloc value layer (v0.8).
     ///
     /// The arena APIs surface [`AllocError`](crate::values::arena::AllocError)

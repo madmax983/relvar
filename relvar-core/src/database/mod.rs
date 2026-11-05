@@ -203,12 +203,25 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// # Not restored
     ///
-    /// Only declarative constraints are persisted. Closure-backed database
-    /// assertions ([`add_assertion`](Self::add_assertion)), virtual relvars
+    /// Only declarative constraints are persisted. Virtual relvars
     /// ([`define_virtual_relvar`](Self::define_virtual_relvar)) and
     /// user-defined operators ([`register_operator`](Self::register_operator))
     /// are Rust closures or function pointers, which cannot be serialized:
     /// they must be registered again every time the database is opened.
+    ///
+    /// Closure-backed database assertions
+    /// ([`add_assertion`](Self::add_assertion)) cannot be serialized
+    /// either, but their names are. If the catalog names one, the new
+    /// database is *incomplete*: queries work, but every change — insert,
+    /// bulk insert, delete, update, multiple assignment, creating or
+    /// dropping a relvar, `set_*_constraints` — and
+    /// [`verify_integrity`](Self::verify_integrity) fail with
+    /// [`DatabaseError::UnregisteredAssertion`](crate::error::DatabaseError::UnregisteredAssertion)
+    /// until each one is registered again with `add_assertion` (and
+    /// validated against the current data) or dropped with
+    /// [`forget_assertion`](Self::forget_assertion).
+    /// [`unregistered_assertions`](Self::unregistered_assertions) lists
+    /// them.
     ///
     /// # Examples
     ///

@@ -31,6 +31,7 @@ impl<E: StorageEngine> Database<E> {
     /// db.insert("USERS", tuple!{ id: 1i64 }).unwrap();
     /// ```
     pub fn insert(&mut self, relation_name: &str, tuple: Tuple) -> Result<(), DatabaseError> {
+        self.ensure_complete()?;
         self.ensure_not_virtual(relation_name)?;
         let staged_keys = self.validate_insert(relation_name, &tuple)?;
 
@@ -111,6 +112,7 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         tuples: Vec<Tuple>,
     ) -> Result<(), DatabaseError> {
+        self.ensure_complete()?;
         self.ensure_not_virtual(relation_name)?;
         if !self.engine.relation_exists(relation_name) {
             return Err(DatabaseError::RelationNotFound(relation_name.to_string()));
@@ -307,6 +309,7 @@ impl<E: StorageEngine> Database<E> {
     where
         F: Fn(&Tuple) -> bool,
     {
+        self.ensure_complete()?;
         self.ensure_not_virtual(relation_name)?;
 
         // Load current relation
@@ -438,6 +441,7 @@ impl<E: StorageEngine> Database<E> {
         F: Fn(&Tuple) -> bool,
         U: Fn(&Tuple) -> Tuple,
     {
+        self.ensure_complete()?;
         self.ensure_not_virtual(relation_name)?;
 
         // Load current relation
