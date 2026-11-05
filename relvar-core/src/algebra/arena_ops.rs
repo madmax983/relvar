@@ -52,8 +52,9 @@
 //!
 //! - **Proscription 1** (no NULLs): predicates and compute functions see only
 //!   complete tuples; there is no null representation to handle.
-//! - **Proscription 2** (no duplicate tuples): every operator eliminates
-//!   duplicates explicitly — [`SlotRelation`] itself never dedupes on insert.
+//! - **Proscription 2** (no duplicate tuples): every output is built through
+//!   [`SlotRelation::insert`], which has set semantics, so no operator can
+//!   emit a duplicate tuple.
 //! - **Proscription 3/4** (no ordering, no attribute order): outputs are
 //!   sets; attribute order inside a heading follows [`TupleType`]'s canonical
 //!   (name-sorted) layout, which carries no semantic weight.
@@ -392,13 +393,16 @@ impl<'a> ArenaMap<'a> {
 
 /// Appends one tuple to `out`, copying its value slice into the arena.
 ///
-/// [`SlotRelation::insert`] already copies values into the arena; this
-/// wrapper converts its [`CapacityError`] into [`ArenaOpError`] at one place.
+/// [`SlotRelation::insert`] already copies values into the arena, type-checks
+/// them against `out`'s heading and skips tuples `out` already holds (set
+/// semantics), so no core can emit a duplicate or non-conforming tuple —
+/// even into a caller-supplied, non-empty `out`. This wrapper converts its
+/// [`CapacityError`] into [`ArenaOpError`] at one place.
 fn append_tuple<'a>(
     out: &mut SlotRelation<'a>,
     values: &[ScalarRef<'a>],
 ) -> Result<(), ArenaOpError> {
-    out.insert(values).map_err(ArenaOpError::from)
+    out.insert(values).map(|_| ()).map_err(ArenaOpError::from)
 }
 
 /// Returns `true` when two headings are union-compatible: identical attribute
@@ -537,13 +541,9 @@ pub(crate) fn restrict_into<'a>(
     input: &SlotRelation<'a>,
     pred: &dyn Fn(TupleView<'a>) -> bool,
     out: &mut SlotRelation<'a>,
-    arena: &'a Arena,
 ) -> Result<(), ArenaOpError> {
-    let mut seen = ArenaSet::new(arena, input.len())?;
-    for view in input.iter() {
-        if pred(view) && seen.insert(view) {
-            append_tuple(out, view.values)?;
-        }
+    for view in input.iter().filter(|view| pred(*view)) {
+        append_tuple(out, view.values())?;
     }
     Ok(())
 }
@@ -559,7 +559,6 @@ pub(crate) fn project_into<'a>(
 ) -> Result<(), ArenaOpError> {
     let out_heading = out.heading();
     let degree = out_heading.degree();
-    let mut seen = ArenaSet::new(arena, input.len())?;
     let scratch = arena.alloc_slice_mut(degree, ScalarRef::Int(0))?;
     for view in input.iter() {
         for (i, name) in out_heading.attribute_names().enumerate() {
@@ -567,16 +566,9 @@ pub(crate) fn project_into<'a>(
                 .get(name)
                 .ok_or_else(|| ArenaOpError::UnknownAttribute(name.clone()))?;
         }
-        // Fresh arena slice per tuple: the candidate key must outlive the
-        // scratch buffer, which is reused for the next tuple.
-        let key = arena.alloc_slice(scratch)?;
-        let candidate = TupleView {
-            heading: out_heading,
-            values: key,
-        };
-        if seen.insert(candidate) {
-            append_tuple(out, key)?;
-        }
+        // `insert` copies the scratch buffer into the arena only when the
+        // projected tuple is new, so collapsed duplicates cost no arena space.
+        append_tuple(out, scratch)?;
     }
     Ok(())
 }
@@ -594,16 +586,12 @@ pub(crate) fn union_into<'a>(
     a: &SlotRelation<'a>,
     b: &SlotRelation<'a>,
     out: &mut SlotRelation<'a>,
-    arena: &'a Arena,
 ) -> Result<(), ArenaOpError> {
     if !headings_identical(a.heading(), b.heading()) {
         return Err(ArenaOpError::HeadingMismatch);
     }
-    let mut seen = ArenaSet::new(arena, a.len() + b.len())?;
     for view in a.iter().chain(b.iter()) {
-        if seen.insert(view) {
-            append_tuple(out, view.values)?;
-        }
+        append_tuple(out, view.values())?;
     }
     Ok(())
 }
@@ -630,11 +618,8 @@ pub(crate) fn difference_into<'a>(
     for view in b.iter() {
         excluded.insert(view);
     }
-    let mut seen = ArenaSet::new(arena, a.len())?;
-    for view in a.iter() {
-        if !excluded.contains(view) && seen.insert(view) {
-            append_tuple(out, view.values)?;
-        }
+    for view in a.iter().filter(|view| !excluded.contains(*view)) {
+        append_tuple(out, view.values())?;
     }
     Ok(())
 }
@@ -661,11 +646,8 @@ pub(crate) fn intersect_into<'a>(
     for view in b.iter() {
         in_b.insert(view);
     }
-    let mut seen = ArenaSet::new(arena, a.len().min(b.len()))?;
-    for view in a.iter() {
-        if in_b.contains(view) && seen.insert(view) {
-            append_tuple(out, view.values)?;
-        }
+    for view in a.iter().filter(|view| in_b.contains(*view)) {
+        append_tuple(out, view.values())?;
     }
     Ok(())
 }
@@ -702,9 +684,8 @@ pub(crate) fn join_into<'a>(
         map.insert(join_key_hash(view, a_heading, b_heading), view);
     }
 
-    // The natural join of two sets is a set, but `SlotRelation` does not
-    // enforce it: eliminate duplicates explicitly (matches `Relation::join`).
-    let mut emitted = ArenaSet::new(arena, out.capacity())?;
+    // The natural join of two sets is a set; `SlotRelation::insert` drops any
+    // repeated combined tuple (matches `Relation::join`).
     let scratch = arena.alloc_slice_mut(out_degree, ScalarRef::Int(0))?;
 
     for probe_view in probe.iter() {
@@ -723,17 +704,9 @@ pub(crate) fn join_into<'a>(
                         .or_else(|| probe_view.get(name))
                         .ok_or_else(|| ArenaOpError::UnknownAttribute(name.clone()))?;
                 }
-                // Fresh arena slice per emitted tuple: the key must outlive
-                // the scratch buffer, which is reused for the next tuple.
-                let key = arena.alloc_slice(scratch)?;
-                let candidate = TupleView {
-                    heading: out_heading,
-                    values: key,
-                };
-                if emitted.insert(candidate) {
-                    append_tuple(out, key)?;
-                }
-                Ok(())
+                // `insert` copies the scratch buffer into the arena only when
+                // the combined tuple is new.
+                append_tuple(out, scratch)
             },
         )?;
     }
@@ -836,7 +809,7 @@ pub fn restrict_in<'a>(
     arena: &'a Arena,
 ) -> Result<SlotRelation<'a>, ArenaOpError> {
     let mut out = SlotRelation::with_capacity(arena, input.heading(), input.len());
-    restrict_into(input, pred, &mut out, arena)?;
+    restrict_into(input, pred, &mut out)?;
     Ok(out)
 }
 
@@ -897,7 +870,7 @@ pub fn union_in<'a>(
         .checked_add(b.len())
         .ok_or(AllocError::SizeOverflow(a.len()))?;
     let mut out = SlotRelation::with_capacity(arena, a.heading(), capacity);
-    union_into(a, b, &mut out, arena)?;
+    union_into(a, b, &mut out)?;
     Ok(out)
 }
 
@@ -1192,18 +1165,52 @@ mod tests {
     }
 
     #[test]
-    fn restrict_eliminates_physical_duplicates() {
+    fn restrict_input_cannot_hold_duplicates() {
         let arena = Arena::new();
         let employees = employees_relation();
         let mut input = slots_of(&employees, &arena, 64);
-        // Duplicate the first tuple physically: `SlotRelation` never dedupes.
-        let first_values: Vec<ScalarRef> = input.iter().next().unwrap().values.to_vec();
-        input.insert(&first_values).unwrap();
-        assert_eq!(input.len(), 13);
+        // Re-inserting a present tuple is a no-op (Proscription 2).
+        let first_values: Vec<ScalarRef> = input.iter().next().unwrap().values().to_vec();
+        assert!(!input.insert(&first_values).unwrap());
+        assert_eq!(input.len(), 12);
 
         let result = restrict_in(&input, &|_| true, &arena).unwrap();
 
         assert_eq!(result.len(), 12);
+    }
+
+    /// Regression: extend's output is a relation, so it must never hold
+    /// duplicate tuples — even if every input tuple maps to the same
+    /// extended tuple shape (here the input was fed duplicates).
+    #[test]
+    fn extend_never_produces_duplicate_tuples() {
+        let arena = Arena::new();
+        let heading = TupleType::new().with_attribute("n", ScalarType::Int);
+        let mut input = SlotRelation::with_capacity(&arena, &heading, 8);
+        for n in [1i64, 1, 2, 2, 2] {
+            input.insert(&[ScalarRef::Int(n)]).unwrap();
+        }
+
+        let result = extend_in(&input, "k", &|_| ScalarRef::Int(0), &arena).unwrap();
+
+        assert_eq!(result.len(), 2);
+        let owned = result.to_relation().unwrap();
+        assert_eq!(owned.cardinality(), 2);
+    }
+
+    /// The `*_into` cores append through `SlotRelation::insert`, so an
+    /// output that already holds a tuple never receives it twice.
+    #[test]
+    fn into_cores_do_not_duplicate_preexisting_output_tuples() {
+        let arena = Arena::new();
+        let relation = small_int_relation(&[1, 2]);
+        let input = slots_of(&relation, &arena, 4);
+        let mut out = SlotRelation::with_capacity(&arena, input.heading(), 4);
+        out.insert(&[ScalarRef::Int(1)]).unwrap();
+
+        restrict_into(&input, &|_| true, &mut out).unwrap();
+
+        assert_eq!(out.len(), 2);
     }
 
     #[test]
@@ -1358,12 +1365,12 @@ mod tests {
     }
 
     #[test]
-    fn set_operators_eliminate_physical_duplicates() {
+    fn set_operators_ignore_repeated_input_inserts() {
         let arena = Arena::new();
         let a = small_int_relation(&[1, 2]);
         let b = small_int_relation(&[2, 3]);
         let mut a_slots = slots_of(&a, &arena, 16);
-        let first_values: Vec<ScalarRef> = a_slots.iter().next().unwrap().values.to_vec();
+        let first_values: Vec<ScalarRef> = a_slots.iter().next().unwrap().values().to_vec();
         a_slots.insert(&first_values).unwrap();
         let b_slots = slots_of(&b, &arena, 8);
 
@@ -1682,7 +1689,6 @@ mod tests {
             &join_out,
             &|view: TupleView| view.get("dept_id") == Some(ScalarRef::Int(10)),
             &mut restrict_out,
-            &arena,
         )
         .unwrap();
         project_into(&restrict_out, &mut project_out, &arena).unwrap();

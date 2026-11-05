@@ -20,7 +20,7 @@
 //! - [`TupleView`] is a borrowed tuple: a heading reference plus one
 //!   arena-allocated slice of [`ScalarRef`]s, positional in heading attribute
 //!   order.
-//! - [`SlotRelation`] is a fixed-capacity slot array of tuple views. The arena
+//! - [`SlotRelation`] is a fixed-capacity set of tuple views. The arena
 //!   and the heading are caller-owned borrows (`&'a Arena`, `&'a TupleType`),
 //!   so no raw pointers or `unsafe` appear outside [`Arena`] itself.
 //!
@@ -38,11 +38,14 @@
 //!
 //! - **Proscription 1** (no NULLs): every attribute always has a value; there
 //!   is no null representation anywhere in this layer.
-//! - **Proscription 2** (no duplicates): [`SlotRelation`] is a *physical*
-//!   slot array and does not deduplicate on insert — duplicate elimination is
-//!   the algebra layer's job. [`SlotRelation::from_relation`] sources are sets
-//!   by construction, and [`SlotRelation::to_relation`] materializes through
-//!   [`Relation`]'s set semantics.
+//! - **Proscription 2** (no duplicates): [`SlotRelation`] is a set.
+//!   [`SlotRelation::insert`] treats an already-present tuple as a no-op
+//!   (like [`Relation::insert`]), [`SlotRelation::from_relation`] copies a
+//!   set, and equality / hashing are set-based.
+//! - **Every tuple conforms to its heading**: [`SlotRelation::insert`] and
+//!   [`TupleView::new`] type-check values against the heading, and
+//!   [`TupleView`]'s fields are private, so no view can disagree with its
+//!   heading.
 //! - **Proscription 4** (no attribute ordering): [`TupleView`] equality and
 //!   hashing use attribute-set semantics; the positional slice order is an
 //!   internal canonical layout, not a logical ordering.
@@ -108,7 +111,14 @@ pub enum AllocError {
     SizeOverflow(usize),
 }
 
-/// Errors from inserting a tuple into a [`SlotRelation`].
+/// Errors from inserting a tuple into a [`SlotRelation`], or from building a
+/// [`TupleView`] with [`TupleView::new`].
+///
+/// Besides resource limits ([`Full`](Self::Full), [`Alloc`](Self::Alloc)),
+/// this reports values that do not conform to the heading
+/// ([`ArityMismatch`](Self::ArityMismatch),
+/// [`TypeMismatch`](Self::TypeMismatch)): every tuple of a relation conforms
+/// to its heading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum CapacityError {
     /// The slot array is full; no more tuples fit.
@@ -128,6 +138,19 @@ pub enum CapacityError {
         expected: usize,
         /// The number of values supplied.
         found: usize,
+    },
+
+    /// A value did not conform to its attribute's declared type.
+    ///
+    /// `position` indexes the value slice, which is positional in heading
+    /// attribute order. A user-defined value conforms only if its type is the
+    /// attribute's type *and* its representation conforms to that type's
+    /// representation; a relation value only if its heading is the
+    /// attribute's relation heading.
+    #[error("type mismatch: value at position {position} does not conform to its attribute type")]
+    TypeMismatch {
+        /// The offending value's position (heading attribute order).
+        position: usize,
     },
 
     /// An arena allocation backing the insert failed.
@@ -150,10 +173,10 @@ pub enum SlotRelationError {
 /// Errors from materializing arena-borrowed values back into owned values
 /// ([`ScalarRef::to_owned`], [`TupleView::to_tuple`], [`SlotRelation::to_relation`]).
 ///
-/// These only fire when a view violates its construction contract (for
-/// example, a hand-built [`TupleView`] whose values do not match its heading);
-/// views produced by `from_tuple` / `insert` / `from_relation` convert
-/// infallibly in practice.
+/// Views can only be built through validating constructors
+/// ([`TupleView::new`], [`TupleView::from_tuple`], [`SlotRelation::insert`],
+/// [`SlotRelation::from_relation`]), so these do not fire in practice; they
+/// exist so materialization never panics.
 #[derive(Debug, Error)]
 pub enum MaterializeError {
     /// A tuple could not be rebuilt from the view.
@@ -639,6 +662,48 @@ impl<'a> core::hash::Hash for ScalarRef<'a> {
 }
 
 impl<'a> ScalarRef<'a> {
+    /// Checks if this value is of the given type, without allocating.
+    ///
+    /// Mirrors [`ScalarValue::is_type`]: a relation value conforms when its
+    /// heading equals the type's heading; a user-defined value conforms when
+    /// its type definition equals `ty` and its representation value conforms
+    /// to `ty`'s representation type (so a malformed POSSREP value is never
+    /// of any type).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::ScalarType;
+    /// use relvar_core::values::ScalarRef;
+    ///
+    /// assert!(ScalarRef::Int(1).is_type(&ScalarType::Int));
+    /// assert!(ScalarRef::Text("a").is_type(&ScalarType::String));
+    /// assert!(!ScalarRef::Int(1).is_type(&ScalarType::Float));
+    ///
+    /// let widget = ScalarType::user_defined("WidgetId", ScalarType::Int);
+    /// let one = ScalarRef::Int(1);
+    /// let id = ScalarRef::UserDefined { type_def: &widget, value: &one };
+    /// assert!(id.is_type(&widget));
+    /// assert!(!one.is_type(&widget));
+    /// ```
+    pub fn is_type(&self, ty: &ScalarType) -> bool {
+        match (self, ty) {
+            (ScalarRef::Int(_), ScalarType::Int)
+            | (ScalarRef::Float(_), ScalarType::Float)
+            | (ScalarRef::Bool(_), ScalarType::Bool)
+            | (ScalarRef::Text(_), ScalarType::String)
+            | (ScalarRef::Binary(_), ScalarType::Bytes) => true,
+            (ScalarRef::Relation(relation), ScalarType::Relation(relation_type)) => {
+                relation.heading() == relation_type.heading()
+            }
+            (
+                ScalarRef::UserDefined { type_def, value },
+                ScalarType::UserDefined { representation, .. },
+            ) => *type_def == ty && value.is_type(representation),
+            _ => false,
+        }
+    }
+
     /// Borrows an owned [`ScalarValue`] into the arena.
     ///
     /// Fixed-size values are copied inline; text/binary payloads are copied
@@ -715,20 +780,45 @@ impl<'a> ScalarRef<'a> {
 /// A borrowed tuple: a heading reference plus one arena-allocated slice of
 /// [`ScalarRef`]s.
 ///
-/// `values` is positional in **heading attribute order** (the order yielded by
-/// [`TupleType::attribute_names`]): `values[i]` is the value of the `i`-th
-/// attribute. [`TupleView::from_tuple`] and [`SlotRelation::insert`] both
-/// establish this layout; hand-built views must uphold it or [`TupleView::get`]
-/// will misattribute values.
+/// The values are positional in **heading attribute order** (the order
+/// yielded by [`TupleType::attribute_names`]): `values()[i]` is the value of
+/// the `i`-th attribute.
+///
+/// A view always conforms to its heading (one value per attribute, each of
+/// its attribute's type; TTM Proscription 1 and RM Prescription 9): the
+/// fields are private and every constructor — [`TupleView::new`],
+/// [`TupleView::from_tuple`], [`SlotRelation::insert`],
+/// [`SlotRelation::from_relation`] — establishes this.
 ///
 /// `Copy` (like `&` references): views are cheap to pass around; the data
 /// lives in the arena.
 #[derive(Clone, Copy, Debug)]
 pub struct TupleView<'a> {
     /// The borrowed heading this view conforms to.
-    pub heading: &'a TupleType,
+    pub(crate) heading: &'a TupleType,
     /// The attribute values, positional in heading attribute order.
-    pub values: &'a [ScalarRef<'a>],
+    pub(crate) values: &'a [ScalarRef<'a>],
+}
+
+/// Checks that `values` (positional in heading attribute order) conform to
+/// `heading`: one value per attribute, each of its attribute's type.
+///
+/// Allocation-free: one pass over the heading.
+fn check_conformance(heading: &TupleType, values: &[ScalarRef<'_>]) -> Result<(), CapacityError> {
+    if values.len() != heading.degree() {
+        return Err(CapacityError::ArityMismatch {
+            expected: heading.degree(),
+            found: values.len(),
+        });
+    }
+    for (position, (value, scalar_type)) in
+        values.iter().zip(heading.attributes().values()).enumerate()
+    {
+        if !value.is_type(scalar_type) {
+            return Err(CapacityError::TypeMismatch { position });
+        }
+    }
+    Ok(())
 }
 
 // Order-independent equality (TTM Proscription 4: no attribute ordering):
@@ -763,6 +853,44 @@ impl<'a> core::hash::Hash for TupleView<'a> {
 }
 
 impl<'a> TupleView<'a> {
+    /// Builds a view over `values`, positional in `heading` attribute order,
+    /// after checking that they conform to the heading.
+    ///
+    /// # Errors
+    ///
+    /// - [`CapacityError::ArityMismatch`] if `values.len()` is not the
+    ///   heading degree.
+    /// - [`CapacityError::TypeMismatch`] if a value is not of its attribute's
+    ///   type (see [`ScalarRef::is_type`]).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{ScalarType, TupleType};
+    /// use relvar_core::values::{ScalarRef, TupleView};
+    ///
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// let values = [ScalarRef::Int(7)];
+    /// let view = TupleView::new(&heading, &values).unwrap();
+    /// assert_eq!(view.get("id"), Some(ScalarRef::Int(7)));
+    ///
+    /// assert!(TupleView::new(&heading, &[ScalarRef::Bool(true)]).is_err());
+    /// ```
+    pub fn new(heading: &'a TupleType, values: &'a [ScalarRef<'a>]) -> Result<Self, CapacityError> {
+        check_conformance(heading, values)?;
+        Ok(TupleView { heading, values })
+    }
+
+    /// The borrowed heading this view conforms to.
+    pub fn heading(&self) -> &'a TupleType {
+        self.heading
+    }
+
+    /// The attribute values, positional in heading attribute order.
+    pub fn values(&self) -> &'a [ScalarRef<'a>] {
+        self.values
+    }
+
     /// Borrows an owned [`Tuple`] into the arena.
     ///
     /// Values are stored in heading attribute order (matching
@@ -830,14 +958,13 @@ impl<'a> TupleView<'a> {
         self.values.is_empty()
     }
 
-    /// Lightweight structural check: the value count matches the heading
-    /// degree.
+    /// Whether the view conforms to its heading: one value per attribute,
+    /// each of its attribute's type.
     ///
-    /// This is allocation-free. Full type conformance is established at the
-    /// `from_tuple` / `insert` boundaries, which is where values enter the
-    /// arena layer.
+    /// Allocation-free. Always `true` for views built through the public
+    /// constructors, which establish conformance.
     pub fn conforms(&self) -> bool {
-        self.values.len() == self.heading.degree()
+        check_conformance(self.heading, self.values).is_ok()
     }
 }
 
@@ -853,22 +980,83 @@ impl<'a> TupleView<'a> {
 /// outlive the `SlotRelation` — the borrow checker enforces this at the
 /// construction site.
 ///
-/// `SlotRelation` is a *physical* container, not a logical set: [`insert`][Self::insert]
-/// does not deduplicate (TTM Proscription 2 is enforced at the relation
-/// boundaries — [`from_relation`][Self::from_relation] sources are sets, and
-/// [`to_relation`][Self::to_relation] materializes through [`Relation`]'s set
-/// semantics).
-#[derive(Debug)]
+/// # Set semantics
+///
+/// A slot relation is a relation value: its tuples are distinct (TTM
+/// Proscription 2) and conform to the heading. [`insert`][Self::insert]
+/// type-checks every value and treats an already-present tuple as a no-op,
+/// exactly like [`Relation::insert`]; [`from_relation`][Self::from_relation]
+/// copies a set. Slot order is physical and carries no meaning
+/// (Proscription 3): equality and hashing are set-based.
+///
+/// Duplicate detection uses an open-addressing index that lives in the arena
+/// and is built lazily on the first `insert` (relations only ever read, such
+/// as nested relation-valued attributes, never pay for it); it grows by
+/// doubling, so inserts are amortized `O(1)`.
 pub struct SlotRelation<'a> {
     arena: &'a Arena,
     heading: &'a TupleType,
     slots: Vec<TupleView<'a>>,
     capacity: usize,
+    /// Dedup index over `slots` (`None` until the first `insert`).
+    index: Option<&'a mut [IndexBucket]>,
+}
+
+/// One bucket of a [`SlotRelation`]'s dedup index: the hash of the view in
+/// `slots[slot]`, or `slot == EMPTY_SLOT` for an empty bucket.
+#[derive(Clone, Copy)]
+struct IndexBucket {
+    hash: u64,
+    slot: usize,
+}
+
+/// Marks an empty [`IndexBucket`].
+const EMPTY_SLOT: usize = usize::MAX;
+
+impl IndexBucket {
+    const EMPTY: Self = Self {
+        hash: 0,
+        slot: EMPTY_SLOT,
+    };
+}
+
+/// Smallest dedup-index size: a power of two.
+const MIN_INDEX_BUCKETS: usize = 8;
+
+/// Hashes one view with [`TupleView`]'s order-independent `Hash`.
+fn view_hash(view: &TupleView<'_>) -> u64 {
+    use core::hash::{Hash, Hasher};
+    let mut hasher = crate::collections::new_hasher();
+    view.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Records `(hash, slot)` in an open-addressing table with a free bucket.
+fn index_put(buckets: &mut [IndexBucket], hash: u64, slot: usize) {
+    let mask = buckets.len() - 1;
+    // Truncating the hash is intended: only the low bits pick a bucket.
+    let mut at = (hash as usize) & mask;
+    while buckets[at].slot != EMPTY_SLOT {
+        at = (at + 1) & mask;
+    }
+    buckets[at] = IndexBucket { hash, slot };
+}
+
+impl core::fmt::Debug for SlotRelation<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SlotRelation")
+            .field("heading", self.heading)
+            .field("slots", &self.slots)
+            .field("capacity", &self.capacity)
+            .finish_non_exhaustive()
+    }
 }
 
 // Set semantics for equality (TTM Proscription 2): same heading, same
 // cardinality, and every view of one side is present in the other. Slot order
-// is physical and ignored.
+// is physical and ignored. Because a slot relation never holds duplicates,
+// equal cardinality plus one-way containment is set equality (and so
+// symmetric).
 impl<'a> PartialEq for SlotRelation<'a> {
     fn eq(&self, other: &Self) -> bool {
         self.heading == other.heading
@@ -880,7 +1068,8 @@ impl<'a> PartialEq for SlotRelation<'a> {
 impl<'a> Eq for SlotRelation<'a> {}
 
 // Order-independent hash mirroring Relation's: heading, cardinality, and the
-// XOR of per-view hashes (XOR is commutative, so slot order does not matter).
+// XOR of per-view hashes (XOR is commutative, so slot order does not matter;
+// views are distinct, so no two hashes cancel as duplicates would).
 impl<'a> core::hash::Hash for SlotRelation<'a> {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.heading.degree().hash(state);
@@ -891,9 +1080,7 @@ impl<'a> core::hash::Hash for SlotRelation<'a> {
         self.len().hash(state);
         let mut combined = 0u64;
         for view in self.iter() {
-            let mut hasher = crate::collections::new_hasher();
-            view.hash(&mut hasher);
-            combined ^= core::hash::Hasher::finish(&hasher);
+            combined ^= view_hash(&view);
         }
         combined.hash(state);
     }
@@ -911,6 +1098,7 @@ impl<'a> SlotRelation<'a> {
             heading,
             slots: Vec::with_capacity(capacity),
             capacity,
+            index: None,
         }
     }
 
@@ -941,31 +1129,121 @@ impl<'a> SlotRelation<'a> {
         self.slots.iter().copied()
     }
 
-    /// Whether a view equal to `view` is stored (linear scan).
-    pub fn contains(&self, view: &TupleView<'a>) -> bool {
-        self.slots.iter().any(|slot| slot == view)
+    /// Whether a view equal to `view` is stored.
+    ///
+    /// Uses the dedup index when one has been built (after the first
+    /// [`insert`][Self::insert]); otherwise a linear scan.
+    pub fn contains(&self, view: &TupleView<'_>) -> bool {
+        match &self.index {
+            Some(buckets) => self.find_indexed(buckets, view, view_hash(view)),
+            None => self.slots.iter().any(|slot| slot == view),
+        }
+    }
+
+    /// Probes the dedup index for a stored view equal to `view`.
+    fn find_indexed(&self, buckets: &[IndexBucket], view: &TupleView<'_>, hash: u64) -> bool {
+        let mask = buckets.len() - 1;
+        // Truncating the hash is intended: only the low bits pick a bucket.
+        let mut at = (hash as usize) & mask;
+        loop {
+            let bucket = buckets[at];
+            if bucket.slot == EMPTY_SLOT {
+                return false;
+            }
+            if bucket.hash == hash && self.slots.get(bucket.slot).is_some_and(|slot| slot == view) {
+                return true;
+            }
+            at = (at + 1) & mask;
+        }
+    }
+
+    /// Ensures the dedup index exists and has room for `entries` views at a
+    /// load factor of at most 1/2, (re)building it in the arena if needed.
+    fn reserve_index(&mut self, entries: usize) -> Result<(), AllocError> {
+        let wanted = entries
+            .checked_mul(2)
+            .ok_or(AllocError::SizeOverflow(entries))?
+            .max(MIN_INDEX_BUCKETS);
+        if self
+            .index
+            .as_ref()
+            .is_some_and(|buckets| buckets.len() >= wanted)
+        {
+            return Ok(());
+        }
+        let len = wanted
+            .checked_next_power_of_two()
+            .ok_or(AllocError::SizeOverflow(entries))?;
+        let buckets = self.arena.alloc_slice_mut(len, IndexBucket::EMPTY)?;
+        match self.index.take() {
+            // Re-insert from the old table: hashes are already known.
+            Some(old) => {
+                for bucket in old.iter().filter(|bucket| bucket.slot != EMPTY_SLOT) {
+                    index_put(buckets, bucket.hash, bucket.slot);
+                }
+            }
+            None => {
+                for (slot, view) in self.slots.iter().enumerate() {
+                    index_put(buckets, view_hash(view), slot);
+                }
+            }
+        }
+        self.index = Some(buckets);
+        Ok(())
     }
 
     /// Inserts a tuple's values as a new view.
     ///
     /// `values` is positional in **heading attribute order**
     /// (`values[i]` is the value of the `i`-th attribute yielded by
-    /// [`TupleType::attribute_names`]). The slice is copied into the arena and
-    /// the resulting view is pushed into the slot array — no per-insert heap
-    /// allocation beyond the arena bump.
+    /// [`TupleType::attribute_names`]). The values are type-checked against
+    /// the heading; a tuple that is already present is not inserted again
+    /// (set semantics, TTM Proscription 2), mirroring [`Relation::insert`].
+    /// A new tuple's slice is copied into the arena and the resulting view is
+    /// pushed into the slot array — no per-insert heap allocation beyond the
+    /// arena bump.
+    ///
+    /// Returns `Ok(true)` if the tuple was inserted and `Ok(false)` if an
+    /// equal tuple was already present (also when the relation is full).
     ///
     /// # Errors
     ///
-    /// - [`CapacityError::Full`] if the slot array is at capacity (not a panic).
     /// - [`CapacityError::ArityMismatch`] if `values.len()` does not equal the
     ///   heading degree.
+    /// - [`CapacityError::TypeMismatch`] if a value is not of its attribute's
+    ///   type (see [`ScalarRef::is_type`]).
+    /// - [`CapacityError::Full`] if the tuple is new and the slot array is at
+    ///   capacity (not a panic).
     /// - [`CapacityError::Alloc`] if the arena allocation fails.
-    pub fn insert(&mut self, values: &[ScalarRef<'a>]) -> Result<(), CapacityError> {
-        if values.len() != self.heading.degree() {
-            return Err(CapacityError::ArityMismatch {
-                expected: self.heading.degree(),
-                found: values.len(),
-            });
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::types::{ScalarType, TupleType};
+    /// use relvar_core::values::{Arena, ScalarRef, SlotRelation};
+    ///
+    /// let heading = TupleType::new().with_attribute("n", ScalarType::Int);
+    /// let arena = Arena::new();
+    /// let mut slots = SlotRelation::with_capacity(&arena, &heading, 4);
+    ///
+    /// assert!(slots.insert(&[ScalarRef::Int(1)]).unwrap()); // inserted
+    /// assert!(!slots.insert(&[ScalarRef::Int(1)]).unwrap()); // duplicate
+    /// assert!(slots.insert(&[ScalarRef::Text("x")]).is_err()); // wrong type
+    /// assert_eq!(slots.len(), 1);
+    /// ```
+    pub fn insert(&mut self, values: &[ScalarRef<'a>]) -> Result<bool, CapacityError> {
+        check_conformance(self.heading, values)?;
+        let probe = TupleView {
+            heading: self.heading,
+            values,
+        };
+        let hash = view_hash(&probe);
+        // Room for one more view, but never beyond capacity.
+        self.reserve_index((self.slots.len() + 1).min(self.capacity))?;
+        if let Some(buckets) = &self.index
+            && self.find_indexed(buckets, &probe, hash)
+        {
+            return Ok(false);
         }
         if self.slots.len() >= self.capacity {
             return Err(CapacityError::Full {
@@ -973,11 +1251,15 @@ impl<'a> SlotRelation<'a> {
             });
         }
         let stored = self.arena.alloc_slice(values)?;
+        let slot = self.slots.len();
         self.slots.push(TupleView {
             heading: self.heading,
             values: stored,
         });
-        Ok(())
+        if let Some(buckets) = self.index.as_deref_mut() {
+            index_put(buckets, hash, slot);
+        }
+        Ok(true)
     }
 
     /// Removes all tuple views, keeping the capacity.
@@ -986,6 +1268,9 @@ impl<'a> SlotRelation<'a> {
     /// explicitly calls [`Arena::reset`].
     pub fn clear(&mut self) {
         self.slots.clear();
+        if let Some(buckets) = self.index.as_deref_mut() {
+            buckets.fill(IndexBucket::EMPTY);
+        }
     }
 
     /// Borrows an owned [`Relation`] into the arena, with room for up to
@@ -1045,15 +1330,14 @@ impl<'a> SlotRelation<'a> {
 
     /// Materializes the slot relation back into an owned [`Relation`].
     ///
-    /// This allocates (it leaves the zero-alloc layer). Duplicates — if any
-    /// were inserted directly — collapse here through [`Relation`]'s set
-    /// semantics.
+    /// This allocates (it leaves the zero-alloc layer). The slot relation is
+    /// already a set, so the result has the same cardinality.
     ///
     /// # Errors
     ///
-    /// Returns [`MaterializeError`] if a view violates its construction
-    /// contract. For relations built by `from_relation` / `insert` this is
-    /// practically infallible.
+    /// Returns [`MaterializeError`] if a view cannot be rebuilt as an owned
+    /// tuple. Every view is built through a validating constructor, so this
+    /// is practically infallible.
     pub fn to_relation(&self) -> Result<Relation, MaterializeError> {
         let mut relation =
             Relation::with_capacity(RelationType::new((*self.heading).clone()), self.len());
@@ -1493,6 +1777,228 @@ mod tests {
         let err = slots.insert(v3.values).unwrap_err();
         assert!(matches!(err, CapacityError::Full { capacity: 2 }));
         assert_eq!(slots.len(), 2);
+    }
+
+    // -- SlotRelation: set semantics and heading conformance ---------------
+    //
+    // TTM Proscription 2 (no duplicate tuples) and RM Prescription 9/10
+    // (every tuple conforms to the heading) hold for slot relations too.
+
+    fn int_heading() -> TupleType {
+        TupleType::new().with_attribute("n", ScalarType::Int)
+    }
+
+    #[test]
+    fn slot_relation_insert_duplicate_is_noop() {
+        let heading = int_heading();
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 4);
+        slots.insert(&[ScalarRef::Int(1)]).unwrap();
+        slots.insert(&[ScalarRef::Int(1)]).unwrap();
+        assert_eq!(slots.len(), 1);
+    }
+
+    #[test]
+    fn slot_relation_insert_duplicate_into_full_relation_is_noop() {
+        let heading = int_heading();
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 1);
+        slots.insert(&[ScalarRef::Int(1)]).unwrap();
+        // Already present: a no-op, not a capacity error.
+        assert!(slots.insert(&[ScalarRef::Int(1)]).is_ok());
+        assert_eq!(slots.len(), 1);
+    }
+
+    #[test]
+    fn slot_relation_insert_reports_whether_tuple_was_new() {
+        let heading = int_heading();
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 4);
+        assert!(slots.insert(&[ScalarRef::Int(1)]).unwrap());
+        assert!(!slots.insert(&[ScalarRef::Int(1)]).unwrap());
+        assert!(slots.insert(&[ScalarRef::Int(2)]).unwrap());
+    }
+
+    #[test]
+    fn slot_relation_insert_dedups_nan_and_keeps_signed_zeros_apart() {
+        let heading = TupleType::new().with_attribute("f", ScalarType::Float);
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 8);
+        slots.insert(&[ScalarRef::Float(f64::NAN)]).unwrap();
+        slots
+            .insert(&[ScalarRef::Float(f64::from_bits(f64::NAN.to_bits() ^ 1))])
+            .unwrap();
+        slots.insert(&[ScalarRef::Float(0.0)]).unwrap();
+        slots.insert(&[ScalarRef::Float(-0.0)]).unwrap();
+        assert_eq!(slots.len(), 3);
+    }
+
+    #[test]
+    fn slot_relation_many_inserts_stay_deduplicated() {
+        let heading = int_heading();
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 200);
+        for round in 0..2 {
+            for n in 0..150i64 {
+                slots.insert(&[ScalarRef::Int(n)]).unwrap();
+            }
+            assert_eq!(slots.len(), 150, "round {round}");
+        }
+        let probe = SlotRelation::with_capacity(&arena, &heading, 0);
+        assert_ne!(slots, probe);
+        assert_eq!(slots.to_relation().unwrap().cardinality(), 150);
+    }
+
+    #[test]
+    fn slot_relation_dedups_against_from_relation_contents() {
+        let owned = test_relation();
+        let arena = Arena::new();
+        let mut slots = SlotRelation::from_relation(&owned, &arena, 8).unwrap();
+        let alice = tuple! { id: 1i64, name: "Alice", active: true };
+        let view = TupleView::from_tuple(&alice, &arena).unwrap();
+        slots.insert(view.values()).unwrap();
+        assert_eq!(slots.len(), 2);
+    }
+
+    #[test]
+    fn slot_relation_clear_resets_deduplication() {
+        let heading = int_heading();
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 2);
+        slots.insert(&[ScalarRef::Int(1)]).unwrap();
+        slots.clear();
+        assert!(slots.insert(&[ScalarRef::Int(1)]).unwrap());
+        assert_eq!(slots.len(), 1);
+    }
+
+    #[test]
+    fn slot_relation_insert_rejects_value_of_wrong_type() {
+        let heading = int_heading();
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 4);
+        assert!(slots.insert(&[ScalarRef::Text("one")]).is_err());
+        assert!(slots.is_empty());
+    }
+
+    #[test]
+    fn slot_relation_insert_reports_mismatched_position() {
+        let heading = test_heading(); // active: Bool, id: Int, name: String
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 4);
+        let err = slots
+            .insert(&[ScalarRef::Bool(true), ScalarRef::Int(1), ScalarRef::Int(2)])
+            .unwrap_err();
+        assert!(matches!(err, CapacityError::TypeMismatch { position: 2 }));
+    }
+
+    #[test]
+    fn slot_relation_insert_rejects_user_defined_value_of_other_type() {
+        let widget = ScalarType::user_defined("WidgetId", ScalarType::Int);
+        let supplier = ScalarType::user_defined("SupplierId", ScalarType::Int);
+        let heading = TupleType::new().with_attribute("w", widget.clone());
+        let arena = Arena::new();
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 4);
+
+        let one = ScalarRef::Int(1);
+        let as_supplier = ScalarRef::UserDefined {
+            type_def: &supplier,
+            value: &one,
+        };
+        assert!(slots.insert(&[as_supplier]).is_err());
+        // The bare representation is not a WidgetId either.
+        assert!(slots.insert(&[one]).is_err());
+        // A WidgetId whose representation is not an Int is malformed.
+        let text = ScalarRef::Text("1");
+        let malformed = ScalarRef::UserDefined {
+            type_def: &widget,
+            value: &text,
+        };
+        assert!(slots.insert(&[malformed]).is_err());
+
+        let as_widget = ScalarRef::UserDefined {
+            type_def: &widget,
+            value: &one,
+        };
+        assert!(slots.insert(&[as_widget]).unwrap());
+    }
+
+    #[test]
+    fn slot_relation_insert_rejects_nested_relation_of_other_heading() {
+        let inner = TupleType::new().with_attribute("x", ScalarType::Int);
+        let other_inner = TupleType::new().with_attribute("y", ScalarType::Int);
+        let heading = TupleType::new().with_attribute(
+            "r",
+            ScalarType::Relation(Box::new(RelationType::new(inner.clone()))),
+        );
+        let arena = Arena::new();
+        let good = SlotRelation::with_capacity(&arena, &inner, 0);
+        let bad = SlotRelation::with_capacity(&arena, &other_inner, 0);
+        let mut slots = SlotRelation::with_capacity(&arena, &heading, 4);
+        assert!(slots.insert(&[ScalarRef::Relation(&bad)]).is_err());
+        assert!(slots.insert(&[ScalarRef::Relation(&good)]).unwrap());
+    }
+
+    #[test]
+    fn slot_relation_equality_is_symmetric_after_repeated_insert() {
+        let heading = int_heading();
+        let arena = Arena::new();
+        let mut aa = SlotRelation::with_capacity(&arena, &heading, 4);
+        aa.insert(&[ScalarRef::Int(1)]).unwrap();
+        aa.insert(&[ScalarRef::Int(1)]).unwrap();
+        let mut ab = SlotRelation::with_capacity(&arena, &heading, 4);
+        ab.insert(&[ScalarRef::Int(1)]).unwrap();
+        ab.insert(&[ScalarRef::Int(2)]).unwrap();
+        assert_ne!(aa, ab);
+        assert_ne!(ab, aa);
+    }
+
+    #[test]
+    fn slot_relation_hash_is_coherent_with_eq_after_repeated_insert() {
+        let heading = int_heading();
+        let arena = Arena::new();
+        let mut twice = SlotRelation::with_capacity(&arena, &heading, 4);
+        twice.insert(&[ScalarRef::Int(1)]).unwrap();
+        twice.insert(&[ScalarRef::Int(1)]).unwrap();
+        let mut once = SlotRelation::with_capacity(&arena, &heading, 4);
+        once.insert(&[ScalarRef::Int(1)]).unwrap();
+        assert_eq!(twice, once);
+        assert_eq!(hash_of(&twice), hash_of(&once));
+        // XOR of duplicate hashes must not cancel out to the empty relation.
+        let empty = SlotRelation::with_capacity(&arena, &heading, 4);
+        let mut pair = SlotRelation::with_capacity(&arena, &heading, 4);
+        pair.insert(&[ScalarRef::Int(5)]).unwrap();
+        pair.insert(&[ScalarRef::Int(5)]).unwrap();
+        assert_ne!(pair, empty);
+        assert_ne!(hash_of(&pair), hash_of(&empty));
+    }
+
+    // -- TupleView: validated construction --------------------------------
+
+    #[test]
+    fn tuple_view_new_accepts_conforming_values() {
+        let heading = int_heading();
+        let values = [ScalarRef::Int(3)];
+        let view = TupleView::new(&heading, &values).unwrap();
+        assert!(view.conforms());
+        assert_eq!(view.get("n"), Some(ScalarRef::Int(3)));
+        assert!(core::ptr::eq(view.heading(), &heading));
+        assert_eq!(view.values(), &values);
+    }
+
+    #[test]
+    fn tuple_view_new_rejects_wrong_arity_and_types() {
+        let heading = int_heading();
+        assert!(matches!(
+            TupleView::new(&heading, &[]),
+            Err(CapacityError::ArityMismatch {
+                expected: 1,
+                found: 0
+            })
+        ));
+        assert!(matches!(
+            TupleView::new(&heading, &[ScalarRef::Bool(true)]),
+            Err(CapacityError::TypeMismatch { position: 0 })
+        ));
     }
 
     #[test]

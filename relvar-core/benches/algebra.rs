@@ -4,7 +4,7 @@ use criterion::{
 use relvar_core::algebra::Aggregation;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
-use relvar_core::values::{Relation, ScalarValue};
+use relvar_core::values::{Arena, Relation, ScalarRef, ScalarValue, SlotRelation};
 
 fn create_employee_relation(size: usize) -> Relation {
     let heading = TupleType::new()
@@ -522,6 +522,36 @@ fn bench_chained_operations(c: &mut Criterion) {
     group.finish();
 }
 
+// Arena slot-relation insert: set semantics (dedup + type check) on every
+// insert. Half of the inserts are repeats of an already-present tuple.
+fn bench_slot_relation_insert(c: &mut Criterion) {
+    let mut group = c.benchmark_group("slot_relation_insert");
+    let heading = TupleType::new()
+        .with_attribute("id".to_string(), ScalarType::Int)
+        .with_attribute("name".to_string(), ScalarType::String);
+
+    for size in [100, 1000, 10000].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            b.iter_batched(
+                Arena::new,
+                |arena| {
+                    let mut slots = SlotRelation::with_capacity(&arena, &heading, size);
+                    for i in 0..size {
+                        let id = (i / 2) as i64;
+                        slots
+                            .insert(&[ScalarRef::Int(id), ScalarRef::Text("name")])
+                            .unwrap();
+                    }
+                    black_box(slots.len());
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_restrict,
@@ -540,6 +570,7 @@ criterion_group!(
     bench_divide,
     bench_extend,
     bench_summarize,
-    bench_chained_operations
+    bench_chained_operations,
+    bench_slot_relation_insert
 );
 criterion_main!(benches);
