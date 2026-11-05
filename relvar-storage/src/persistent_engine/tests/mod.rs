@@ -7,6 +7,7 @@ mod common;
 mod gc;
 mod isolation;
 mod lifecycle;
+mod lock;
 mod recovery;
 mod transaction;
 mod wal_tail;

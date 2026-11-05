@@ -13,6 +13,9 @@ use relvar_core::values::{Relation, Tuple};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+mod lock;
+use lock::DirectoryLock;
+
 /// Per-transaction isolation bookkeeping.
 ///
 /// Records what a live transaction has observed and changed so that
@@ -112,6 +115,10 @@ pub struct PersistentEngine {
     /// Isolation bookkeeping for live transactions (read/write sets,
     /// commit order). Behind a lock because reads only have `&self`.
     txn_tracker: RwLock<TxnTracker>,
+    /// Exclusive lock on the database directory, held for the engine's
+    /// lifetime. Declared last so it is released only after every other
+    /// field (WAL, heap files) has been dropped.
+    _dir_lock: DirectoryLock,
 }
 
 impl PersistentEngine {
@@ -121,9 +128,14 @@ impl PersistentEngine {
     /// an empty catalog. If the database already exists, the catalog is loaded
     /// from disk.
     ///
+    /// The engine owns the directory exclusively while it is open: it holds
+    /// an OS file lock on `<path>/LOCK` until it is dropped, so a second
+    /// engine (in this or another process) cannot open the same directory.
+    ///
     /// # Errors
     ///
-    /// Yields an error if I/O operations fail.
+    /// Yields an error if I/O operations fail, or if another engine holds
+    /// the directory lock.
     ///
     /// # Examples
     /// ```
@@ -191,6 +203,12 @@ impl PersistentEngine {
         let db_path = path.as_ref().to_path_buf();
         let wal_path = db_path.join("wal.log");
 
+        // Take exclusive ownership of the directory before touching any of
+        // its files. A failure below drops the lock again.
+        std::fs::create_dir_all(&db_path)
+            .map_err(|e| StorageError::Other(format!("Failed to create directory: {e}")))?;
+        let dir_lock = DirectoryLock::acquire(&db_path)?;
+
         // Initialize StorageManager (handles DB dir and catalog) with a
         // caller-owned, fixed-capacity version pool.
         let version_pool = VersionPool::with_capacities(
@@ -218,6 +236,7 @@ impl PersistentEngine {
             committed_txns: recovery_result.committed_txns, // Populate from recovery
             current_txn: None,
             txn_tracker: RwLock::new(TxnTracker::default()),
+            _dir_lock: dir_lock,
         };
 
         // Undo transactions the crash left in flight.
