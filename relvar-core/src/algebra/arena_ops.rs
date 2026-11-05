@@ -52,8 +52,9 @@
 //!
 //! - **Proscription 1** (no NULLs): predicates and compute functions see only
 //!   complete tuples; there is no null representation to handle.
-//! - **Proscription 2** (no duplicate tuples): every operator eliminates
-//!   duplicates explicitly — [`SlotRelation`] itself never dedupes on insert.
+//! - **Proscription 2** (no duplicate tuples): every output is built through
+//!   [`SlotRelation::insert`], which has set semantics, so no operator can
+//!   emit a duplicate tuple.
 //! - **Proscription 3/4** (no ordering, no attribute order): outputs are
 //!   sets; attribute order inside a heading follows [`TupleType`]'s canonical
 //!   (name-sorted) layout, which carries no semantic weight.
@@ -162,10 +163,14 @@ pub enum ArenaOpError {
         found: usize,
     },
 
-    /// A computed value's type did not match the new attribute's inferred
-    /// type (extend's per-tuple check, mirroring the owned
+    /// A type check failed: either a computed value's type did not match
+    /// the new attribute's inferred type (extend's per-tuple check, mirroring
+    /// the owned
     /// [`ExtendError::TupleCreation`](crate::algebra::ExtendError::TupleCreation)
-    /// type check against the declared attribute type).
+    /// type check against the declared attribute type), or a common
+    /// attribute of a natural join ([`join_in`]) has a different type in each
+    /// input (mirroring
+    /// [`JoinError::AttributeTypeMismatch`](crate::algebra::JoinError::AttributeTypeMismatch)).
     #[error("type mismatch for attribute '{attribute}': expected {expected}, found {found}")]
     TypeMismatch {
         /// The new attribute's name.
@@ -392,13 +397,16 @@ impl<'a> ArenaMap<'a> {
 
 /// Appends one tuple to `out`, copying its value slice into the arena.
 ///
-/// [`SlotRelation::insert`] already copies values into the arena; this
-/// wrapper converts its [`CapacityError`] into [`ArenaOpError`] at one place.
+/// [`SlotRelation::insert`] already copies values into the arena, type-checks
+/// them against `out`'s heading and skips tuples `out` already holds (set
+/// semantics), so no core can emit a duplicate or non-conforming tuple —
+/// even into a caller-supplied, non-empty `out`. This wrapper converts its
+/// [`CapacityError`] into [`ArenaOpError`] at one place.
 fn append_tuple<'a>(
     out: &mut SlotRelation<'a>,
     values: &[ScalarRef<'a>],
 ) -> Result<(), ArenaOpError> {
-    out.insert(values).map_err(ArenaOpError::from)
+    out.insert(values).map(|_| ()).map_err(ArenaOpError::from)
 }
 
 /// Returns `true` when two headings are union-compatible: identical attribute
@@ -456,11 +464,36 @@ fn same_scalar_kind(a: ScalarRef<'_>, b: ScalarRef<'_>) -> bool {
     }
 }
 
+/// Checks that every common attribute of `a` and `b` has the same type on
+/// both sides.
+///
+/// TTM: the common attributes of a natural join must have the same type;
+/// a name-only match with differing types is a type error (the same rule
+/// [`Relation::join`](crate::values::Relation::join) enforces).
+///
+/// # Errors
+///
+/// Returns [`ArenaOpError::TypeMismatch`] naming the first common attribute
+/// whose types differ (`expected` is the left type, `found` the right).
+pub(crate) fn check_join_common_types(a: &TupleType, b: &TupleType) -> Result<(), ArenaOpError> {
+    for (name, a_type) in a.attributes() {
+        if let Some(b_type) = b.get_attribute_type(name)
+            && a_type != b_type
+        {
+            return Err(ArenaOpError::TypeMismatch {
+                attribute: name.clone(),
+                expected: a_type.name().to_string(),
+                found: b_type.name().to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Builds the natural-join heading of `a` and `b`: `a`'s attributes plus
 /// `b`'s non-common attributes, in [`TupleType`]'s canonical (name-sorted)
-/// order. On a name collision the left relation's attribute (and its type)
-/// wins — the same rule [`Relation::join`](crate::values::Relation::join)
-/// applies.
+/// order. Common attributes have the same type on both sides (checked by
+/// [`check_join_common_types`]), so taking them from `a` is exact.
 pub(crate) fn natural_join_heading(a: &SlotRelation<'_>, b: &SlotRelation<'_>) -> TupleType {
     let mut heading = a.heading().clone();
     for (name, scalar_type) in b.heading().attributes() {
@@ -537,13 +570,9 @@ pub(crate) fn restrict_into<'a>(
     input: &SlotRelation<'a>,
     pred: &dyn Fn(TupleView<'a>) -> bool,
     out: &mut SlotRelation<'a>,
-    arena: &'a Arena,
 ) -> Result<(), ArenaOpError> {
-    let mut seen = ArenaSet::new(arena, input.len())?;
-    for view in input.iter() {
-        if pred(view) && seen.insert(view) {
-            append_tuple(out, view.values)?;
-        }
+    for view in input.iter().filter(|view| pred(*view)) {
+        append_tuple(out, view.values())?;
     }
     Ok(())
 }
@@ -559,7 +588,6 @@ pub(crate) fn project_into<'a>(
 ) -> Result<(), ArenaOpError> {
     let out_heading = out.heading();
     let degree = out_heading.degree();
-    let mut seen = ArenaSet::new(arena, input.len())?;
     let scratch = arena.alloc_slice_mut(degree, ScalarRef::Int(0))?;
     for view in input.iter() {
         for (i, name) in out_heading.attribute_names().enumerate() {
@@ -567,16 +595,9 @@ pub(crate) fn project_into<'a>(
                 .get(name)
                 .ok_or_else(|| ArenaOpError::UnknownAttribute(name.clone()))?;
         }
-        // Fresh arena slice per tuple: the candidate key must outlive the
-        // scratch buffer, which is reused for the next tuple.
-        let key = arena.alloc_slice(scratch)?;
-        let candidate = TupleView {
-            heading: out_heading,
-            values: key,
-        };
-        if seen.insert(candidate) {
-            append_tuple(out, key)?;
-        }
+        // `insert` copies the scratch buffer into the arena only when the
+        // projected tuple is new, so collapsed duplicates cost no arena space.
+        append_tuple(out, scratch)?;
     }
     Ok(())
 }
@@ -594,16 +615,12 @@ pub(crate) fn union_into<'a>(
     a: &SlotRelation<'a>,
     b: &SlotRelation<'a>,
     out: &mut SlotRelation<'a>,
-    arena: &'a Arena,
 ) -> Result<(), ArenaOpError> {
     if !headings_identical(a.heading(), b.heading()) {
         return Err(ArenaOpError::HeadingMismatch);
     }
-    let mut seen = ArenaSet::new(arena, a.len() + b.len())?;
     for view in a.iter().chain(b.iter()) {
-        if seen.insert(view) {
-            append_tuple(out, view.values)?;
-        }
+        append_tuple(out, view.values())?;
     }
     Ok(())
 }
@@ -630,11 +647,8 @@ pub(crate) fn difference_into<'a>(
     for view in b.iter() {
         excluded.insert(view);
     }
-    let mut seen = ArenaSet::new(arena, a.len())?;
-    for view in a.iter() {
-        if !excluded.contains(view) && seen.insert(view) {
-            append_tuple(out, view.values)?;
-        }
+    for view in a.iter().filter(|view| !excluded.contains(*view)) {
+        append_tuple(out, view.values())?;
     }
     Ok(())
 }
@@ -661,11 +675,8 @@ pub(crate) fn intersect_into<'a>(
     for view in b.iter() {
         in_b.insert(view);
     }
-    let mut seen = ArenaSet::new(arena, a.len().min(b.len()))?;
-    for view in a.iter() {
-        if in_b.contains(view) && seen.insert(view) {
-            append_tuple(out, view.values)?;
-        }
+    for view in a.iter().filter(|view| in_b.contains(*view)) {
+        append_tuple(out, view.values())?;
     }
     Ok(())
 }
@@ -677,9 +688,9 @@ pub(crate) fn intersect_into<'a>(
 /// attributes every probe matches every build tuple (Cartesian product).
 /// Tuple assembly is name-based — each attribute resolves from whichever
 /// side carries it — so left/right placement is correct regardless of which
-/// input was the hash build side. The combined heading keeps the left
-/// relation's attribute (and its type) on a name collision, matching the
-/// owned [`Relation::join`](crate::values::Relation::join).
+/// input was the hash build side. Common attributes must have the same type
+/// on both sides, matching the owned
+/// [`Relation::join`](crate::values::Relation::join).
 ///
 /// Upper bound for `out`'s capacity: `a.len() * b.len()` (the Cartesian
 /// bound). A caller that knows a tighter bound may size `out` smaller and
@@ -692,6 +703,7 @@ pub(crate) fn join_into<'a>(
 ) -> Result<(), ArenaOpError> {
     let a_heading = a.heading();
     let b_heading = b.heading();
+    check_join_common_types(a_heading, b_heading)?;
     let out_heading = out.heading();
     let out_degree = out_heading.degree();
 
@@ -702,9 +714,8 @@ pub(crate) fn join_into<'a>(
         map.insert(join_key_hash(view, a_heading, b_heading), view);
     }
 
-    // The natural join of two sets is a set, but `SlotRelation` does not
-    // enforce it: eliminate duplicates explicitly (matches `Relation::join`).
-    let mut emitted = ArenaSet::new(arena, out.capacity())?;
+    // The natural join of two sets is a set; `SlotRelation::insert` drops any
+    // repeated combined tuple (matches `Relation::join`).
     let scratch = arena.alloc_slice_mut(out_degree, ScalarRef::Int(0))?;
 
     for probe_view in probe.iter() {
@@ -723,17 +734,9 @@ pub(crate) fn join_into<'a>(
                         .or_else(|| probe_view.get(name))
                         .ok_or_else(|| ArenaOpError::UnknownAttribute(name.clone()))?;
                 }
-                // Fresh arena slice per emitted tuple: the key must outlive
-                // the scratch buffer, which is reused for the next tuple.
-                let key = arena.alloc_slice(scratch)?;
-                let candidate = TupleView {
-                    heading: out_heading,
-                    values: key,
-                };
-                if emitted.insert(candidate) {
-                    append_tuple(out, key)?;
-                }
-                Ok(())
+                // `insert` copies the scratch buffer into the arena only when
+                // the combined tuple is new.
+                append_tuple(out, scratch)
             },
         )?;
     }
@@ -836,7 +839,7 @@ pub fn restrict_in<'a>(
     arena: &'a Arena,
 ) -> Result<SlotRelation<'a>, ArenaOpError> {
     let mut out = SlotRelation::with_capacity(arena, input.heading(), input.len());
-    restrict_into(input, pred, &mut out, arena)?;
+    restrict_into(input, pred, &mut out)?;
     Ok(out)
 }
 
@@ -897,7 +900,7 @@ pub fn union_in<'a>(
         .checked_add(b.len())
         .ok_or(AllocError::SizeOverflow(a.len()))?;
     let mut out = SlotRelation::with_capacity(arena, a.heading(), capacity);
-    union_into(a, b, &mut out, arena)?;
+    union_into(a, b, &mut out)?;
     Ok(out)
 }
 
@@ -956,9 +959,9 @@ pub fn intersect_in<'a>(
 ///
 /// TTM: the natural join. The join key is **all** commonly-named attributes —
 /// the same key semantics as the owned
-/// [`Relation::join`](crate::values::Relation::join). The combined heading is
-/// `a`'s attributes plus `b`'s non-common attributes; on a name collision the
-/// left relation's attribute (and its type) wins. With no common attributes
+/// [`Relation::join`](crate::values::Relation::join). Common attributes must
+/// have the same type on both sides. The combined heading is `a`'s
+/// attributes plus `b`'s non-common attributes. With no common attributes
 /// this is the Cartesian product.
 ///
 /// Set semantics: duplicate output tuples are eliminated, matching the owned
@@ -971,6 +974,8 @@ pub fn intersect_in<'a>(
 ///
 /// # Errors
 ///
+/// - [`ArenaOpError::TypeMismatch`] if a common attribute has a different
+///   type in each input.
 /// - [`ArenaOpError::AllocError`] if the arena cannot back the output, or if
 ///   the capacity bound overflows `usize`.
 /// - [`ArenaOpError::CapacityError`] if the output overflows (cannot happen
@@ -980,6 +985,7 @@ pub fn join_in<'a>(
     b: &SlotRelation<'a>,
     arena: &'a Arena,
 ) -> Result<SlotRelation<'a>, ArenaOpError> {
+    check_join_common_types(a.heading(), b.heading())?;
     let capacity = a
         .len()
         .checked_mul(b.len())
@@ -1065,15 +1071,22 @@ mod tests {
 
         struct CountingAllocator;
 
+        // SAFETY: every method delegates to `System`, which satisfies the
+        // `GlobalAlloc` contract; counting does not allocate (a `Cell` in a
+        // const-initialized thread-local) or touch the returned memory.
         unsafe impl GlobalAlloc for CountingAllocator {
             unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
                 ALLOC_COUNT.with(|count| count.set(count.get().wrapping_add(1)));
-                // SAFETY: straight delegation to the system allocator.
+                // SAFETY: our caller upholds `GlobalAlloc::alloc`'s contract
+                // (non-zero-size `layout`), which is exactly what
+                // `System.alloc` requires.
                 unsafe { std::alloc::System.alloc(layout) }
             }
 
             unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-                // SAFETY: `ptr`/`layout` came from `alloc` above.
+                // SAFETY: our caller guarantees `ptr` was returned by this
+                // allocator's `alloc` with `layout`; every such pointer came
+                // from `System.alloc(layout)`, as `System.dealloc` requires.
                 unsafe { std::alloc::System.dealloc(ptr, layout) }
             }
         }
@@ -1192,18 +1205,52 @@ mod tests {
     }
 
     #[test]
-    fn restrict_eliminates_physical_duplicates() {
+    fn restrict_input_cannot_hold_duplicates() {
         let arena = Arena::new();
         let employees = employees_relation();
         let mut input = slots_of(&employees, &arena, 64);
-        // Duplicate the first tuple physically: `SlotRelation` never dedupes.
-        let first_values: Vec<ScalarRef> = input.iter().next().unwrap().values.to_vec();
-        input.insert(&first_values).unwrap();
-        assert_eq!(input.len(), 13);
+        // Re-inserting a present tuple is a no-op (Proscription 2).
+        let first_values: Vec<ScalarRef> = input.iter().next().unwrap().values().to_vec();
+        assert!(!input.insert(&first_values).unwrap());
+        assert_eq!(input.len(), 12);
 
         let result = restrict_in(&input, &|_| true, &arena).unwrap();
 
         assert_eq!(result.len(), 12);
+    }
+
+    /// Regression: extend's output is a relation, so it must never hold
+    /// duplicate tuples — even if every input tuple maps to the same
+    /// extended tuple shape (here the input was fed duplicates).
+    #[test]
+    fn extend_never_produces_duplicate_tuples() {
+        let arena = Arena::new();
+        let heading = TupleType::new().with_attribute("n", ScalarType::Int);
+        let mut input = SlotRelation::with_capacity(&arena, &heading, 8);
+        for n in [1i64, 1, 2, 2, 2] {
+            input.insert(&[ScalarRef::Int(n)]).unwrap();
+        }
+
+        let result = extend_in(&input, "k", &|_| ScalarRef::Int(0), &arena).unwrap();
+
+        assert_eq!(result.len(), 2);
+        let owned = result.to_relation().unwrap();
+        assert_eq!(owned.cardinality(), 2);
+    }
+
+    /// The `*_into` cores append through `SlotRelation::insert`, so an
+    /// output that already holds a tuple never receives it twice.
+    #[test]
+    fn into_cores_do_not_duplicate_preexisting_output_tuples() {
+        let arena = Arena::new();
+        let relation = small_int_relation(&[1, 2]);
+        let input = slots_of(&relation, &arena, 4);
+        let mut out = SlotRelation::with_capacity(&arena, input.heading(), 4);
+        out.insert(&[ScalarRef::Int(1)]).unwrap();
+
+        restrict_into(&input, &|_| true, &mut out).unwrap();
+
+        assert_eq!(out.len(), 2);
     }
 
     #[test]
@@ -1358,12 +1405,12 @@ mod tests {
     }
 
     #[test]
-    fn set_operators_eliminate_physical_duplicates() {
+    fn set_operators_ignore_repeated_input_inserts() {
         let arena = Arena::new();
         let a = small_int_relation(&[1, 2]);
         let b = small_int_relation(&[2, 3]);
         let mut a_slots = slots_of(&a, &arena, 16);
-        let first_values: Vec<ScalarRef> = a_slots.iter().next().unwrap().values.to_vec();
+        let first_values: Vec<ScalarRef> = a_slots.iter().next().unwrap().values().to_vec();
         a_slots.insert(&first_values).unwrap();
         let b_slots = slots_of(&b, &arena, 8);
 
@@ -1379,6 +1426,31 @@ mod tests {
     // ------------------------------------------------------------------
     // join_in
     // ------------------------------------------------------------------
+
+    /// TTM: common attributes must have the same type on both sides; the
+    /// arena join must reject a name-only match like the owned join does.
+    #[test]
+    fn join_in_rejects_common_attribute_type_mismatch() {
+        let arena = Arena::new();
+        let left_heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let mut left = Relation::new(RelationType::new(left_heading));
+        left.insert(tuple! { id: 1i64 }).unwrap();
+        let right_heading = TupleType::new().with_attribute("id", ScalarType::String);
+        let mut right = Relation::new(RelationType::new(right_heading));
+        right.insert(tuple! { id: "1" }).unwrap();
+        let a = slots_of(&left, &arena, 4);
+        let b = slots_of(&right, &arena, 4);
+
+        let result = join_in(&a, &b, &arena);
+        assert!(
+            matches!(
+                result,
+                Err(ArenaOpError::TypeMismatch { ref attribute, .. }) if attribute == "id"
+            ),
+            "expected TypeMismatch, got {:?}",
+            result.map(|r| r.len())
+        );
+    }
 
     #[test]
     fn join_matches_on_all_common_attributes() {
@@ -1447,33 +1519,6 @@ mod tests {
         assert_eq!(int_column(&result, "n"), [2, 4]);
         assert_eq!(int_column(&result, "m"), [20, 40]);
         assert_eq!(result.heading().degree(), 2);
-    }
-
-    #[test]
-    fn join_left_wins_name_collisions() {
-        let arena = Arena::new();
-        // Same attribute name, different types: the key can never match
-        // (Int != String), but the combined heading must keep the LEFT type.
-        let a_heading = TupleType::new()
-            .with_attribute("id", ScalarType::Int)
-            .with_attribute("x", ScalarType::Int);
-        let mut a = Relation::new(RelationType::new(a_heading));
-        a.insert(tuple! { id: 1i64, x: 1i64 }).unwrap();
-        let b_heading = TupleType::new()
-            .with_attribute("id", ScalarType::Int)
-            .with_attribute("x", ScalarType::String);
-        let mut b = Relation::new(RelationType::new(b_heading));
-        b.insert(tuple! { id: 1i64, x: "one" }).unwrap();
-        let a_slots = slots_of(&a, &arena, 8);
-        let b_slots = slots_of(&b, &arena, 8);
-
-        let result = join_in(&a_slots, &b_slots, &arena).unwrap();
-
-        assert_eq!(result.len(), 0);
-        assert_eq!(
-            result.heading().get_attribute_type("x"),
-            Some(&ScalarType::Int)
-        );
     }
 
     #[test]
@@ -1630,7 +1675,8 @@ mod tests {
             .join(&departments)
             .unwrap()
             .restrict(|tuple| tuple.get_typed::<i64>("dept_id").unwrap() == 10)
-            .project(&["dept_name", "name"]);
+            .project(&["dept_name", "name"])
+            .unwrap();
 
         // Arena pipeline.
         let arena = Arena::new();
@@ -1682,7 +1728,6 @@ mod tests {
             &join_out,
             &|view: TupleView| view.get("dept_id") == Some(ScalarRef::Int(10)),
             &mut restrict_out,
-            &arena,
         )
         .unwrap();
         project_into(&restrict_out, &mut project_out, &arena).unwrap();

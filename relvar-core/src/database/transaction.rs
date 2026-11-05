@@ -6,10 +6,39 @@ use crate::storage_engine::{IsolationLevel, StorageEngine};
 use alloc::string::ToString;
 
 impl<E: StorageEngine> Database<E> {
+    /// Rejects a schema or constraint definition (DDL) issued inside a
+    /// transaction.
+    ///
+    /// DDL is not transactional: engines do not roll back relvar creation
+    /// or removal (and persistent engines write their catalog immediately),
+    /// and constraint definitions live outside the engine snapshot. Running
+    /// DDL inside a transaction could therefore leave a rolled-back
+    /// database whose schema or constraints no longer match its data,
+    /// breaking the Golden Rule (RM Prescription 23). It is rejected
+    /// instead; commit or roll back first.
+    pub(crate) fn ensure_no_transaction(&self, operation: &str) -> Result<(), DatabaseError> {
+        if self.in_transaction {
+            return Err(DatabaseError::TransactionError(format!(
+                "{operation} is not permitted inside a transaction: schema and \
+                 constraint definitions are not transactional; commit or roll back first"
+            )));
+        }
+        Ok(())
+    }
+
     /// Begins a new transaction.
     ///
     /// This establishes a savepoint (snapshot) of the database. Any changes made
     /// subsequently are provisional until [`commit`](Self::commit) is called.
+    ///
+    /// Transactions cover data manipulation only. Schema and constraint
+    /// definitions ([`create_relvar`](Self::create_relvar),
+    /// [`drop_relvar`](Self::drop_relvar), the `set_*_constraints` methods
+    /// and the assertion methods [`add_assertion`](Self::add_assertion),
+    /// [`add_declarative_assertion`](Self::add_declarative_assertion) and
+    /// [`remove_assertion`](Self::remove_assertion)) are not transactional
+    /// and are rejected with [`DatabaseError::TransactionError`] while a
+    /// transaction is active.
     ///
     /// The transaction runs at [`IsolationLevel::default`]
     /// ([`IsolationLevel::RepeatableRead`]); use

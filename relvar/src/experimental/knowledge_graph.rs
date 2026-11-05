@@ -220,12 +220,12 @@ impl KnowledgeGraph {
 
         // Apply renames
         if !rename_map.is_empty() {
-            result = result.rename(&rename_map);
+            result = result.rename(&rename_map)?;
         }
 
         // Project to only keep variables (removes columns with concrete values)
         if !to_project.is_empty() {
-            result = result.project(&to_project);
+            result = result.project(&to_project)?;
         } else {
             // Edge case: no variables in pattern, we just return an empty relation if there are no matches,
             // or a relation with no attributes (DUM/DEE) if it matches.

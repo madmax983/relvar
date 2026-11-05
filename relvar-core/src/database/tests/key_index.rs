@@ -377,7 +377,7 @@ fn test_assertion_rollback_leaves_key_index_clean() {
     ));
 
     // ...so the same key inserts cleanly once the assertion is gone.
-    assert!(db.remove_assertion("at_most_one"));
+    assert!(db.remove_assertion("at_most_one").unwrap());
     db.insert("TEST", tuple! { id: 2i64, name: "Bob" }).unwrap();
     assert_eq!(db.query("TEST").unwrap().cardinality(), 2);
 }

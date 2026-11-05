@@ -38,6 +38,10 @@ fn main() {
     db.create_relvar("DEPT", RelationType::new(dh)).unwrap();
     db.bulk_insert("DEPT", (0..100).map(|i| tuple! { id: i as i64 }).collect())
         .unwrap();
+    // A foreign key references a declared key of DEPT.
+    let dept_pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(dept_pk))
+        .unwrap();
     let pk = PrimaryKey::new(vec!["emp_id".to_string()]).unwrap();
     db.set_key_constraints("EMP", KeyConstraints::new().with_primary_key(pk))
         .unwrap();

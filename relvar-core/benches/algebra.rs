@@ -4,7 +4,7 @@ use criterion::{
 use relvar_core::algebra::Aggregation;
 use relvar_core::tuple;
 use relvar_core::types::{RelationType, ScalarType, TupleType};
-use relvar_core::values::{Relation, ScalarValue};
+use relvar_core::values::{Arena, Relation, ScalarRef, ScalarValue, SlotRelation};
 
 fn create_employee_relation(size: usize) -> Relation {
     let heading = TupleType::new()
@@ -189,7 +189,7 @@ fn bench_project(c: &mut Criterion) {
             let relation = create_employee_relation(size);
 
             b.iter(|| {
-                let result = relation.project(&["emp_id", "name"]);
+                let result = relation.project(&["emp_id", "name"]).unwrap();
                 black_box(result);
             });
         });
@@ -212,7 +212,7 @@ fn bench_project_wide(c: &mut Criterion) {
             let relation = create_wide_relation(size, num_cols);
 
             b.iter(|| {
-                let result = relation.project(&project_cols_refs);
+                let result = relation.project(&project_cols_refs).unwrap();
                 black_box(result);
             });
         });
@@ -235,7 +235,7 @@ fn bench_project_narrow(c: &mut Criterion) {
             let relation = create_wide_relation(size, num_cols);
 
             b.iter(|| {
-                let result = relation.project(&project_cols_refs);
+                let result = relation.project(&project_cols_refs).unwrap();
                 black_box(result);
             });
         });
@@ -253,8 +253,9 @@ fn bench_rename(c: &mut Criterion) {
             let relation = create_employee_relation(size);
 
             b.iter(|| {
-                let result =
-                    relation.rename(&[("emp_id", "employee_id"), ("dept_id", "department_id")]);
+                let result = relation
+                    .rename(&[("emp_id", "employee_id"), ("dept_id", "department_id")])
+                    .unwrap();
                 black_box(result);
             });
         });
@@ -514,9 +515,40 @@ fn bench_chained_operations(c: &mut Criterion) {
                         ScalarValue::Float(t.get_typed::<f64>("salary").unwrap() * 0.1)
                     })
                     .unwrap()
-                    .project(&["emp_id", "name", "salary", "bonus"]);
+                    .project(&["emp_id", "name", "salary", "bonus"])
+                    .unwrap();
                 black_box(result);
             });
+        });
+    }
+    group.finish();
+}
+
+// Arena slot-relation insert: set semantics (dedup + type check) on every
+// insert. Half of the inserts are repeats of an already-present tuple.
+fn bench_slot_relation_insert(c: &mut Criterion) {
+    let mut group = c.benchmark_group("slot_relation_insert");
+    let heading = TupleType::new()
+        .with_attribute("id".to_string(), ScalarType::Int)
+        .with_attribute("name".to_string(), ScalarType::String);
+
+    for size in [100, 1000, 10000].iter() {
+        group.throughput(Throughput::Elements(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            b.iter_batched(
+                Arena::new,
+                |arena| {
+                    let mut slots = SlotRelation::with_capacity(&arena, &heading, size);
+                    for i in 0..size {
+                        let id = (i / 2) as i64;
+                        slots
+                            .insert(&[ScalarRef::Int(id), ScalarRef::Text("name")])
+                            .unwrap();
+                    }
+                    black_box(slots.len());
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
@@ -540,6 +572,7 @@ criterion_group!(
     bench_divide,
     bench_extend,
     bench_summarize,
-    bench_chained_operations
+    bench_chained_operations,
+    bench_slot_relation_insert
 );
 criterion_main!(benches);

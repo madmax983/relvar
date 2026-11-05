@@ -21,7 +21,7 @@ fn test_virtual_relvar() {
         RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
         |db| {
             let test = db.query("TEST")?;
-            Ok(test.project(&["name"]))
+            Ok(test.project(&["name"]).unwrap())
         },
     )
     .unwrap();
@@ -46,7 +46,7 @@ fn test_drop_virtual_relvar() {
         RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
         |db| {
             let test = db.query("TEST")?;
-            Ok(test.project(&["name"]))
+            Ok(test.project(&["name"]).unwrap())
         },
     )
     .unwrap();
@@ -82,7 +82,7 @@ fn test_cannot_insert_into_virtual_relvar() {
         RelationType::new(TupleType::new().with_attribute("name", ScalarType::String)),
         |db| {
             let test = db.query("TEST")?;
-            Ok(test.project(&["name"]))
+            Ok(test.project(&["name"]).unwrap())
         },
     )
     .unwrap();

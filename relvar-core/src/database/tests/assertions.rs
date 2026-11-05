@@ -267,7 +267,7 @@ fn test_assertion_error_message() {
 fn test_remove_assertion_stops_enforcement() {
     let mut db = accounts_db();
     db.add_assertion(total_non_negative_assertion()).unwrap();
-    assert!(db.remove_assertion("total_non_negative"));
+    assert!(db.remove_assertion("total_non_negative").unwrap());
 
     // With the assertion gone, the previously-violating insert succeeds.
     db.insert("ACCOUNTS", tuple! { id: 1i64, balance: -1000000i64 })

@@ -11,6 +11,15 @@
 //! - **RelationType** - The heading (attribute names and types)
 //! - **Heap file path** - Location of the data file on disk
 //!
+//! It also stores the database's constraints as a [`ConstraintCatalog`]: a
+//! database contains its constraints (TTM RM Prescription 16). On disk the
+//! per-relvar constraints (keys, foreign keys, CHECK and type constraints)
+//! are the `constraints` field and the database-wide ones (declarative
+//! assertions) the `database_constraints` field. Each field is optional:
+//! catalogs written before constraints were persisted have neither, and
+//! those written before database-wide constraints were persisted have no
+//! `database_constraints`; both load, with the missing constraints empty.
+//!
 //! # Example
 //!
 //! ```no_run
@@ -38,11 +47,14 @@
 //! assert_eq!(metadata.relation_type, rel_type);
 //! ```
 
+use relvar_core::constraints::{ConstraintCatalog, DatabaseConstraints, RelvarConstraints};
 use relvar_core::types::RelationType;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -64,6 +76,30 @@ pub enum CatalogError {
     /// A relation with this name already exists.
     #[error("Relation '{0}' already exists")]
     RelationExists(String),
+
+    /// The stored constraints name a relation the catalog does not contain.
+    #[error("Stored constraints refer to unknown relation '{0}'")]
+    ConstraintOnUnknownRelation(String),
+
+    /// The relation cannot be dropped: a stored foreign key of another
+    /// relation references it.
+    #[error("Relation '{relation}' is referenced by a foreign key of '{referencing}'")]
+    RelationReferenced {
+        /// The relation being dropped.
+        relation: String,
+        /// The relation whose foreign key references it.
+        referencing: String,
+    },
+
+    /// The relation cannot be dropped: a stored database assertion refers
+    /// to it.
+    #[error("Relation '{relation}' is referenced by database assertion '{assertion}'")]
+    RelationReferencedByAssertion {
+        /// The relation being dropped.
+        relation: String,
+        /// The assertion that refers to it.
+        assertion: String,
+    },
 }
 
 const MAX_CATALOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
@@ -125,9 +161,56 @@ pub struct RelationMetadata {
 /// assert!(loaded.relation_exists("employees"));
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "CatalogFile", into = "CatalogFile")]
 pub struct Catalog {
     /// Map from relation name to metadata.
     relations: HashMap<String, RelationMetadata>,
+    /// Constraints of the database.
+    constraints: ConstraintCatalog,
+}
+
+/// The on-disk shape of a [`Catalog`].
+///
+/// The per-relvar constraints keep the field name and shape they have had
+/// since constraints were first persisted, so older catalogs load and older
+/// versions still read the per-relvar constraints of a newer catalog. The
+/// database-wide constraints live in a field of their own.
+#[derive(Serialize, Deserialize)]
+struct CatalogFile {
+    relations: HashMap<String, RelationMetadata>,
+    /// Per-relvar constraints (absent in catalogs written before
+    /// constraints were persisted).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    constraints: BTreeMap<String, RelvarConstraints>,
+    /// Database-wide constraints (absent in catalogs written before they
+    /// were persisted).
+    #[serde(default, skip_serializing_if = "DatabaseConstraints::is_empty")]
+    database_constraints: DatabaseConstraints,
+}
+
+impl From<CatalogFile> for Catalog {
+    fn from(file: CatalogFile) -> Self {
+        Self {
+            relations: file.relations,
+            constraints: ConstraintCatalog::from_parts(file.constraints, file.database_constraints),
+        }
+    }
+}
+
+impl From<Catalog> for CatalogFile {
+    fn from(catalog: Catalog) -> Self {
+        let relvars = catalog
+            .constraints
+            .iter()
+            .filter(|(_, constraints)| !constraints.is_empty())
+            .map(|(name, constraints)| (name.to_string(), constraints.clone()))
+            .collect();
+        Self {
+            relations: catalog.relations,
+            constraints: relvars,
+            database_constraints: catalog.constraints.database().clone(),
+        }
+    }
 }
 
 impl Catalog {
@@ -144,6 +227,7 @@ impl Catalog {
     pub fn new() -> Self {
         Self {
             relations: HashMap::new(),
+            constraints: ConstraintCatalog::new(),
         }
     }
 
@@ -155,6 +239,8 @@ impl Catalog {
     ///
     /// Returns [`CatalogError::Io`] if the file cannot be read.
     /// Returns [`CatalogError::Serialization`] if the JSON is invalid.
+    /// Returns [`CatalogError::ConstraintOnUnknownRelation`] if a stored
+    /// constraint names a relation the catalog does not contain.
     ///
     /// # Examples
     /// ```
@@ -187,12 +273,23 @@ impl Catalog {
 
         let reader = BufReader::new(file);
         let mut capped_reader = reader.take(limit);
-        let catalog = serde_json::from_reader(&mut capped_reader)
+        let catalog: Self = serde_json::from_reader(&mut capped_reader)
             .map_err(|e| CatalogError::Serialization(e.to_string()))?;
 
         if capped_reader.limit() == 0 {
             return Err(CatalogError::Serialization(
                 "Catalog file too large".to_string(),
+            ));
+        }
+
+        // Constraints must not outlive (or predate) their relations.
+        if let Some(unknown) = catalog
+            .constraints
+            .mentioned_relvars()
+            .find(|name| !catalog.relations.contains_key(*name))
+        {
+            return Err(CatalogError::ConstraintOnUnknownRelation(
+                unknown.to_string(),
             ));
         }
 
@@ -202,6 +299,14 @@ impl Catalog {
     /// Saves the catalog to a JSON file.
     ///
     /// The file is written in pretty-printed JSON format for readability.
+    ///
+    /// # Durability
+    ///
+    /// The save is atomic: the catalog is written to a temporary file next
+    /// to `path`, flushed to stable storage, renamed over `path`, and (on
+    /// Unix) the containing directory is synced so the rename itself is
+    /// durable. A crash at any point leaves either the previous catalog or
+    /// the new one, never a truncated or partially written file.
     ///
     /// # Errors
     ///
@@ -219,20 +324,98 @@ impl Catalog {
     /// assert!(path.exists());
     /// ```
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), CatalogError> {
+        let path = path.as_ref();
+        let temp_path = Self::temp_path(path);
+
+        let result = self.write_synced(&temp_path).and_then(|()| {
+            std::fs::rename(&temp_path, path)?;
+            Self::sync_parent_dir(path)
+        });
+        if result.is_err() {
+            // Best effort: never leave a stray temporary file behind. The
+            // original error is the one worth reporting.
+            let _ = std::fs::remove_file(&temp_path);
+        }
+        result
+    }
+
+    /// The temporary file a save writes before renaming it over `path`.
+    fn temp_path(path: &Path) -> PathBuf {
+        let mut name = path
+            .file_name()
+            .map_or_else(|| OsString::from("catalog"), OsString::from);
+        name.push(".tmp");
+        path.with_file_name(name)
+    }
+
+    /// Writes the catalog to `path` (replacing it) and syncs it to disk.
+    fn write_synced(&self, path: &Path) -> Result<(), CatalogError> {
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .open(path)?;
-
         {
             let mut writer = std::io::BufWriter::new(&mut file);
             serde_json::to_writer_pretty(&mut writer, self)
                 .map_err(|e| CatalogError::Serialization(e.to_string()))?;
+            writer.flush()?;
         }
-
         file.sync_all()?;
+        Ok(())
+    }
 
+    /// Makes a rename into `path`'s directory durable (Unix only: other
+    /// platforms cannot open a directory for syncing).
+    #[cfg(unix)]
+    fn sync_parent_dir(path: &Path) -> Result<(), CatalogError> {
+        let parent = match path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => Path::new("."),
+        };
+        File::open(parent)?.sync_all()?;
+        Ok(())
+    }
+
+    /// Makes a rename into `path`'s directory durable (Unix only: other
+    /// platforms cannot open a directory for syncing).
+    #[cfg(not(unix))]
+    fn sync_parent_dir(_path: &Path) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    /// The database's stored declarative constraints.
+    ///
+    /// # Examples
+    /// ```
+    /// use relvar_storage::storage::Catalog;
+    /// let catalog = Catalog::new();
+    /// assert!(catalog.constraints().is_empty());
+    /// ```
+    pub fn constraints(&self) -> &ConstraintCatalog {
+        &self.constraints
+    }
+
+    /// Replaces the database's stored declarative constraints.
+    ///
+    /// This only changes the in-memory catalog; call [`save`](Self::save)
+    /// to persist it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CatalogError::ConstraintOnUnknownRelation`] (and leaves the
+    /// catalog unchanged) if a constraint names a relation the catalog does
+    /// not contain.
+    pub fn set_constraints(&mut self, constraints: ConstraintCatalog) -> Result<(), CatalogError> {
+        if let Some(unknown) = constraints
+            .mentioned_relvars()
+            .find(|name| !self.relations.contains_key(*name))
+        {
+            return Err(CatalogError::ConstraintOnUnknownRelation(
+                unknown.to_string(),
+            ));
+        }
+        self.constraints = constraints;
         Ok(())
     }
 
@@ -306,6 +489,9 @@ impl Catalog {
     /// Removes a relation from the catalog.
     ///
     /// This only removes the catalog entry; it does not delete the data file.
+    /// The constraints declared on the relation are removed with it, so the
+    /// next [`save`](Self::save) cannot record constraints for a relation
+    /// that no longer exists.
     ///
     /// # Returns
     ///
@@ -315,11 +501,41 @@ impl Catalog {
     /// # Errors
     ///
     /// Returns [`CatalogError::RelationNotFound`] if no relation with
-    /// this name exists.
+    /// this name exists, [`CatalogError::RelationReferenced`] if a
+    /// stored foreign key of another relation references it, or
+    /// [`CatalogError::RelationReferencedByAssertion`] if a stored database
+    /// assertion refers to it.
     pub fn drop_relation(&mut self, name: &str) -> Result<RelationMetadata, CatalogError> {
-        self.relations
+        if let Some((_, assertion)) = self
+            .constraints
+            .database()
+            .referenced_relvars()
+            .find(|(relvar, _)| *relvar == name)
+        {
+            return Err(CatalogError::RelationReferencedByAssertion {
+                relation: name.to_string(),
+                assertion: assertion.to_string(),
+            });
+        }
+        if let Some((referencing, _)) = self.constraints.iter().find(|(referencing, c)| {
+            *referencing != name
+                && c.foreign_keys.as_ref().is_some_and(|fks| {
+                    fks.foreign_keys()
+                        .iter()
+                        .any(|fk| fk.referenced_relation_name() == name)
+                })
+        }) {
+            return Err(CatalogError::RelationReferenced {
+                relation: name.to_string(),
+                referencing: referencing.to_string(),
+            });
+        }
+        let metadata = self
+            .relations
             .remove(name)
-            .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))
+            .ok_or_else(|| CatalogError::RelationNotFound(name.to_string()))?;
+        self.constraints.remove_relvar(name);
+        Ok(metadata)
     }
 
     /// Retrieves a list of all relation names currently tracked by the catalog.
@@ -552,6 +768,217 @@ mod tests {
             result.unwrap_err(),
             CatalogError::RelationNotFound(_)
         ));
+    }
+
+    fn constrained_catalog() -> Catalog {
+        use relvar_core::constraints::{
+            ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey,
+        };
+        let mut catalog = Catalog::new();
+        for name in ["parents", "children"] {
+            catalog
+                .create_relation(
+                    name.to_string(),
+                    create_test_relation_type(),
+                    PathBuf::from(format!("{name}.heap")),
+                )
+                .unwrap();
+        }
+        let mut constraints = ConstraintCatalog::new();
+        constraints.relvar_mut("parents").keys = Some(
+            KeyConstraints::new().with_primary_key(PrimaryKey::new(vec!["id".into()]).unwrap()),
+        );
+        constraints.relvar_mut("children").foreign_keys =
+            Some(ForeignKeyConstraints::new().with_foreign_key(
+                ForeignKey::new(vec!["id".into()], "parents".into(), vec!["id".into()]).unwrap(),
+            ));
+        catalog.set_constraints(constraints).unwrap();
+        catalog
+    }
+
+    #[test]
+    fn test_catalog_constraints_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        constrained_catalog().save(&path).unwrap();
+
+        let loaded = Catalog::load(&path).unwrap();
+        let parents = loaded.constraints().relvar("parents").unwrap();
+        assert!(parents.keys.as_ref().unwrap().primary_key().is_some());
+        assert!(
+            loaded
+                .constraints()
+                .relvar("children")
+                .unwrap()
+                .foreign_keys
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_catalog_save_leaves_no_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        constrained_catalog().save(&path).unwrap();
+        Catalog::new().save(&path).unwrap();
+
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("catalog.json")]);
+        assert_eq!(Catalog::load(&path).unwrap().relation_count(), 0);
+    }
+
+    #[test]
+    fn test_catalog_save_failure_keeps_previous_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        constrained_catalog().save(&path).unwrap();
+        // A directory where the temporary file must go makes the write fail.
+        std::fs::create_dir(dir.path().join("catalog.json.tmp")).unwrap();
+
+        assert!(Catalog::new().save(&path).is_err());
+        assert_eq!(Catalog::load(&path).unwrap().relation_count(), 2);
+    }
+
+    #[test]
+    fn test_catalog_without_constraints_field_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        std::fs::write(&path, r#"{"relations":{}}"#).unwrap();
+
+        let loaded = Catalog::load(&path).unwrap();
+        assert!(loaded.constraints().is_empty());
+    }
+
+    #[test]
+    fn test_catalog_rejects_constraints_on_unknown_relation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        let mut catalog = constrained_catalog();
+        // Forge a catalog whose constraints outlive a relation.
+        catalog.relations.remove("parents");
+        std::fs::write(&path, serde_json::to_string(&catalog).unwrap()).unwrap();
+
+        assert!(matches!(
+            Catalog::load(&path),
+            Err(CatalogError::ConstraintOnUnknownRelation(name)) if name == "parents"
+        ));
+        assert!(matches!(
+            Catalog::new().set_constraints(constrained_catalog().constraints().clone()),
+            Err(CatalogError::ConstraintOnUnknownRelation(_))
+        ));
+    }
+
+    #[test]
+    fn test_catalog_drop_relation_removes_its_constraints() {
+        let mut catalog = constrained_catalog();
+        catalog.drop_relation("children").unwrap();
+
+        assert!(catalog.constraints().relvar("children").is_none());
+        assert!(catalog.constraints().relvar("parents").is_some());
+    }
+
+    #[test]
+    fn test_catalog_drop_referenced_relation_is_rejected() {
+        let mut catalog = constrained_catalog();
+
+        assert!(matches!(
+            catalog.drop_relation("parents"),
+            Err(CatalogError::RelationReferenced { relation, referencing })
+                if relation == "parents" && referencing == "children"
+        ));
+        assert!(catalog.relation_exists("parents"));
+    }
+
+    fn assertion_catalog() -> Catalog {
+        use relvar_core::constraints::{AssertionCondition, DeclarativeAssertion};
+        use relvar_core::query::Query;
+        let mut catalog = constrained_catalog();
+        let mut constraints = catalog.constraints().clone();
+        constraints
+            .database_mut()
+            .assertions
+            .push(DeclarativeAssertion::new(
+                "children_have_parents",
+                "Every child has a parent",
+                AssertionCondition::IsEmpty(
+                    Query::scan("children").not_matching(Query::scan("parents")),
+                ),
+            ));
+        catalog.set_constraints(constraints).unwrap();
+        catalog
+    }
+
+    #[test]
+    fn test_catalog_assertions_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        assertion_catalog().save(&path).unwrap();
+
+        let loaded = Catalog::load(&path).unwrap();
+        let assertions = &loaded.constraints().database().assertions;
+        assert_eq!(assertions.len(), 1);
+        assert_eq!(assertions[0].name(), "children_have_parents");
+        assert!(loaded.constraints().relvar("parents").is_some());
+    }
+
+    #[test]
+    fn test_catalog_keeps_the_per_relvar_constraints_in_their_old_shape() {
+        // Older versions read `constraints` as a map from relvar name to
+        // its constraints; the database-wide section is a separate field.
+        let value = serde_json::to_value(assertion_catalog()).unwrap();
+        assert!(value["constraints"]["parents"]["keys"].is_object());
+        assert_eq!(
+            value["database_constraints"]["assertions"][0]["name"],
+            "children_have_parents"
+        );
+    }
+
+    #[test]
+    fn test_catalog_without_database_constraints_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        let value = serde_json::to_value(constrained_catalog()).unwrap();
+        assert!(value.get("database_constraints").is_none());
+        std::fs::write(&path, value.to_string()).unwrap();
+
+        let loaded = Catalog::load(&path).unwrap();
+        assert!(loaded.constraints().database().is_empty());
+        assert!(loaded.constraints().relvar("children").is_some());
+    }
+
+    #[test]
+    fn test_catalog_rejects_assertion_on_unknown_relation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        let mut value = serde_json::to_value(assertion_catalog()).unwrap();
+        // Forge a catalog whose assertion outlives the relations it reads.
+        value["constraints"] = serde_json::json!({});
+        let relations = value["relations"].as_object_mut().unwrap();
+        relations.remove("parents");
+        std::fs::write(&path, value.to_string()).unwrap();
+
+        assert!(matches!(
+            Catalog::load(&path),
+            Err(CatalogError::ConstraintOnUnknownRelation(name)) if name == "parents"
+        ));
+    }
+
+    #[test]
+    fn test_catalog_drop_relation_referenced_by_assertion_is_rejected() {
+        let mut catalog = assertion_catalog();
+        let mut constraints = catalog.constraints().clone();
+        constraints.remove_relvar("children");
+        catalog.set_constraints(constraints).unwrap();
+
+        assert!(matches!(
+            catalog.drop_relation("children"),
+            Err(CatalogError::RelationReferencedByAssertion { relation, assertion })
+                if relation == "children" && assertion == "children_have_parents"
+        ));
+        assert!(catalog.relation_exists("children"));
     }
 
     #[test]

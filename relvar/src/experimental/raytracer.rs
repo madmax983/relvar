@@ -290,7 +290,7 @@ impl Scene {
         // 7. Map Colors
         // Rename min_t to t in closest_hits to natural join it back with hits.
         // This acts like an INNER JOIN hits h ON h.x=c.x AND h.y=c.y AND h.t=c.min_t
-        let closest_renamed = closest_hits_base.rename(&[("min_t", "t")]);
+        let closest_renamed = closest_hits_base.rename(&[("min_t", "t")])?;
 
         // Note: Multiple spheres could theoretically be exactly at distance t.
         // Set semantics handle duplicates, but we could get multiple colors if
@@ -298,12 +298,12 @@ impl Scene {
         let visible_pixels = closest_renamed.join(&hits)?;
 
         // Project down to final image attributes
-        let rendered_hits = visible_pixels.project(&["x", "y", "r", "g", "b"]);
+        let rendered_hits = visible_pixels.project(&["x", "y", "r", "g", "b"])?;
 
         // 8. Background Color
         // Find rays that didn't hit anything: all rays MINUS rays that hit something
-        let all_pixels = rays.project(&["x", "y"]);
-        let hit_pixels = rendered_hits.project(&["x", "y"]);
+        let all_pixels = rays.project(&["x", "y"])?;
+        let hit_pixels = rendered_hits.project(&["x", "y"])?;
 
         let background_pixels = all_pixels
             .difference(&hit_pixels)

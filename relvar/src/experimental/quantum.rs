@@ -56,7 +56,7 @@ impl QuantumCircuit {
         let out_attr = format!("out_q{}", target_qubit);
 
         // 1. Rename the target qubit column to `in_attr`
-        let current_state = self.state.clone().rename(&[(&q_attr, &in_attr)]);
+        let current_state = self.state.clone().rename(&[(&q_attr, &in_attr)])?;
 
         // 2. Create the gate relation
         let gate_heading = TupleType::new()
@@ -115,7 +115,7 @@ impl QuantumCircuit {
 
         // 6. Rename output back to state format
         self.state =
-            summarized.rename(&[(&out_attr, &q_attr), ("sum_r", "real"), ("sum_i", "imag")]);
+            summarized.rename(&[(&out_attr, &q_attr), ("sum_r", "real"), ("sum_i", "imag")])?;
         Ok(())
     }
 
@@ -150,7 +150,7 @@ impl QuantumCircuit {
         let current_state = self
             .state
             .clone()
-            .rename(&[(&ctrl_attr, &in_c), (&tgt_attr, &in_t)]);
+            .rename(&[(&ctrl_attr, &in_c), (&tgt_attr, &in_t)])?;
 
         let gate_heading = TupleType::new()
             .with_attribute(in_c.clone(), ScalarType::Int)
@@ -221,7 +221,7 @@ impl QuantumCircuit {
             (&out_t, &tgt_attr),
             ("sum_r", "real"),
             ("sum_i", "imag"),
-        ]);
+        ])?;
         Ok(())
     }
 }

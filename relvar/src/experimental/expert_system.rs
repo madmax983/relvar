@@ -110,11 +110,11 @@ impl ExpertSystem {
         current_facts: &Relation,
         total_conditions: &Relation,
     ) -> Result<Relation, DatabaseError> {
-        let facts_as_conds = current_facts.rename(&[("fact", "condition")]);
+        let facts_as_conds = current_facts.rename(&[("fact", "condition")])?;
         let satisfied_conditions = self.rule_conditions.join(&facts_as_conds)?;
 
         if satisfied_conditions.cardinality() == 0 {
-            return Ok(satisfied_conditions.project(&["rule_id"]));
+            return Ok(satisfied_conditions.project(&["rule_id"])?);
         }
 
         let satisfied_counts = satisfied_conditions
@@ -129,15 +129,15 @@ impl ExpertSystem {
                 let satisfied = t.get_typed::<i64>("satisfied_conds").unwrap_or(0);
                 total == satisfied
             })
-            .project(&["rule_id"]))
+            .project(&["rule_id"])?)
     }
 
     fn derive_new_facts(&self, triggered_rules: &Relation) -> Result<Relation, DatabaseError> {
         let new_conclusions = triggered_rules.join(&self.rule_conclusions)?;
 
         Ok(new_conclusions
-            .project(&["conclusion"])
-            .rename(&[("conclusion", "fact")]))
+            .project(&["conclusion"])?
+            .rename(&[("conclusion", "fact")])?)
     }
 }
 

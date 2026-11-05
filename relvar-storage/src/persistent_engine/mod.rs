@@ -7,11 +7,15 @@ use crate::mvcc::{
 use crate::storage::StorageManager;
 use crate::sync::RwLock;
 use crate::wal::{TransactionId, TransactionIdGenerator, WalManager, WalRecord, recover};
+use relvar_core::constraints::ConstraintCatalog;
 use relvar_core::storage_engine::{IsolationLevel, RelationMetadata, StorageEngine, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+
+mod lock;
+use lock::DirectoryLock;
 
 /// Per-transaction isolation bookkeeping.
 ///
@@ -48,10 +52,34 @@ struct TxnTracker {
 /// Snapshot for persistent transactions.
 ///
 /// Represents the state of a transaction at a specific point in time.
-#[derive(Debug, Clone)]
+///
+/// An opaque handle: pass it back to
+/// [`commit_transaction`](StorageEngine::commit_transaction),
+/// [`rollback_transaction`](StorageEngine::rollback_transaction) or
+/// [`PersistentEngine::resume_transaction`]. Per TTM RM Proscription 6 the
+/// internal transaction id is not exposed (not even through `Debug`):
+///
+/// ```compile_fail,E0616
+/// use relvar_core::storage_engine::StorageEngine;
+/// use relvar_storage::PersistentEngine;
+///
+/// let dir = tempfile::tempdir().unwrap();
+/// let mut engine = PersistentEngine::open(dir.path()).unwrap();
+/// let snapshot = engine.begin_transaction().unwrap();
+/// let _internal_id = snapshot.txn_id; // private field
+/// ```
+#[derive(Clone)]
 pub struct PersistentSnapshot {
-    /// The transaction ID.
-    pub txn_id: TransactionId,
+    /// The transaction ID (storage-internal).
+    pub(crate) txn_id: TransactionId,
+}
+
+impl core::fmt::Debug for PersistentSnapshot {
+    /// Opaque rendering: the internal transaction id is not shown
+    /// (TTM RM Proscription 6).
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PersistentSnapshot").finish_non_exhaustive()
+    }
 }
 
 /// Persistent storage engine using heap files and JSON catalog.
@@ -112,6 +140,10 @@ pub struct PersistentEngine {
     /// Isolation bookkeeping for live transactions (read/write sets,
     /// commit order). Behind a lock because reads only have `&self`.
     txn_tracker: RwLock<TxnTracker>,
+    /// Exclusive lock on the database directory, held for the engine's
+    /// lifetime. Declared last so it is released only after every other
+    /// field (WAL, heap files) has been dropped.
+    _dir_lock: DirectoryLock,
 }
 
 impl PersistentEngine {
@@ -121,9 +153,14 @@ impl PersistentEngine {
     /// an empty catalog. If the database already exists, the catalog is loaded
     /// from disk.
     ///
+    /// The engine owns the directory exclusively while it is open: it holds
+    /// an OS file lock on `<path>/LOCK` until it is dropped, so a second
+    /// engine (in this or another process) cannot open the same directory.
+    ///
     /// # Errors
     ///
-    /// Yields an error if I/O operations fail.
+    /// Yields an error if I/O operations fail, or if another engine holds
+    /// the directory lock.
     ///
     /// # Examples
     /// ```
@@ -191,6 +228,12 @@ impl PersistentEngine {
         let db_path = path.as_ref().to_path_buf();
         let wal_path = db_path.join("wal.log");
 
+        // Take exclusive ownership of the directory before touching any of
+        // its files. A failure below drops the lock again.
+        std::fs::create_dir_all(&db_path)
+            .map_err(|e| StorageError::Other(format!("Failed to create directory: {e}")))?;
+        let dir_lock = DirectoryLock::acquire(&db_path)?;
+
         // Initialize StorageManager (handles DB dir and catalog) with a
         // caller-owned, fixed-capacity version pool.
         let version_pool = VersionPool::with_capacities(
@@ -218,70 +261,50 @@ impl PersistentEngine {
             committed_txns: recovery_result.committed_txns, // Populate from recovery
             current_txn: None,
             txn_tracker: RwLock::new(TxnTracker::default()),
+            _dir_lock: dir_lock,
         };
 
-        // Undo uncommitted transactions
-        engine.undo_uncommitted_inserts(recovery_result.uncommitted_inserts)?;
+        // Undo transactions the crash left in flight.
+        engine.undo_crashed_transactions(&recovery_result.crashed_txns)?;
 
         Ok(engine)
     }
 
-    /// Undoes uncommitted inserts identified during recovery.
-    fn undo_uncommitted_inserts(
+    /// Recovery undo: physically removes the heap changes of transactions
+    /// that were live when the process stopped, then logs an Abort record
+    /// for each so later opens need not repeat the pass.
+    ///
+    /// The pass runs over every relation, not only those named by the
+    /// crashed transactions' WAL records: write records are buffered and
+    /// may never have reached the log, while their heap pages may have.
+    /// (Begin records are always durable, so the crashed set is complete.)
+    /// It removes versions whose creator never committed and clears
+    /// deletion marks whose deleter never committed; at open no
+    /// transaction is live, so "never committed" means aborted or crashed.
+    ///
+    /// Crash safety: heaps are synced before the Abort records are logged,
+    /// and the pass is idempotent, so a crash at any point is repaired by
+    /// the next open.
+    fn undo_crashed_transactions(
         &mut self,
-        uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
+        crashed_txns: &HashSet<TransactionId>,
     ) -> Result<(), StorageError> {
-        let relations_to_cleanup = self.group_uncommitted_inserts(uncommitted_inserts);
-
-        // For each relation, rebuild without uncommitted tuples
-        for relation_name in relations_to_cleanup {
-            if self
-                .storage_manager
-                .read()
-                .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
-                .relation_exists(&relation_name)
-            {
-                self.cleanup_relation_uncommitted_inserts(&relation_name)?;
-            }
+        if crashed_txns.is_empty() {
+            return Ok(());
         }
-
-        Ok(())
-    }
-
-    /// Groups uncommitted inserts by relation name.
-    fn group_uncommitted_inserts(
-        &self,
-        uncommitted_inserts: Vec<crate::wal::UncommittedInsert>,
-    ) -> std::collections::HashSet<String> {
-        uncommitted_inserts
-            .into_iter()
-            .map(|insert| insert.relation_name)
-            .collect()
-    }
-
-    /// Rebuilds a relation excluding uncommitted tuples and stores it back.
-    fn cleanup_relation_uncommitted_inserts(
-        &mut self,
-        relation_name: &str,
-    ) -> Result<(), StorageError> {
-        // Load all tuples using current snapshot (txn=0, committed_txns set from recovery)
-        let snapshot = self.get_snapshot_for_current_context()?;
-
-        // scan_relation implicitly filters out uncommitted tuples because they are not in committed_txns
-        let relation = self
-            .storage_manager
+        self.storage_manager
             .write()
             .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
-            .scan_relation(
-                relation_name,
-                &snapshot,
-                &self.txn_pool,
-                &self.committed_txns,
-            )?;
+            .undo_uncommitted_versions(&self.committed_txns)?;
 
-        // Store back (effectively removing uncommitted garbage from the heap file)
-        self.store_relation(relation_name, &relation)?;
-        Ok(())
+        let mut crashed: Vec<TransactionId> = crashed_txns.iter().copied().collect();
+        crashed.sort();
+        for txn_id in crashed {
+            self.wal
+                .log(WalRecord::Abort { txn_id })
+                .map_err(|e| StorageError::Other(format!("WAL error: {e}")))?;
+        }
+        self.flush_wal()
     }
 
     /// Performs a checkpoint to enable WAL truncation and faster recovery.
@@ -487,6 +510,26 @@ impl StorageEngine for PersistentEngine {
             .drop_relation(name)
     }
 
+    /// Stores the constraint catalog in `catalog.json`, next to the relation
+    /// metadata, with the catalog's atomic write-rename-sync protocol.
+    fn store_constraints(&mut self, catalog: &ConstraintCatalog) -> Result<(), StorageError> {
+        self.storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .store_constraints(catalog.clone())
+    }
+
+    /// Returns the constraints read from `catalog.json` when the engine was
+    /// opened (or stored since); `None` if there are none.
+    fn load_constraints(&self) -> Option<ConstraintCatalog> {
+        let manager = self
+            .storage_manager
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let constraints = manager.constraints();
+        (!constraints.is_empty()).then(|| constraints.clone())
+    }
+
     fn relation_exists(&self, name: &str) -> bool {
         self.storage_manager
             .read()
@@ -524,34 +567,19 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn store_relation(&mut self, name: &str, relation: &Relation) -> Result<(), StorageError> {
-        let (txn_id, auto_commit) = self.ensure_transaction()?;
-
-        self.storage_manager
-            .write()
-            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
-            .store_relation(name, relation, txn_id)?;
-
-        self.note_write(txn_id, name)?;
-
-        if auto_commit {
-            let snapshot = PersistentSnapshot { txn_id };
-            self.commit_transaction(snapshot)?;
+        // Fail before beginning an autocommit transaction (no WAL traffic).
+        if !self.relation_exists(name) {
+            return Err(StorageError::RelationNotFound(name.to_string()));
         }
-
-        Ok(())
+        let (txn_id, auto_commit) = self.ensure_transaction()?;
+        let result = self.store_relation_in_txn(name, relation, txn_id);
+        self.finish_auto_commit(txn_id, auto_commit, result)
     }
 
     fn insert_tuple(&mut self, name: &str, tuple: Tuple) -> Result<(), StorageError> {
         let (txn_id, auto_commit) = self.ensure_transaction()?;
-
-        self.insert_tuple_in_txn(name, tuple, txn_id)?;
-
-        if auto_commit {
-            let snapshot = PersistentSnapshot { txn_id };
-            self.commit_transaction(snapshot)?;
-        }
-
-        Ok(())
+        let result = self.insert_tuple_in_txn(name, tuple, txn_id);
+        self.finish_auto_commit(txn_id, auto_commit, result)
     }
 
     fn begin_transaction(&mut self) -> Result<Self::Snapshot, StorageError> {
@@ -618,6 +646,11 @@ impl StorageEngine for PersistentEngine {
 
     fn commit_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
         let txn_id = snapshot.txn_id;
+        // Only a live transaction can commit. A stale handle (cloned
+        // before a rollback or a previous commit) is refused with nothing
+        // logged: logging a Commit for an aborted transaction would make
+        // its never-committed versions visible.
+        self.ensure_live(txn_id)?;
 
         // Serializable validation runs before anything is made durable: a
         // conflict aborts the transaction instead of committing it.
@@ -647,6 +680,9 @@ impl StorageEngine for PersistentEngine {
     }
 
     fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError> {
+        // Only a live transaction can roll back; an Abort record after a
+        // Commit (or a second Abort) is refused with nothing logged.
+        self.ensure_live(snapshot.txn_id)?;
         self.abort_txn(snapshot.txn_id)
     }
 }
@@ -728,9 +764,12 @@ impl PersistentEngine {
     /// would strand a durable "aborted" record in front of a committed
     /// transaction's writes.)
     ///
-    /// Aborted tuples stay in the heap but are invisible: their creating
-    /// transaction never joins `committed_txns`, so MVCC visibility rules
-    /// hide them from every other transaction (they are reclaimed by GC).
+    /// Aborted changes need no physical undo: the aborted transaction
+    /// never joins `committed_txns`, so MVCC visibility hides the versions
+    /// it inserted and ignores the deletion marks (`xmax`) it set — every
+    /// version it deleted is visible again. GC later reclaims the inserted
+    /// versions and clears the void marks; a later deleter may overwrite
+    /// a void mark directly.
     fn abort_txn(&mut self, txn_id: TransactionId) -> Result<(), StorageError> {
         self.wal
             .log(WalRecord::Abort { txn_id })
@@ -978,6 +1017,225 @@ impl PersistentEngine {
 
 // MVCC methods (internal)
 impl PersistentEngine {
+    /// Fails unless `txn_id` is a live transaction.
+    ///
+    /// Commit and rollback call this first: ending a transaction that
+    /// already ended (a stale or cloned [`PersistentSnapshot`]) is an
+    /// error and logs nothing.
+    fn ensure_live(&self, txn_id: TransactionId) -> Result<(), StorageError> {
+        if self.txn_pool.is_live(txn_id) {
+            Ok(())
+        } else {
+            Err(StorageError::Other(format!(
+                "transaction {} is not active (already committed or rolled back)",
+                txn_id.value()
+            )))
+        }
+    }
+
+    /// Ends an autocommit transaction begun by [`ensure_transaction`](Self::ensure_transaction):
+    /// commits it when the operation succeeded, aborts it when it failed.
+    ///
+    /// Inside an explicit transaction (`auto_commit == false`) the result
+    /// is returned unchanged and the transaction stays live.
+    fn finish_auto_commit(
+        &mut self,
+        txn_id: TransactionId,
+        auto_commit: bool,
+        result: Result<(), StorageError>,
+    ) -> Result<(), StorageError> {
+        if !auto_commit {
+            return result;
+        }
+        match result {
+            Ok(()) => self.commit_transaction(PersistentSnapshot { txn_id }),
+            Err(error) => {
+                // Best effort: the operation's error is what the caller
+                // sees. Without this abort the failed autocommit
+                // transaction would stay ambient and swallow later
+                // writes into a transaction that never commits.
+                let _ = self.abort_txn(txn_id);
+                Err(error)
+            }
+        }
+    }
+
+    /// Replaces the value of relvar `name`, as seen by `txn_id`, with
+    /// `relation`, by applying the difference as MVCC versions.
+    ///
+    /// TTM: RM Prescription 17 (transactions are atomic) — relational
+    /// assignment inside a transaction must be undoable by rollback and by
+    /// crash recovery, and must not disturb other transactions' snapshots.
+    ///
+    /// The transaction's visible state (its snapshot, honoring its
+    /// isolation level) is diffed against `relation`:
+    ///
+    /// - every visible version whose tuple is not in `relation` is marked
+    ///   deleted (`xmax = txn_id`) — the version stays on disk, so
+    ///   concurrent snapshots keep seeing it and abort/recovery undo it;
+    /// - every tuple of `relation` not visible yet is inserted as a new
+    ///   version (`xmin = txn_id`), subject to the implicit-key check of
+    ///   [`probe_implicit_key`](Self::probe_implicit_key);
+    /// - versions this transaction cannot see (other transactions'
+    ///   uncommitted inserts, commits after its snapshot) are untouched.
+    ///
+    /// Each change is WAL-logged (`Delete` / `Insert`) before the heap is
+    /// written.
+    ///
+    /// # Errors
+    ///
+    /// - [`StorageError::SerializationFailure`] when a version to delete
+    ///   was already deleted by another live transaction, or by one that
+    ///   committed after this transaction's snapshot, or when a tuple to
+    ///   insert was concurrently created by another transaction
+    ///   (first-updater-wins write conflict). Nothing is changed.
+    /// - Pool exhaustion, WAL or device errors. The statement is atomic:
+    ///   changes it already applied are compensated before returning. If
+    ///   the compensation itself fails the transaction is aborted (it can
+    ///   no longer commit) and the error says so.
+    pub(crate) fn store_relation_in_txn(
+        &mut self,
+        name: &str,
+        relation: &Relation,
+        txn_id: TransactionId,
+    ) -> Result<(), StorageError> {
+        let snapshot = self.snapshot_for_txn(txn_id)?;
+        let visible = self
+            .storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .visible_versions(name, &snapshot, &self.txn_pool, &self.committed_txns)?;
+
+        // Diff: visible versions to delete, new tuples to insert.
+        let mut kept: HashSet<&Tuple> = HashSet::new();
+        let mut to_delete = Vec::new();
+        for version in &visible {
+            if relation.contains(&version.tuple) {
+                kept.insert(&version.tuple);
+            } else {
+                to_delete.push(version);
+            }
+        }
+        let candidates: Vec<&Tuple> = relation.tuples().filter(|t| !kept.contains(t)).collect();
+
+        // Write-conflict check before anything is mutated: one xmax slot
+        // records one deleter, and a deleter that is live or committed
+        // (necessarily after our snapshot, since we still see the
+        // version) must not be overwritten. A deleter that is neither
+        // live nor committed has aborted or crashed: its mark is void and may
+        // be replaced.
+        for version in &to_delete {
+            if let Some(deleter) = version.xmax
+                && deleter != txn_id
+                && (self.txn_pool.is_live(deleter) || self.committed_txns.contains(&deleter))
+            {
+                return Err(StorageError::SerializationFailure(format!(
+                    "could not delete from relation {name}: a tuple was concurrently \
+                     deleted or updated by another transaction"
+                )));
+            }
+        }
+
+        // Implicit-key check for every tuple to insert, also before
+        // anything is mutated. A candidate is never visible (visible
+        // tuples are `kept`), so the probe only tells a fresh tuple from a
+        // concurrently created one.
+        let mut to_insert = Vec::with_capacity(candidates.len());
+        for tuple in candidates {
+            match self.probe_implicit_key(name, tuple, &snapshot)? {
+                KeyProbe::Absent => to_insert.push(tuple),
+                KeyProbe::Visible => {}
+                KeyProbe::Conflict => return Err(Self::implicit_key_conflict(name)),
+            }
+        }
+
+        let mut applied = AppliedChanges::default();
+        let result = self.apply_relation_diff(name, txn_id, &to_delete, &to_insert, &mut applied);
+        if let Err(error) = result {
+            if let Err(undo_error) = self.compensate(name, txn_id, &applied) {
+                // The statement's partial effects could not be removed:
+                // committing would publish them, so the transaction ends.
+                let _ = self.abort_txn(txn_id);
+                return Err(StorageError::Other(format!(
+                    "store_relation failed ({error}) and undoing its partial changes \
+                     failed ({undo_error}); the transaction was rolled back"
+                )));
+            }
+            return Err(error);
+        }
+
+        self.note_write(txn_id, name)
+    }
+
+    /// Logs and applies a `store_relation` diff, recording every applied
+    /// heap change in `applied` so a failure can be compensated.
+    fn apply_relation_diff(
+        &mut self,
+        name: &str,
+        txn_id: TransactionId,
+        to_delete: &[&crate::storage::manager::VisibleVersion],
+        to_insert: &[&Tuple],
+        applied: &mut AppliedChanges,
+    ) -> Result<(), StorageError> {
+        let mut manager = self
+            .storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?;
+
+        for version in to_delete {
+            let key_values = postcard::to_allocvec(&version.tuple)
+                .map_err(|e| StorageError::Other(format!("Tuple serialization error: {e}")))?;
+            self.wal
+                .log(WalRecord::Delete {
+                    txn_id,
+                    relation_name: name.to_string(),
+                    key_values,
+                })
+                .map_err(|e| StorageError::Other(format!("WAL error: {e}")))?;
+            let previous = manager.mark_deleted(name, version.tuple_id, txn_id)?;
+            applied.deleted.push((version.tuple_id, previous));
+        }
+
+        for tuple in to_insert {
+            let tuple_data = postcard::to_allocvec(tuple)
+                .map_err(|e| StorageError::Other(format!("Tuple serialization error: {e}")))?;
+            self.wal
+                .log(WalRecord::Insert {
+                    txn_id,
+                    relation_name: name.to_string(),
+                    tuple_data,
+                })
+                .map_err(|e| StorageError::Other(format!("WAL error: {e}")))?;
+            let tuple_id = manager.insert_version(name, tuple, txn_id)?;
+            applied.inserted.push(tuple_id);
+        }
+        Ok(())
+    }
+
+    /// Undoes a failed statement's applied heap changes: restores each
+    /// deleted version's previous `xmax` and hides each inserted version
+    /// from its own transaction (`xmax = txn_id`; after commit such a
+    /// version is visible to nobody and GC reclaims it, after abort its
+    /// creator never committed). Claims no version records.
+    fn compensate(
+        &mut self,
+        name: &str,
+        txn_id: TransactionId,
+        applied: &AppliedChanges,
+    ) -> Result<(), StorageError> {
+        let mut manager = self
+            .storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?;
+        for &(tuple_id, previous) in applied.deleted.iter().rev() {
+            manager.restore_xmax(name, tuple_id, previous)?;
+        }
+        for &tuple_id in applied.inserted.iter().rev() {
+            manager.restore_xmax(name, tuple_id, Some(txn_id))?;
+        }
+        Ok(())
+    }
+
     /// Ensures a transaction is active.
     ///
     /// Provides the current transaction ID along with an auto-commit status flag.
@@ -1005,13 +1263,33 @@ impl PersistentEngine {
             .scan_relation(name, &snapshot, &self.txn_pool, &self.committed_txns)
     }
 
-    #[allow(dead_code)]
+    /// Inserts `tuple` into relvar `name` as seen by `txn_id`.
+    ///
+    /// TTM: RM Proscription 3 — the whole heading is a key, so the insert
+    /// follows [`probe_implicit_key`](Self::probe_implicit_key): a tuple
+    /// the transaction already sees is a no-op (nothing written, nothing
+    /// WAL-logged), a tuple concurrently created by another transaction is
+    /// a write conflict, and only a fresh tuple gets a new version.
+    ///
+    /// # Errors
+    ///
+    /// - [`StorageError::SerializationFailure`] on a concurrent creation
+    ///   (first-updater-wins). Nothing is changed.
+    /// - [`StorageError::RelationNotFound`], pool exhaustion, WAL or
+    ///   device errors.
     pub(crate) fn insert_tuple_in_txn(
         &mut self,
         name: &str,
         tuple: Tuple,
         txn_id: TransactionId,
     ) -> Result<(), StorageError> {
+        let snapshot = self.snapshot_for_txn(txn_id)?;
+        match self.probe_implicit_key(name, &tuple, &snapshot)? {
+            KeyProbe::Visible => return Ok(()),
+            KeyProbe::Conflict => return Err(Self::implicit_key_conflict(name)),
+            KeyProbe::Absent => {}
+        }
+
         // Log WAL
         let tuple_data = postcard::to_allocvec(&tuple)
             .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
@@ -1033,6 +1311,114 @@ impl PersistentEngine {
 
         Ok(())
     }
+}
+
+/// Implicit-key enforcement (TTM RM Proscription 3).
+impl PersistentEngine {
+    /// Classifies an insert of `tuple` into relvar `name` by a transaction
+    /// with `snapshot`, from the versions of equal tuples on the heap.
+    ///
+    /// Every relation's whole heading is a candidate key, so each logical
+    /// tuple has a single version chain (the invariant
+    /// `theorem_at_most_one_visible_version` in `verify/verus/mvcc.rs`
+    /// assumes). For an equal tuple's version `v`:
+    ///
+    /// 1. `v` visible to the snapshot → [`KeyProbe::Visible`]: the tuple is
+    ///    already in the relation the transaction sees; inserting it is a
+    ///    no-op (set semantics). This wins over any conflict.
+    /// 2. `v` created by another transaction that is still live, or that
+    ///    committed after the snapshot was taken (its creation is not
+    ///    visible), and not deleted by its own creator → a concurrent
+    ///    creation of the same tuple: [`KeyProbe::Conflict`]
+    ///    (first-updater-wins, like two concurrent deletes in
+    ///    [`store_relation_in_txn`](Self::store_relation_in_txn)). This is
+    ///    conservative: such a version later deleted by a third
+    ///    transaction still conflicts.
+    /// 3. Otherwise (versions of aborted or crashed creators, of creators
+    ///    that deleted them again, or committed versions whose deletion the
+    ///    snapshot sees) → [`KeyProbe::Absent`]: a new version may be
+    ///    created.
+    ///
+    /// The versions come from the heap file's implicit-key index, so the
+    /// probe costs one hash lookup (plus a page read per equal version).
+    fn probe_implicit_key(
+        &self,
+        name: &str,
+        tuple: &Tuple,
+        snapshot: &crate::mvcc::TransactionSnapshot,
+    ) -> Result<KeyProbe, StorageError> {
+        let versions = self
+            .storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .versions_of(name, tuple)?;
+        let mut probe = KeyProbe::Absent;
+        for version in &versions {
+            if crate::mvcc::visibility::is_visible(
+                version,
+                snapshot,
+                &self.txn_pool,
+                &self.committed_txns,
+            ) {
+                return Ok(KeyProbe::Visible);
+            }
+            if self.is_concurrent_creation(version, snapshot) {
+                probe = KeyProbe::Conflict;
+            }
+        }
+        Ok(probe)
+    }
+
+    /// Whether `version` (invisible to `snapshot`) was created by a
+    /// transaction concurrent with the snapshot's — live, or committed
+    /// after the snapshot — and not deleted again by that creator.
+    fn is_concurrent_creation(
+        &self,
+        version: &crate::mvcc::VersionMetadata,
+        snapshot: &crate::mvcc::TransactionSnapshot,
+    ) -> bool {
+        let creator = version.xmin;
+        if creator == snapshot.txn_id || version.xmax == Some(creator) {
+            return false;
+        }
+        self.txn_pool.is_live(creator)
+            || (self.committed_txns.contains(&creator)
+                && !crate::mvcc::visibility::is_created_visible(
+                    version,
+                    snapshot,
+                    &self.txn_pool,
+                    &self.committed_txns,
+                ))
+    }
+
+    /// The write-conflict error for a concurrently created tuple.
+    fn implicit_key_conflict(name: &str) -> StorageError {
+        StorageError::SerializationFailure(format!(
+            "could not insert into relation {name}: an equal tuple was concurrently \
+             inserted by another transaction"
+        ))
+    }
+}
+
+/// Outcome of [`PersistentEngine::probe_implicit_key`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyProbe {
+    /// A version of the tuple is visible: the insert is a no-op.
+    Visible,
+    /// A concurrent transaction created the tuple: write conflict.
+    Conflict,
+    /// No visible or concurrent version: create a new version.
+    Absent,
+}
+
+/// Heap changes a `store_relation` statement has applied so far, kept so
+/// a failure part-way can be compensated (statement atomicity).
+#[derive(Debug, Default)]
+struct AppliedChanges {
+    /// Versions marked deleted, with their previous `xmax`.
+    deleted: Vec<(relvar_storage_core::slotted::TupleId, Option<TransactionId>)>,
+    /// Versions inserted.
+    inserted: Vec<relvar_storage_core::slotted::TupleId>,
 }
 
 #[cfg(test)]

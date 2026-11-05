@@ -56,3 +56,31 @@ pub use tuple_type::TupleType;
 /// This limits recursion in type definitions (UserDefined, Relation)
 /// and prevents Denial of Service attacks via deep nesting.
 pub const MAX_TYPE_DEPTH: usize = 64;
+
+/// A deserialized type was nested deeper than [`MAX_TYPE_DEPTH`].
+///
+/// The constructors ([`TupleType::with_attribute`], [`RelationType::new`])
+/// panic on such types; deserialization reports this error instead, so that
+/// untrusted input can never yield a type the constructors would reject.
+#[derive(Debug, thiserror::Error)]
+#[error("Type nesting too deep: {depth} (limit: {limit})")]
+pub(crate) struct TypeDepthError {
+    /// The depth of the rejected type.
+    pub(crate) depth: usize,
+    /// The maximum permitted depth ([`MAX_TYPE_DEPTH`]).
+    pub(crate) limit: usize,
+}
+
+impl TypeDepthError {
+    /// Returns `Ok(())` when `depth` is within [`MAX_TYPE_DEPTH`].
+    pub(crate) fn check(depth: usize) -> Result<(), Self> {
+        if depth > MAX_TYPE_DEPTH {
+            Err(Self {
+                depth,
+                limit: MAX_TYPE_DEPTH,
+            })
+        } else {
+            Ok(())
+        }
+    }
+}

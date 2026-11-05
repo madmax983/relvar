@@ -83,7 +83,7 @@ impl NeuralNetwork {
 
         // 3. Join activations with weights on (node = from_node)
         // Rename `node` in activations to `from_node` for natural join
-        let acts_renamed = current_activations.rename(&[("node", "from_node")]);
+        let acts_renamed = current_activations.rename(&[("node", "from_node")])?;
         let joined = acts_renamed.join(&current_weights)?;
 
         // 4. Extend to multiply `val` * `weight`
@@ -106,7 +106,7 @@ impl NeuralNetwork {
                 &[Aggregation::sum_float("sum_prod", "product")],
             )
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .rename(&[("to_node", "node")])
+            .rename(&[("to_node", "node")])?
             .extend("layer", ScalarType::Int, move |_| {
                 ScalarValue::Int(next_layer_idx)
             })
@@ -126,7 +126,7 @@ impl NeuralNetwork {
                 ScalarValue::Float(relu)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["layer", "node", "val"]);
+            .project(&["layer", "node", "val"])?;
 
         // 8. Union the new activations into the network state
         self.activations = self

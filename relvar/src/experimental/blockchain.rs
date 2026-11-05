@@ -70,7 +70,7 @@ impl Blockchain {
         // Debits (from)
         let debits = self
             .transactions
-            .project(&["tx_id", "from", "amount"])
+            .project(&["tx_id", "from", "amount"])?
             .extend("net_amount", ScalarType::Int, |t| {
                 let amount = t.get_typed::<i64>("amount").unwrap();
                 // Special case: "Mint" (or system) has infinite balance, but we can track it.
@@ -80,15 +80,15 @@ impl Blockchain {
                 ScalarValue::Int(amount.checked_neg().unwrap_or(0))
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["tx_id", "from", "net_amount"])
-            .rename(&[("from", "account"), ("net_amount", "amount")]);
+            .project(&["tx_id", "from", "net_amount"])?
+            .rename(&[("from", "account"), ("net_amount", "amount")])?;
 
         // Credits (to)
         // Keep tx_id to ensure set-based union does not deduplicate identical amount transactions
         let credits = self
             .transactions
-            .project(&["tx_id", "to", "amount"])
-            .rename(&[("to", "account")]);
+            .project(&["tx_id", "to", "amount"])?
+            .rename(&[("to", "account")])?;
 
         // Combine
         let all_movements = debits
@@ -143,19 +143,19 @@ impl Blockchain {
             ("block_id", "curr_id"),
             ("prev_hash", "curr_prev_hash"),
             ("hash", "curr_hash"),
-        ]);
+        ])?;
 
         let prev_blocks = self.blocks.rename(&[
             ("block_id", "prev_id"),
             ("prev_hash", "p_prev_hash"), // unused
             ("hash", "p_hash"),
-        ]);
+        ])?;
 
         let joined = current_blocks.theta_join(&prev_blocks, |curr, prev| {
             let curr_id = curr.get_typed::<i64>("curr_id").unwrap();
             let prev_id = prev.get_typed::<i64>("prev_id").unwrap();
             curr_id == prev_id.saturating_add(1)
-        });
+        })?;
 
         // Ensure chain is contiguous
         let expected_links = self.blocks.cardinality().saturating_sub(1);

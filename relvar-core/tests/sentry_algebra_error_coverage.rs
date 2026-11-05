@@ -5,15 +5,18 @@ use relvar_core::types::{RelationType, ScalarType, TupleType};
 use relvar_core::values::{Relation, ScalarValue};
 
 #[test]
-fn test_divide_empty_remainder_error() {
+fn test_divide_empty_remainder_is_legal() {
+    // TTM: dividing by a relation over the whole heading leaves A = {}; the
+    // result is r1{} (here TABLE_DUM, since r1 is empty).
     let heading = TupleType::new()
         .with_attribute("A".to_string(), ScalarType::Int)
         .with_attribute("B".to_string(), ScalarType::Int);
     let r1 = Relation::new(RelationType::new(heading.clone()));
     let r2 = Relation::new(RelationType::new(heading));
 
-    let result = r1.divide(&r2);
-    assert!(matches!(result, Err(DivideError::EmptyRemainder)));
+    let result = r1.divide(&r2).unwrap();
+    assert_eq!(result.degree(), 0);
+    assert!(result.is_empty());
 }
 
 #[test]

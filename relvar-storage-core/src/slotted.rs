@@ -169,6 +169,37 @@ pub const USABLE_PAGE_SIZE_V2: usize = PAGE_SIZE - 8;
 /// `tests::test_max_xmax_slot_growth_bounds_real_encoding`.
 pub const MAX_XMAX_SLOT_GROWTH: usize = (u64::BITS as usize).div_ceil(7);
 
+/// Bytes a slot's directory entry may still grow when its `xmax` is set
+/// (or re-set) to any [`TransactionId`].
+///
+/// A slot whose `xmax` is `None` may grow by the full
+/// [`MAX_XMAX_SLOT_GROWTH`]. A slot whose `xmax` already holds an id may
+/// still grow when that id is replaced by a larger one — this happens
+/// when the previous deleter aborted (or crashed) and a later transaction
+/// deletes the same version — so it keeps the difference between the
+/// ceiling and the varint length already encoded.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_storage_core::slotted::{MAX_XMAX_SLOT_GROWTH, xmax_slot_reserve};
+/// use relvar_storage_core::wal::TransactionId;
+///
+/// assert_eq!(xmax_slot_reserve(None), MAX_XMAX_SLOT_GROWTH);
+/// assert_eq!(xmax_slot_reserve(Some(TransactionId::new(5))), MAX_XMAX_SLOT_GROWTH - 1);
+/// assert_eq!(xmax_slot_reserve(Some(TransactionId::new(u64::MAX))), 0);
+/// ```
+pub fn xmax_slot_reserve(xmax: Option<TransactionId>) -> usize {
+    match xmax {
+        None => MAX_XMAX_SLOT_GROWTH,
+        Some(id) => {
+            // postcard varint length of the u64 id: 7 payload bits per byte.
+            let bits = (u64::BITS - id.value().leading_zeros()).max(1) as usize;
+            MAX_XMAX_SLOT_GROWTH.saturating_sub(bits.div_ceil(7))
+        }
+    }
+}
+
 /// Checks whether a page payload holds a versioned (MVCC) slot directory.
 ///
 /// Detects both the v2 format (version byte + length + magic at offset 5)
@@ -857,6 +888,47 @@ mod tests {
         assert_eq!(V2_HEADER_SIZE, 5);
         assert_eq!(USABLE_PAGE_SIZE_V1, PAGE_SIZE - 8);
         assert_eq!(USABLE_PAGE_SIZE_V2, PAGE_SIZE - 8);
+    }
+
+    #[test]
+    fn test_xmax_slot_reserve_covers_any_xmax_rewrite() {
+        // Re-setting xmax from any id `a` to any id `b >= a` (or from None)
+        // must never grow the directory past the reserve kept for `a`.
+        let page_with = |xmax: Option<TransactionId>| VersionedSlottedPage {
+            magic: VERSIONED_PAGE_MAGIC,
+            slot_count: 1,
+            slots: vec![Some(VersionedSlotEntry {
+                offset: 100,
+                length: 10,
+                xmin: TransactionId::new(1),
+                xmax,
+                prev_version: None,
+            })],
+        };
+        let len = |xmax| postcard::to_allocvec(&page_with(xmax)).unwrap().len();
+        let ids = [
+            0u64,
+            1,
+            127,
+            128,
+            16_383,
+            16_384,
+            1 << 35,
+            u64::MAX >> 1,
+            u64::MAX,
+        ];
+        let largest = len(Some(TransactionId::new(u64::MAX)));
+        for from in ids
+            .iter()
+            .map(|&id| Some(TransactionId::new(id)))
+            .chain([None])
+        {
+            assert_eq!(
+                len(from) + xmax_slot_reserve(from),
+                largest,
+                "reserve for {from:?} must cover a rewrite to the largest id"
+            );
+        }
     }
 
     #[test]

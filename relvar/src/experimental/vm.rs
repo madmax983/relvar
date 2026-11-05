@@ -184,17 +184,17 @@ impl RelationalVM {
     fn execute_add_instruction(&mut self, add_inst: &Relation) -> Result<(), DatabaseError> {
         // Join arg2 with registers to get src1 value
         let src1_join = add_inst
-            .rename(&[("arg2", "reg_id")])
+            .rename(&[("arg2", "reg_id")])?
             .join(&self.registers)?
-            .rename(&[("value", "src1_val")])
-            .rename(&[("reg_id", "arg2")]);
+            .rename(&[("value", "src1_val")])?
+            .rename(&[("reg_id", "arg2")])?;
 
         // Join arg3 with registers to get src2 value
         let src2_join = src1_join
-            .rename(&[("arg3", "reg_id")])
+            .rename(&[("arg3", "reg_id")])?
             .join(&self.registers)?
-            .rename(&[("value", "src2_val")])
-            .rename(&[("reg_id", "arg3")]);
+            .rename(&[("value", "src2_val")])?
+            .rename(&[("reg_id", "arg3")])?;
 
         // Calculate the new value
         let evaluated = src2_join
@@ -207,13 +207,13 @@ impl RelationalVM {
 
         // Extract the new register update
         let new_reg_update = evaluated
-            .project(&["arg1", "new_val"])
-            .rename(&[("arg1", "reg_id"), ("new_val", "value")]);
+            .project(&["arg1", "new_val"])?
+            .rename(&[("arg1", "reg_id"), ("new_val", "value")])?;
 
         // Filter out the old register value
         let old_reg = evaluated
-            .project(&["arg1"])
-            .rename(&[("arg1", "reg_id")])
+            .project(&["arg1"])?
+            .rename(&[("arg1", "reg_id")])?
             .join(&self.registers)?;
 
         self.registers = self
@@ -234,8 +234,8 @@ impl RelationalVM {
                 ScalarValue::Int(pc + 1)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["new_pc"])
-            .rename(&[("new_pc", "pc")]);
+            .project(&["new_pc"])?
+            .rename(&[("new_pc", "pc")])?;
         Ok(())
     }
 

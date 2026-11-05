@@ -11,11 +11,29 @@ use crate::FileBlockDevice;
 use crate::mvcc::{DEFAULT_VERSION_POOL_CAPACITY, TransactionSnapshot, TxnPool, VersionPool};
 use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
 use crate::wal::TransactionId;
+use relvar_core::constraints::ConstraintCatalog;
 use relvar_core::storage_engine::{RelationMetadata, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
+use relvar_storage_core::slotted::TupleId;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+
+/// A tuple version visible to some snapshot, with its internal address.
+///
+/// Storage-internal (TTM Proscription 6): produced and consumed only by
+/// the engine's transactional `store_relation` diff.
+#[derive(Debug)]
+pub(crate) struct VisibleVersion {
+    /// Internal address of the version.
+    pub(crate) tuple_id: TupleId,
+    /// The version's current deleter, if any. A visible version's deleter
+    /// is one the snapshot does not honor: aborted, crashed, still live,
+    /// or committed after the snapshot was taken.
+    pub(crate) xmax: Option<TransactionId>,
+    /// The tuple value.
+    pub(crate) tuple: Tuple,
+}
 
 /// Storage Manager handling physical storage operations.
 pub struct StorageManager {
@@ -94,6 +112,11 @@ impl StorageManager {
             }
             CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
             CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
+            e @ (CatalogError::ConstraintOnUnknownRelation(_)
+            | CatalogError::RelationReferenced { .. }
+            | CatalogError::RelationReferencedByAssertion { .. }) => {
+                StorageError::Other(format!("Catalog error: {}", e))
+            }
         }
     }
 
@@ -166,16 +189,47 @@ impl StorageManager {
         Ok(())
     }
 
+    /// The database's stored declarative constraints.
+    pub fn constraints(&self) -> &ConstraintCatalog {
+        self.catalog.constraints()
+    }
+
+    /// Replaces the database's stored declarative constraints and saves the
+    /// catalog (atomically and durably; see [`Catalog::save`]).
+    ///
+    /// On failure the previously stored constraints remain in effect, both
+    /// in memory and on disk.
+    pub fn store_constraints(
+        &mut self,
+        constraints: ConstraintCatalog,
+    ) -> Result<(), StorageError> {
+        let previous = self.catalog.constraints().clone();
+        self.catalog
+            .set_constraints(constraints)
+            .map_err(Self::convert_catalog_error)?;
+        if let Err(save_error) = self.save_catalog() {
+            // Infallible: `previous` was valid against these relations.
+            let _ = self.catalog.set_constraints(previous);
+            return Err(save_error);
+        }
+        Ok(())
+    }
+
     /// Drop a relation.
     pub fn drop_relation(&mut self, name: &str) -> Result<(), StorageError> {
-        // Remove from catalog
+        // Remove from catalog (with the constraints declared on it)
+        let previous = self.catalog.clone();
         let metadata = self
             .catalog
             .drop_relation(name)
             .map_err(Self::convert_catalog_error)?;
 
-        // Save catalog
-        self.save_catalog()?;
+        // Save catalog; if that fails the relation is still on disk, so
+        // keep it in the in-memory catalog too.
+        if let Err(save_error) = self.save_catalog() {
+            self.catalog = previous;
+            return Err(save_error);
+        }
 
         // Remove heap file from cache
         self.heap_files.remove(name);
@@ -223,6 +277,13 @@ impl StorageManager {
         name: &str,
     ) -> Result<&'a mut HeapFile<FileBlockDevice>, StorageError> {
         use std::collections::hash_map::Entry;
+        // Fast path without allocating the key: every insert probes the
+        // implicit key and then writes, so this runs twice per tuple.
+        if heap_files.contains_key(name) {
+            return heap_files.get_mut(name).ok_or_else(|| {
+                StorageError::Other(format!("heap file for relation {name} vanished"))
+            });
+        }
         match heap_files.entry(name.to_string()) {
             Entry::Occupied(entry) => Ok(entry.into_mut()),
             Entry::Vacant(entry) => {
@@ -286,93 +347,155 @@ impl StorageManager {
         Ok(())
     }
 
-    /// Replace a relation entirely (store_relation).
-    /// Used for bulk updates or initialization.
-    pub fn store_relation(
+    /// Inserts a tuple version and returns its internal address.
+    ///
+    /// The address is used by the engine's transactional `store_relation`
+    /// to compensate a failed statement; it never leaves the storage layer
+    /// (TTM Proscription 6).
+    pub(crate) fn insert_version(
         &mut self,
         name: &str,
-        relation: &Relation,
+        tuple: &Tuple,
         txn_id: TransactionId,
-    ) -> Result<(), StorageError> {
-        // Get metadata
-        let metadata = self
-            .catalog
-            .get_relation(name)
-            .map_err(Self::convert_catalog_error)?;
+    ) -> Result<TupleId, StorageError> {
+        let heap_file = Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)?;
+        heap_file
+            .insert_tuple_versioned(tuple, txn_id, &mut self.version_pool)
+            .map_err(Self::convert_heap_error)
+    }
 
-        // Build the replacement in a temp file and rename it over the old
-        // heap atomically: if any insert fails (pool exhaustion, device
-        // error, oversized tuple) the old heap is untouched and the temp
-        // file is removed, so a failed store never destroys the relation.
-        // The temp name appends a suffix in the same directory, so the
-        // rename stays on one filesystem (and is atomic on POSIX).
-        let mut tmp_path = metadata.heap_file_path.clone();
-        tmp_path.as_mut_os_string().push(".tmp");
-        // A stale temp file means a previous store crashed mid-replace;
-        // the old heap is still canonical, so dropping the stale temp is
-        // safe. Inspect the error kind directly instead of a Path::exists()
-        // re-check (avoids the TOCTOU race and an extra syscall).
-        if let Err(e) = std::fs::remove_file(&tmp_path)
-            && e.kind() != std::io::ErrorKind::NotFound
-        {
-            return Err(StorageError::Other(format!(
-                "Failed to remove stale store temp file: {e}"
-            )));
+    /// Returns the version metadata (`xmin`, `xmax`) of every version of
+    /// relation `name` whose tuple equals `tuple`, whoever created or
+    /// deleted it.
+    ///
+    /// TTM: RM Proscription 3 — the engine enforces the implicit key (the
+    /// whole heading) across versions with this lookup. It is served by
+    /// the heap file's in-memory implicit-key index (built on first use
+    /// with one scan, then O(1) per lookup; see
+    /// [`key_index`](crate::storage::heap::key_index)).
+    ///
+    /// # Errors
+    ///
+    /// [`StorageError::RelationNotFound`] for an unknown relation, a typed
+    /// pool-exhaustion error, or a device/decode error.
+    pub(crate) fn versions_of(
+        &mut self,
+        name: &str,
+        tuple: &Tuple,
+    ) -> Result<Vec<crate::mvcc::VersionMetadata>, StorageError> {
+        let heap_file = Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)?;
+        heap_file
+            .versions_of(tuple, &mut self.version_pool)
+            .map_err(Self::convert_heap_error)
+    }
+
+    /// Test-only: checks every open heap file's implicit-key index against
+    /// a full scan of its heap.
+    #[cfg(test)]
+    pub(crate) fn check_key_indexes(&mut self) -> Result<(), String> {
+        for (name, heap_file) in &mut self.heap_files {
+            heap_file
+                .check_key_index(&mut self.version_pool)
+                .map_err(|e| format!("relation {name}: {e}"))?;
         }
-
-        // Create the replacement heap in the temp file.
-        let mut new_heap_file = HeapFile::create(&tmp_path, metadata.relation_type.clone())
-            .map_err(Self::convert_heap_error)?;
-
-        // Insert all tuples with MVCC versioning. Any failure removes the
-        // temp file and leaves the old heap (and its cache entry) intact.
-        let insert_result: Result<(), StorageError> = (|| {
-            for tuple in relation.tuples() {
-                new_heap_file
-                    .insert_tuple_versioned(tuple, txn_id, &mut self.version_pool)
-                    .map_err(Self::convert_heap_error)?;
-            }
-            Ok(())
-        })();
-        if let Err(error) = insert_result {
-            let _ = std::fs::remove_file(&tmp_path);
-            return Err(error);
-        }
-
-        // Durability before publish: flush the replacement's contents to
-        // the device so a crash after the rename cannot surface a heap
-        // whose pages never reached stable storage. A sync failure keeps
-        // the old heap canonical and removes the temp file.
-        if let Err(error) = new_heap_file.sync().map_err(Self::convert_heap_error) {
-            let _ = std::fs::remove_file(&tmp_path);
-            return Err(error);
-        }
-
-        // Atomic publish: the rename swaps the replacement in all at once.
-        // Only now is the old heap dropped and its cache entry replaced.
-        // Durability notes: the temp file lives in the same directory, so
-        // the rename stays on one filesystem. Atomic replacement is a
-        // POSIX guarantee (rename(2)); on Windows `rename` fails when the
-        // destination exists, so the store fails typed with the old heap
-        // intact rather than replacing non-atomically. The rename's own
-        // directory entry is not fsynced — a crash in that narrow window
-        // could leave the old name visible after reopen; the WAL still
-        // records the committed transaction, so no committed data is
-        // silently lost, only the bulk replace may need re-running.
-        if let Err(e) = std::fs::rename(&tmp_path, &metadata.heap_file_path) {
-            let _ = std::fs::remove_file(&tmp_path);
-            return Err(StorageError::Other(format!(
-                "Failed to publish replaced heap file: {e}"
-            )));
-        }
-
-        // Remove the stale cache entry and cache the replaced heap. The
-        // handle was created on the temp path, but rename preserves the
-        // inode, so it now refers to the canonical file.
-        self.heap_files.remove(name);
-        self.heap_files.insert(name.to_string(), new_heap_file);
-
         Ok(())
+    }
+
+    /// Test-only: the open heap file of relation `name`, for inspecting or
+    /// tuning its implicit-key index.
+    #[cfg(test)]
+    pub(crate) fn heap_file_for_test(
+        &mut self,
+        name: &str,
+    ) -> Result<&mut HeapFile<FileBlockDevice>, StorageError> {
+        Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)
+    }
+
+    /// Lists the versions of `name` visible to `snapshot`, each with its
+    /// internal address and current `xmax` (a deleter the snapshot does
+    /// not honor).
+    ///
+    /// This is the transaction's visible state that the engine diffs a
+    /// new relation value against in `store_relation`.
+    pub(crate) fn visible_versions(
+        &mut self,
+        name: &str,
+        snapshot: &TransactionSnapshot,
+        pool: &TxnPool,
+        committed_txns: &HashSet<TransactionId>,
+    ) -> Result<Vec<VisibleVersion>, StorageError> {
+        let heap_file = Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)?;
+        let mut versions = Vec::new();
+        heap_file
+            .for_each_visible_version(
+                snapshot,
+                pool,
+                &mut self.version_pool,
+                committed_txns,
+                &mut |tuple_id, xmax, tuple| {
+                    versions.push(VisibleVersion {
+                        tuple_id,
+                        xmax,
+                        tuple,
+                    })
+                },
+            )
+            .map_err(Self::convert_heap_error)?;
+        Ok(versions)
+    }
+
+    /// Marks the version at `tuple_id` deleted by `txn_id` (sets `xmax`).
+    ///
+    /// Returns the previous `xmax` so a failed statement can restore it
+    /// with [`restore_xmax`](Self::restore_xmax). One version record is
+    /// claimed; exhaustion fails typed with nothing mutated.
+    pub(crate) fn mark_deleted(
+        &mut self,
+        name: &str,
+        tuple_id: TupleId,
+        txn_id: TransactionId,
+    ) -> Result<Option<TransactionId>, StorageError> {
+        let heap_file = Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)?;
+        heap_file
+            .mark_version_deleted(tuple_id, txn_id, &mut self.version_pool)
+            .map_err(Self::convert_heap_error)
+    }
+
+    /// Sets the version's `xmax` back to `previous` (statement
+    /// compensation). Claims no version record.
+    pub(crate) fn restore_xmax(
+        &mut self,
+        name: &str,
+        tuple_id: TupleId,
+        previous: Option<TransactionId>,
+    ) -> Result<(), StorageError> {
+        let heap_file = Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)?;
+        heap_file
+            .restore_version_xmax(tuple_id, previous, &mut self.version_pool)
+            .map_err(Self::convert_heap_error)
+    }
+
+    /// Recovery undo pass over every relation: physically removes versions
+    /// created by non-committed transactions and clears deletion marks
+    /// left by non-committed transactions. Modified heaps are synced.
+    ///
+    /// Must only run while no transaction is live (at engine open): every
+    /// id outside `committed` is treated as aborted.
+    ///
+    /// Returns the number of version slots changed.
+    pub(crate) fn undo_uncommitted_versions(
+        &mut self,
+        committed: &HashSet<TransactionId>,
+    ) -> Result<usize, StorageError> {
+        let mut changed = 0;
+        for name in self.catalog.list_relations() {
+            let heap_file =
+                Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, &name)?;
+            changed += heap_file
+                .undo_uncommitted_versions(committed, &mut self.version_pool)
+                .map_err(Self::convert_heap_error)?;
+        }
+        Ok(changed)
     }
 
     /// Flush all heap files to disk.
@@ -493,37 +616,5 @@ mod tests {
         assert!(manager.create_relation("../evil", test_rel_type()).is_err());
         assert!(manager.create_relation("foo/bar", test_rel_type()).is_err());
         assert!(manager.create_relation("VALID", test_rel_type()).is_ok());
-    }
-
-    #[test]
-    fn test_store_relation_replaces_data() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut manager = StorageManager::new(temp_dir.path()).unwrap();
-
-        manager.create_relation("TEST", test_rel_type()).unwrap();
-
-        // Insert initial data
-        let txn_id = TransactionId::new(1);
-        manager
-            .insert_tuple("TEST", tuple! { id: 1i64, name: "Alice" }, txn_id)
-            .unwrap();
-
-        // Create new relation with different data
-        let mut new_relation = Relation::new(test_rel_type());
-        new_relation
-            .insert(tuple! { id: 100i64, name: "Charlie" })
-            .unwrap();
-
-        // Store should replace old data
-        manager
-            .store_relation("TEST", &new_relation, txn_id)
-            .unwrap();
-
-        let (pool, snapshot) = dummy_snapshot();
-        let loaded = manager
-            .scan_relation("TEST", &snapshot, &pool, &committed_set())
-            .unwrap();
-        assert_eq!(loaded.cardinality(), 1);
-        assert!(loaded.contains(&tuple! { id: 100i64, name: "Charlie" }));
     }
 }

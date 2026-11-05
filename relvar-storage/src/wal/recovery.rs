@@ -21,9 +21,11 @@
 //! on disk because we sync after each transaction commit. Future versions may
 //! implement explicit redo for better performance.
 //!
-//! **Undo:** Performed by the caller (PersistentEngine) which receives the list
-//! of uncommitted inserts and removes them from relations. This design allows
-//! undo to access the catalog and relation types.
+//! **Undo:** Performed by the caller (PersistentEngine), which receives the
+//! set of crashed transactions (Begin without Commit/Abort) and physically
+//! removes their versions and deletion marks from every heap, then logs an
+//! Abort for each. MVCC visibility already hides non-committed changes; the
+//! physical pass keeps heaps clean and conflict checks simple.
 
 use super::WalRecord;
 use super::error::WalError;
@@ -107,6 +109,11 @@ pub struct RecoveryResult {
     /// Maximum transaction ID seen in the WAL.
     /// Used to seed the transaction ID generator to avoid reusing IDs.
     pub max_txn_id: TransactionId,
+    /// Transactions that began but neither committed nor aborted: the
+    /// process crashed while they were live. The engine physically undoes
+    /// their heap changes and then logs an Abort for each, so later opens
+    /// do not repeat the undo pass.
+    pub crashed_txns: HashSet<TransactionId>,
 }
 
 /// Performs recovery analysis and returns uncommitted operations.
@@ -169,6 +176,7 @@ pub fn recover(wal: &mut WalManager) -> Result<RecoveryResult, WalError> {
         committed_txns: analysis.committed,
         uncommitted_inserts,
         max_txn_id,
+        crashed_txns: active_txns,
     })
 }
 

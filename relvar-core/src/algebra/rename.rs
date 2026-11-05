@@ -8,6 +8,9 @@
 //! - Attribute types are preserved during renaming
 //! - Result is a valid relation with the renamed heading
 //! - Set semantics are maintained
+//! - Renames are simultaneous (`a -> b, b -> a` swaps); renaming a
+//!   non-existent attribute or producing duplicate attribute names is an
+//!   error ([`RenameError`])
 //!
 //! # Example
 //!
@@ -24,18 +27,62 @@
 //! relation.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
 //!
 //! // Rename emp_id to employee_id
-//! let renamed = relation.rename(&[("emp_id", "employee_id")]);
+//! let renamed = relation.rename(&[("emp_id", "employee_id")]).unwrap();
 //! assert!(renamed.relation_type().heading().has_attribute("employee_id"));
 //! assert!(!renamed.relation_type().heading().has_attribute("emp_id"));
 //! ```
 
+use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use thiserror::Error;
+
+/// Errors that can occur during renaming.
+///
+/// TTM: RM Prescription 7 - `r RENAME {a AS b, ...}` is defined only when
+/// every source attribute belongs to the heading of `r` and the resulting
+/// heading has no duplicate attribute names.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::RenameError;
+///
+/// let err = RenameError::DuplicateTarget("id".to_string());
+/// assert!(err.to_string().contains("'id'"));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum RenameError {
+    /// A source attribute is not in the relation's heading.
+    #[error("Cannot rename attribute '{0}': it is not in the relation's heading")]
+    UnknownAttribute(String),
+
+    /// The same source attribute appears in more than one mapping.
+    #[error("Attribute '{0}' is renamed more than once")]
+    DuplicateSource(String),
+
+    /// The result heading would contain two attributes with this name.
+    #[error("Renaming would produce two attributes named '{0}'")]
+    DuplicateTarget(String),
+}
+
+impl From<RenameError> for DatabaseError {
+    fn from(err: RenameError) -> Self {
+        match err {
+            RenameError::UnknownAttribute(name) => {
+                DatabaseError::AttributeNotFound(name, "rename operand".to_string())
+            }
+            RenameError::DuplicateSource(name) | RenameError::DuplicateTarget(name) => {
+                DatabaseError::DuplicateAttributeName(name)
+            }
+        }
+    }
+}
 
 impl Relation {
     /// Renames attributes in this relation according to the provided mapping.
@@ -59,15 +106,15 @@ impl Relation {
     /// - Attributes not in mappings retain their original names
     /// - Attribute types are preserved
     /// - Tuple values are preserved (associated with new names)
-    /// - Mappings for non-existent attributes are silently ignored
+    /// - All mappings apply simultaneously, so `[("a", "b"), ("b", "a")]` swaps
+    ///   two attributes
     ///
-    /// # Naming Collisions
+    /// # Errors
     ///
-    /// If multiple attributes are mapped to the same target name (e.g., A -> C, B -> C),
-    /// the "Last Write Wins" rule applies based on the **lexicographical order of the source attributes**.
-    ///
-    /// Since attributes are stored in a `BTreeMap`, iteration order is determined by attribute name.
-    /// The attribute that comes later alphabetically will overwrite the value of the earlier one.
+    /// - [`RenameError::UnknownAttribute`] - a source attribute is not in the heading
+    /// - [`RenameError::DuplicateSource`] - a source attribute is mapped twice
+    /// - [`RenameError::DuplicateTarget`] - two attributes would end up with the
+    ///   same name (e.g. `A -> C, B -> C`, or `a -> b` while `b` is not renamed)
     ///
     /// # Examples
     ///
@@ -88,15 +135,15 @@ impl Relation {
     /// let renamed = relation.rename(&[
     ///     ("emp_id", "employee_id"),
     ///     ("dept_id", "department_id"),
-    /// ]);
+    /// ]).unwrap();
     ///
     /// assert!(renamed.relation_type().heading().has_attribute("employee_id"));
     /// assert!(renamed.relation_type().heading().has_attribute("department_id"));
     /// assert!(renamed.relation_type().heading().has_attribute("name"));
     /// ```
-    pub fn rename(&self, mappings: &[(&str, &str)]) -> Self {
+    pub fn rename(&self, mappings: &[(&str, &str)]) -> Result<Self, RenameError> {
         let (new_heading, new_names) =
-            build_renamed_heading_and_names(self.relation_type().heading(), mappings);
+            build_renamed_heading_and_names(self.relation_type().heading(), mappings)?;
 
         let new_rel_type = RelationType::new(new_heading.clone());
         let new_heading_arc = Arc::new(new_heading);
@@ -118,8 +165,7 @@ impl Relation {
             // 1. We constructed new_heading directly from old_heading with renames applied.
             // 2. We constructed values_map by zipping new names with old values in the same order.
             // 3. Types are preserved (we clone the type from old heading to new heading).
-            // 4. "Last Write Wins" logic for duplicate target names is handled by BTreeMap::collect
-            //    overwriting previous entries, matching the behavior of new_heading construction.
+            // 4. New names are pairwise distinct (validated), so no value is lost.
             Tuple::new_unchecked(new_heading_arc.clone(), values_map)
         });
 
@@ -127,7 +173,10 @@ impl Relation {
         // We guarantee that renamed_tuples conform to new_rel_type because:
         // - new_rel_type uses new_heading
         // - Tuples are created with new_heading
-        Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
+        Ok(Relation::from_tuples_unchecked(
+            new_rel_type,
+            renamed_tuples,
+        ))
     }
 
     /// Renames attributes in this relation according to the provided mapping, consuming the relation.
@@ -136,6 +185,11 @@ impl Relation {
     /// collection for the tuples' inner values, instead migrating them in-place
     /// from the old names to the new names while consuming the source relation.
     /// This reduces heap allocations and `.clone()` overhead.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`rename`](Self::rename).
+    ///
     /// # Examples
     ///
     /// ```
@@ -148,16 +202,16 @@ impl Relation {
     /// let mut rel = Relation::new(rel_type);
     /// rel.insert(tuple! { old_name: 1i64 }).unwrap();
     ///
-    /// let renamed = rel.rename_into(&[("old_name", "new_name")]);
+    /// let renamed = rel.rename_into(&[("old_name", "new_name")]).unwrap();
     /// assert!(renamed.relation_type().tuple_type().has_attribute("new_name"));
     /// ```
-    pub fn rename_into(self, mappings: &[(&str, &str)]) -> Self {
+    pub fn rename_into(self, mappings: &[(&str, &str)]) -> Result<Self, RenameError> {
         if mappings.is_empty() {
-            return self;
+            return Ok(self);
         }
 
         let (new_heading, new_names) =
-            build_renamed_heading_and_names(self.relation_type().heading(), mappings);
+            build_renamed_heading_and_names(self.relation_type().heading(), mappings)?;
 
         let new_rel_type = RelationType::new(new_heading.clone());
         let new_heading_arc = Arc::new(new_heading);
@@ -189,15 +243,33 @@ impl Relation {
         });
 
         // Safety: We guarantee that renamed_tuples conform to new_rel_type
-        Relation::from_tuples_unchecked(new_rel_type, renamed_tuples)
+        Ok(Relation::from_tuples_unchecked(
+            new_rel_type,
+            renamed_tuples,
+        ))
     }
 }
 
 /// Helper to build the new heading and name mappings for the rename operator.
+///
+/// # Errors
+///
+/// Rejects unknown or repeated source attributes and duplicate result names
+/// (see [`RenameError`]).
 fn build_renamed_heading_and_names(
     old_heading: &TupleType,
     mappings: &[(&str, &str)],
-) -> (TupleType, Vec<String>) {
+) -> Result<(TupleType, Vec<String>), RenameError> {
+    let mut sources = BTreeSet::new();
+    for (from, _) in mappings {
+        if !old_heading.has_attribute(from) {
+            return Err(RenameError::UnknownAttribute((*from).to_string()));
+        }
+        if !sources.insert(*from) {
+            return Err(RenameError::DuplicateSource((*from).to_string()));
+        }
+    }
+
     // Build new heading with renamed attributes
     let mut new_heading = TupleType::new();
 
@@ -214,15 +286,19 @@ fn build_renamed_heading_and_names(
             .map(|(_, to)| *to)
             .unwrap_or(old_name.as_str());
 
+        if new_heading.has_attribute(new_name) {
+            return Err(RenameError::DuplicateTarget(new_name.to_string()));
+        }
         new_heading = new_heading.with_attribute(new_name, attr_type.clone());
         new_names.push(new_name.to_string());
     }
 
-    (new_heading, new_names)
+    Ok((new_heading, new_names))
 }
 
 #[cfg(test)]
 mod tests {
+    use super::RenameError;
     use crate::tuple;
     use crate::types::{RelationType, ScalarType, TupleType};
     use crate::values::Relation;
@@ -241,8 +317,9 @@ mod tests {
             .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
             .unwrap();
 
-        let renamed =
-            relation.rename_into(&[("emp_id", "employee_id"), ("dept_id", "department_id")]);
+        let renamed = relation
+            .rename_into(&[("emp_id", "employee_id"), ("dept_id", "department_id")])
+            .unwrap();
 
         assert!(
             renamed
@@ -286,7 +363,7 @@ mod tests {
             .insert(tuple! { emp_id: 2i64, name: "Bob" })
             .unwrap();
 
-        let result = relation.rename(&[("emp_id", "id")]);
+        let result = relation.rename(&[("emp_id", "id")]).unwrap();
 
         // Check that new attribute exists and old doesn't
         assert!(result.relation_type().heading().has_attribute("id"));
@@ -310,7 +387,7 @@ mod tests {
             .insert(tuple! { emp_id: 1i64, name: "Alice" })
             .unwrap();
 
-        let result = relation.rename(&[("emp_id", "employee_id")]);
+        let result = relation.rename(&[("emp_id", "employee_id")]).unwrap();
 
         // Verify type preserved
         assert_eq!(
@@ -336,7 +413,9 @@ mod tests {
             .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
             .unwrap();
 
-        let result = relation.rename(&[("emp_id", "employee_id"), ("dept_id", "department_id")]);
+        let result = relation
+            .rename(&[("emp_id", "employee_id"), ("dept_id", "department_id")])
+            .unwrap();
 
         assert!(
             result
@@ -368,7 +447,7 @@ mod tests {
             .insert(tuple! { emp_id: 1i64, name: "Alice" })
             .unwrap();
 
-        let result = relation.rename(&[]);
+        let result = relation.rename(&[]).unwrap();
 
         // Should be unchanged
         assert_eq!(result.relation_type().heading(), &heading);
@@ -384,39 +463,96 @@ mod tests {
         let rel_type = RelationType::new(heading);
         let relation = Relation::new(rel_type);
 
-        let result = relation.rename(&[("emp_id", "id")]);
+        let result = relation.rename(&[("emp_id", "id")]).unwrap();
 
         assert!(result.is_empty());
         assert!(result.relation_type().heading().has_attribute("id"));
     }
 
-    /// Verifies the behavior when multiple attributes are renamed to the same name.
-    ///
-    /// CURRENT BEHAVIOR: Silent overwriting.
-    /// Since iteration over attributes is based on BTreeMap (sorted by name),
-    /// the attribute that comes later lexicographically overwrites earlier ones.
-    ///
-    /// This test documents this "Last Write Wins" behavior.
-    #[test]
-    fn test_rename_collision_overwrites_values() {
+    fn abc_relation() -> Relation {
         let heading = TupleType::new()
-            .with_attribute("A", ScalarType::Int)
-            .with_attribute("B", ScalarType::Int);
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int)
+            .with_attribute("c", ScalarType::String);
+        let mut relation = Relation::new(RelationType::new(heading));
+        relation
+            .insert(tuple! { a: 1i64, b: 2i64, c: "x" })
+            .unwrap();
+        relation
+            .insert(tuple! { a: 1i64, b: 3i64, c: "x" })
+            .unwrap();
+        relation
+    }
 
-        let rel_type = RelationType::new(heading);
-        let mut relation = Relation::new(rel_type);
+    /// TTM: renaming an attribute that is not in the heading is an error.
+    #[test]
+    fn test_rename_rejects_unknown_attribute() {
+        let result = abc_relation().rename(&[("nope", "x")]);
+        assert_eq!(
+            result.map(|r| r.degree()),
+            Err(RenameError::UnknownAttribute("nope".to_string()))
+        );
+    }
 
-        relation.insert(tuple! { A: 1i64, B: 2i64 }).unwrap();
+    /// Two attributes renamed to the same name would collapse the heading
+    /// (and could merge tuples): rejected.
+    #[test]
+    fn test_rename_rejects_two_sources_with_one_target() {
+        let result = abc_relation().rename(&[("a", "z"), ("b", "z")]);
+        assert_eq!(
+            result.map(|r| r.degree()),
+            Err(RenameError::DuplicateTarget("z".to_string()))
+        );
+    }
 
-        // Rename both A and B to C
-        // A comes before B, so we expect B to overwrite A.
-        let result = relation.rename(&[("A", "C"), ("B", "C")]);
+    /// Renaming onto an existing, unrenamed attribute name is rejected.
+    #[test]
+    fn test_rename_rejects_target_that_collides_with_unrenamed_attribute() {
+        let result = abc_relation().rename(&[("a", "b")]);
+        assert_eq!(
+            result.map(|r| r.degree()),
+            Err(RenameError::DuplicateTarget("b".to_string()))
+        );
+    }
 
-        assert_eq!(result.degree(), 1);
-        assert!(result.relation_type().heading().has_attribute("C"));
+    #[test]
+    fn test_rename_into_rejects_collision() {
+        let result = abc_relation().rename_into(&[("a", "b")]);
+        assert_eq!(
+            result.map(|r| r.degree()),
+            Err(RenameError::DuplicateTarget("b".to_string()))
+        );
+    }
 
-        let tuple = result.tuples().next().unwrap();
-        // Value should be 2 (from B)
-        assert_eq!(tuple.get_typed::<i64>("C").unwrap(), 2);
+    /// The same source renamed twice is ambiguous: rejected.
+    #[test]
+    fn test_rename_rejects_duplicate_source() {
+        let result = abc_relation().rename(&[("a", "x"), ("a", "y")]);
+        assert_eq!(
+            result.map(|r| r.degree()),
+            Err(RenameError::DuplicateSource("a".to_string()))
+        );
+    }
+
+    /// Renames are simultaneous: swapping two names is legal.
+    #[test]
+    fn test_rename_swap_is_simultaneous() {
+        let result = abc_relation().rename(&[("a", "b"), ("b", "a")]).unwrap();
+        assert_eq!(result.degree(), 3);
+        assert_eq!(result.cardinality(), 2);
+        assert!(result.contains(&tuple! { a: 2i64, b: 1i64, c: "x" }));
+        assert!(result.contains(&tuple! { a: 3i64, b: 1i64, c: "x" }));
+
+        let into = abc_relation()
+            .rename_into(&[("a", "b"), ("b", "a")])
+            .unwrap();
+        assert_eq!(into, result);
+    }
+
+    /// Renaming an attribute to itself is the identity.
+    #[test]
+    fn test_rename_to_same_name_is_identity() {
+        let result = abc_relation().rename(&[("a", "a")]).unwrap();
+        assert_eq!(result, abc_relation());
     }
 }

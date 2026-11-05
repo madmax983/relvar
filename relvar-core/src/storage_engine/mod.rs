@@ -9,6 +9,7 @@
 //! The storage engine is purely an implementation detail (RM Proscription 3).
 //! The logical relational model is independent of how data is physically stored.
 
+use crate::constraints::ConstraintCatalog;
 use crate::types::RelationType;
 use crate::values::{Relation, Tuple};
 use alloc::string::String;
@@ -321,4 +322,46 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// Yields an error if rollback fails.
     fn rollback_transaction(&mut self, snapshot: Self::Snapshot) -> Result<(), StorageError>;
+
+    /// Persists the database's declarative constraints
+    /// (TTM RM Prescription 16: a database contains its constraints).
+    ///
+    /// [`Database`](crate::database::Database) calls this with the complete
+    /// constraint catalog every time a constraint definition changes
+    /// (`set_*_constraints`, [`drop_relvar`](crate::database::Database::drop_relvar)),
+    /// and never inside a transaction. The catalog replaces whatever the
+    /// engine stored before. A persistent engine must store it durably and
+    /// atomically: after a crash, either the previous or the new catalog is
+    /// read back, never a mixture.
+    ///
+    /// When [`drop_relation`](Self::drop_relation) succeeds, an engine that
+    /// persists constraints should also forget the constraints declared on
+    /// the dropped relation, so a crash between the two calls cannot leave
+    /// constraints naming a relation that no longer exists.
+    ///
+    /// The default implementation stores nothing (the engine does not
+    /// persist constraints, as with [`InMemoryEngine`]).
+    ///
+    /// # Errors
+    ///
+    /// Yields an error if the catalog cannot be stored; the engine's
+    /// previously stored catalog is then still in effect.
+    fn store_constraints(&mut self, _catalog: &ConstraintCatalog) -> Result<(), StorageError> {
+        Ok(())
+    }
+
+    /// Returns the constraint catalog last stored with
+    /// [`store_constraints`](Self::store_constraints), if any.
+    ///
+    /// [`Database::new`](crate::database::Database::new) calls this to
+    /// restore the constraints of a reopened database. It cannot fail:
+    /// engines read (and reject malformed) stored constraints when they are
+    /// opened, which is a fallible step of their own constructors.
+    ///
+    /// `None` means the engine holds no stored constraints (a new database,
+    /// one written before constraints were persisted, or an engine that
+    /// does not persist them). The default implementation returns `None`.
+    fn load_constraints(&self) -> Option<ConstraintCatalog> {
+        None
+    }
 }

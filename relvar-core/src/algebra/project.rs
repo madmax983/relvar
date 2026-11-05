@@ -7,6 +7,8 @@
 //!
 //! - Duplicates are automatically eliminated (set semantics)
 //! - Result is a valid relation with the projected heading
+//! - Projecting on an attribute that is not in the heading is a type error
+//!   ([`ProjectError::UnknownAttribute`])
 //!
 //! # Example
 //!
@@ -25,15 +27,62 @@
 //! relation.insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 10i64 }).unwrap();
 //!
 //! // Project onto just dept_id
-//! let result = relation.project(&["dept_id"]);
+//! let result = relation.project(&["dept_id"]).unwrap();
 //! assert_eq!(result.degree(), 1);
 //! assert_eq!(result.cardinality(), 1);  // Duplicates eliminated!
 //! ```
 
+use crate::error::DatabaseError;
 use crate::types::{RelationType, TupleType};
 use crate::values::{Relation, Tuple};
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use thiserror::Error;
+
+/// Errors that can occur during projection.
+///
+/// TTM: RM Prescription 7 - `r{A, B, ...}` is defined only when every named
+/// attribute belongs to the heading of `r`.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::algebra::ProjectError;
+///
+/// let err = ProjectError::UnknownAttribute("salary".to_string());
+/// assert!(err.to_string().contains("'salary'"));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ProjectError {
+    /// A projection attribute is not in the relation's heading.
+    #[error("Cannot project on attribute '{0}': it is not in the relation's heading")]
+    UnknownAttribute(String),
+}
+
+impl From<ProjectError> for DatabaseError {
+    fn from(err: ProjectError) -> Self {
+        match err {
+            ProjectError::UnknownAttribute(name) => {
+                DatabaseError::AttributeNotFound(name, "projection operand".to_string())
+            }
+        }
+    }
+}
+
+/// Builds the projected heading, rejecting names not in `heading`.
+///
+/// The attribute list is treated as a set: repeating a name is harmless.
+fn projected_heading(heading: &TupleType, attributes: &[&str]) -> Result<TupleType, ProjectError> {
+    let mut new_heading = TupleType::new();
+    for attr_name in attributes {
+        let attr_type = heading
+            .get_attribute_type(attr_name)
+            .ok_or_else(|| ProjectError::UnknownAttribute((*attr_name).to_string()))?;
+        new_heading = new_heading.with_attribute(*attr_name, attr_type.clone());
+    }
+    Ok(new_heading)
+}
 
 impl Relation {
     /// Projects this relation onto a subset of attributes.
@@ -53,10 +102,16 @@ impl Relation {
     /// # Behavior
     ///
     /// - Attributes not in the list are removed.
-    /// - **Warning:** Attributes requested that do not exist in the relation are silently ignored.
-    ///   This follows set intersection logic: the result contains only attributes present in BOTH
-    ///   the relation and the request list.
+    /// - The list is a set: naming an attribute twice is the same as naming it once.
+    /// - Projecting on no attributes yields TABLE_DEE (non-empty input) or
+    ///   TABLE_DUM (empty input).
     /// - Duplicate tuples are automatically eliminated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::UnknownAttribute`] if a named attribute is not
+    /// in the relation's heading (TTM: projection on a non-existent attribute
+    /// is a type error).
     ///
     /// # Examples
     ///
@@ -72,27 +127,24 @@ impl Relation {
     /// let mut relation = Relation::new(RelationType::new(heading));
     /// relation.insert(tuple! { emp_id: 1i64, name: "Alice" }).unwrap();
     ///
-    /// let names_only = relation.project(&["name"]);
+    /// let names_only = relation.project(&["name"]).unwrap();
     /// assert_eq!(names_only.degree(), 1);
     ///
-    /// // Projecting non-existent attributes results in empty heading (TABLE_DEE or TABLE_DUM)
-    /// // Here, since the relation is not empty, we get TABLE_DEE (degree 0, cardinality 1)
-    /// let ignored = relation.project(&["non_existent_attr"]);
-    /// assert_eq!(ignored.degree(), 0);
-    /// assert_eq!(ignored.cardinality(), 1);
+    /// // Projecting on no attributes gives TABLE_DEE here (the input is non-empty)
+    /// let dee = relation.project(&[]).unwrap();
+    /// assert_eq!(dee.degree(), 0);
+    /// assert_eq!(dee.cardinality(), 1);
+    ///
+    /// // Projecting on a non-existent attribute is an error
+    /// assert!(relation.project(&["non_existent_attr"]).is_err());
     /// ```
-    pub fn project(&self, attributes: &[&str]) -> Self {
+    pub fn project(&self, attributes: &[&str]) -> Result<Self, ProjectError> {
         // Build new heading with selected attributes
-        let mut new_heading = TupleType::new();
-        for attr_name in attributes {
-            if let Some(attr_type) = self.relation_type().heading().get_attribute_type(attr_name) {
-                new_heading = new_heading.with_attribute(*attr_name, attr_type.clone());
-            }
-        }
+        let new_heading = projected_heading(self.relation_type().heading(), attributes)?;
 
         // Optimization: If projecting all attributes, just return a clone of self
         if new_heading == *self.relation_type().heading() {
-            return self.clone();
+            return Ok(self.clone());
         }
 
         let new_rel_type = RelationType::new(new_heading.clone());
@@ -107,13 +159,22 @@ impl Relation {
 
         // Duplicates are automatically removed when creating the relation
         // Safety: projected_tuples use shared_heading which matches new_rel_type.heading()
-        Relation::from_tuples_unchecked(new_rel_type, projected_tuples)
+        Ok(Relation::from_tuples_unchecked(
+            new_rel_type,
+            projected_tuples,
+        ))
     }
 
     /// Projects this relation onto a subset of attributes, consuming the relation.
     ///
     /// This is an optimized version of `project` that avoids allocating a new
     /// collection by mutating the tuples in-place when possible.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::UnknownAttribute`] if a named attribute is not
+    /// in the relation's heading.
+    ///
     /// # Examples
     ///
     /// ```
@@ -128,20 +189,15 @@ impl Relation {
     /// let mut rel = Relation::new(rel_type);
     /// rel.insert(tuple! { x: 1i64, y: 2i64 }).unwrap();
     ///
-    /// let projected = rel.project_into(&["x"]);
+    /// let projected = rel.project_into(&["x"]).unwrap();
     /// assert_eq!(projected.relation_type().degree(), 1);
     /// ```
-    pub fn project_into(self, attributes: &[&str]) -> Self {
+    pub fn project_into(self, attributes: &[&str]) -> Result<Self, ProjectError> {
         // Build new heading with selected attributes
-        let mut new_heading = TupleType::new();
-        for attr_name in attributes {
-            if let Some(attr_type) = self.relation_type().heading().get_attribute_type(attr_name) {
-                new_heading = new_heading.with_attribute(*attr_name, attr_type.clone());
-            }
-        }
+        let new_heading = projected_heading(self.relation_type().heading(), attributes)?;
 
         if new_heading == *self.relation_type().heading() {
-            return self;
+            return Ok(self);
         }
 
         let new_rel_type = RelationType::new(new_heading.clone());
@@ -151,7 +207,10 @@ impl Relation {
             .into_iter()
             .map(|tuple| project_tuple_values_owned(tuple, &shared_heading));
 
-        Relation::from_tuples_unchecked(new_rel_type, projected_tuples)
+        Ok(Relation::from_tuples_unchecked(
+            new_rel_type,
+            projected_tuples,
+        ))
     }
 }
 
@@ -230,6 +289,45 @@ mod tests {
     use crate::types::{RelationType, ScalarType, TupleType};
     use crate::values::Relation;
 
+    fn emp_relation() -> Relation {
+        let heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("name", ScalarType::String);
+        let mut relation = Relation::new(RelationType::new(heading));
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice" })
+            .unwrap();
+        relation
+    }
+
+    /// TTM: projecting on an attribute that is not in the heading is a type
+    /// error, not a silent DEE/DUM.
+    #[test]
+    fn test_project_rejects_unknown_attribute() {
+        let result = emp_relation().project(&["emp_id", "nope"]);
+        assert_eq!(
+            result.map(|r| r.degree()),
+            Err(super::ProjectError::UnknownAttribute("nope".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_project_into_rejects_unknown_attribute() {
+        let result = emp_relation().project_into(&["nope"]);
+        assert_eq!(
+            result.map(|r| r.degree()),
+            Err(super::ProjectError::UnknownAttribute("nope".to_string()))
+        );
+    }
+
+    /// Repeating a name in the projection list is harmless: the list is a set.
+    #[test]
+    fn test_project_duplicate_names_are_a_set() {
+        let result = emp_relation().project(&["name", "name"]).unwrap();
+        assert_eq!(result.degree(), 1);
+        assert_eq!(result.cardinality(), 1);
+    }
+
     #[test]
     fn test_project_selects_attributes() {
         let heading = TupleType::new()
@@ -247,7 +345,7 @@ mod tests {
             .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
             .unwrap();
 
-        let result = relation.project(&["emp_id", "name"]);
+        let result = relation.project(&["emp_id", "name"]).unwrap();
 
         assert_eq!(result.degree(), 2);
         assert_eq!(result.cardinality(), 2);
@@ -278,7 +376,7 @@ mod tests {
             .unwrap();
 
         // Project onto just dept_id - should have only one unique value
-        let result = relation.project(&["dept_id"]);
+        let result = relation.project(&["dept_id"]).unwrap();
 
         assert_eq!(result.degree(), 1);
         assert_eq!(result.cardinality(), 1); // All have same dept_id, duplicates removed
@@ -293,7 +391,7 @@ mod tests {
         let rel_type = RelationType::new(heading);
         let relation = Relation::new(rel_type);
 
-        let result = relation.project(&["emp_id"]);
+        let result = relation.project(&["emp_id"]).unwrap();
 
         assert_eq!(result.cardinality(), 0);
         assert!(result.is_empty());
@@ -315,7 +413,7 @@ mod tests {
             .insert(tuple! { emp_id: 2i64, name: "Bob" })
             .unwrap();
 
-        let result = relation.project(&["emp_id", "name"]);
+        let result = relation.project(&["emp_id", "name"]).unwrap();
 
         assert_eq!(result, relation);
     }
@@ -337,7 +435,7 @@ mod tests {
             .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
             .unwrap();
 
-        let result = relation.project(&["name"]);
+        let result = relation.project(&["name"]).unwrap();
 
         assert_eq!(result.degree(), 1);
         assert_eq!(result.cardinality(), 2);
@@ -365,7 +463,7 @@ mod tests {
             .unwrap();
 
         // Project onto empty set of attributes
-        let result = relation.project(&[]);
+        let result = relation.project(&[]).unwrap();
 
         // Should have degree 0 (no attributes)
         assert_eq!(result.degree(), 0);
@@ -395,7 +493,7 @@ mod tests {
         let relation = Relation::new(rel_type);
 
         // Project onto empty set of attributes
-        let result = relation.project(&[]);
+        let result = relation.project(&[]).unwrap();
 
         // Should have degree 0
         assert_eq!(result.degree(), 0);

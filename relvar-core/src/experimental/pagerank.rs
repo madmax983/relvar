@@ -61,7 +61,7 @@ fn calculate_contributions(edges: &Relation, ranks: &Relation) -> Result<Relatio
 
     // 2. Join ranks and out_degrees
     // We join ranks (node) with out_degrees (source) by renaming source -> node in out_degrees
-    let out_degrees_renamed = out_degrees.rename(&[("source", "node")]);
+    let out_degrees_renamed = out_degrees.rename(&[("source", "node")])?;
 
     // Relation with attributes: node (Int), rank (Float), out_degree (Int)
     let node_info = ranks
@@ -93,7 +93,7 @@ fn distribute_and_aggregate_ranks(
     // 4. Join edges with contributions to distribute rank
     // edges: source, target
     // contributions: node, rank, out_degree, contribution
-    let edges_renamed = edges.rename(&[("source", "node")]);
+    let edges_renamed = edges.rename(&[("source", "node")])?;
 
     // Join on "node"
     // Result attributes: node (source), target, rank, out_degree, contribution
@@ -118,7 +118,7 @@ fn apply_damping_factor(
     num_nodes: usize,
 ) -> Result<Relation, DatabaseError> {
     // Rename target back to node
-    let new_ranks_renamed = new_ranks_summed.rename(&[("target", "node")]);
+    let new_ranks_renamed = new_ranks_summed.rename(&[("target", "node")])?;
 
     // 6. Apply damping factor: new_rank = (1 - d)/N + d * sum_contribution
     let random_jump = (1.0 - damping_factor) / (num_nodes as f64);
@@ -131,7 +131,7 @@ fn apply_damping_factor(
         .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
     // Project out the temporary sum_contribution to return only (node, rank)
-    Ok(final_ranks.project(&["node", "rank"]))
+    Ok(final_ranks.project(&["node", "rank"])?)
 }
 
 #[cfg(test)]

@@ -84,7 +84,7 @@
 //!     //    "Get names of active users"
 //!     let active_users = db.query("USERS")?
 //!         .restrict(|t| t.get_typed::<bool>("active").unwrap_or(false))
-//!         .project(&["name"]);
+//!         .project(&["name"]).unwrap();
 //!
 //!     // 6. Verify results
 //!     assert_eq!(active_users.cardinality(), 1);
@@ -122,7 +122,7 @@ pub mod utils;
 pub mod experimental;
 pub mod values;
 
-pub use database::Database;
+pub use database::{Assignment, Database};
 pub use error::DatabaseError;
 pub use query::{Query, QueryError};
 pub use types::{
@@ -133,10 +133,11 @@ pub use values::{Relation, ScalarValue, Tuple};
 
 // Re-export constraint types
 pub use constraints::{
-    AssertionError, AttributeConstraints, CandidateKey, CheckConstraint, CheckConstraintError,
-    CheckConstraints, CmpOp, ConstraintExpression, ConstraintManagerError, DatabaseAssertion,
-    ExpressionError, ForeignKey, ForeignKeyConstraints, ForeignKeyError, KeyConstraintError,
-    KeyConstraints, PrimaryKey, ScalarExpression, TypeConstraint, TypeConstraintError, ValueOrRef,
+    AssertionCondition, AssertionError, AttributeConstraints, CandidateKey, CheckConstraint,
+    CheckConstraintError, CheckConstraints, CmpOp, ConstraintExpression, ConstraintManagerError,
+    DatabaseAssertion, DeclarativeAssertion, ExpressionError, ForeignKey, ForeignKeyConstraints,
+    ForeignKeyError, KeyConstraintError, KeyConstraints, PrimaryKey, ScalarExpression,
+    TypeConstraint, TypeConstraintError, ValueOrRef,
 };
 
 // Re-export storage engine types
