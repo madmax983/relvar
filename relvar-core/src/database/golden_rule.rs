@@ -17,6 +17,17 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
+/// Which foreign keys a statement can affect, given the relvars it changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ForeignKeyScope {
+    /// Foreign keys out of and into the changed relvars.
+    All,
+    /// Only foreign keys into the changed relvars. Sufficient when every
+    /// change only removes tuples: a subset of a relvar that satisfied its
+    /// own foreign keys still satisfies them.
+    ReferencedOnly,
+}
+
 /// Builds the foreign-key violation error for `fk` declared on `referencing`.
 pub(crate) fn foreign_key_violation(referencing: &str, fk: &ForeignKey) -> DatabaseError {
     DatabaseError::Constraint(ConstraintManagerError::ForeignKeyViolation(format!(
@@ -159,6 +170,77 @@ impl<E: StorageEngine> Database<E> {
         for tuple in relation.tuples() {
             self.constraints.validate_type_constraints(name, tuple)?;
             self.constraints.validate_check_constraints(name, tuple)?;
+        }
+        Ok(())
+    }
+
+    /// Validates the foreign keys touched by a statement against the
+    /// candidate post-statement state (TTM RM Prescription 23).
+    ///
+    /// `changes` lists every relvar the statement assigns, with its new
+    /// value. A foreign key is checked if its referencing relvar changed
+    /// (only with [`ForeignKeyScope::All`]) or its referenced relvar
+    /// changed. Each side is evaluated on the relvar's new value when the
+    /// statement assigns it and on its stored value otherwise, so a
+    /// self-referencing foreign key compares the new value with itself.
+    ///
+    /// # Performance
+    ///
+    /// One hash-set pass per checked foreign key: O(referencing +
+    /// referenced cardinality), loading each unchanged side once.
+    pub(crate) fn validate_foreign_keys_for_changes(
+        &self,
+        changes: &[(&str, &Relation)],
+        scope: ForeignKeyScope,
+    ) -> Result<(), DatabaseError> {
+        let mut to_check: Vec<(&str, &ForeignKey)> = Vec::new();
+        for (name, _) in changes {
+            let own = match scope {
+                ForeignKeyScope::All => self
+                    .constraints
+                    .get_foreign_key_constraints(name)
+                    .map(|own| own.foreign_keys())
+                    .unwrap_or_default(),
+                ForeignKeyScope::ReferencedOnly => &[],
+            };
+            let candidates = own.iter().map(|fk| (*name, fk)).chain(
+                self.constraints
+                    .referencing_foreign_keys(name)
+                    .iter()
+                    .map(|(referencing, fk)| (referencing.as_str(), fk)),
+            );
+            for candidate in candidates {
+                if !to_check.contains(&candidate) {
+                    to_check.push(candidate);
+                }
+            }
+        }
+
+        let value_of = |name: &str| {
+            changes
+                .iter()
+                .find(|(changed, _)| *changed == name)
+                .map(|(_, relation)| *relation)
+        };
+        for (referencing, fk) in to_check {
+            let referenced = fk.referenced_relation_name();
+            let loaded_referencing;
+            let referencing_relation = match value_of(referencing) {
+                Some(relation) => relation,
+                None => {
+                    loaded_referencing = self.engine.load_relation(referencing)?;
+                    &loaded_referencing
+                }
+            };
+            let loaded_referenced;
+            let referenced_relation = match value_of(referenced) {
+                Some(relation) => relation,
+                None => {
+                    loaded_referenced = self.engine.load_relation(referenced)?;
+                    &loaded_referenced
+                }
+            };
+            check_foreign_key(referencing, fk, referencing_relation, referenced_relation)?;
         }
         Ok(())
     }

@@ -8,5 +8,6 @@ mod schema;
 mod transaction;
 mod ttm_foreign_keys;
 mod ttm_keys;
+mod ttm_self_reference;
 mod v11_constraints;
 mod virtual_relvar;

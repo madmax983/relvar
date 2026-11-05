@@ -5,6 +5,7 @@ use super::insert_plan::{InsertContentPlan, InsertKeyPlan};
 use super::key_index::StagedKeyValues;
 use crate::collections::HashSet;
 use crate::database::Database;
+use crate::database::golden_rule::ForeignKeyScope;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 use crate::values::{Relation, ScalarValue, Tuple};
@@ -128,6 +129,9 @@ impl<E: StorageEngine> Database<E> {
         for tuple in &tuples {
             content_plan.validate_tuple_content(tuple)?;
         }
+        // Foreign keys to the relvar itself are checked against the
+        // candidate post-insert state (existing tuples plus the batch).
+        content_plan.validate_self_references(&tuples)?;
 
         // Check key constraints for the whole batch against the key index,
         // catching duplicates both against existing data and within the
@@ -324,10 +328,15 @@ impl<E: StorageEngine> Database<E> {
         let (new_relation, delete_count) =
             compute_relation_after_delete(current_relation, predicate)?;
 
-        self.constraints.validate_referencing_foreign_keys(
-            &mut self.engine,
-            relation_name,
-            &new_relation,
+        // Golden Rule: validate the candidate post-delete state. Removing
+        // tuples cannot break the relvar's own keys, type or CHECK
+        // constraints, nor its own references to other relvars; it can only
+        // orphan tuples that reference it -- including its own tuples, via a
+        // self-referencing foreign key, which must be checked against the
+        // new value on both sides.
+        self.validate_foreign_keys_for_changes(
+            &[(relation_name, &new_relation)],
+            ForeignKeyScope::ReferencedOnly,
         )?;
 
         // Snapshot the engine so the delete can be rolled back if a database
@@ -450,12 +459,14 @@ impl<E: StorageEngine> Database<E> {
         let (new_relation, update_count) =
             compute_relation_after_update(current_relation, predicate, updater)?;
 
-        self.validate_relation_constraints(relation_name, &new_relation)?;
-
-        self.constraints.validate_referencing_foreign_keys(
-            &mut self.engine,
-            relation_name,
-            &new_relation,
+        // Golden Rule: validate the candidate post-update state -- the
+        // relvar's own keys, type and CHECK constraints, then every foreign
+        // key into or out of it, evaluated on the new value (for a
+        // self-referencing foreign key, on both sides).
+        self.validate_relvar_value(relation_name, &new_relation, false)?;
+        self.validate_foreign_keys_for_changes(
+            &[(relation_name, &new_relation)],
+            ForeignKeyScope::All,
         )?;
 
         // Snapshot the engine so the update can be rolled back if a database
@@ -577,6 +588,7 @@ impl<E: StorageEngine> Database<E> {
         // errors as the unbatched validators.
         let mut content_plan = InsertContentPlan::prepare(self, relation_name)?;
         content_plan.validate_tuple_content(tuple)?;
+        content_plan.validate_self_references(core::slice::from_ref(tuple))?;
 
         // Key validation against the in-memory key index (#23): O(1) per key
         // with no relation load. The index is warmed once here (after the
@@ -587,28 +599,5 @@ impl<E: StorageEngine> Database<E> {
         let key_plan = InsertKeyPlan::prepare(self, relation_name);
         let mut batch_sets = Vec::new();
         key_plan.validate_tuple_keys(&self.key_index, tuple, &mut batch_sets)
-    }
-
-    pub(crate) fn validate_relation_constraints(
-        &mut self,
-        relation_name: &str,
-        relation: &Relation,
-    ) -> Result<(), DatabaseError> {
-        // Validate key constraints on new relation
-        if let Some(key_constraints) = self.constraints.get_key_constraints(relation_name) {
-            self.constraints
-                .validate_key_constraints_bulk(relation, key_constraints)?;
-        }
-
-        // Validate other constraints (Type, CHECK, FK) on all tuples in the new relation
-        // NOTE: In a production system we'd only validate changed tuples, but for now
-        // we validate everything to ensure total consistency.
-        self.constraints.validate_tuple_content_constraints_bulk(
-            &mut self.engine,
-            relation_name,
-            relation,
-        )?;
-
-        Ok(())
     }
 }

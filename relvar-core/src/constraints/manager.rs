@@ -744,10 +744,19 @@ impl ConstraintManager {
         // scanning every foreign key definition.
         if let Some(entries) = self.reverse_foreign_key_index.get(relation_name) {
             for (ref_name, fk) in entries {
-                let referencing_relation = engine.load_relation(ref_name)?;
+                // A self-referencing foreign key is evaluated on the new
+                // value on both sides (Golden Rule): deleting a tuple that
+                // only references itself is fine.
+                let loaded;
+                let referencing_relation = if ref_name == relation_name {
+                    relation_after_delete
+                } else {
+                    loaded = engine.load_relation(ref_name)?;
+                    &loaded
+                };
 
                 if !fk
-                    .is_satisfied_by(&referencing_relation, relation_after_delete)
+                    .is_satisfied_by(referencing_relation, relation_after_delete)
                     .map_err(|e| ConstraintManagerError::ForeignKeyViolation(e.to_string()))?
                 {
                     return Err(ConstraintManagerError::ForeignKeyViolation(format!(

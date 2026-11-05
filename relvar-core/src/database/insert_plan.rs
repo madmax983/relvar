@@ -27,6 +27,7 @@ use crate::constraints::{
     ForeignKeyConstraints,
 };
 use crate::database::Database;
+use crate::database::golden_rule::foreign_key_violation;
 use crate::database::key_index::{
     KeyIndex, StagedKeyValues, extract_key_values, key_attribute_lists, key_extraction_error,
 };
@@ -57,11 +58,17 @@ struct PreparedForeignKey<'a> {
 /// followed by `validate_tuple_content_constraints`.
 pub(crate) struct InsertContentPlan<'a, E: StorageEngine> {
     engine: &'a E,
+    relation_name: String,
     relation_type: RelationType,
     type_constraints: Option<&'a HashMap<String, AttributeConstraints>>,
     check_constraints: Option<&'a CheckConstraints>,
     fk_constraints: Option<&'a ForeignKeyConstraints>,
     prepared_fks: Vec<PreparedForeignKey<'a>>,
+    /// Foreign keys from the relation to itself. They are checked by
+    /// [`validate_self_references`](Self::validate_self_references) once the
+    /// whole batch is known, because a batch tuple may reference another
+    /// batch tuple (or itself).
+    self_referencing_fks: Vec<PreparedForeignKey<'a>>,
     fks_prepared: bool,
 }
 
@@ -75,11 +82,13 @@ impl<'a, E: StorageEngine> InsertContentPlan<'a, E> {
         let metadata = db.engine.get_relation_metadata(relation_name)?;
         Ok(Self {
             engine: &db.engine,
+            relation_name: relation_name.to_string(),
             relation_type: metadata.relation_type,
             type_constraints: db.constraints.get_type_constraints(relation_name),
             check_constraints: db.constraints.get_check_constraints(relation_name),
             fk_constraints: db.constraints.get_foreign_key_constraints(relation_name),
             prepared_fks: Vec::new(),
+            self_referencing_fks: Vec::new(),
             fks_prepared: false,
         })
     }
@@ -123,17 +132,24 @@ impl<'a, E: StorageEngine> InsertContentPlan<'a, E> {
             self.fks_prepared = true;
             if let Some(fk_constraints) = self.fk_constraints {
                 let mut prepared = Vec::with_capacity(fk_constraints.foreign_keys().len());
+                let mut self_referencing = Vec::new();
                 for fk in fk_constraints.foreign_keys() {
                     let referenced = self.engine.load_relation(fk.referenced_relation_name())?;
                     let referenced_keys = fk
                         .referenced_key_set(&referenced)
                         .map_err(|e| ConstraintManagerError::ForeignKeyViolation(e.to_string()))?;
-                    prepared.push(PreparedForeignKey {
+                    let target = if fk.referenced_relation_name() == self.relation_name {
+                        &mut self_referencing
+                    } else {
+                        &mut prepared
+                    };
+                    target.push(PreparedForeignKey {
                         foreign_key: fk,
                         referenced_keys,
                     });
                 }
                 self.prepared_fks = prepared;
+                self.self_referencing_fks = self_referencing;
             }
         }
 
@@ -151,6 +167,48 @@ impl<'a, E: StorageEngine> InsertContentPlan<'a, E> {
             }
         }
 
+        Ok(())
+    }
+
+    /// Validate the relation's foreign keys to itself against the candidate
+    /// post-insert state (TTM RM Prescription 23).
+    ///
+    /// Call once, after [`validate_tuple_content`](Self::validate_tuple_content)
+    /// succeeded for every tuple of `batch`. The referenced side of a
+    /// self-referencing foreign key is the relation *after* the insert, so
+    /// the probe set is the existing key values plus the batch's own: a
+    /// tuple may reference itself or another tuple of the same batch.
+    pub(crate) fn validate_self_references(
+        &mut self,
+        batch: &[Tuple],
+    ) -> Result<(), DatabaseError> {
+        for prepared in &mut self.self_referencing_fks {
+            let referenced_attributes = prepared.foreign_key.referenced_attributes();
+            for tuple in batch {
+                let mut values = Vec::with_capacity(referenced_attributes.len());
+                for attribute in referenced_attributes {
+                    let value = tuple.get(attribute).ok_or_else(|| {
+                        ConstraintManagerError::ForeignKeyViolation(format!(
+                            "Missing attribute in tuple: {attribute}"
+                        ))
+                    })?;
+                    values.push(value.clone());
+                }
+                prepared.referenced_keys.insert(values);
+            }
+            for tuple in batch {
+                if prepared
+                    .foreign_key
+                    .would_violate_against_set(tuple, &prepared.referenced_keys)
+                    .map_err(|e| ConstraintManagerError::ForeignKeyViolation(e.to_string()))?
+                {
+                    return Err(foreign_key_violation(
+                        &self.relation_name,
+                        prepared.foreign_key,
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 }
