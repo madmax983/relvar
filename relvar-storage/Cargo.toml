@@ -31,6 +31,7 @@ unused_dependencies = "allow"
 
 [dev-dependencies]
 tempfile.workspace = true
+stateright.workspace = true
 proptest.workspace = true
 criterion.workspace = true
 
