@@ -74,11 +74,6 @@ pub enum DatabaseError {
     #[error("Algebra error: {0}")]
     AlgebraError(String),
 
-    /// A [multiple assignment](crate::database::Database::multiple_assign)
-    /// names the same relvar more than once.
-    #[error("Relvar {0} is assigned more than once in one multiple assignment")]
-    DuplicateAssignmentTarget(String),
-
     /// A database assertion was violated.
     ///
     /// The payload is a human-readable message naming the violated assertion
@@ -87,6 +82,30 @@ pub enum DatabaseError {
     /// balances must be non-negative"`.
     #[error("{0}")]
     AssertionViolation(String),
+
+    /// A database assertion could not be registered, evaluated or honoured
+    /// for a reason other than a violation: a duplicate name, a reference
+    /// to something that is not a base relvar, an ill-typed condition, or a
+    /// drop of a relvar an assertion refers to. See
+    /// [`AssertionError`](crate::constraints::AssertionError).
+    #[error("{0}")]
+    Assertion(crate::constraints::AssertionError),
+
+    /// The database records a closure-backed database assertion that has
+    /// not been registered since the database was opened.
+    ///
+    /// TTM: RM Prescriptions 16 and 23. A closure cannot be stored, only
+    /// its name. Until the assertion is registered again with
+    /// [`add_assertion`](crate::database::Database::add_assertion), or
+    /// dropped with
+    /// [`forget_assertion`](crate::database::Database::forget_assertion),
+    /// the database cannot check its whole constraint, so every change is
+    /// refused. See
+    /// [`unregistered_assertions`](crate::database::Database::unregistered_assertions).
+    #[error(
+        "Database assertion '{0}' is recorded but not registered: register it with add_assertion or drop it with forget_assertion"
+    )]
+    UnregisteredAssertion(String),
 
     /// Arena allocation failure in the zero-alloc value layer (v0.8).
     ///

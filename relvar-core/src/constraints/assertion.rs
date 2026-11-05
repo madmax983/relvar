@@ -5,9 +5,22 @@
 //! assertions are predicates that must hold across the *entire database
 //! state*, potentially spanning multiple relvars.
 //!
+//! There are two kinds:
+//!
+//! - [`DeclarativeAssertion`]: a named [`AssertionCondition`] over
+//!   [`Query`] expressions (`IS_EMPTY`, subset, equality, cardinality).
+//!   It is plain data, so it is stored in the constraint catalog and a
+//!   reopened database enforces it with nothing to re-register.
+//! - [`DatabaseAssertion`]: a named Rust closure, for rules the query
+//!   language cannot express. It cannot be stored.
+//!
 //! # TTM Compliance
 //!
 //! - TTM RM Prescription 9: General integrity constraints (database assertions)
+//! - TTM RM Prescription 16: a database contains its constraints
+//!   (declarative assertions are persisted)
+//! - TTM RM Prescription 23: the Golden Rule (both kinds are checked at
+//!   every statement boundary)
 //! - Predicates are pure queries over relvars (no NULL involvement)
 //!
 //! # Example
@@ -56,15 +69,20 @@
 //! assert_eq!(db.assertions().len(), 1);
 //! ```
 
+use crate::constraints::CmpOp;
 use crate::database::Database;
 use crate::error::DatabaseError;
+use crate::query::{Query, QueryError};
 use crate::storage_engine::StorageEngine;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::string::ToString;
+use alloc::vec::Vec;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Errors that can occur when a database assertion is evaluated.
+/// Errors that can occur when a database assertion is registered,
+/// evaluated or removed.
 #[derive(Debug, Error)]
 pub enum AssertionError {
     /// A database assertion was violated.
@@ -75,11 +93,364 @@ pub enum AssertionError {
         /// Human-readable description of the business rule that was broken.
         description: String,
     },
+
+    /// A [`DeclarativeAssertion`]'s condition could not be evaluated: one
+    /// of its queries is ill typed (for example a `UNION` of different
+    /// headings, or a predicate comparing values of different types).
+    ///
+    /// The statement (or registration) that needed the evaluation is
+    /// rejected: a constraint that cannot be evaluated cannot be shown to
+    /// hold.
+    #[error("Database assertion '{assertion_name}' could not be evaluated: {reason}")]
+    Evaluation {
+        /// Name of the assertion.
+        assertion_name: String,
+        /// Why evaluation failed.
+        reason: String,
+    },
+
+    /// An assertion with this name is already registered (or, for a
+    /// closure assertion, recorded in the catalog). Assertion names are
+    /// unique across both kinds of assertion.
+    #[error("A database assertion named '{0}' already exists")]
+    DuplicateName(String),
+
+    /// A [`DeclarativeAssertion`] refers to a name that is not a base
+    /// relvar. Stored assertions may refer only to base relvars: virtual
+    /// relvars are not part of the stored catalog.
+    #[error(
+        "Database assertion '{assertion_name}' refers to '{relvar}', which is not a base relvar"
+    )]
+    UnknownRelvar {
+        /// Name of the assertion.
+        assertion_name: String,
+        /// The name that is not a base relvar.
+        relvar: String,
+    },
+
+    /// The relvar cannot be dropped: a [`DeclarativeAssertion`] refers to
+    /// it. Remove the assertion first.
+    #[error("Relvar '{relvar}' is referenced by database assertion '{assertion_name}'")]
+    RelvarReferenced {
+        /// The relvar being dropped.
+        relvar: String,
+        /// The assertion that refers to it.
+        assertion_name: String,
+    },
 }
 
 impl From<AssertionError> for DatabaseError {
+    /// A violation becomes [`DatabaseError::AssertionViolation`] (as it
+    /// always has); every other assertion error becomes
+    /// [`DatabaseError::Assertion`].
     fn from(error: AssertionError) -> Self {
-        DatabaseError::AssertionViolation(error.to_string())
+        match error {
+            AssertionError::Violation { .. } => {
+                DatabaseError::AssertionViolation(error.to_string())
+            }
+            other => DatabaseError::Assertion(other),
+        }
+    }
+}
+
+/// A relational boolean over [`Query`] expressions: the condition of a
+/// [`DeclarativeAssertion`].
+///
+/// TTM: RM Prescription 23. Any database constraint can be written as
+/// `IS_EMPTY(expression)` — "no tuple breaks the rule" — and the other forms
+/// are conveniences with the obvious meaning (`Subset(a, b)` is
+/// `IS_EMPTY(a MINUS b)`). Because a condition is plain data, it is stored in
+/// the catalog with the database (RM Prescription 16), unlike a closure.
+///
+/// # Type rules
+///
+/// Every query must be well typed, and the operands of
+/// [`Subset`](Self::Subset) and [`Equal`](Self::Equal) must have the same
+/// heading. A violation of either is an evaluation error, never a silent
+/// `false`.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::constraints::AssertionCondition;
+/// use relvar_core::query::Query;
+///
+/// // Every shipment refers to an existing supplier.
+/// let condition =
+///     AssertionCondition::IsEmpty(Query::scan("SP").not_matching(Query::scan("S")));
+/// assert_eq!(condition.referenced_relvars(), vec!["S", "SP"]);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AssertionCondition {
+    /// The query's result has no tuples (`IS_EMPTY`).
+    IsEmpty(Query),
+    /// The query's result has at least one tuple (`NOT IS_EMPTY`).
+    NotEmpty(Query),
+    /// Every tuple of the first query's result is a tuple of the second's
+    /// (`a ⊆ b`). The headings must be the same.
+    Subset(Query, Query),
+    /// The two queries' results are equal (`a = b`). The headings must be
+    /// the same.
+    Equal(Query, Query),
+    /// The cardinality of the query's result compares with `value` as
+    /// `comparison` says, e.g. `COUNT(P) <= 10`.
+    Cardinality {
+        /// The query whose result is counted.
+        query: Query,
+        /// How the count compares with `value` (`count <op> value`).
+        comparison: CmpOp,
+        /// The number the count is compared with.
+        value: u64,
+    },
+}
+
+impl AssertionCondition {
+    /// Evaluates the condition against the database's current state.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`QueryError`] of an ill-typed query, including
+    /// [`QueryError::Difference`] when the operands of `Subset` or `Equal`
+    /// have different headings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::AssertionCondition;
+    /// use relvar_core::database::Database;
+    /// use relvar_core::query::Query;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, ScalarType, TupleType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// let heading = TupleType::new().with_attribute("id", ScalarType::Int);
+    /// db.create_relvar("USERS", RelationType::new(heading)).unwrap();
+    ///
+    /// let condition = AssertionCondition::IsEmpty(Query::scan("USERS"));
+    /// assert!(condition.is_satisfied_by(&db).unwrap());
+    /// ```
+    pub fn is_satisfied_by<E: StorageEngine>(&self, db: &Database<E>) -> Result<bool, QueryError> {
+        match self {
+            AssertionCondition::IsEmpty(query) => Ok(query.execute(db)?.is_empty()),
+            AssertionCondition::NotEmpty(query) => Ok(!query.execute(db)?.is_empty()),
+            AssertionCondition::Subset(subset, superset) => {
+                let subset = subset.execute(db)?;
+                Ok(subset.minus_into(&superset.execute(db)?)?.is_empty())
+            }
+            AssertionCondition::Equal(left, right) => {
+                let left = left.execute(db)?;
+                let right = right.execute(db)?;
+                // `left MINUS right` checks the headings; once `left` is a
+                // subset of `right`, equal cardinalities make them equal.
+                let cardinality = left.cardinality();
+                Ok(cardinality == right.cardinality() && left.minus_into(&right)?.is_empty())
+            }
+            AssertionCondition::Cardinality {
+                query,
+                comparison,
+                value,
+            } => {
+                let count = u64::try_from(query.execute(db)?.cardinality()).unwrap_or(u64::MAX);
+                Ok(match comparison {
+                    CmpOp::Eq => count == *value,
+                    CmpOp::Ne => count != *value,
+                    CmpOp::Lt => count < *value,
+                    CmpOp::Le => count <= *value,
+                    CmpOp::Gt => count > *value,
+                    CmpOp::Ge => count >= *value,
+                })
+            }
+        }
+    }
+
+    /// The relvar names the condition's queries scan, sorted and without
+    /// repetitions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::AssertionCondition;
+    /// use relvar_core::query::Query;
+    ///
+    /// let condition = AssertionCondition::Subset(Query::scan("B"), Query::scan("A").union(Query::scan("B")));
+    /// assert_eq!(condition.referenced_relvars(), vec!["A", "B"]);
+    /// ```
+    pub fn referenced_relvars(&self) -> Vec<&str> {
+        let mut names = match self {
+            AssertionCondition::IsEmpty(query)
+            | AssertionCondition::NotEmpty(query)
+            | AssertionCondition::Cardinality { query, .. } => query.referenced_relvars(),
+            AssertionCondition::Subset(left, right) | AssertionCondition::Equal(left, right) => {
+                let mut names = left.referenced_relvars();
+                names.extend(right.referenced_relvars());
+                names
+            }
+        };
+        names.sort_unstable();
+        names.dedup();
+        names
+    }
+}
+
+/// A database assertion whose condition is a relational expression, so it
+/// can be stored with the database.
+///
+/// TTM: RM Prescription 16 (a database contains its constraints) and RM
+/// Prescription 23 (the Golden Rule). A declarative assertion is a named
+/// [`AssertionCondition`] over the database's base relvars. Once registered
+/// with [`Database::add_declarative_assertion`] it is
+///
+/// - validated against the current state (and rejected if violated);
+/// - enforced at every statement boundary — insert, bulk insert, delete,
+///   update and multiple assignment, inside and outside transactions —
+///   exactly like a closure [`DatabaseAssertion`];
+/// - checked by [`Database::verify_integrity`];
+/// - stored in the constraint catalog, so a reopened persistent database
+///   enforces it with no re-registration.
+///
+/// A relvar an assertion refers to cannot be dropped while the assertion
+/// exists.
+///
+/// # Examples
+///
+/// ```
+/// use relvar_core::constraints::{AssertionCondition, DeclarativeAssertion};
+/// use relvar_core::database::Database;
+/// use relvar_core::error::DatabaseError;
+/// use relvar_core::query::Query;
+/// use relvar_core::storage_engine::InMemoryEngine;
+/// use relvar_core::types::{RelationType, ScalarType, TupleType};
+/// use relvar_core::tuple;
+///
+/// let mut db = Database::new(InMemoryEngine::new());
+/// db.create_relvar("S", RelationType::new(TupleType::new().with_attribute("sno", ScalarType::Int))).unwrap();
+/// db.create_relvar(
+///     "SP",
+///     RelationType::new(
+///         TupleType::new()
+///             .with_attribute("sno", ScalarType::Int)
+///             .with_attribute("pno", ScalarType::Int),
+///     ),
+/// )
+/// .unwrap();
+///
+/// // IS_EMPTY(SP NOT MATCHING S): every shipment has a supplier.
+/// db.add_declarative_assertion(DeclarativeAssertion::new(
+///     "shipment_has_supplier",
+///     "Every shipment refers to an existing supplier",
+///     AssertionCondition::IsEmpty(Query::scan("SP").not_matching(Query::scan("S"))),
+/// ))
+/// .unwrap();
+///
+/// assert!(matches!(
+///     db.insert("SP", tuple! { sno: 1i64, pno: 7i64 }),
+///     Err(DatabaseError::AssertionViolation(_))
+/// ));
+/// db.insert("S", tuple! { sno: 1i64 }).unwrap();
+/// db.insert("SP", tuple! { sno: 1i64, pno: 7i64 }).unwrap();
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclarativeAssertion {
+    name: String,
+    description: String,
+    condition: AssertionCondition,
+}
+
+impl DeclarativeAssertion {
+    /// Creates a declarative assertion.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::{AssertionCondition, DeclarativeAssertion};
+    /// use relvar_core::query::Query;
+    ///
+    /// let assertion = DeclarativeAssertion::new(
+    ///     "has_admin",
+    ///     "There is at least one administrator",
+    ///     AssertionCondition::NotEmpty(Query::scan("ADMINS")),
+    /// );
+    /// assert_eq!(assertion.name(), "has_admin");
+    /// ```
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        condition: AssertionCondition,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            condition,
+        }
+    }
+
+    /// The assertion's name, unique among the database's assertions.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The human-readable description of the rule.
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    /// The assertion's condition.
+    pub fn condition(&self) -> &AssertionCondition {
+        &self.condition
+    }
+
+    /// The relvars the condition refers to, sorted and without repetitions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::{AssertionCondition, DeclarativeAssertion};
+    /// use relvar_core::query::Query;
+    ///
+    /// let assertion = DeclarativeAssertion::new(
+    ///     "disjoint",
+    ///     "No id is both active and archived",
+    ///     AssertionCondition::IsEmpty(Query::scan("ACTIVE").intersect(Query::scan("ARCHIVED"))),
+    /// );
+    /// assert_eq!(assertion.referenced_relvars(), vec!["ACTIVE", "ARCHIVED"]);
+    /// ```
+    pub fn referenced_relvars(&self) -> Vec<&str> {
+        self.condition.referenced_relvars()
+    }
+
+    /// Checks the assertion against the database's current state.
+    ///
+    /// # Errors
+    ///
+    /// [`AssertionError::Violation`] if the condition does not hold, or
+    /// [`AssertionError::Evaluation`] if it cannot be evaluated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::{AssertionCondition, DeclarativeAssertion};
+    /// use relvar_core::database::Database;
+    /// use relvar_core::query::Query;
+    /// use relvar_core::storage_engine::InMemoryEngine;
+    /// use relvar_core::types::{RelationType, ScalarType, TupleType};
+    ///
+    /// let mut db = Database::new(InMemoryEngine::new());
+    /// db.create_relvar("T", RelationType::new(TupleType::new().with_attribute("x", ScalarType::Int))).unwrap();
+    /// let not_empty = DeclarativeAssertion::new("t_not_empty", "T has a tuple", AssertionCondition::NotEmpty(Query::scan("T")));
+    /// assert!(not_empty.check(&db).is_err());
+    /// ```
+    pub fn check<E: StorageEngine>(&self, db: &Database<E>) -> Result<(), AssertionError> {
+        match self.condition.is_satisfied_by(db) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(AssertionError::Violation {
+                assertion_name: self.name.clone(),
+                description: self.description.clone(),
+            }),
+            Err(error) => Err(AssertionError::Evaluation {
+                assertion_name: self.name.clone(),
+                reason: error.to_string(),
+            }),
+        }
     }
 }
 
@@ -110,12 +481,17 @@ type AssertionPredicate<E> = Box<dyn Fn(&mut Database<E>) -> bool + Send + Sync>
 ///
 /// # Non-serializable predicates
 ///
-/// The predicate is an arbitrary Rust closure, so assertions cannot be
-/// serialized into the catalog. Unlike keys, foreign keys, CHECK and type
-/// constraints — which a persistent database stores and
-/// [`Database::new`] restores — assertions are **not persisted**: they must
-/// be re-registered with [`Database::add_assertion`] every time a database
-/// is opened, before it is modified. Until then they are not enforced.
+/// The predicate is an arbitrary Rust closure, so it cannot be serialized
+/// into the catalog; only its **name** is stored. Unlike keys, foreign
+/// keys, CHECK and type constraints and [`DeclarativeAssertion`]s — which a
+/// persistent database stores and [`Database::new`] restores — a closure
+/// assertion has to be registered again with [`Database::add_assertion`]
+/// after a persistent database is reopened. It is never silently lost:
+/// until it is registered again (or dropped with
+/// [`Database::forget_assertion`]), the reopened database refuses every
+/// change with [`DatabaseError::UnregisteredAssertion`]. Prefer a
+/// [`DeclarativeAssertion`] whenever the rule can be written as a query
+/// condition.
 ///
 /// # Predicate discipline
 ///
@@ -438,14 +814,14 @@ mod tests {
         db.add_assertion(total_balance_assertion()).unwrap();
         assert_eq!(db.assertions().len(), 1);
 
-        assert!(db.remove_assertion("total_non_negative"));
+        assert!(db.remove_assertion("total_non_negative").unwrap());
         assert_eq!(db.assertions().len(), 0);
     }
 
     #[test]
     fn test_remove_assertion_missing_returns_false() {
         let mut db = accounts_db();
-        assert!(!db.remove_assertion("no_such_assertion"));
+        assert!(!db.remove_assertion("no_such_assertion").unwrap());
     }
 
     #[test]

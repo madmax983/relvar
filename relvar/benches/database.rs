@@ -682,6 +682,128 @@ fn bench_multiple_assign(c: &mut Criterion) {
             );
         });
     }
+
+    // The same final state, reached by naming EMP three times (RM
+    // Prescription 21 combines them): INSERT the first half, INSERT the
+    // second half plus one extra employee, DELETE the extra one.
+    for count in [100, 1000, 10000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(
+            BenchmarkId::new("repeated_target", count),
+            count,
+            |b, &count| {
+                b.iter_batched(
+                    || {
+                        // Setup (not measured): the database and every source value.
+                        let db = create_cyclic_memory_database();
+                        let emp_type = db.get_relvar_type("EMP").unwrap();
+                        let emps = |range: std::ops::Range<i64>| {
+                            relvar::Relation::from_tuples(
+                                emp_type.clone(),
+                                range.map(make_employee_tuple),
+                            )
+                            .unwrap()
+                        };
+                        let half = count as i64 / 2;
+                        let first = emps(0..half);
+                        let second = emps(half..count as i64 + 1);
+                        let extra = emps(count as i64..count as i64 + 1);
+                        let dept = relvar::Relation::from_tuples(
+                            db.get_relvar_type("DEPT").unwrap(),
+                            (0..10i64).map(|d| tuple! { dept_id: d, manager: d }),
+                        )
+                        .unwrap();
+                        (db, first, second, extra, dept)
+                    },
+                    |(mut db, first, second, extra, dept)| {
+                        db.multiple_assign(vec![
+                            ("EMP", relvar::Assignment::Insert(first)),
+                            ("DEPT", relvar::Assignment::Replace(dept)),
+                            ("EMP", relvar::Assignment::Insert(second)),
+                            ("EMP", relvar::Assignment::Delete(extra)),
+                        ])
+                        .unwrap();
+                        black_box(db)
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+        );
+    }
+    group.finish();
+}
+
+/// P{pid} with `parents` tuples and C{cid, pid} with one child per parent,
+/// both keyed, optionally guarded by the declarative assertion
+/// IS_EMPTY(C NOT MATCHING P) ("every child has a parent").
+fn create_parent_child_memory_database(
+    parents: i64,
+    with_assertion: bool,
+) -> relvar::Database<relvar::InMemoryEngine> {
+    use relvar::constraints::{AssertionCondition, DeclarativeAssertion};
+    let mut db = relvar::Database::new(relvar::InMemoryEngine::new());
+    db.create_relvar(
+        "P",
+        RelationType::new(TupleType::new().with_attribute("pid", ScalarType::Int)),
+    )
+    .unwrap();
+    db.create_relvar(
+        "C",
+        RelationType::new(
+            TupleType::new()
+                .with_attribute("cid", ScalarType::Int)
+                .with_attribute("pid", ScalarType::Int),
+        ),
+    )
+    .unwrap();
+    let key = |attribute: &str| {
+        KeyConstraints::new()
+            .with_primary_key(PrimaryKey::new(vec![attribute.to_string()]).unwrap())
+    };
+    db.set_key_constraints("P", key("pid")).unwrap();
+    db.set_key_constraints("C", key("cid")).unwrap();
+    db.bulk_insert("P", (0..parents).map(|p| tuple! { pid: p }).collect())
+        .unwrap();
+    db.bulk_insert(
+        "C",
+        (0..parents).map(|p| tuple! { cid: p, pid: p }).collect(),
+    )
+    .unwrap();
+    if with_assertion {
+        db.add_declarative_assertion(DeclarativeAssertion::new(
+            "child_has_parent",
+            "Every child references an existing parent",
+            AssertionCondition::IsEmpty(
+                relvar::Query::scan("C").not_matching(relvar::Query::scan("P")),
+            ),
+        ))
+        .unwrap();
+    }
+    db
+}
+
+/// Cost of a declarative assertion per statement: one valid child insert
+/// with and without IS_EMPTY(C NOT MATCHING P). The assertion is evaluated
+/// on the whole post-statement state, so its cost grows with the relvars.
+fn bench_declarative_assertion_insert(c: &mut Criterion) {
+    let mut group = c.benchmark_group("declarative_assertion_insert");
+
+    for parents in [100i64, 1000, 10000] {
+        for (label, with_assertion) in [("no_assertion", false), ("is_empty_not_matching", true)] {
+            group.bench_with_input(BenchmarkId::new(label, parents), &parents, |b, &parents| {
+                b.iter_batched(
+                    // Setup (not measured): the populated database.
+                    || create_parent_child_memory_database(parents, with_assertion),
+                    |mut db| {
+                        db.insert("C", tuple! { cid: parents, pid: 0i64 }).unwrap();
+                        // Returned, so criterion drops it outside the measurement.
+                        black_box(db)
+                    },
+                    BatchSize::SmallInput,
+                );
+            });
+        }
+    }
     group.finish();
 }
 
@@ -701,6 +823,7 @@ criterion_group!(
     bench_transaction,
     bench_realistic_workload,
     bench_multiple_assign,
+    bench_declarative_assertion_insert,
     // Virtual relvar benchmarks (TTM RM Prescription 10)
     bench_virtual_relvar_creation,
     bench_virtual_relvar_query

@@ -19,11 +19,11 @@ use alloc::vec::Vec;
 
 /// An in-memory engine that stores the constraint catalog it is given.
 #[derive(Default)]
-struct CatalogEngine {
-    inner: InMemoryEngine,
-    stored: Option<ConstraintCatalog>,
-    stores: usize,
-    fail_store: bool,
+pub(super) struct CatalogEngine {
+    pub(super) inner: InMemoryEngine,
+    pub(super) stored: Option<ConstraintCatalog>,
+    pub(super) stores: usize,
+    pub(super) fail_store: bool,
 }
 
 impl StorageEngine for CatalogEngine {
@@ -91,7 +91,7 @@ fn parent_child_db() -> Database<CatalogEngine> {
     db
 }
 
-fn reopen(db: Database<CatalogEngine>) -> Database<CatalogEngine> {
+pub(super) fn reopen(db: Database<CatalogEngine>) -> Database<CatalogEngine> {
     Database::new(db.engine)
 }
 

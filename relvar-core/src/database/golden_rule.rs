@@ -50,12 +50,16 @@ impl<E: StorageEngine> Database<E> {
     /// written by other tools, or as a test oracle.
     ///
     /// Checked, in order:
+    /// 0. no recorded closure assertion is unregistered (see
+    ///    [`unregistered_assertions`](Self::unregistered_assertions));
     /// 1. every declared constraint names a base relvar that exists;
     /// 2. per base relvar: every tuple conforms to the relvar's heading,
     ///    then key (primary and candidate) uniqueness, type constraints and
     ///    CHECK constraints;
     /// 3. every foreign key;
-    /// 4. every registered [`DatabaseAssertion`](crate::DatabaseAssertion).
+    /// 4. every database assertion: each
+    ///    [`DeclarativeAssertion`](crate::DeclarativeAssertion) and each
+    ///    registered [`DatabaseAssertion`](crate::DatabaseAssertion).
     ///
     /// # Performance
     ///
@@ -65,6 +69,7 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns the first violation found:
+    /// [`DatabaseError::UnregisteredAssertion`],
     /// [`DatabaseError::RelationNotFound`] for a constraint on a missing
     /// relvar, [`ConstraintManagerError::TupleMismatch`],
     /// [`ConstraintManagerError::PrimaryKeyViolation`],
@@ -72,9 +77,10 @@ impl<E: StorageEngine> Database<E> {
     /// [`ConstraintManagerError::TypeConstraintViolation`],
     /// [`ConstraintManagerError::CheckConstraintViolation`],
     /// [`ConstraintManagerError::ForeignKeyViolation`] (all wrapped in
-    /// [`DatabaseError::Constraint`]) or
-    /// [`DatabaseError::AssertionViolation`]; or a storage error if a relvar
-    /// cannot be loaded.
+    /// [`DatabaseError::Constraint`]),
+    /// [`DatabaseError::AssertionViolation`] or [`DatabaseError::Assertion`]
+    /// (an assertion that cannot be evaluated); or a storage error if a
+    /// relvar cannot be loaded.
     ///
     /// # Examples
     ///
@@ -97,6 +103,9 @@ impl<E: StorageEngine> Database<E> {
     /// assert!(db.verify_integrity().is_ok());
     /// ```
     pub fn verify_integrity(&mut self) -> Result<(), DatabaseError> {
+        // 0. The database's whole constraint must be known.
+        self.ensure_complete()?;
+
         // 1. No constraint may outlive (or predate) its relvar.
         let dangling = self
             .constraints
@@ -105,6 +114,12 @@ impl<E: StorageEngine> Database<E> {
                 self.constraints
                     .all_foreign_keys()
                     .map(|(_, fk)| fk.referenced_relation_name()),
+            )
+            .chain(
+                self.constraints
+                    .database_constraints()
+                    .referenced_relvars()
+                    .map(|(relvar, _)| relvar),
             )
             .find(|name| !self.engine.relation_exists(name))
             .map(ToString::to_string);
@@ -245,11 +260,13 @@ impl<E: StorageEngine> Database<E> {
         Ok(())
     }
 
-    /// Evaluates every registered database assertion against the current
-    /// state, without any rollback side effects.
+    /// Evaluates every registered database assertion — declarative ones
+    /// first, then closures — against the current state, without any
+    /// rollback side effects.
     ///
     /// Returns the first violated assertion as an error.
     pub(crate) fn evaluate_assertions(&mut self) -> Result<(), AssertionError> {
+        self.evaluate_declarative_assertions()?;
         if self.assertions.is_empty() {
             return Ok(());
         }
@@ -269,6 +286,17 @@ impl<E: StorageEngine> Database<E> {
         self.evaluating_assertions = was_evaluating;
         self.assertions = assertions;
         violated.map_or(Ok(()), Err)
+    }
+
+    /// Evaluates every declarative assertion against the current state.
+    ///
+    /// Returns the first violated (or unevaluable) assertion as an error.
+    pub(crate) fn evaluate_declarative_assertions(&self) -> Result<(), AssertionError> {
+        self.constraints
+            .database_constraints()
+            .assertions
+            .iter()
+            .try_for_each(|assertion| assertion.check(self))
     }
 }
 

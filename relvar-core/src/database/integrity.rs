@@ -138,6 +138,7 @@ impl<E: StorageEngine> Database<E> {
         constraints: KeyConstraints,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("set_key_constraints")?;
+        self.ensure_complete()?;
         self.change_constraints(|manager, engine| {
             manager.set_key_constraints(engine, relation_name, constraints)
         })?;
@@ -208,6 +209,7 @@ impl<E: StorageEngine> Database<E> {
         constraints: ForeignKeyConstraints,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("set_foreign_key_constraints")?;
+        self.ensure_complete()?;
         self.change_constraints(|manager, engine| {
             manager.set_foreign_key_constraints(engine, relation_name, constraints)
         })
@@ -243,6 +245,7 @@ impl<E: StorageEngine> Database<E> {
         constraints: AttributeConstraints,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("set_type_constraints")?;
+        self.ensure_complete()?;
         self.change_constraints(|manager, engine| {
             manager.set_type_constraints(engine, relation_name, attribute_name, constraints)
         })
@@ -286,6 +289,7 @@ impl<E: StorageEngine> Database<E> {
         constraints: CheckConstraints,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("set_check_constraints")?;
+        self.ensure_complete()?;
         self.change_constraints(|manager, engine| {
             manager.set_check_constraints(engine, relation_name, constraints)
         })

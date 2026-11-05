@@ -41,6 +41,7 @@ impl<E: StorageEngine> Database<E> {
         relation_type: RelationType,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("create_relvar")?;
+        self.ensure_complete()?;
         if self.engine.relation_exists(name) || self.virtual_relvars.contains_key(name) {
             return Err(DatabaseError::RelationAlreadyExists(name.to_string()));
         }
@@ -84,10 +85,16 @@ impl<E: StorageEngine> Database<E> {
     /// tuples. Drop (or redefine) the referencing foreign keys first. A
     /// relvar referenced only by its own foreign keys can be dropped.
     ///
+    /// Returns [`DatabaseError::Assertion`] wrapping
+    /// [`AssertionError::RelvarReferenced`](crate::constraints::AssertionError::RelvarReferenced)
+    /// if a [declarative assertion](Self::add_declarative_assertion) refers
+    /// to the relvar; remove the assertion first.
+    ///
     /// Returns [`DatabaseError::TransactionError`] inside a transaction:
     /// schema changes are not transactional (see [`begin`](Self::begin)).
     pub fn drop_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("drop_relvar")?;
+        self.ensure_complete()?;
 
         // A database contains its relvars *and* their constraints (RM
         // Prescription 16): refuse to strand another relvar's foreign key.
@@ -103,6 +110,8 @@ impl<E: StorageEngine> Database<E> {
             }
             .into());
         }
+        // Nor a declarative assertion that refers to it.
+        self.ensure_not_referenced_by_assertion(name)?;
 
         // Drop from the engine first, so a failure leaves the constraints
         // in force. (A constraint-persisting engine forgets the relvar's

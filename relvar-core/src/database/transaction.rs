@@ -34,7 +34,9 @@ impl<E: StorageEngine> Database<E> {
     /// Transactions cover data manipulation only. Schema and constraint
     /// definitions ([`create_relvar`](Self::create_relvar),
     /// [`drop_relvar`](Self::drop_relvar), the `set_*_constraints` methods
-    /// and [`add_assertion`](Self::add_assertion)) are not transactional
+    /// and the assertion methods [`add_assertion`](Self::add_assertion),
+    /// [`add_declarative_assertion`](Self::add_declarative_assertion) and
+    /// [`remove_assertion`](Self::remove_assertion)) are not transactional
     /// and are rejected with [`DatabaseError::TransactionError`] while a
     /// transaction is active.
     ///

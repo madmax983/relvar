@@ -9,8 +9,8 @@ use relvar::constraints::{
     PrimaryKey,
 };
 use relvar::{
-    Database, DatabaseError, PersistentEngine, Relation, RelationType, ScalarType, Tuple,
-    TupleType, tuple,
+    Assignment, Database, DatabaseError, PersistentEngine, Relation, RelationType, ScalarType,
+    Tuple, TupleType, tuple,
 };
 use std::path::Path;
 
@@ -159,4 +159,105 @@ fn committed_multiple_assignment_inside_transaction_persists() {
     }
     let db = Database::new(PersistentEngine::open(dir.path()).unwrap());
     assert_eq!(cardinalities(&db), (1, 1));
+}
+
+// --- Several assignments to one target are combined ---------------------------
+
+fn a_ids(db: &Db) -> Vec<i64> {
+    let mut ids: Vec<i64> = db
+        .query("A")
+        .unwrap()
+        .tuples()
+        .filter_map(|t| t.get_typed::<i64>("a_id"))
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+fn a_rel(ids: &[i64]) -> Relation {
+    rel(
+        a_type(),
+        ids.iter()
+            .map(|id| tuple! { a_id: *id, b_ref: 1i64 })
+            .collect(),
+    )
+}
+
+#[test]
+fn repeated_targets_are_combined_and_survive_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut db = cyclic_db(dir.path());
+        db.multiple_assign(pair(1)).unwrap();
+        // A := ((A ∪ {2, 3}) − {1}) ∪ {4}. B's tuple pointed at A's 1,
+        // which goes, so B is reassigned in the same statement.
+        db.multiple_assign(vec![
+            ("A", Assignment::Insert(a_rel(&[2, 3]))),
+            ("A", Assignment::Delete(a_rel(&[1]))),
+            (
+                "B",
+                Assignment::Replace(rel(b_type(), vec![tuple! { b_id: 1i64, a_ref: 2i64 }])),
+            ),
+            ("A", Assignment::Insert(a_rel(&[4]))),
+        ])
+        .unwrap();
+        assert_eq!(a_ids(&db), vec![2, 3, 4]);
+    }
+    let mut db = Database::new(PersistentEngine::open(dir.path()).unwrap());
+    assert_eq!(a_ids(&db), vec![2, 3, 4]);
+    assert!(db.verify_integrity().is_ok());
+    // The key index was rebuilt from the combined value.
+    assert!(db.insert("A", tuple! { a_id: 2i64, b_ref: 1i64 }).is_err());
+    db.insert("A", tuple! { a_id: 5i64, b_ref: 1i64 }).unwrap();
+}
+
+#[test]
+fn repeated_targets_inside_a_transaction_roll_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = cyclic_db(dir.path());
+    db.multiple_assign(pair(1)).unwrap();
+
+    db.begin().unwrap();
+    db.multiple_assign(vec![
+        ("A", Assignment::Insert(a_rel(&[2]))),
+        ("A", Assignment::Insert(a_rel(&[3]))),
+    ])
+    .unwrap();
+    assert_eq!(a_ids(&db), vec![1, 2, 3]);
+    // A failing combined statement (B's reference to A's 1 would dangle)
+    // leaves the transaction usable.
+    assert!(
+        db.multiple_assign(vec![
+            ("A", Assignment::Delete(a_rel(&[1]))),
+            ("A", Assignment::Insert(a_rel(&[9]))),
+        ])
+        .is_err()
+    );
+    assert_eq!(a_ids(&db), vec![1, 2, 3]);
+    db.rollback().unwrap();
+
+    assert_eq!(a_ids(&db), vec![1]);
+    assert!(db.verify_integrity().is_ok());
+}
+
+#[test]
+fn heading_mismatch_in_a_repeated_target_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = cyclic_db(dir.path());
+    db.multiple_assign(pair(1)).unwrap();
+
+    let result = db.multiple_assign(vec![
+        ("A", Assignment::Insert(a_rel(&[2]))),
+        (
+            "A",
+            Assignment::Delete(rel(b_type(), vec![tuple! { b_id: 1i64, a_ref: 1i64 }])),
+        ),
+    ]);
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Constraint(
+            ConstraintManagerError::TupleMismatch
+        ))
+    ));
+    assert_eq!(a_ids(&db), vec![1]);
 }
