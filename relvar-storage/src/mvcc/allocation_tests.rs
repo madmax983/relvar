@@ -22,7 +22,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::pool::TxnPool;
 use super::snapshot::TransactionSnapshot;
@@ -33,10 +33,11 @@ use crate::wal::{Lsn, TransactionId};
 thread_local! {
     /// Armed only around the measured operation, on this thread.
     static MEASURING: Cell<bool> = const { Cell::new(false) };
+    /// Allocator calls this thread made while its gate was armed. Per
+    /// thread, like the gate: a global counter let one test's allocations
+    /// land in another test's concurrently open window (a flaky failure).
+    static ALLOC_COUNT: Cell<u64> = const { Cell::new(0) };
 }
-
-/// Total allocator calls observed while any thread had its gate armed.
-static ALLOC_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Debug aid: whether counted allocations print a backtrace. Cached once
 /// outside every measurement window — reading the environment inside
@@ -59,7 +60,7 @@ unsafe impl GlobalAlloc for CountingAllocator {
         // `with` never allocates inside the window. The atomic bump does
         // not allocate either.
         if MEASURING.with(|measuring| measuring.get()) {
-            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            ALLOC_COUNT.with(|count| count.set(count.get() + 1));
             // Backtraces and formatting allocate: disarm around them.
             if TRACE_ARMED.load(Ordering::Relaxed) {
                 MEASURING.with(|measuring| measuring.set(false));
@@ -95,14 +96,16 @@ fn measured<R>(f: impl FnOnce() -> R) -> (R, u64) {
     }
 
     MEASURING.with(|measuring| measuring.set(false));
+    // Touch the counter before arming too, so its first access cannot
+    // allocate inside the window.
+    let before = ALLOC_COUNT.with(Cell::get);
     let _disarm = Disarm;
     // Latch the trace flag BEFORE arming: `trace_allocations` reads the
     // environment (which allocates) and must never run while armed.
     TRACE_ARMED.store(trace_allocations(), Ordering::Relaxed);
     MEASURING.with(|measuring| measuring.set(true));
-    let before = ALLOC_COUNT.load(Ordering::Relaxed);
     let result = f();
-    let after = ALLOC_COUNT.load(Ordering::Relaxed);
+    let after = ALLOC_COUNT.with(Cell::get);
     drop(_disarm);
     TRACE_ARMED.store(false, Ordering::Relaxed);
     (result, after - before)
