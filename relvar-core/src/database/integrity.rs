@@ -162,7 +162,7 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// [`DatabaseError::Constraint`] wrapping
-    /// [`ConstraintManagerError::RelationNotFound`](crate::constraints::ConstraintManagerError::RelationNotFound),
+    /// [`ConstraintManagerError::RelationNotFound`],
     /// [`AttributeNotFound`](crate::constraints::ConstraintManagerError::AttributeNotFound),
     /// [`DuplicateKeyAttribute`](crate::constraints::ConstraintManagerError::DuplicateKeyAttribute),
     /// [`ForeignKeyTargetNotKey`](crate::constraints::ConstraintManagerError::ForeignKeyTargetNotKey),

@@ -77,7 +77,7 @@ impl<E: StorageEngine> Database<E> {
     ///
     /// Returns `DatabaseError::RelationNotFound` if the relation doesn't exist.
     ///
-    /// Returns [`ConstraintManagerError::RelvarReferenced`](crate::constraints::ConstraintManagerError::RelvarReferenced)
+    /// Returns [`ConstraintManagerError::RelvarReferenced`]
     /// (naming the referencing relvar) if a foreign key of *another* relvar
     /// references this one: dropping it would leave that foreign key
     /// dangling, and recreating the relvar would orphan the referencing
