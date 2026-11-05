@@ -17,8 +17,7 @@ Where each kind of evidence lives:
 - **Model check:** Stateright exploring every operation sequence up to a
   depth bound, against the real code. There are two:
   - `relvar/tests/ttm_golden_rule_model_check.rs` (database level);
-  - `relvar-storage/tests/ttm_model_check.rs` (engine level; lands with
-    the whole-heading key fix, see RM Proscription 3).
+  - `relvar-storage/tests/ttm_model_check.rs` (engine level).
 - **Gate:** `relvar/tests/ttm_proscription_6.rs`, a scan of the public API.
 - **Regression:** a focused test for a specific violation that has been
   fixed.
@@ -34,7 +33,7 @@ numbering and gives the project label in brackets.
 |---|------|---------------------|-------|-------|
 | 1 | No attribute ordering [project 4] | Headings and tuples are maps keyed by attribute name. Arena `TupleView`s are stored by position, but they compare and hash by attribute set, and `TupleView::new` validates the layout. | `model.rs`: `Tuple`/`Heading` are `Map`s; `lemma_tuple_attribute_order_irrelevant`, `lemma_heading_attribute_order_irrelevant`, `lemma_tuple_equality_is_extensional` | Refinement (every operator); arena tests `tuple_view_new_*` |
 | 2 | No tuple ordering [project 3] | The body is a hash set. `Relation` hashing is order-independent. `Ord` on relation *values* exists only so MIN/MAX and ordered collections work, and it is consistent with `==`. | `model.rs`: the body is a `Set`; `lemma_insertion_order_irrelevant`, `lemma_relation_equality_is_extensional` | `ord_tests.rs::prop_cmp_equal_iff_eq`; refinement |
-| 3 | No duplicate tuples [project 2] | (a) `Relation` set semantics. (b) `SlotRelation::insert` is a set insert. (c) `project`/`summarize` deduplicate. (d) *In progress:* the engine must enforce the whole-heading key under concurrency (inserting an already-visible tuple does nothing, and concurrent writes of the same tuple conflict). The engine model check found that it doesn't yet; the fix lands with that check. (e) MVCC shows each snapshot at most one version of each tuple. | `lemma_no_duplicates`, `lemma_cardinality_counts_distinct_tuples`, `lemma_heading_is_superkey`; `mvcc.rs::theorem_at_most_one_visible_version`; float `lemma_hash_coherent` | Arena `slot_relation_insert_duplicate_is_noop` and related; `ord_tests.rs::prop_eq_implies_equal_hash`; engine model check |
+| 3 | No duplicate tuples [project 2] | (a) `Relation` set semantics. (b) `SlotRelation::insert` is a set insert. (c) `project`/`summarize` deduplicate. (d) The engine enforces the whole-heading key under concurrency: inserting an already-visible tuple does nothing, and concurrent writes of the same tuple conflict (first-updater-wins). An in-memory index makes the check cheap, and a test-only consistency check compares it with a full heap scan. (e) MVCC shows each snapshot at most one version of each tuple. | `lemma_no_duplicates`, `lemma_cardinality_counts_distinct_tuples`, `lemma_heading_is_superkey`; `mvcc.rs::theorem_at_most_one_visible_version`; float `lemma_hash_coherent` | Arena `slot_relation_insert_duplicate_is_noop` and related; `ord_tests.rs::prop_eq_implies_equal_hash`; `persistent_engine/tests/implicit_key.rs`; engine model check |
 | 4 | No nulls [project 1] | `ScalarValue` has no null. `Tuple::new` rejects a missing attribute (`MissingValue`). Deserialization validates tuples and relations. `SUMMARIZE` uses PER semantics, so it never needs a "no rows" value. | `model.rs`: `Val` has no null variant; `lemma_no_nulls`, `lemma_missing_attribute_rejected`; `lemma_summarize_groups_nonempty` | Value-layer deserialization tests; refinement well-formedness checks |
 | 5 | No nullological mistakes | `TABLE_DEE`/`TABLE_DUM` are ordinary relations. `project` onto no attributes gives DEE or DUM. `GROUP {}` is allowed. `DIVIDEBY` with an empty remainder gives DEE or DUM. The empty key is allowed. | `lemma_dee_dum`, `lemma_degree_zero_is_dee_or_dum`, `lemma_project_onto_nothing`, `lemma_join_dee_dum`, `lemma_empty_key_means_at_most_one_tuple` | Refinement laws (join with DEE is identity, with DUM is empty; project onto none); `ttm_keys.rs` (empty key); divide and group regressions |
 | 6 | No internal-level constructs [project 6] | Tuple, page and slot ids, LSNs, transaction ids and xmin/xmax stay internal to the crate. The transaction handle is opaque and prints no id. | `mvcc.rs`: versions exist only below the logical model | Gate (scans every public signature, field, re-export and enum body reachable from the facade); `transaction_handle_is_opaque`; `persistent_engine/tests/proscription6.rs` |
@@ -85,6 +84,7 @@ numbering and gives the project label in brackets.
 - **Model-check depth.** The model checks are exhaustive only up to their
   depth bounds. The test suite runs depth 4 in memory and 3 on the
   persistent engine for the Golden Rule check, and depth 5 for the engine
-  check. CI's model-check job goes deeper. Beyond those depths, coverage
+  check. CI's model-check job goes deeper: depth 7 for the engine (647k
+  states), and depth 5 in memory and 4 persistent for the Golden Rule. Beyond those depths, coverage
   comes from the proofs, the seeded crash-consistency torture test and the
   proptest properties.

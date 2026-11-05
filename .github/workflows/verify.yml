@@ -59,5 +59,7 @@ jobs:
       # The test suite runs these at a shallow default depth; here they go
       # deeper. Each explores every operation sequence up to the bound
       # against the real code (see docs/ttm-invariants.md).
+      - name: Persistent engine refines the snapshot-isolation model (depth 7)
+        run: RELVAR_MODEL_CHECK_DEPTH=7 cargo test --release -p relvar-storage --test ttm_model_check -- --nocapture
       - name: Golden Rule on the real Database (depth 5 in memory, 4 persistent with crashes)
         run: RELVAR_MODEL_CHECK_DEPTH=5 cargo test --release -p relvar --test ttm_golden_rule_model_check -- --nocapture
