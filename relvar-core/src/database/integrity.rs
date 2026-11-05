@@ -118,6 +118,7 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: KeyConstraints,
     ) -> Result<(), DatabaseError> {
+        self.ensure_no_transaction("set_key_constraints")?;
         self.constraints
             .set_key_constraints(&mut self.engine, relation_name, constraints)?;
         // (Re)build the key index from current data so subsequent inserts
@@ -186,6 +187,7 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: ForeignKeyConstraints,
     ) -> Result<(), DatabaseError> {
+        self.ensure_no_transaction("set_foreign_key_constraints")?;
         Ok(self.constraints.set_foreign_key_constraints(
             &mut self.engine,
             relation_name,
@@ -222,6 +224,7 @@ impl<E: StorageEngine> Database<E> {
         attribute_name: &str,
         constraints: AttributeConstraints,
     ) -> Result<(), DatabaseError> {
+        self.ensure_no_transaction("set_type_constraints")?;
         Ok(self.constraints.set_type_constraints(
             &mut self.engine,
             relation_name,
@@ -267,6 +270,7 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: CheckConstraints,
     ) -> Result<(), DatabaseError> {
+        self.ensure_no_transaction("set_check_constraints")?;
         Ok(self
             .constraints
             .set_check_constraints(&mut self.engine, relation_name, constraints)?)

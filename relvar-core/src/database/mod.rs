@@ -330,8 +330,11 @@ impl<E: StorageEngine> Database<E> {
     /// # Errors
     ///
     /// Returns [`DatabaseError::AssertionViolation`] if the assertion does
-    /// not hold against the current database state.
+    /// not hold against the current database state, or
+    /// [`DatabaseError::TransactionError`] inside a transaction (a rollback
+    /// could restore a state the assertion was never checked against).
     pub fn add_assertion(&mut self, assertion: DatabaseAssertion<E>) -> Result<(), DatabaseError> {
+        self.ensure_no_transaction("add_assertion")?;
         if !assertion.is_satisfied_by(self) {
             return Err(AssertionError::Violation {
                 assertion_name: assertion.name().to_string(),

@@ -6,6 +6,7 @@ mod integrity;
 mod key_index;
 mod schema;
 mod transaction;
+mod ttm_ddl;
 mod ttm_foreign_keys;
 mod ttm_keys;
 mod ttm_self_reference;

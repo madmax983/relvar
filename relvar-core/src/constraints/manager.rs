@@ -137,6 +137,18 @@ pub enum ConstraintManagerError {
         /// The relvar whose foreign key references it.
         referencing: String,
     },
+
+    /// A relvar cannot be dropped while another relvar's foreign key
+    /// references it: the foreign key would dangle.
+    #[error(
+        "Relvar {relation} is referenced by a foreign key of {referencing} and cannot be dropped"
+    )]
+    RelvarReferenced {
+        /// The relvar being dropped.
+        relation: String,
+        /// The relvar whose foreign key references it.
+        referencing: String,
+    },
 }
 
 /// Manages integrity constraints for the database.
