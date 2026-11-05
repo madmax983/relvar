@@ -112,6 +112,12 @@ pub struct WalManager {
     /// in a multi-flush operation such as commit.
     #[cfg(test)]
     fail_flush_in: Option<u32>,
+
+    /// Test-only failure injection: when `Some(n)`, the `n`th upcoming
+    /// [`WalManager::log`] call fails with an I/O error (0 = the next
+    /// log). Lets tests fail a multi-record operation part-way.
+    #[cfg(test)]
+    fail_log_in: Option<u32>,
 }
 
 impl WalManager {
@@ -147,6 +153,8 @@ impl WalManager {
             fail_next_flush: false,
             #[cfg(test)]
             fail_flush_in: None,
+            #[cfg(test)]
+            fail_log_in: None,
         })
     }
 
@@ -219,6 +227,8 @@ impl WalManager {
             fail_next_flush: false,
             #[cfg(test)]
             fail_flush_in: None,
+            #[cfg(test)]
+            fail_log_in: None,
         })
     }
 
@@ -243,6 +253,17 @@ impl WalManager {
             return Err(WalError::Io(std::io::Error::other(
                 "injected WAL log failure",
             )));
+        }
+        // Test-only failure injection (see `fail_log_in`).
+        #[cfg(test)]
+        if let Some(n) = self.fail_log_in {
+            if n == 0 {
+                self.fail_log_in = None;
+                return Err(WalError::Io(std::io::Error::other(
+                    "injected WAL log failure",
+                )));
+            }
+            self.fail_log_in = Some(n - 1);
         }
 
         let lsn = self.current_lsn;
@@ -381,6 +402,23 @@ impl WalManager {
     #[cfg(test)]
     pub fn inject_flush_failure_in(&mut self, n: u32) {
         self.fail_flush_in = Some(n);
+    }
+
+    /// Test-only: the `n`th upcoming [`WalManager::log`] call fails with an
+    /// I/O error instead of logging (`n = 0` is the next log).
+    #[cfg(test)]
+    pub fn inject_log_failure_in(&mut self, n: u32) {
+        self.fail_log_in = Some(n);
+    }
+
+    /// Test-only: disarms every pending injected failure, so a test can
+    /// run bookkeeping steps without a leftover fault firing in them.
+    #[cfg(test)]
+    pub fn clear_injected_failures(&mut self) {
+        self.fail_next_log = false;
+        self.fail_next_flush = false;
+        self.fail_flush_in = None;
+        self.fail_log_in = None;
     }
 
     /// Scans the WAL file and yields all records in order.

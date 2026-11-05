@@ -10,5 +10,6 @@ mod lifecycle;
 mod lock;
 mod proscription6;
 mod recovery;
+mod torture;
 mod transaction;
 mod wal_tail;
