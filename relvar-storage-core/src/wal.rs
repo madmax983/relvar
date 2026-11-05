@@ -656,6 +656,30 @@ impl<'a> FrameDecoder<'a> {
             failed: false,
         }
     }
+
+    /// Byte offset just past the last successfully decoded frame.
+    ///
+    /// After the iterator yields an error this is the start of the bad
+    /// frame, i.e. the length of the valid prefix: recovery truncates a
+    /// torn tail back to it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_storage_core::wal::{Lsn, TransactionId, WalRecord, decode_frames, encode_frame};
+    ///
+    /// let record = WalRecord::Begin { txn_id: TransactionId::new(1) };
+    /// let mut bytes = encode_frame(Lsn::new(1), &record).unwrap();
+    /// let valid = bytes.len();
+    /// bytes.extend_from_slice(&[0xAB; 5]); // a torn tail
+    /// let mut decoder = decode_frames(&bytes);
+    /// assert!(decoder.next().unwrap().is_ok());
+    /// assert!(decoder.next().unwrap().is_err());
+    /// assert_eq!(decoder.offset(), valid);
+    /// ```
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
 }
 
 impl Iterator for FrameDecoder<'_> {
@@ -785,6 +809,13 @@ impl<'a> LegacyFrameDecoder<'a> {
             offset: 0,
             failed: false,
         }
+    }
+
+    /// Byte offset just past the last successfully decoded frame (the
+    /// valid prefix length); see [`FrameDecoder::offset`]. A short tail
+    /// that ends iteration cleanly is not part of the valid prefix.
+    pub fn offset(&self) -> usize {
+        self.offset
     }
 }
 

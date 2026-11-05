@@ -33,6 +33,7 @@ use relvar_storage_core::slotted::{
     MAX_XMAX_SLOT_GROWTH, SlotEntry, SlottedError, SlottedPage, TupleId, USABLE_PAGE_SIZE_V1,
     USABLE_PAGE_SIZE_V2, VERSIONED_PAGE_MAGIC, VersionedSlotEntry, decode_slotted_page,
     decode_versioned_page_into, encode_versioned_header_into, is_versioned_page, slot_bytes,
+    xmax_slot_reserve,
 };
 // Re-exported for the page-layout tests (child modules import via `::*`);
 // unused in the non-test build.
@@ -1174,19 +1175,22 @@ impl<D: BlockDevice> HeapFile<D> {
         // serialized slot directory by up to MAX_XMAX_SLOT_GROWTH bytes
         // (postcard varint of the deleter id), so every live slot must retain
         // that headroom now — a later delete/update on this page must never
-        // fail with PageFull. The reserve is computed up front because slot
-        // order is unrelated to offset order (the repack above runs in
-        // reverse), so an incremental check would test the lowest tuple
-        // against the smallest requirement.
-        let live_slots = buffer
+        // fail with PageFull. A slot whose xmax is already set keeps the
+        // remainder of that headroom (`xmax_slot_reserve`): when its deleter
+        // aborted, a later transaction re-sets xmax to its own (larger) id.
+        // The reserve is computed up front because slot order is unrelated
+        // to offset order (the repack above runs in reverse), so an
+        // incremental check would test the lowest tuple against the
+        // smallest requirement.
+        let reserve = buffer
             .page
             .slots
             .iter()
             .flatten()
-            .filter(|slot| slot.xmax.is_none())
-            .count();
-        let reserve = live_slots
-            .checked_mul(MAX_XMAX_SLOT_GROWTH)
+            .map(|slot| xmax_slot_reserve(slot.xmax))
+            .try_fold(0usize, |total, slot_reserve| {
+                total.checked_add(slot_reserve)
+            })
             .ok_or(HeapError::PageFull)?;
         let required_size = header_size
             .checked_add(reserve)
@@ -1415,6 +1419,28 @@ impl<D: BlockDevice> HeapFile<D> {
         tuple_id: TupleId,
         buffer: &mut crate::mvcc::PageWorkingSet,
     ) -> Result<(), HeapError> {
+        self.write_version_xmax(tuple_id, None, buffer, true)
+            .map(|_| ())
+    }
+
+    /// Sets `xmax` on one version slot and rewrites its page.
+    ///
+    /// Returns the slot's previous `xmax`, so a caller can restore it.
+    /// All tuple bytes are copied from the source page (no allocation).
+    /// With `flush`, the page is flushed to stable storage; without it the
+    /// caller owns durability (the engine's commit protocol flushes heap
+    /// files before the commit record becomes durable).
+    ///
+    /// The page's xmax reserve (see `emit_versioned_page`) guarantees the
+    /// re-emit fits for any id, so a page the insert path wrote never fails
+    /// here with [`HeapError::PageFull`].
+    fn write_version_xmax(
+        &mut self,
+        tuple_id: TupleId,
+        xmax: Option<crate::wal::TransactionId>,
+        buffer: &mut crate::mvcc::PageWorkingSet,
+        flush: bool,
+    ) -> Result<Option<crate::wal::TransactionId>, HeapError> {
         let page = self.load_page(tuple_id.page_id)?;
         if page.is_empty() {
             return Err(HeapError::TupleNotFound);
@@ -1428,12 +1454,126 @@ impl<D: BlockDevice> HeapFile<D> {
             .get_mut(tuple_id.slot as usize)
             .and_then(|s| s.as_mut())
             .ok_or(HeapError::TupleNotFound)?;
-        slot.xmax = None;
-        // Re-emit the page with the marking removed: all tuple bytes are
-        // copied from the source page, no new tuple, no allocation.
+        let previous = core::mem::replace(&mut slot.xmax, xmax);
         Self::emit_versioned_page(buffer, page.data(), None)?;
-        self.store_page_bytes(tuple_id.page_id, &buffer.page_image)?;
-        Ok(())
+        if flush {
+            self.store_page_bytes(tuple_id.page_id, &buffer.page_image)?;
+        } else {
+            self.write_page_bytes(tuple_id.page_id, &buffer.page_image)?;
+        }
+        Ok(previous)
+    }
+
+    /// Marks one version deleted by `txn_id` (MVCC soft delete) on the
+    /// engine's transactional write path.
+    ///
+    /// Like [`delete_tuple_versioned`](Self::delete_tuple_versioned), one
+    /// version record is claimed before the page is touched (exhaustion
+    /// fails typed with nothing mutated), but the page is not flushed: the
+    /// commit protocol flushes heap files before the commit record becomes
+    /// durable, and an uncommitted mark is undone by recovery.
+    ///
+    /// Returns the version's previous `xmax` (an aborted or crashed
+    /// deleter's id, or `None`) so a failed statement can restore it with
+    /// [`restore_version_xmax`](Self::restore_version_xmax).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::TupleNotFound`] if `tuple_id` names no version,
+    /// [`HeapError::Mvcc`] on pool exhaustion, or a device error.
+    pub(crate) fn mark_version_deleted(
+        &mut self,
+        tuple_id: TupleId,
+        txn_id: crate::wal::TransactionId,
+        version_pool: &mut VersionPool,
+    ) -> Result<Option<crate::wal::TransactionId>, HeapError> {
+        let handle: crate::mvcc::VersionHandle = version_pool.claim(txn_id)?;
+        let result = match version_pool.acquire_buffer() {
+            Ok(mut buffer) => self.write_version_xmax(tuple_id, Some(txn_id), &mut buffer, false),
+            Err(error) => Err(error.into()),
+        };
+        if result.is_err() {
+            version_pool.release(handle);
+        }
+        result
+    }
+
+    /// Restores a version's `xmax` to `previous` (compensation for a
+    /// statement that failed part-way). Claims no version record, so it
+    /// cannot fail with pool exhaustion; the page is not flushed (see
+    /// [`mark_version_deleted`](Self::mark_version_deleted)).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeapError::TupleNotFound`] if `tuple_id` names no version,
+    /// or a device error.
+    pub(crate) fn restore_version_xmax(
+        &mut self,
+        tuple_id: TupleId,
+        previous: Option<crate::wal::TransactionId>,
+        version_pool: &mut VersionPool,
+    ) -> Result<(), HeapError> {
+        let mut buffer = version_pool.acquire_buffer()?;
+        self.write_version_xmax(tuple_id, previous, &mut buffer, false)
+            .map(|_| ())
+    }
+
+    /// Physically undoes every non-committed transaction's changes:
+    /// removes versions whose creator is not in `committed` and clears
+    /// deletion marks whose deleter is not in `committed`.
+    ///
+    /// Recovery-only: it must run while NO transaction is live (at engine
+    /// open), because it treats every non-committed id as aborted. It is
+    /// idempotent, so a crash mid-pass is repaired by the next open.
+    /// Modified pages are synced before returning.
+    ///
+    /// Returns the number of slots changed (removed or un-marked).
+    ///
+    /// # Errors
+    ///
+    /// Returns a device or page-decode error.
+    pub(crate) fn undo_uncommitted_versions(
+        &mut self,
+        committed: &std::collections::HashSet<crate::wal::TransactionId>,
+        version_pool: &mut VersionPool,
+    ) -> Result<usize, HeapError> {
+        let mut buffer = version_pool.acquire_buffer()?;
+        let mut changed = 0;
+        let mut page_id = 0;
+        loop {
+            let page = self.load_page(page_id)?;
+            if page.is_empty() {
+                break;
+            }
+            if is_versioned_page(page.data()) {
+                let header = decode_versioned_page_into(page.data(), &mut buffer.page.slots)?;
+                buffer.page.magic = header.magic;
+                buffer.page.slot_count = header.slot_count;
+                let mut page_changed = 0;
+                for slot_option in buffer.page.slots.iter_mut() {
+                    let Some(slot) = slot_option else {
+                        continue;
+                    };
+                    if !committed.contains(&slot.xmin) {
+                        *slot_option = None;
+                        page_changed += 1;
+                    } else if slot.xmax.is_some_and(|xmax| !committed.contains(&xmax)) {
+                        slot.xmax = None;
+                        page_changed += 1;
+                    }
+                }
+                if page_changed > 0 {
+                    Self::emit_versioned_page(&mut buffer, page.data(), None)?;
+                    self.write_page_bytes(page_id, &buffer.page_image)?;
+                    changed += page_changed;
+                }
+            }
+            page_id += 1;
+        }
+        if changed > 0 {
+            self.sync()?;
+        }
+        Ok(changed)
     }
 
     /// Deletes a tuple by marking it with xmax (MVCC soft delete).
@@ -1486,35 +1626,9 @@ impl<D: BlockDevice> HeapFile<D> {
         version_pool: &mut VersionPool,
     ) -> Result<(), HeapError> {
         let mut buffer = version_pool.acquire_buffer()?;
-
-        // Read the page containing the tuple
-        let page = self.load_page(tuple_id.page_id)?;
-
-        if page.is_empty() {
-            return Err(HeapError::TupleNotFound);
-        }
-
-        let header = decode_versioned_page_into(page.data(), &mut buffer.page.slots)?;
-        buffer.page.magic = header.magic;
-        buffer.page.slot_count = header.slot_count;
-
-        // Find and mark the tuple
-        let slot = buffer
-            .page
-            .slots
-            .get_mut(tuple_id.slot as usize)
-            .and_then(|s| s.as_mut())
-            .ok_or(HeapError::TupleNotFound)?;
-
-        // Mark as deleted by this transaction
-        slot.xmax = Some(txn_id);
-
-        // Re-emit the page with the version marked: all tuple bytes are
-        // copied from the source page, no allocation.
-        Self::emit_versioned_page(&mut buffer, page.data(), None)?;
-        self.store_page_bytes(tuple_id.page_id, &buffer.page_image)?;
-
-        Ok(())
+        // Mark as deleted by this transaction and flush the page.
+        self.write_version_xmax(tuple_id, Some(txn_id), &mut buffer, true)
+            .map(|_| ())
     }
 
     /// Removes dead tuple versions for garbage collection.
@@ -1604,13 +1718,24 @@ impl<D: BlockDevice> HeapFile<D> {
 
         // Check each slot for dead versions
         for slot_option in buffer.page.slots.iter_mut() {
-            if let Some(slot) = slot_option
-                && Self::is_dead_version(slot, oldest_active_lsn, committed, txn_pool)
-            {
+            let Some(slot) = slot_option else {
+                continue;
+            };
+            if Self::is_dead_version(slot, oldest_active_lsn, committed, txn_pool) {
                 // This version is dead - remove it (its bytes are dropped by
                 // the re-emit below, freeing the slot for reuse).
                 *slot_option = None;
                 removed_count += 1;
+                page_modified = true;
+            } else if slot
+                .xmax
+                .is_some_and(|xmax| !committed.contains(&xmax) && !txn_pool.is_live(xmax))
+            {
+                // A deletion mark left by a deleter that can never commit
+                // (aborted, or crashed before recovery): no snapshot honors
+                // it, so clear it. This returns the slot to the "live"
+                // state a later delete expects and frees its varint bytes.
+                slot.xmax = None;
                 page_modified = true;
             }
         }
@@ -1712,6 +1837,32 @@ impl<D: BlockDevice> HeapFile<D> {
         committed: &std::collections::HashSet<crate::wal::TransactionId>,
         visit: &mut dyn FnMut(Tuple),
     ) -> Result<(), HeapError> {
+        self.for_each_visible_version(
+            snapshot,
+            txn_pool,
+            version_pool,
+            committed,
+            &mut |_, _, tuple| visit(tuple),
+        )
+    }
+
+    /// Visits each version visible to `snapshot` together with its
+    /// internal address and current `xmax`.
+    ///
+    /// The engine's transactional `store_relation` uses this to diff the
+    /// transaction's visible state against the new relation value: the
+    /// address locates the version to mark deleted, and `xmax` (a deleter
+    /// the snapshot does not honor: aborted, crashed, still live, or
+    /// committed after the snapshot) drives write-conflict detection.
+    /// The address never leaves the storage layer (TTM Proscription 6).
+    pub(crate) fn for_each_visible_version(
+        &mut self,
+        snapshot: &crate::mvcc::TransactionSnapshot,
+        txn_pool: &crate::mvcc::TxnPool,
+        version_pool: &mut VersionPool,
+        committed: &std::collections::HashSet<crate::wal::TransactionId>,
+        visit: &mut dyn FnMut(TupleId, Option<crate::wal::TransactionId>, Tuple),
+    ) -> Result<(), HeapError> {
         // One page working buffer for the whole scan: no per-page allocation.
         let mut buffer = version_pool.acquire_buffer()?;
         let mut page_id = 0;
@@ -1737,7 +1888,13 @@ impl<D: BlockDevice> HeapFile<D> {
             buffer.page.slot_count = header.slot_count;
 
             // Check each slot for visibility
-            for slot_entry in buffer.page.slots.iter().flatten() {
+            for (slot_index, slot_entry) in buffer
+                .page
+                .slots
+                .iter()
+                .enumerate()
+                .filter_map(|(index, slot)| slot.as_ref().map(|entry| (index, entry)))
+            {
                 // Create version metadata
                 let version_metadata = crate::mvcc::VersionMetadata {
                     xmin: slot_entry.xmin,
@@ -1754,7 +1911,11 @@ impl<D: BlockDevice> HeapFile<D> {
                     // Deserialize the tuple straight from the page image.
                     let tuple_data = slot_bytes(page.data(), slot_entry.offset, slot_entry.length)?;
                     let tuple: Tuple = deserialize_bounded(tuple_data)?;
-                    visit(tuple);
+                    let tuple_id = TupleId {
+                        page_id,
+                        slot: slot_index as u32,
+                    };
+                    visit(tuple_id, slot_entry.xmax, tuple);
                 }
             }
 
