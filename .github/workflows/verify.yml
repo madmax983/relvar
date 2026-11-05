@@ -48,3 +48,16 @@ jobs:
         run: |
           "$VERUS" --version
           "$VERUS" --crate-type=lib verify/verus/lib.rs --multiple-errors 50 --expand-errors
+
+  model-check:
+    name: Stateright model checks (deep)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The test suite runs these at a shallow default depth; here they go
+      # deeper. Each explores every operation sequence up to the bound
+      # against the real code (see docs/ttm-invariants.md).
+      - name: Golden Rule on the real Database (depth 5 in memory, 4 persistent with crashes)
+        run: RELVAR_MODEL_CHECK_DEPTH=5 cargo test --release -p relvar --test ttm_golden_rule_model_check -- --nocapture
