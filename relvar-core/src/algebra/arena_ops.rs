@@ -1038,15 +1038,22 @@ mod tests {
 
         struct CountingAllocator;
 
+        // SAFETY: every method delegates to `System`, which satisfies the
+        // `GlobalAlloc` contract; counting does not allocate (a `Cell` in a
+        // const-initialized thread-local) or touch the returned memory.
         unsafe impl GlobalAlloc for CountingAllocator {
             unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
                 ALLOC_COUNT.with(|count| count.set(count.get().wrapping_add(1)));
-                // SAFETY: straight delegation to the system allocator.
+                // SAFETY: our caller upholds `GlobalAlloc::alloc`'s contract
+                // (non-zero-size `layout`), which is exactly what
+                // `System.alloc` requires.
                 unsafe { std::alloc::System.alloc(layout) }
             }
 
             unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-                // SAFETY: `ptr`/`layout` came from `alloc` above.
+                // SAFETY: our caller guarantees `ptr` was returned by this
+                // allocator's `alloc` with `layout`; every such pointer came
+                // from `System.alloc(layout)`, as `System.dealloc` requires.
                 unsafe { std::alloc::System.dealloc(ptr, layout) }
             }
         }

@@ -24,6 +24,16 @@
 //!   and the heading are caller-owned borrows (`&'a Arena`, `&'a TupleType`),
 //!   so no raw pointers or `unsafe` appear outside [`Arena`] itself.
 //!
+//! # `unsafe`
+//!
+//! All `unsafe` in this module lives in [`Arena`]'s allocation methods —
+//! five blocks, one each in [`Arena::alloc_bytes`], [`Arena::alloc_str`],
+//! [`Arena::alloc_slice`], [`Arena::alloc_slice_mut`] and
+//! [`Arena::alloc_value`]. They turn a raw pointer from the private
+//! `alloc_raw` into a typed borrow tied to `&self`; the invariants they rely
+//! on are listed on [`Arena`], and each block carries a `// SAFETY:` comment
+//! naming the ones it uses (enforced by `clippy::undocumented_unsafe_blocks`).
+//!
 //! # `&self` vs `&mut self` on the allocator
 //!
 //! An earlier sketch of this API used `&mut self` allocation methods. That
@@ -78,6 +88,9 @@
 //! let back = slots.to_relation().unwrap();
 //! assert_eq!(back.cardinality(), 2);
 //! ```
+
+// Every `unsafe` block must state the invariant it relies on.
+#![deny(clippy::undocumented_unsafe_blocks)]
 
 use crate::types::{RelationType, ScalarType, TupleType};
 use crate::values::{Relation, ScalarValue, Tuple};
@@ -266,9 +279,12 @@ fn place(
 /// `reset` requires `&mut self`, which the borrow checker forbids while any
 /// borrow is live.
 ///
-/// The single `unsafe` block in this module (in [`Arena::alloc_bytes`])
-/// upholds these invariants:
+/// The `unsafe` blocks in the allocation methods ([`alloc_bytes`],
+/// [`alloc_str`], [`alloc_slice`], [`alloc_slice_mut`], [`alloc_value`]) rely
+/// on these invariants, which the private `alloc_raw` establishes:
 ///
+/// - The returned pointer is non-null, aligned as requested, and (for a
+///   non-zero size) in bounds of one chunk with that chunk's provenance.
 /// - Allocations are carved from a monotonically increasing cursor, so no two
 ///   live allocations overlap.
 /// - Chunk byte buffers are heap-stable: pushing a new chunk may reallocate
@@ -280,6 +296,20 @@ fn place(
 /// - `reset` and `drop` require `&mut self`; the returned references are tied
 ///   to the `&self` borrow in the method signatures, so the borrow checker
 ///   statically prevents invalidation while borrows are live.
+/// - Arena bytes are not assumed to be initialized: after `reset` a reused
+///   chunk may hold the uninitialized padding of earlier allocations. Every
+///   method therefore writes each byte or value before it forms a reference
+///   over it.
+///
+/// Values moved in with [`alloc_value`] are never dropped (neither on
+/// `reset` nor when the arena is dropped); any heap memory they own is
+/// leaked.
+///
+/// [`alloc_bytes`]: Arena::alloc_bytes
+/// [`alloc_str`]: Arena::alloc_str
+/// [`alloc_slice`]: Arena::alloc_slice
+/// [`alloc_slice_mut`]: Arena::alloc_slice_mut
+/// [`alloc_value`]: Arena::alloc_value
 ///
 /// `Arena` is `!Sync` (via [`RefCell`]) — arenas are single-threaded, matching
 /// the Waymaker caller-owned-arena discipline.
@@ -350,7 +380,7 @@ impl Arena {
         self.cursor.set(0);
     }
 
-    /// Allocates `n` uninitialized bytes and returns them as a mutable slice.
+    /// Allocates `n` zero-filled bytes and returns them as a mutable slice.
     ///
     /// # Errors
     ///
@@ -366,11 +396,17 @@ impl Arena {
             return Ok(&mut []);
         }
         let ptr = self.alloc_raw(n, 1)?;
-        // SAFETY: `ptr` addresses `n` bytes of fresh, disjoint arena memory.
-        // The chunk outlives the `&self` borrow this reference is tied to:
-        // chunk byte buffers never move, and `reset`/`drop` require `&mut
-        // self`, which the borrow checker forbids while this borrow is live.
-        Ok(unsafe { core::slice::from_raw_parts_mut(ptr, n) })
+        // SAFETY: `alloc_raw` returned a non-null pointer to `n` in-bounds
+        // bytes of one chunk, disjoint from every other live allocation, so
+        // writing them and handing out `&mut` aliases nothing. The bytes may
+        // be uninitialized (reused after `reset`), so they are zeroed before
+        // the slice is formed. The chunk outlives the `&self` borrow the
+        // slice is tied to: chunk buffers never move, and `reset`/`drop`
+        // require `&mut self`.
+        unsafe {
+            core::ptr::write_bytes(ptr, 0, n);
+            Ok(core::slice::from_raw_parts_mut(ptr, n))
+        }
     }
 
     /// Copies `s` into the arena and returns it as a borrowed `&str`.
@@ -382,7 +418,8 @@ impl Arena {
     pub fn alloc_str(&self, s: &str) -> Result<&str, AllocError> {
         let bytes = self.alloc_bytes(s.len())?;
         bytes.copy_from_slice(s.as_bytes());
-        // SAFETY: `bytes` is an exact copy of `s`, which is valid UTF-8.
+        // SAFETY: `from_utf8_unchecked` requires valid UTF-8; `bytes` is an
+        // exact copy of `s`, which is a `&str` and hence valid UTF-8.
         Ok(unsafe { core::str::from_utf8_unchecked(bytes) })
     }
 
@@ -403,9 +440,13 @@ impl Arena {
             .checked_mul(core::mem::size_of::<T>())
             .ok_or(AllocError::SizeOverflow(items.len()))?;
         let ptr = self.alloc_raw(bytes, core::mem::align_of::<T>())? as *mut T;
-        // SAFETY: `ptr` addresses `items.len()` properly-aligned slots of
-        // fresh, disjoint arena memory; `T: Copy` makes bitwise copy valid; each
-        // slot is written exactly once before the shared slice is formed.
+        // SAFETY: `alloc_raw` returned a non-null pointer, aligned for `T`,
+        // to `items.len() * size_of::<T>()` in-bounds bytes of one chunk,
+        // disjoint from `items` and from every other live allocation (so
+        // `copy_nonoverlapping` is valid). `T: Copy` makes a bitwise copy a
+        // valid `T`, and every slot is written before the shared slice is
+        // formed. The slice is tied to `&self`, which keeps the chunk alive
+        // and unmoved (see `alloc_bytes`).
         unsafe {
             core::ptr::copy_nonoverlapping(items.as_ptr(), ptr, items.len());
             Ok(core::slice::from_raw_parts(ptr as *const T, items.len()))
@@ -435,13 +476,20 @@ impl Arena {
             .checked_mul(core::mem::size_of::<T>())
             .ok_or(AllocError::SizeOverflow(len))?;
         let ptr = self.alloc_raw(bytes, core::mem::align_of::<T>())? as *mut T;
-        // SAFETY: `ptr` addresses `len` properly-aligned slots of fresh,
-        // disjoint arena memory; every slot is written exactly once (via
-        // `fill`, valid for `T: Copy`) before the exclusive slice is formed.
-        // Same invariants as `alloc_slice`, plus exclusive access.
-        let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
-        slice.fill(value);
-        Ok(slice)
+        // SAFETY: `alloc_raw` returned a non-null pointer, aligned for `T`,
+        // to `len * size_of::<T>()` in-bounds bytes of one chunk, disjoint
+        // from every other live allocation, so the `&mut` aliases nothing.
+        // Each of the `len` slots is initialized with `ptr::write` (the old
+        // bytes may be uninitialized; `T: Copy` has no drop to skip) before
+        // the slice is formed, and `i < len` keeps every `add` in bounds.
+        // The slice is tied to `&self`, which keeps the chunk alive and
+        // unmoved (see `alloc_bytes`).
+        unsafe {
+            for i in 0..len {
+                ptr.add(i).write(value);
+            }
+            Ok(core::slice::from_raw_parts_mut(ptr, len))
+        }
     }
 
     /// Moves `value` into arena memory and returns an exclusive borrow of it.
@@ -449,6 +497,9 @@ impl Arena {
     /// Used to place non-`Copy` structures (nested [`SlotRelation`]s, nested
     /// [`ScalarRef`]s, cloned [`ScalarType`]s) inside the arena during
     /// [`ScalarRef::from_owned`] conversion.
+    ///
+    /// `value` is never dropped — not on [`Arena::reset`] and not when the
+    /// arena is dropped — so any heap memory it owns is leaked.
     ///
     /// # Errors
     ///
@@ -459,11 +510,15 @@ impl Arena {
     #[allow(clippy::mut_from_ref)]
     pub fn alloc_value<T>(&self, value: T) -> Result<&mut T, AllocError> {
         let ptr = self.alloc_raw(core::mem::size_of::<T>(), core::mem::align_of::<T>())? as *mut T;
-        // SAFETY: `ptr` addresses one properly-aligned slot of fresh arena
-        // memory; it is written exactly once here, before the exclusive borrow
-        // is formed. (For zero-sized `T` the pointer is dangling but non-null
-        // and aligned for `T` — see `alloc_raw` — and no memory is touched,
-        // which is valid.)
+        // SAFETY: `alloc_raw` returned a non-null pointer, aligned for `T`,
+        // to `size_of::<T>()` in-bounds bytes of one chunk, disjoint from
+        // every other live allocation, so the `&mut` aliases nothing. The
+        // slot is initialized by `ptr::write` (which does not read or drop
+        // the possibly-uninitialized old bytes) before the borrow is formed.
+        // For zero-sized `T` the pointer is dangling but non-null and
+        // aligned (see `alloc_raw`) and no memory is touched. The borrow is
+        // tied to `&self`, which keeps the chunk alive and unmoved (see
+        // `alloc_bytes`).
         unsafe {
             core::ptr::write(ptr, value);
             Ok(&mut *ptr)
@@ -1503,6 +1558,18 @@ mod tests {
         let s = arena.alloc_str("").unwrap();
         assert_eq!(s, "");
         assert_eq!(arena.used_bytes(), 0);
+    }
+
+    /// Regression: `alloc_bytes` hands out `&mut [u8]`, which safe code may
+    /// read. After `reset` the first chunk is reused, and its bytes may hold
+    /// the uninitialized padding of earlier typed allocations — so the bytes
+    /// must be (re)initialized, not merely "fresh".
+    #[test]
+    fn arena_alloc_bytes_is_zeroed_after_reset() {
+        let mut arena = Arena::new();
+        arena.alloc_bytes(64).unwrap().fill(0xAB);
+        arena.reset();
+        assert!(arena.alloc_bytes(64).unwrap().iter().all(|&b| b == 0));
     }
 
     /// Regression: a zero-size request must still yield a pointer aligned for
