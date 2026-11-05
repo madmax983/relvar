@@ -84,6 +84,33 @@ While correctness and TTM compliance are paramount, performance matters:
 - See [benches/README.md](benches/README.md) for target metrics
 - Regressions > 10% require explanation and approval
 
+## Mechanized TTM Enforcement
+
+Every TTM invariant is enforced by a machine check, not just by convention.
+[`docs/ttm-invariants.md`](docs/ttm-invariants.md) maps each prescription
+and proscription to its runtime enforcement, its proof and its tests, and
+[ADR 0001](docs/adr/0001-mechanized-ttm-enforcement.md) explains why the
+checks are layered this way.
+
+- **Verus proofs** live in `verify/verus/` and are checked by the `verify.yml`
+  workflow against a pinned Verus release. Never add `assume`, `admit`,
+  `external_body` or axioms; CI rejects them.
+- **Refinement tests** in `relvar-core/tests/ttm_refinement.rs` compare every
+  algebra operator with a reference model built from the same definitions.
+- **Stateright model checks** drive the real code:
+  - `relvar/tests/ttm_golden_rule_model_check.rs` checks the Golden Rule,
+    transactions and crash/reopen;
+  - `relvar-storage/tests/ttm_model_check.rs` checks MVCC isolation and
+    recovery.
+  - `RELVAR_MODEL_CHECK_DEPTH` sets how deep they search.
+- **Proscription 6 gate:** `relvar/tests/ttm_proscription_6.rs` fails if a
+  public signature mentions a physical identifier.
+
+**If you change the semantics of an operator, a constraint or a transaction
+rule,** update the Verus model, the reference model and the model checks in
+the same PR. A red proof or model check means the code and the spec
+disagree. Decide which one is wrong; never weaken the check to get green.
+
 ## Pre-Commit Checklist
 
 Before committing, **all** of the following must pass:
