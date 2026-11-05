@@ -424,7 +424,8 @@ impl Aggregation {
         tuples: &[&Tuple],
     ) -> Result<ScalarValue, SummarizeError> {
         if self.result_type == ScalarType::Float {
-            let mut sum = 0.0_f64;
+            // -0.0 is the additive identity: the sum of {-0.0} is -0.0, not 0.0.
+            let mut sum = -0.0_f64;
             for tuple in tuples {
                 let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
                     SummarizeError::AggregationError(format!(
@@ -508,7 +509,8 @@ impl Aggregation {
         attr_name: &str,
         tuples: &[&Tuple],
     ) -> Result<ScalarValue, SummarizeError> {
-        let mut sum = 0.0_f64;
+        // -0.0 is the additive identity: the sum of {-0.0} is -0.0, not 0.0.
+        let mut sum = -0.0_f64;
         for tuple in tuples {
             let value = tuple.get_typed::<f64>(attr_name).ok_or_else(|| {
                 SummarizeError::AggregationError(format!(

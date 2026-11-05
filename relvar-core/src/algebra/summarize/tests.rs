@@ -641,3 +641,26 @@ fn test_summarize_result_tuples_conform_to_heading() {
         assert_eq!(t.tuple_type(), heading);
     }
 }
+
+/// `0.0` and `-0.0` are distinct values, and the sum of a group whose only
+/// value is `-0.0` is `-0.0` (the IEEE additive identity is `-0.0`), so SUM
+/// and AVG must not turn it into `0.0`. Found by `tests/ttm_refinement.rs`.
+#[test]
+fn test_sum_and_avg_of_negative_zero_are_negative_zero() {
+    let heading = TupleType::new()
+        .with_attribute("k", ScalarType::Int)
+        .with_attribute("v", ScalarType::Float);
+    let mut relation = Relation::new(RelationType::new(heading));
+    relation.insert(tuple! { k: 1i64, v: -0.0f64 }).unwrap();
+
+    let result = relation
+        .summarize(
+            &[],
+            &[Aggregation::sum_float("s", "v"), Aggregation::avg("m", "v")],
+        )
+        .unwrap();
+
+    let t = result.tuples().next().unwrap();
+    assert_eq!(t.get("s"), Some(&ScalarValue::Float(-0.0)));
+    assert_eq!(t.get("m"), Some(&ScalarValue::Float(-0.0)));
+}
