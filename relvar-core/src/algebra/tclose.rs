@@ -67,6 +67,7 @@ impl Relation {
     /// # Errors
     ///
     /// Returns `DatabaseError` if:
+    /// - `from_attr` and `to_attr` are the same attribute.
     /// - The relation is not binary (degree != 2).
     /// - The specified attributes do not exist.
     /// - The attributes have different types.
@@ -82,6 +83,12 @@ impl Relation {
         to_attr: &str,
     ) -> Result<(), DatabaseError> {
         // 1. Validation
+        if from_attr == to_attr {
+            return Err(DatabaseError::AlgebraError(format!(
+                "TCLOSE requires two distinct attributes, but both are '{}'",
+                from_attr
+            )));
+        }
         if self.degree() != 2 {
             return Err(DatabaseError::AlgebraError(format!(
                 "TCLOSE requires a binary relation (degree 2), found degree {}",
@@ -90,21 +97,12 @@ impl Relation {
         }
 
         let heading = self.relation_type().heading();
-        if !heading.has_attribute(from_attr) {
-            return Err(DatabaseError::AttributeNotFound(
-                from_attr.to_string(),
-                "relation".to_string(),
-            ));
-        }
-        if !heading.has_attribute(to_attr) {
-            return Err(DatabaseError::AttributeNotFound(
-                to_attr.to_string(),
-                "relation".to_string(),
-            ));
-        }
-
-        let from_type = heading.get_attribute_type(from_attr).unwrap();
-        let to_type = heading.get_attribute_type(to_attr).unwrap();
+        let from_type = heading.get_attribute_type(from_attr).ok_or_else(|| {
+            DatabaseError::AttributeNotFound(from_attr.to_string(), "relation".to_string())
+        })?;
+        let to_type = heading.get_attribute_type(to_attr).ok_or_else(|| {
+            DatabaseError::AttributeNotFound(to_attr.to_string(), "relation".to_string())
+        })?;
 
         if from_type != to_type {
             return Err(DatabaseError::AlgebraError(format!(
@@ -215,6 +213,7 @@ fn compute_next_paths(
 
 #[cfg(test)]
 mod tests {
+    use crate::error::DatabaseError;
     use crate::tuple;
     use crate::types::{RelationType, ScalarType, TupleType};
     use crate::values::Relation;
@@ -283,6 +282,27 @@ mod tests {
         let r = Relation::new(RelationType::new(heading));
 
         assert!(r.tclose("x", "x").is_err());
+    }
+
+    /// `tclose(a, a)` is meaningless (an edge needs two endpoints); it must be
+    /// rejected with a clear error rather than failing deep inside the
+    /// semi-naive loop.
+    #[test]
+    fn test_tclose_rejects_identical_attributes() {
+        let heading = TupleType::new()
+            .with_attribute("x", ScalarType::Int)
+            .with_attribute("y", ScalarType::Int);
+        let mut r = Relation::new(RelationType::new(heading));
+        r.insert(tuple! { x: 1i64, y: 2i64 }).unwrap();
+
+        let result = r.tclose("x", "x");
+        assert!(
+            matches!(
+                result,
+                Err(DatabaseError::AlgebraError(ref msg)) if msg.contains("distinct")
+            ),
+            "expected a clear AlgebraError, got {result:?}"
+        );
     }
 
     #[test]
