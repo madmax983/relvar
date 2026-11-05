@@ -75,10 +75,8 @@ fn test_ungroup_empty_rva_removes_parent_tuple() {
 #[test]
 fn test_ungroup_attribute_collision_behavior() {
     // Verify behavior when ungrouping an RVA that has an attribute name colliding with parent.
-    // Current implementation suggests "Last Write Wins" or overwrite behavior.
     // Schema: { id: Int, details: Relation { id: String } }
     // Parent "id" is Int(1). RVA "id" is String("nested").
-    // Result heading should have "id". Type depends on implementation order.
 
     let rva_heading = TupleType::new().with_attribute("id", ScalarType::String);
     let rva_rel_type = RelationType::new(rva_heading.clone());
@@ -105,29 +103,15 @@ fn test_ungroup_attribute_collision_behavior() {
         })
         .unwrap();
 
-    // Ungroup "details"
-    let result = relation.ungroup("details").unwrap();
-
-    assert_eq!(result.cardinality(), 1);
-
-    let tuple = result.tuples().next().unwrap();
-    // Check which "id" won.
-    // If overwrite happens, likely the RVA attribute overwrites the parent attribute
-    // because `ungroup` usually adds RVA attributes *after* parent attributes (or iterates them later).
-
-    // In `compute_ungrouped_tuples`:
-    // 1. Add non-RVA (parent) attributes.
-    // 2. Add RVA attributes.
-    // So RVA attributes overwrite parent attributes.
-
-    // Verify "id" is now String("nested")
-    if let Some(ScalarValue::String(val)) = tuple.get("id") {
-        assert_eq!(val, "nested");
-    } else if let Some(ScalarValue::Int(val)) = tuple.get("id") {
-        panic!("Collision resulted in parent value: {}", val);
-    } else {
-        panic!("Unexpected type for id: {:?}", tuple.get("id"));
-    }
+    // Ungroup "details": the result heading would contain "id" twice
+    // (Int from the parent, String from the RVA). TTM forbids duplicate
+    // attribute names, so the operator must reject it rather than let one
+    // side silently win.
+    let result = relation.ungroup("details");
+    assert!(matches!(
+        result,
+        Err(relvar_core::algebra::UngroupError::AttributeCollision(ref a)) if a == "id"
+    ));
 }
 
 #[test]

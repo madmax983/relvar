@@ -9,6 +9,11 @@
 //! - Relation-valued attributes are a key feature of the relational model
 //! - Group and ungroup are inverses: `ungroup(group(R, attrs, name), name) ≡ R`
 //! - Set semantics are maintained at all levels
+//! - Grouping *every* attribute is legal: the result has only the RVA
+//!   attribute (one tuple holding `R` when `R` is non-empty, no tuples
+//!   otherwise)
+//! - Ungrouping is rejected when an RVA attribute name collides with an
+//!   outer attribute name (the result heading would have a duplicate)
 //!
 //! # Example
 //!
@@ -53,10 +58,6 @@ pub enum GroupError {
     #[error("No attributes specified for grouping")]
     NoAttributesSpecified,
 
-    /// Cannot group all attributes - at least one must remain as a grouping key.
-    #[error("All attributes cannot be grouped (need at least one non-grouped attribute)")]
-    AllAttributesGrouped,
-
     /// The name for the result RVA conflicts with an existing attribute.
     #[error("Result attribute '{0}' already exists")]
     ResultAttributeExists(String),
@@ -80,6 +81,11 @@ pub enum UngroupError {
     /// Failed to construct a tuple during the ungrouping process.
     #[error("Failed to create ungrouped tuple: {0}")]
     TupleCreation(String),
+
+    /// An attribute of the RVA has the same name as an attribute of the
+    /// outer relation, so the ungrouped heading would contain it twice.
+    #[error("Ungrouping would produce two attributes named '{0}'")]
+    AttributeCollision(String),
 }
 
 impl Relation {
@@ -91,7 +97,10 @@ impl Relation {
     ///
     /// # Arguments
     ///
-    /// * `attrs_to_group` - The attribute names to collect into the RVA
+    /// * `attrs_to_group` - The attribute names to collect into the RVA. The
+    ///   list is a set: repeating a name is the same as naming it once. It may
+    ///   name every attribute (TTM permits this; the result then has only the
+    ///   RVA attribute).
     /// * `rva_name` - The name for the new relation-valued attribute
     ///
     /// # Returns
@@ -103,8 +112,8 @@ impl Relation {
     ///
     /// - [`GroupError::AttributeNotFound`] - A specified attribute doesn't exist
     /// - [`GroupError::NoAttributesSpecified`] - Empty attributes list
-    /// - [`GroupError::AllAttributesGrouped`] - No grouping key attributes remain
-    /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts
+    /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts with a
+    ///   remaining (non-grouped) attribute
     /// # Examples
     ///
     /// ```
@@ -124,6 +133,15 @@ impl Relation {
     /// assert_eq!(grouped.cardinality(), 1);
     /// ```
     pub fn group(&self, attrs_to_group: &[&str], rva_name: &str) -> Result<Relation, GroupError> {
+        // The attribute list is a set: drop repeated names (keeping order).
+        let mut unique: Vec<&str> = Vec::with_capacity(attrs_to_group.len());
+        for attr in attrs_to_group {
+            if !unique.contains(attr) {
+                unique.push(attr);
+            }
+        }
+        let attrs_to_group = unique.as_slice();
+
         // 1. Validate request and determine grouping attributes
         let grouping_attrs = validate_group_request(self, attrs_to_group, rva_name)?;
 
@@ -167,10 +185,26 @@ impl Relation {
     ///
     /// - [`UngroupError::AttributeNotFound`] - The attribute doesn't exist
     /// - [`UngroupError::NotRelationValued`] - The attribute is not an RVA
+    /// - [`UngroupError::AttributeCollision`] - An RVA attribute has the same
+    ///   name as an outer attribute
+    ///
     /// # Examples
     ///
-    /// ```text
+    /// ```
+    /// use relvar_core::types::{TupleType, RelationType, ScalarType};
+    /// use relvar_core::values::Relation;
+    /// use relvar_core::tuple;
+    ///
+    /// let heading = TupleType::new()
+    ///     .with_attribute("dept", ScalarType::String)
+    ///     .with_attribute("emp_id", ScalarType::Int);
+    /// let mut rel = Relation::new(RelationType::new(heading));
+    /// rel.insert(tuple! { dept: "IT", emp_id: 1i64 }).unwrap();
+    /// rel.insert(tuple! { dept: "IT", emp_id: 2i64 }).unwrap();
+    ///
     /// // Inverse of group
+    /// let grouped = rel.group(&["emp_id"], "emps").unwrap();
+    /// assert_eq!(grouped.ungroup("emps").unwrap(), rel);
     /// ```
     pub fn ungroup(&self, rva_name: &str) -> Result<Relation, UngroupError> {
         // 1. Validate request and get RVA type
@@ -210,11 +244,6 @@ fn validate_group_request(
         }
     }
 
-    // Check that we're not grouping all attributes
-    if attrs_to_group.len() == relation.relation_type().degree() {
-        return Err(GroupError::AllAttributesGrouped);
-    }
-
     // Determine grouping attributes (the ones NOT being grouped into RVA)
     let grouping_attrs: Vec<String> = relation
         .relation_type()
@@ -243,25 +272,24 @@ fn build_group_result_heading(
     // Build result heading
     let mut result_heading = TupleType::new();
 
-    // Add grouping attributes
-    for attr in grouping_attrs {
-        let attr_type = relation
+    let attr_type = |attr: &str| {
+        relation
             .relation_type()
             .tuple_type()
             .get_attribute_type(attr)
-            .unwrap();
-        result_heading = result_heading.with_attribute(attr.clone(), attr_type.clone());
+            .cloned()
+            .ok_or_else(|| GroupError::AttributeNotFound(attr.to_string()))
+    };
+
+    // Add grouping attributes
+    for attr in grouping_attrs {
+        result_heading = result_heading.with_attribute(attr.clone(), attr_type(attr)?);
     }
 
     // Build RVA heading (from attributes being grouped)
     let mut rva_heading = TupleType::new();
     for attr in attrs_to_group {
-        let attr_type = relation
-            .relation_type()
-            .tuple_type()
-            .get_attribute_type(attr)
-            .unwrap();
-        rva_heading = rva_heading.with_attribute(attr.to_string(), attr_type.clone());
+        rva_heading = rva_heading.with_attribute(attr.to_string(), attr_type(attr)?);
     }
 
     // Add RVA to result heading
@@ -298,13 +326,20 @@ fn group_tuples<'a>(
         // Extract grouping key
         key_buffer.clear();
         for attr in grouping_attrs.iter() {
-            key_buffer.push(tuple.get(attr).unwrap());
+            key_buffer.push(
+                tuple
+                    .get(attr)
+                    .ok_or_else(|| GroupError::AttributeNotFound(attr.clone()))?,
+            );
         }
 
         // Extract grouped attributes for RVA
         let mut rva_values = alloc::collections::BTreeMap::new();
         for (i, &attr) in attrs_to_group.iter().enumerate() {
-            rva_values.insert(attr_names[i].clone(), tuple.get(attr).unwrap().clone());
+            let value = tuple
+                .get(attr)
+                .ok_or_else(|| GroupError::AttributeNotFound(attr.to_string()))?;
+            rva_values.insert(attr_names[i].clone(), value.clone());
         }
 
         let rva_tuple = Tuple::new_unchecked(rva_heading_arc.clone(), rva_values);
@@ -376,7 +411,7 @@ fn validate_ungroup_request(
         .relation_type()
         .tuple_type()
         .get_attribute_type(rva_name)
-        .unwrap();
+        .ok_or_else(|| UngroupError::AttributeNotFound(rva_name.to_string()))?;
 
     match rva_type {
         ScalarType::Relation(rel_type) => Ok(*rel_type.clone()),
@@ -392,24 +427,18 @@ fn build_ungroup_result_heading(
     let mut result_heading = TupleType::new();
 
     // Add non-RVA attributes
-    for attr_name in relation.relation_type().tuple_type().attribute_names() {
+    for (attr_name, attr_type) in relation.relation_type().tuple_type().attributes() {
         if attr_name != rva_name {
-            let attr_type = relation
-                .relation_type()
-                .tuple_type()
-                .get_attribute_type(attr_name)
-                .unwrap();
             result_heading =
                 result_heading.with_attribute(attr_name.to_string(), attr_type.clone());
         }
     }
 
-    // Add RVA's attributes
-    for attr_name in rva_relation_type.tuple_type().attribute_names() {
-        let attr_type = rva_relation_type
-            .tuple_type()
-            .get_attribute_type(attr_name)
-            .unwrap();
+    // Add RVA's attributes; a name already present would be duplicated.
+    for (attr_name, attr_type) in rva_relation_type.tuple_type().attributes() {
+        if result_heading.has_attribute(attr_name) {
+            return Err(UngroupError::AttributeCollision(attr_name.clone()));
+        }
         result_heading = result_heading.with_attribute(attr_name.to_string(), attr_type.clone());
     }
 
@@ -664,22 +693,94 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_group_all_attributes_fails() {
+    fn dept_emp() -> Relation {
         let heading = TupleType::new()
             .with_attribute("dept_id".to_string(), ScalarType::Int)
             .with_attribute("emp_id".to_string(), ScalarType::Int);
+        let mut relation = Relation::new(RelationType::new(heading));
+        relation
+            .insert(tuple! { dept_id: 10i64, emp_id: 1i64 })
+            .unwrap();
+        relation
+            .insert(tuple! { dept_id: 10i64, emp_id: 2i64 })
+            .unwrap();
+        relation
+            .insert(tuple! { dept_id: 20i64, emp_id: 3i64 })
+            .unwrap();
+        relation
+    }
 
-        let rel_type = RelationType::new(heading);
-        let relation = Relation::new(rel_type);
+    /// TTM permits grouping every attribute: the result has only the RVA
+    /// attribute and (for a non-empty input) one tuple whose RVA is the input.
+    #[test]
+    fn test_group_all_attributes_is_legal() {
+        let relation = dept_emp();
+        let result = relation.group(&["dept_id", "emp_id"], "all").unwrap();
 
-        let result = relation.group(&["dept_id", "emp_id"], "employees");
+        assert_eq!(result.degree(), 1);
+        assert_eq!(result.cardinality(), 1);
+        let tuple = result.tuples().next().unwrap();
+        assert_eq!(
+            tuple.get("all"),
+            Some(&ScalarValue::Relation(relation.clone()))
+        );
+        assert_eq!(result.ungroup("all").unwrap(), relation);
+    }
 
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            GroupError::AllAttributesGrouped
-        ));
+    /// Grouping every attribute of an empty relation gives an empty result
+    /// (one tuple per tuple of r{}, which is TABLE_DUM).
+    #[test]
+    fn test_group_all_attributes_of_empty_relation_is_empty() {
+        let empty = Relation::new(dept_emp().relation_type().clone());
+        let result = empty.group(&["dept_id", "emp_id"], "all").unwrap();
+        assert_eq!(result.degree(), 1);
+        assert!(result.is_empty());
+    }
+
+    /// The attribute list is a set: a repeated name must not be miscounted
+    /// (it used to trip the "all attributes grouped" check).
+    #[test]
+    fn test_group_duplicate_attribute_names_are_a_set() {
+        let relation = dept_emp();
+        let result = relation.group(&["emp_id", "emp_id"], "emps").unwrap();
+        assert_eq!(result, relation.group(&["emp_id"], "emps").unwrap());
+        assert_eq!(result.degree(), 2);
+        assert_eq!(result.cardinality(), 2);
+    }
+
+    /// TTM: ungrouping must not produce two attributes with the same name;
+    /// an RVA attribute that collides with an outer attribute is an error.
+    #[test]
+    fn test_ungroup_rejects_attribute_name_collision() {
+        let inner_heading = TupleType::new().with_attribute("dept_id", ScalarType::Int);
+        let mut inner = Relation::new(RelationType::new(inner_heading.clone()));
+        inner.insert(tuple! { dept_id: 99i64 }).unwrap();
+
+        let outer_heading = TupleType::new()
+            .with_attribute("dept_id", ScalarType::Int)
+            .with_attribute(
+                "rva",
+                ScalarType::Relation(Box::new(RelationType::new(inner_heading))),
+            );
+        let mut outer = Relation::new(RelationType::new(outer_heading.clone()));
+        outer
+            .insert(
+                Tuple::new(
+                    outer_heading,
+                    vec![
+                        ("dept_id".to_string(), ScalarValue::Int(10)),
+                        ("rva".to_string(), ScalarValue::Relation(inner)),
+                    ],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        let result = outer.ungroup("rva");
+        assert!(
+            matches!(result, Err(UngroupError::AttributeCollision(ref a)) if a == "dept_id"),
+            "expected AttributeCollision, got {result:?}"
+        );
     }
 
     #[test]
