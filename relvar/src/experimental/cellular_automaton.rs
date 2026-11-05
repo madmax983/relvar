@@ -117,7 +117,7 @@ impl CellularAutomaton {
 
         // Rename back to x, y
         let rename_map = vec![("nx", "x"), ("ny", "y")];
-        Ok(neighbor_counts.rename(&rename_map))
+        Ok(neighbor_counts.rename(&rename_map)?)
     }
 
     fn apply_rules(cells: &Relation, counts_xy: &Relation) -> Result<Relation, DatabaseError> {

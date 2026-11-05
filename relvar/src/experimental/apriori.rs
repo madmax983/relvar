@@ -70,8 +70,8 @@ impl Apriori {
         let f1 = freq_1
             .clone()
             .project(&["item"])?
-            .rename(&[("item", "item1")]);
-        let f2 = freq_1.project(&["item"])?.rename(&[("item", "item2")]);
+            .rename(&[("item", "item1")])?;
+        let f2 = freq_1.project(&["item"])?.rename(&[("item", "item2")])?;
 
         // 2. Cross join to form candidates
         let candidates = f1
@@ -86,8 +86,8 @@ impl Apriori {
         });
 
         // 4. Form transaction pairs: (tid, item1, item2)
-        let t1 = self.transactions.clone().rename(&[("item", "item1")]);
-        let t2 = self.transactions.clone().rename(&[("item", "item2")]);
+        let t1 = self.transactions.clone().rename(&[("item", "item1")])?;
+        let t2 = self.transactions.clone().rename(&[("item", "item2")])?;
         let trans_pairs = t1
             .join(&t2)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;

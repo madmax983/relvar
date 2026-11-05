@@ -220,7 +220,7 @@ impl KnowledgeGraph {
 
         // Apply renames
         if !rename_map.is_empty() {
-            result = result.rename(&rename_map);
+            result = result.rename(&rename_map)?;
         }
 
         // Project to only keep variables (removes columns with concrete values)

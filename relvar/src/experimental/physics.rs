@@ -71,7 +71,7 @@ impl PhysicsEngine {
             ("vx", "vx1"),
             ("vy", "vy1"),
             ("mass", "m1"),
-        ]);
+        ])?;
 
         let p2 = self.particles.rename(&[
             ("id", "id2"),
@@ -80,7 +80,7 @@ impl PhysicsEngine {
             ("vx", "vx2"),
             ("vy", "vy2"),
             ("mass", "m2"),
-        ]);
+        ])?;
 
         let pairs = p1.join(&p2)?;
 
@@ -145,11 +145,11 @@ impl PhysicsEngine {
         // We'll take the original particles and join with net_forces. But it's an inner join.
         // Relational algebra lacks an easy outer join. We compute difference and union.
 
-        let p_base = self.particles.rename(&[("id", "id1")]);
+        let p_base = self.particles.rename(&[("id", "id1")])?;
         let particles_with_forces = p_base.join(&net_forces)?;
 
         let p_ids = self.particles.project(&["id"])?;
-        let force_ids = net_forces.project(&["id1"])?.rename(&[("id1", "id")]);
+        let force_ids = net_forces.project(&["id1"])?.rename(&[("id1", "id")])?;
         let missing_ids = p_ids
             .difference(&force_ids)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
@@ -158,7 +158,7 @@ impl PhysicsEngine {
         let missing_with_zero_forces = self
             .particles
             .join(&missing_ids)?
-            .rename(&[("id", "id1")])
+            .rename(&[("id", "id1")])?
             .extend("net_fx", ScalarType::Float, |_| ScalarValue::Float(0.0))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .extend("net_fy", ScalarType::Float, |_| ScalarValue::Float(0.0))
@@ -214,7 +214,7 @@ impl PhysicsEngine {
                 ("new_y", "y"),
                 ("new_vx", "vx"),
                 ("new_vy", "vy"),
-            ]);
+            ])?;
 
         Ok(next_state)
     }

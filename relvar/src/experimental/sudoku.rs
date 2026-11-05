@@ -128,7 +128,7 @@ impl SudokuSolver {
         // join on the constraint attributes plus val.
         let compute_invalid =
             |rename_mappings: &[(&str, &str)]| -> Result<Relation, DatabaseError> {
-                let known_renamed = known_with_box.rename(rename_mappings);
+                let known_renamed = known_with_box.rename(rename_mappings)?;
                 let invalid = all_possibilities
                     .join(&known_renamed)
                     .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;

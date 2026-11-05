@@ -81,14 +81,14 @@ impl Blockchain {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["tx_id", "from", "net_amount"])?
-            .rename(&[("from", "account"), ("net_amount", "amount")]);
+            .rename(&[("from", "account"), ("net_amount", "amount")])?;
 
         // Credits (to)
         // Keep tx_id to ensure set-based union does not deduplicate identical amount transactions
         let credits = self
             .transactions
             .project(&["tx_id", "to", "amount"])?
-            .rename(&[("to", "account")]);
+            .rename(&[("to", "account")])?;
 
         // Combine
         let all_movements = debits
@@ -143,13 +143,13 @@ impl Blockchain {
             ("block_id", "curr_id"),
             ("prev_hash", "curr_prev_hash"),
             ("hash", "curr_hash"),
-        ]);
+        ])?;
 
         let prev_blocks = self.blocks.rename(&[
             ("block_id", "prev_id"),
             ("prev_hash", "p_prev_hash"), // unused
             ("hash", "p_hash"),
-        ]);
+        ])?;
 
         let joined = current_blocks.theta_join(&prev_blocks, |curr, prev| {
             let curr_id = curr.get_typed::<i64>("curr_id").unwrap();

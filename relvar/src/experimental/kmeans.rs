@@ -93,7 +93,7 @@ impl KMeans {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 4. Join back to find candidate clusters
-        let min_dists_joinable = min_dists.rename(&[("min_sq_dist", "sq_dist")]);
+        let min_dists_joinable = min_dists.rename(&[("min_sq_dist", "sq_dist")])?;
         let candidates = distances.join(&min_dists_joinable)?;
 
         // 5. Handle ties by picking the minimum cluster_id

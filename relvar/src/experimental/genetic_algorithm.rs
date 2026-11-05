@@ -122,13 +122,13 @@ impl GeneticAlgorithm {
             ("gene_a", "a1"),
             ("gene_b", "b1"),
             ("fitness", "f1"),
-        ]);
+        ])?;
         let eval_p2 = evaluated.rename(&[
             ("id", "id2"),
             ("gene_a", "a2"),
             ("gene_b", "b2"),
             ("fitness", "f2"),
-        ]);
+        ])?;
 
         let joined = eval_p1.theta_join(&eval_p2, |t1, t2| {
             let f1 = t1.get_typed::<i64>("f1").unwrap();
@@ -162,7 +162,7 @@ impl GeneticAlgorithm {
                 rank < elite_count_i64
             })
             .project(&["id1"])?
-            .rename(&[("id1", "id")]);
+            .rename(&[("id1", "id")])?;
 
         let parents = evaluated
             .join(&selected_ids)?
@@ -174,8 +174,8 @@ impl GeneticAlgorithm {
     fn reproduce(&self, parents: &Relation) -> Result<Relation, DatabaseError> {
         // Reproduction
         // Cross join parents to create pairs
-        let p1 = parents.rename(&[("id", "id1"), ("gene_a", "a1"), ("gene_b", "b1")]);
-        let p2 = parents.rename(&[("id", "id2"), ("gene_a", "a2"), ("gene_b", "b2")]);
+        let p1 = parents.rename(&[("id", "id1"), ("gene_a", "a1"), ("gene_b", "b1")])?;
+        let p2 = parents.rename(&[("id", "id2"), ("gene_a", "a2"), ("gene_b", "b2")])?;
 
         let pairs = p1.join(&p2)?;
 
@@ -223,7 +223,7 @@ impl GeneticAlgorithm {
                 ("new_id", "id"),
                 ("new_gene_a", "gene_a"),
                 ("new_gene_b", "gene_b"),
-            ]);
+            ])?;
 
         // Keep the best parents (elitism) and add offspring
         let next_pop = parents

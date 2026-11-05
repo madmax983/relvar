@@ -14,7 +14,7 @@
 //! we form groups that represent the rolling window, which can then be aggregated
 //! using standard summation operators.
 
-use relvar_core::algebra::{Aggregation, JoinError};
+use relvar_core::algebra::{Aggregation, JoinError, RenameError};
 use relvar_core::error::DatabaseError;
 use relvar_core::values::{Relation, ScalarValue};
 
@@ -76,7 +76,7 @@ pub fn moving_average(
 ) -> Result<Relation, DatabaseError> {
     let prev_attr_suffix = generate_non_colliding_suffix(relation);
 
-    let (r_prev, prev_attr_suffix) = prepare_previous_relation(relation, prev_attr_suffix);
+    let (r_prev, prev_attr_suffix) = prepare_previous_relation(relation, prev_attr_suffix)?;
 
     let joined = perform_window_theta_join(
         relation,
@@ -112,7 +112,10 @@ fn generate_non_colliding_suffix(relation: &Relation) -> String {
     prev_attr_suffix
 }
 
-fn prepare_previous_relation(relation: &Relation, prev_attr_suffix: String) -> (Relation, String) {
+fn prepare_previous_relation(
+    relation: &Relation,
+    prev_attr_suffix: String,
+) -> Result<(Relation, String), RenameError> {
     let original_heading = relation.relation_type().heading();
     let mut rename_map = Vec::new();
 
@@ -127,8 +130,8 @@ fn prepare_previous_relation(relation: &Relation, prev_attr_suffix: String) -> (
     let rename_slice: Vec<(&str, &str)> =
         rename_map.iter().map(|(k, v)| (*k, v.as_str())).collect();
 
-    let r_prev = relation.rename(&rename_slice);
-    (r_prev, prev_attr_suffix)
+    let r_prev = relation.rename(&rename_slice)?;
+    Ok((r_prev, prev_attr_suffix))
 }
 
 fn perform_window_theta_join(

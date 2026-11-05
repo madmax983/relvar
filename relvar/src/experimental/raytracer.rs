@@ -290,7 +290,7 @@ impl Scene {
         // 7. Map Colors
         // Rename min_t to t in closest_hits to natural join it back with hits.
         // This acts like an INNER JOIN hits h ON h.x=c.x AND h.y=c.y AND h.t=c.min_t
-        let closest_renamed = closest_hits_base.rename(&[("min_t", "t")]);
+        let closest_renamed = closest_hits_base.rename(&[("min_t", "t")])?;
 
         // Note: Multiple spheres could theoretically be exactly at distance t.
         // Set semantics handle duplicates, but we could get multiple colors if

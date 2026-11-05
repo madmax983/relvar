@@ -58,7 +58,7 @@ impl MarkovChain {
         // 1. Rename attributes to prepare for join
         let current_dist = self
             .state_distribution
-            .rename(&[("state", "from_state"), ("probability", "current_prob")]);
+            .rename(&[("state", "from_state"), ("probability", "current_prob")])?;
 
         // 2. Join current distribution with transitions
         let joined = current_dist.join(&self.transitions)?;
@@ -82,7 +82,7 @@ impl MarkovChain {
 
         // 5. Rename back to standard schema
         self.state_distribution =
-            next_dist_raw.rename(&[("to_state", "state"), ("new_prob", "probability")]);
+            next_dist_raw.rename(&[("to_state", "state"), ("new_prob", "probability")])?;
 
         Ok(())
     }

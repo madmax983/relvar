@@ -79,8 +79,8 @@ impl LogicSimulator {
     }
 
     fn evaluate_binary_gates(&self, current_wires: &Relation) -> Result<Relation, DatabaseError> {
-        let w1 = current_wires.rename(&[("wire", "in1"), ("val", "val1")]);
-        let w2 = current_wires.rename(&[("wire", "in2"), ("val", "val2")]);
+        let w1 = current_wires.rename(&[("wire", "in1"), ("val", "val1")])?;
+        let w2 = current_wires.rename(&[("wire", "in2"), ("val", "val2")])?;
 
         let joined1 = self.binary_gates.join(&w1)?;
         let joined2 = joined1.join(&w2)?;
@@ -104,13 +104,13 @@ impl LogicSimulator {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["out", "out_val"])?
-            .rename(&[("out", "wire"), ("out_val", "val")]);
+            .rename(&[("out", "wire"), ("out_val", "val")])?;
 
         Ok(eval_binary)
     }
 
     fn evaluate_unary_gates(&self, current_wires: &Relation) -> Result<Relation, DatabaseError> {
-        let w_in = current_wires.rename(&[("wire", "in_wire"), ("val", "val_in")]);
+        let w_in = current_wires.rename(&[("wire", "in_wire"), ("val", "val_in")])?;
         let joined_unary = self.unary_gates.join(&w_in)?;
 
         let eval_unary = joined_unary
@@ -127,7 +127,7 @@ impl LogicSimulator {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["out", "out_val"])?
-            .rename(&[("out", "wire"), ("out_val", "val")]);
+            .rename(&[("out", "wire"), ("out_val", "val")])?;
 
         Ok(eval_unary)
     }

@@ -77,7 +77,7 @@ impl RelationalRbac {
 
         let user_inherited_roles_proj = user_inherited_roles
             .project(&["user_id", "inherits_from"])?
-            .rename(&[("inherits_from", "role_id")]);
+            .rename(&[("inherits_from", "role_id")])?;
 
         // 3. Combine direct roles with inherited roles
         let all_user_roles = self

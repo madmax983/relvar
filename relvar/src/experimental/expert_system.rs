@@ -110,7 +110,7 @@ impl ExpertSystem {
         current_facts: &Relation,
         total_conditions: &Relation,
     ) -> Result<Relation, DatabaseError> {
-        let facts_as_conds = current_facts.rename(&[("fact", "condition")]);
+        let facts_as_conds = current_facts.rename(&[("fact", "condition")])?;
         let satisfied_conditions = self.rule_conditions.join(&facts_as_conds)?;
 
         if satisfied_conditions.cardinality() == 0 {
@@ -137,7 +137,7 @@ impl ExpertSystem {
 
         Ok(new_conclusions
             .project(&["conclusion"])?
-            .rename(&[("conclusion", "fact")]))
+            .rename(&[("conclusion", "fact")])?)
     }
 }
 

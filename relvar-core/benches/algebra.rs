@@ -253,8 +253,9 @@ fn bench_rename(c: &mut Criterion) {
             let relation = create_employee_relation(size);
 
             b.iter(|| {
-                let result =
-                    relation.rename(&[("emp_id", "employee_id"), ("dept_id", "department_id")]);
+                let result = relation
+                    .rename(&[("emp_id", "employee_id"), ("dept_id", "department_id")])
+                    .unwrap();
                 black_box(result);
             });
         });

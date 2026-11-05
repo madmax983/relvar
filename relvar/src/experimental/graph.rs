@@ -170,12 +170,12 @@ impl Graph {
         frontier: &Relation,
     ) -> Result<Relation, DatabaseError> {
         let rename_map = vec![(self.node_id_attr.as_str(), self.from_attr.as_str())];
-        let frontier_renamed = frontier.rename(&rename_map);
+        let frontier_renamed = frontier.rename(&rename_map)?;
         let joined = frontier_renamed.join(&self.edges)?;
         let projected = joined.project(&[self.to_attr.as_str(), "distance"])?;
 
         let rename_back_map = vec![(self.to_attr.as_str(), self.node_id_attr.as_str())];
-        let next_nodes = projected.rename(&rename_back_map);
+        let next_nodes = projected.rename(&rename_back_map)?;
 
         let next_nodes_inc = next_nodes
             .extend("new_distance", ScalarType::Int, |t| {
@@ -186,7 +186,7 @@ impl Graph {
 
         let next_frontier_candidates = next_nodes_inc
             .project(&[self.node_id_attr.as_str(), "new_distance"])?
-            .rename(&[("new_distance", "distance")]);
+            .rename(&[("new_distance", "distance")])?;
 
         let visited_ids = visited.project(&[self.node_id_attr.as_str()])?;
         let candidate_ids = next_frontier_candidates.project(&[self.node_id_attr.as_str()])?;
@@ -265,7 +265,7 @@ impl Graph {
         damping_factor: f64,
     ) -> Result<Relation, DatabaseError> {
         let rename_map = vec![(self.node_id_attr.as_str(), self.from_attr.as_str())];
-        let ranks_renamed = ranks.rename(&rename_map);
+        let ranks_renamed = ranks.rename(&rename_map)?;
         let joined_edges = ranks_renamed.join(&self.edges)?;
         let with_degrees = joined_edges.join(out_degrees)?;
 
@@ -283,7 +283,7 @@ impl Graph {
 
         let incoming = contributions.project(&[self.to_attr.as_str(), "contribution"])?;
         let rename_back_map = vec![(self.to_attr.as_str(), self.node_id_attr.as_str())];
-        let incoming_renamed = incoming.rename(&rename_back_map);
+        let incoming_renamed = incoming.rename(&rename_back_map)?;
 
         let new_ranks_sum = incoming_renamed
             .summarize(
@@ -315,7 +315,7 @@ impl Graph {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&[self.node_id_attr.as_str(), "new_rank_final"])?
-            .rename(&[("new_rank_final", "rank")]);
+            .rename(&[("new_rank_final", "rank")])?;
 
         Ok(result)
     }

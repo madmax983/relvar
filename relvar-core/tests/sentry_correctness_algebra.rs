@@ -22,7 +22,7 @@ fn test_rename_swap_atomic() {
     relation.insert(tuple! { A: 1i64, B: 2i64 }).unwrap();
 
     // Swap A and B
-    let result = relation.rename(&[("A", "B"), ("B", "A")]);
+    let result = relation.rename(&[("A", "B"), ("B", "A")]).unwrap();
 
     assert_eq!(result.degree(), 2);
     assert!(result.relation_type().heading().has_attribute("A"));

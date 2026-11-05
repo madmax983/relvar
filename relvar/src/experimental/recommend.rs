@@ -103,7 +103,7 @@ impl CollaborativeFilter {
         // Project out target user ratings: (item_id, target_score)
         let target_items = target_user_ratings
             .project(&[self.item_id_attr.as_str(), self.score_attr.as_str()])?
-            .rename(&[(self.score_attr.as_str(), "target_score")]);
+            .rename(&[(self.score_attr.as_str(), "target_score")])?;
 
         // Step 2: Find all other users who rated those same items and compute similarity.
         let user_similarity = self.compute_user_similarities(&target_user_id, &target_items)?;

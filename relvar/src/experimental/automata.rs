@@ -76,8 +76,8 @@ impl RelationalNfa {
             .project(&["from_state", "to_state"])?;
 
         let all_states = self.states.project(&["state"])?;
-        let from_states = all_states.rename(&[("state", "from_state")]);
-        let to_states = all_states.rename(&[("state", "to_state")]);
+        let from_states = all_states.rename(&[("state", "from_state")])?;
+        let to_states = all_states.rename(&[("state", "to_state")])?;
 
         let cartesian = from_states.join(&to_states)?;
         let identity_transitions = cartesian.restrict(|t| {
@@ -107,11 +107,11 @@ impl RelationalNfa {
         active: &Relation,
         e_close: &Relation,
     ) -> Result<Relation, DatabaseError> {
-        let renamed_active = active.rename(&[("state", "from_state")]);
+        let renamed_active = active.rename(&[("state", "from_state")])?;
         let joined = renamed_active.join(e_close)?;
         Ok(joined
             .project(&["to_state"])?
-            .rename(&[("to_state", "state")]))
+            .rename(&[("to_state", "state")])?)
     }
 
     fn process_input_string(
@@ -123,7 +123,7 @@ impl RelationalNfa {
         for c in input.chars() {
             let symbol_str = c.to_string();
 
-            let renamed_active = active_states.rename(&[("state", "from_state")]);
+            let renamed_active = active_states.rename(&[("state", "from_state")])?;
             let symbol_transitions = self
                 .transitions
                 .clone()
@@ -132,7 +132,7 @@ impl RelationalNfa {
             let next_states = renamed_active.join(&symbol_transitions)?;
             active_states = next_states
                 .project(&["to_state"])?
-                .rename(&[("to_state", "state")]);
+                .rename(&[("to_state", "state")])?;
 
             active_states = Self::apply_epsilon_closure(&active_states, epsilon_closure)?;
 

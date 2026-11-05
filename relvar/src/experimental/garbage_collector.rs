@@ -127,13 +127,13 @@ impl GarbageCollector {
         let closure = self.references.tclose("from_addr", "to_addr")?;
 
         // 2. Find objects reachable from roots
-        let roots_as_from = self.roots.rename(&[("address", "from_addr")]);
+        let roots_as_from = self.roots.rename(&[("address", "from_addr")])?;
         let reachable_from_roots = closure.join(&roots_as_from)?;
 
         // Ensure that to_addr has same schema as roots by projecting and renaming
         let reachable_indirect = reachable_from_roots
             .project(&["to_addr"])?
-            .rename(&[("to_addr", "address")]);
+            .rename(&[("to_addr", "address")])?;
 
         // 3. Union with direct roots to get all reachable objects
         let all_reachable = reachable_indirect

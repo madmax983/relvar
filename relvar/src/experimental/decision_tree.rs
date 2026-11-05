@@ -54,7 +54,7 @@ impl DecisionTree {
             if leaves.cardinality() > 0 {
                 let finished = leaves
                     .project(&["row_id", "leaf_value"])?
-                    .rename(&[("leaf_value", "prediction")]);
+                    .rename(&[("leaf_value", "prediction")])?;
                 predictions = predictions
                     .union(&finished)
                     .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
@@ -86,7 +86,7 @@ impl DecisionTree {
                 })
                 .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
                 .project(&["row_id", "next_node_id"])?
-                .rename(&[("next_node_id", "node_id")]);
+                .rename(&[("next_node_id", "node_id")])?;
         }
 
         Ok(predictions)

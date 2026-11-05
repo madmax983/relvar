@@ -134,6 +134,7 @@ pub use project::ProjectError;
 
 /// Rename operator for attribute renaming (ρ).
 pub(crate) mod rename;
+pub use rename::RenameError;
 
 /// Restrict operator for tuple filtering (σ).
 pub(crate) mod restrict;

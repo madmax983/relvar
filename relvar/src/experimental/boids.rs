@@ -87,9 +87,9 @@ impl BoidsSimulation {
         let sep_sq = self.separation_radius * self.separation_radius;
 
         // Step 1: Join boids with themselves to find neighbors
-        let boids_a = self
-            .boids
-            .rename(&[("x", "ax"), ("y", "ay"), ("vx", "avx"), ("vy", "avy")]);
+        let boids_a =
+            self.boids
+                .rename(&[("x", "ax"), ("y", "ay"), ("vx", "avx"), ("vy", "avy")])?;
 
         let boids_b = self.boids.rename(&[
             ("id", "nid"),
@@ -97,7 +97,7 @@ impl BoidsSimulation {
             ("y", "by"),
             ("vx", "bvx"),
             ("vy", "bvy"),
-        ]);
+        ])?;
 
         // Find neighbors within perception radius, including themselves for cohesion/alignment averages.
         let neighbors = boids_a.theta_join(&boids_b, |a, b| {
@@ -245,7 +245,7 @@ impl BoidsSimulation {
                 ("new_y", "y"),
                 ("limited_vx", "vx"),
                 ("limited_vy", "vy"),
-            ]);
+            ])?;
 
         Ok(())
     }

@@ -139,7 +139,7 @@ impl Relation {
         // Pre-compute renamed self (the graph edges) to avoid repeated work
         // self(from, to) -> self(temp, to)
         // Note: Relation::rename returns a new Relation.
-        let edges = self.rename(&self_mappings);
+        let edges = self.rename(&self_mappings)?;
 
         loop {
             if !perform_tclose_iteration(
@@ -198,7 +198,7 @@ fn compute_next_paths(
     r_total: &Relation,
 ) -> Result<Relation, DatabaseError> {
     // 2. Rename delta: r_delta(from, to) -> r_delta(from, temp)
-    let delta_renamed = r_delta.rename(delta_mappings);
+    let delta_renamed = r_delta.rename(delta_mappings)?;
 
     // 3. Join: r_delta(from, temp) JOIN edges(temp, to) -> (from, temp, to)
     let joined = delta_renamed.join(edges)?;

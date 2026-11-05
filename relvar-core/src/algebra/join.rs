@@ -288,7 +288,7 @@ impl Relation {
     /// assert!(r1.theta_join(&r2, |_, _| true).is_err());
     ///
     /// // Rename r2's attribute first
-    /// let r2_renamed = r2.rename(&[("id", "r2_id")]);
+    /// let r2_renamed = r2.rename(&[("id", "r2_id")]).unwrap();
     ///
     /// let result = r1.theta_join(&r2_renamed, |t1, t2| true).unwrap();
     ///

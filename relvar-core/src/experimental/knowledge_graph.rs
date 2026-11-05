@@ -193,7 +193,7 @@ impl KnowledgeGraph {
             final_rename_map.push((*old, *new));
         }
 
-        Ok(projected.rename(&final_rename_map))
+        Ok(projected.rename(&final_rename_map)?)
     }
 }
 

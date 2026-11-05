@@ -124,7 +124,7 @@ impl GraphNeuralNetwork {
         weights: &Relation,
     ) -> Result<Relation, DatabaseError> {
         // Step 1: Prepare features for message passing. Rename 'node_id' to 'src'.
-        let features_src = features.rename(&[("node_id", "src")]);
+        let features_src = features.rename(&[("node_id", "src")])?;
 
         // Step 2: Message Passing - Propagate features along edges.
         let messages = edges
@@ -144,7 +144,7 @@ impl GraphNeuralNetwork {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Step 4: Rename back to 'node_id' for linear transformation.
-        let agg_renamed = aggregated.rename(&[("dst", "node_id")]);
+        let agg_renamed = aggregated.rename(&[("dst", "node_id")])?;
 
         // Step 5: Linear Transformation - Join aggregated features with layer weights.
         let transformed = agg_renamed
@@ -174,7 +174,7 @@ impl GraphNeuralNetwork {
 
         // Step 8: Standardize the schema for the next layer.
         let final_features =
-            out_features.rename(&[("out_idx", "in_idx"), ("sum_product", "value")]);
+            out_features.rename(&[("out_idx", "in_idx"), ("sum_product", "value")])?;
 
         Ok(final_features)
     }

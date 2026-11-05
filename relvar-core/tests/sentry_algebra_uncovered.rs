@@ -37,7 +37,7 @@ fn test_rename_into() {
     let tuple = Tuple::new(t_type, vec![("id".to_string(), ScalarValue::Int(1))]).unwrap();
     let rel = Relation::from_tuples(rel_type, vec![tuple]).unwrap();
 
-    let renamed = rel.rename_into(&[("id", "new_id")]);
+    let renamed = rel.rename_into(&[("id", "new_id")]).unwrap();
     assert!(renamed.relation_type().has_attribute("new_id"));
 }
 
@@ -153,7 +153,7 @@ fn test_join_error_paths() {
     assert!(rel1.theta_join(&rel1, |_, _| false).is_err());
 
     // Theta join empty result because of condition
-    let rel2 = rel1.rename(&[("id", "id2")]);
+    let rel2 = rel1.rename(&[("id", "id2")]).unwrap();
     let res = rel1.theta_join(&rel2, |_, _| false).unwrap();
     assert_eq!(res.cardinality(), 0);
 }

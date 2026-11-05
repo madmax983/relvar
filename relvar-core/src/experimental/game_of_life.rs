@@ -104,7 +104,7 @@ fn calculate_neighbor_counts(
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     // 6. Rename back to (x, y)
-    Ok(counts.rename(&[("nx", "x"), ("ny", "y")]))
+    Ok(counts.rename(&[("nx", "x"), ("ny", "y")])?)
 }
 
 fn apply_rules(

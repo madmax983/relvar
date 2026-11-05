@@ -71,10 +71,10 @@ impl EnigmaMachine {
 
     fn apply_static_mapping(rel: &Relation, mapping: &Relation) -> Result<Relation, DatabaseError> {
         Ok(rel
-            .rename(&[("char", "pin_in")])
+            .rename(&[("char", "pin_in")])?
             .join(mapping)?
             .project(&["pos", "pin_out"])?
-            .rename(&[("pin_out", "char")]))
+            .rename(&[("pin_out", "char")])?)
     }
 
     fn pass_forward(
@@ -109,7 +109,7 @@ impl EnigmaMachine {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["pos", "out_char"])?
-            .rename(&[("out_char", "char")]))
+            .rename(&[("out_char", "char")])?)
     }
 
     fn pass_backward(
@@ -144,7 +144,7 @@ impl EnigmaMachine {
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
             .project(&["pos", "out_char"])?
-            .rename(&[("out_char", "char")]))
+            .rename(&[("out_char", "char")])?)
     }
 
     /// Encrypts (or decrypts) a message relation.

@@ -272,7 +272,8 @@ impl PetriNet {
             .unwrap()
             .project(&["place_id", "new_tokens"])
             .unwrap()
-            .rename(&[("new_tokens", "tokens")]);
+            .rename(&[("new_tokens", "tokens")])
+            .unwrap();
 
         let modified_place_ids = modified_places.project(&["place_id"]).unwrap();
         let unmodified_places = self.places.semidifference(&modified_place_ids);
