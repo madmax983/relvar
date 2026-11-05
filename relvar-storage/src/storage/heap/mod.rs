@@ -46,6 +46,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
 
+pub(crate) mod key_index;
+
 /// Helper for bounded deserialization to prevent allocation bombs.
 /// Limits allocation size to PAGE_SIZE (4KB), preventing DoS from malicious length prefixes.
 fn deserialize_bounded<'a, T>(data: &'a [u8]) -> Result<T, HeapError>
@@ -196,6 +198,12 @@ pub struct HeapFile<D: BlockDevice = FileBlockDevice> {
     /// insertion. Pure optimization — not persisted, never affects
     /// correctness (see [`find_page_for_insertion`](Self::find_page_for_insertion)).
     insert_hint: PageId,
+    /// In-memory implicit-key index (tuple digest → version slots), built
+    /// on first use. Not persisted; see [`key_index`].
+    key_index: key_index::KeyIndexState,
+    /// Maximum number of versions [`key_index`](Self::key_index) may hold
+    /// before lookups fall back to heap scans.
+    key_index_capacity: usize,
 }
 
 // The slotted-page types (`SlotEntry`, `SlottedPage`, `VersionedSlotEntry`,
@@ -281,6 +289,8 @@ impl<D: BlockDevice> HeapFile<D> {
             device,
             relation_type,
             insert_hint: 0,
+            key_index: key_index::KeyIndexState::Unbuilt,
+            key_index_capacity: key_index::DEFAULT_KEY_INDEX_CAPACITY,
         }
     }
 
@@ -293,6 +303,8 @@ impl<D: BlockDevice> HeapFile<D> {
             device,
             relation_type,
             insert_hint: 0,
+            key_index: key_index::KeyIndexState::Unbuilt,
+            key_index_capacity: key_index::DEFAULT_KEY_INDEX_CAPACITY,
         }
     }
 
@@ -359,6 +371,10 @@ impl<D: BlockDevice> HeapFile<D> {
     /// heap.insert_tuple(&tuple).unwrap();
     /// ```text
     pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<(), HeapError> {
+        // A non-versioned write: the implicit-key index (which covers
+        // versioned pages) is rebuilt from the heap on its next use.
+        self.invalidate_key_index();
+
         // Serialize the tuple
         let tuple_data = serialize_compat(tuple)?;
 
@@ -936,10 +952,23 @@ impl<D: BlockDevice> HeapFile<D> {
         // claim back if the fallible work below fails.
         let handle: crate::mvcc::VersionHandle = version_pool.claim(txn_id)?;
         let result = self.insert_tuple_versioned_claimed(tuple, tuple_len, txn_id, version_pool);
+        self.key_index_after_insert(tuple, &result);
         if result.is_err() {
             version_pool.release(handle);
         }
         result
+    }
+
+    /// Keeps the implicit-key index in step with an insert's outcome: a
+    /// new slot is indexed; a failure that may have reached the device
+    /// (anything but pool exhaustion, which fails before any write)
+    /// invalidates the index so it is rebuilt from the heap.
+    fn key_index_after_insert(&mut self, tuple: &Tuple, result: &Result<TupleId, HeapError>) {
+        match result {
+            Ok(tuple_id) => self.key_index_note_insert(tuple, *tuple_id),
+            Err(HeapError::Mvcc(_)) => {}
+            Err(_) => self.invalidate_key_index(),
+        }
     }
 
     /// Insert body; runs with a claimed version record.
@@ -1320,6 +1349,7 @@ impl<D: BlockDevice> HeapFile<D> {
             txn_id,
             version_pool,
         );
+        self.key_index_after_insert(new_tuple, &result);
         if result.is_err() {
             version_pool.release(handle);
         }
@@ -1550,11 +1580,21 @@ impl<D: BlockDevice> HeapFile<D> {
                 buffer.page.magic = header.magic;
                 buffer.page.slot_count = header.slot_count;
                 let mut page_changed = 0;
-                for slot_option in buffer.page.slots.iter_mut() {
+                for (index, slot_option) in buffer.page.slots.iter_mut().enumerate() {
                     let Some(slot) = slot_option else {
                         continue;
                     };
                     if !committed.contains(&slot.xmin) {
+                        // Index removal first; a failed page write below
+                        // invalidates the whole index.
+                        let tuple_id = TupleId {
+                            page_id,
+                            slot: index as u32,
+                        };
+                        match slot_bytes(page.data(), slot.offset, slot.length) {
+                            Ok(bytes) => self.key_index_note_remove(bytes, tuple_id),
+                            Err(_) => self.invalidate_key_index(),
+                        }
                         *slot_option = None;
                         page_changed += 1;
                     } else if slot.xmax.is_some_and(|xmax| !committed.contains(&xmax)) {
@@ -1563,8 +1603,12 @@ impl<D: BlockDevice> HeapFile<D> {
                     }
                 }
                 if page_changed > 0 {
-                    Self::emit_versioned_page(&mut buffer, page.data(), None)?;
-                    self.write_page_bytes(page_id, &buffer.page_image)?;
+                    let written = Self::emit_versioned_page(&mut buffer, page.data(), None)
+                        .and_then(|()| self.write_page_bytes(page_id, &buffer.page_image));
+                    if let Err(error) = written {
+                        self.invalidate_key_index();
+                        return Err(error);
+                    }
                     changed += page_changed;
                 }
             }
@@ -1685,6 +1729,13 @@ impl<D: BlockDevice> HeapFile<D> {
             page_id += 1;
         }
 
+        // A relation that outgrew its implicit-key index is retried after
+        // GC reclaimed versions: the next lookup rebuilds the index, or
+        // falls back to scanning again if it is still too large.
+        if removed_count > 0 && matches!(self.key_index, key_index::KeyIndexState::Overflow) {
+            self.invalidate_key_index();
+        }
+
         Ok(removed_count)
     }
 
@@ -1717,13 +1768,23 @@ impl<D: BlockDevice> HeapFile<D> {
         let mut page_modified = false;
 
         // Check each slot for dead versions
-        for slot_option in buffer.page.slots.iter_mut() {
+        for (index, slot_option) in buffer.page.slots.iter_mut().enumerate() {
             let Some(slot) = slot_option else {
                 continue;
             };
             if Self::is_dead_version(slot, oldest_active_lsn, committed, txn_pool) {
                 // This version is dead - remove it (its bytes are dropped by
-                // the re-emit below, freeing the slot for reuse).
+                // the re-emit below, freeing the slot for reuse). The
+                // implicit-key index forgets it first (bounds were checked
+                // above); a failed page write below invalidates the index.
+                let tuple_id = TupleId {
+                    page_id,
+                    slot: index as u32,
+                };
+                match slot_bytes(page.data(), slot.offset, slot.length) {
+                    Ok(bytes) => self.key_index_note_remove(bytes, tuple_id),
+                    Err(_) => self.invalidate_key_index(),
+                }
                 *slot_option = None;
                 removed_count += 1;
                 page_modified = true;
@@ -1742,8 +1803,12 @@ impl<D: BlockDevice> HeapFile<D> {
 
         // Write page back if modified
         if page_modified {
-            Self::emit_versioned_page(buffer, page.data(), None)?;
-            self.store_page_bytes(page_id, &buffer.page_image)?;
+            let written = Self::emit_versioned_page(buffer, page.data(), None)
+                .and_then(|()| self.store_page_bytes(page_id, &buffer.page_image));
+            if let Err(error) = written {
+                self.invalidate_key_index();
+                return Err(error);
+            }
         }
 
         Ok(removed_count)

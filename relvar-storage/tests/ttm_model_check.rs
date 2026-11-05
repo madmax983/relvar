@@ -14,16 +14,29 @@
 //! - a read outside any transaction returns exactly the committed state
 //!   predicted by the model (atomic commit, atomic rollback, durability, and
 //!   crash recovery that keeps committed work and drops uncommitted work);
-//! - each operation succeeds or fails exactly when the model says it should
-//!   (deletes conflict first-updater-wins, as in `store_relation`).
+//! - each operation succeeds or fails exactly when the model says it should:
+//!   deletes conflict first-updater-wins, as in `store_relation`, and so do
+//!   inserts, because every relation's whole heading is a key. Inserting a
+//!   tuple the transaction already sees is a no-op; inserting a tuple a
+//!   concurrent transaction created (live, or committed after this one
+//!   began, and not deleted again by its creator) is a write conflict.
+//!
+//! The model check found the engine's missing implicit-key enforcement:
+//! inserts used to always create a new version, so a visible duplicate
+//! became a second physical version that a later delete did not mark (a
+//! lost committed delete, depth 6), and concurrent inserts of the same
+//! tuple both committed (depth 4).
 //!
 //! The abstract model is the one proved in `verify/verus/database.rs`
 //! (`TxnState`, `begin`/`statement`/`commit`/`rollback`/`crash`) extended
 //! with snapshot isolation; the per-version visibility rules it relies on
 //! are proved in `verify/verus/mvcc.rs`.
 //!
-//! The search depth defaults to 5 and can be raised with
-//! `RELVAR_MODEL_CHECK_DEPTH`.
+//! The search depth defaults to 5 (about 9 thousand states, seconds in
+//! release mode) and can be raised with `RELVAR_MODEL_CHECK_DEPTH`; depth 7
+//! explores about 650 thousand states (two minutes on four cores). Run it
+//! in release mode:
+//! `cargo test --release -p relvar-storage --test ttm_model_check`.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -36,12 +49,17 @@ use relvar_storage::PersistentEngine;
 use relvar_storage::persistent_engine::PersistentSnapshot;
 use stateright::{Checker, Model, Property};
 
+/// The relvar under test (heading `{id: Int}`).
 const RELVAR: &str = "R";
+/// Number of concurrent transactions.
 const TXNS: usize = 2;
+/// The tuple values transactions insert and delete.
 const VALUES: [i64; 2] = [1, 2];
 /// Committed before the search starts.
 const INITIAL: i64 = 1;
 
+/// A history step: an operation of transaction `t`, or a crash (the
+/// engine is dropped without commit or flush, then reopened).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Action {
     Begin(usize),
@@ -92,6 +110,8 @@ struct CommittedWrites {
     created: BTreeSet<i64>,
 }
 
+/// The abstract database: committed state, live transactions, and the
+/// writes of committed transactions (for first-updater-wins checks).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Abstract {
     committed: BTreeSet<i64>,
@@ -216,20 +236,25 @@ impl Abstract {
     }
 }
 
+/// A Stateright state: the history replayed on the engine, and the model
+/// state it leads to.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct State {
     history: Vec<Action>,
     model: Abstract,
 }
 
+/// The Stateright model: histories up to `depth` actions.
 struct EngineModel {
     depth: usize,
 }
 
+/// The heading of [`RELVAR`].
 fn rel_type() -> RelationType {
     RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int))
 }
 
+/// The `id` values of a relation.
 fn values(relation: &Relation) -> BTreeSet<i64> {
     relation
         .tuples()
@@ -240,13 +265,14 @@ fn values(relation: &Relation) -> BTreeSet<i64> {
         .collect()
 }
 
+/// A fresh database directory, on tmpfs when available: it keeps fsync
+/// cheap, so the exhaustive search stays fast.
 fn scratch_dir() -> tempfile::TempDir {
-    // tmpfs keeps fsync cheap, so the exhaustive search stays fast.
     let shm = Path::new("/dev/shm");
-    if shm.is_dir() {
-        if let Ok(dir) = tempfile::tempdir_in(shm) {
-            return dir;
-        }
+    if shm.is_dir()
+        && let Ok(dir) = tempfile::tempdir_in(shm)
+    {
+        return dir;
     }
     tempfile::tempdir().expect("temp dir")
 }
@@ -292,6 +318,7 @@ fn replay(history: &[Action]) -> Result<(), String> {
     Ok(())
 }
 
+/// Runs `f` with `handle`'s transaction ambient, then suspends it.
 fn with_txn<T>(
     engine: &mut PersistentEngine,
     handle: &PersistentSnapshot,
@@ -306,6 +333,7 @@ fn with_txn<T>(
     result
 }
 
+/// Performs one (non-crash) action on the engine.
 fn run(
     engine: &mut PersistentEngine,
     handles: &mut [Option<PersistentSnapshot>; TXNS],
@@ -354,6 +382,8 @@ fn run(
     }
 }
 
+/// Checks every live transaction's view and the committed state against
+/// the model.
 fn check(
     engine: &mut PersistentEngine,
     handles: &[Option<PersistentSnapshot>; TXNS],

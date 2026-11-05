@@ -5,6 +5,7 @@ mod atomicity;
 mod basic;
 mod common;
 mod gc;
+mod implicit_key;
 mod isolation;
 mod lifecycle;
 mod lock;

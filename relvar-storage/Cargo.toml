@@ -25,6 +25,8 @@ thiserror.workspace = true
 serde.workspace = true
 postcard.workspace = true
 serde_json.workspace = true
+# Fast seeded hasher for the in-memory implicit-key index (no_std-ready).
+foldhash.workspace = true
 
 [lints.cargo]
 unused_dependencies = "allow"

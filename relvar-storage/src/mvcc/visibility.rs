@@ -38,7 +38,10 @@ pub fn is_visible(
     is_deletion_invisible(version, snapshot, pool, committed)
 }
 
-fn is_created_visible(
+/// Returns `true` when the creation of `version` is visible to `snapshot`:
+/// its creator is the snapshot's own transaction, or committed before the
+/// snapshot was taken. (Deletion is not considered; see [`is_visible`].)
+pub(crate) fn is_created_visible(
     version: &VersionMetadata,
     snapshot: &TransactionSnapshot,
     pool: &TxnPool,
