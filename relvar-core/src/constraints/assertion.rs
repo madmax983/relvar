@@ -111,8 +111,11 @@ type AssertionPredicate<E> = Box<dyn Fn(&mut Database<E>) -> bool + Send + Sync>
 /// # Non-serializable predicates
 ///
 /// The predicate is an arbitrary Rust closure, so assertions cannot be
-/// serialized into the catalog. They must be re-registered after every
-/// database restart.
+/// serialized into the catalog. Unlike keys, foreign keys, CHECK and type
+/// constraints — which a persistent database stores and
+/// [`Database::new`] restores — assertions are **not persisted**: they must
+/// be re-registered with [`Database::add_assertion`] every time a database
+/// is opened, before it is modified. Until then they are not enforced.
 ///
 /// # Predicate discipline
 ///

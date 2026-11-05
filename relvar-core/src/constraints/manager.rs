@@ -5,7 +5,7 @@
 
 use crate::collections::HashMap;
 use crate::constraints::{
-    AttributeConstraints, CheckConstraintError, CheckConstraints, ForeignKey,
+    AttributeConstraints, CheckConstraintError, CheckConstraints, ConstraintCatalog, ForeignKey,
     ForeignKeyConstraints, KeyConstraints,
 };
 use crate::storage_engine::{StorageEngine, StorageError};
@@ -848,6 +848,93 @@ impl ConstraintManager {
             entries.retain(|(referencing, _)| referencing != relation_name);
             !entries.is_empty()
         });
+    }
+
+    /// Snapshots every declarative constraint into a serializable
+    /// [`ConstraintCatalog`] (TTM RM Prescription 16), for persistence by a
+    /// [`StorageEngine`] via
+    /// [`StorageEngine::store_constraints`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::ConstraintManager;
+    ///
+    /// let manager = ConstraintManager::new();
+    /// assert!(manager.to_catalog().is_empty());
+    /// ```
+    pub fn to_catalog(&self) -> ConstraintCatalog {
+        let mut catalog = ConstraintCatalog::new();
+        for (name, keys) in &self.key_constraints {
+            catalog.relvar_mut(name).keys = Some(keys.clone());
+        }
+        for (name, fks) in &self.foreign_key_constraints {
+            catalog.relvar_mut(name).foreign_keys = Some(fks.clone());
+        }
+        for (name, attributes) in &self.type_constraints {
+            let mut list: Vec<AttributeConstraints> = attributes.values().cloned().collect();
+            list.sort_by(|a, b| a.attribute_name().cmp(b.attribute_name()));
+            catalog.relvar_mut(name).attributes = list;
+        }
+        for (name, checks) in &self.check_constraints {
+            catalog.relvar_mut(name).checks = Some(checks.clone());
+        }
+        catalog
+    }
+
+    /// Rebuilds a constraint manager from a [`ConstraintCatalog`], e.g. one
+    /// a storage engine loaded when a database was reopened.
+    ///
+    /// The constraints are installed as recorded: they were validated
+    /// against the database when they were declared, so they are not
+    /// re-validated against the stored data here. Use
+    /// [`Database::verify_integrity`](crate::database::Database::verify_integrity)
+    /// to re-check a database whose data may have been changed by other
+    /// tools.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::{ConstraintCatalog, ConstraintManager, KeyConstraints, PrimaryKey};
+    ///
+    /// let mut catalog = ConstraintCatalog::new();
+    /// let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    /// catalog.relvar_mut("USERS").keys = Some(KeyConstraints::new().with_primary_key(pk));
+    ///
+    /// let manager = ConstraintManager::from_catalog(catalog);
+    /// assert!(manager.get_key_constraints("USERS").is_some());
+    /// ```
+    pub fn from_catalog(catalog: ConstraintCatalog) -> Self {
+        let mut manager = Self::new();
+        let mut referencing = Vec::new();
+        for (name, constraints) in catalog.iter() {
+            let constraints = constraints.clone();
+            if let Some(keys) = constraints.keys {
+                manager.key_constraints.insert(name.to_string(), keys);
+            }
+            if let Some(fks) = constraints.foreign_keys {
+                manager
+                    .foreign_key_constraints
+                    .insert(name.to_string(), fks);
+                referencing.push(name.to_string());
+            }
+            if !constraints.attributes.is_empty() {
+                let per_attribute = manager
+                    .type_constraints
+                    .entry(name.to_string())
+                    .or_default();
+                for attribute in constraints.attributes {
+                    per_attribute.insert(attribute.attribute_name().to_string(), attribute);
+                }
+            }
+            if let Some(checks) = constraints.checks {
+                manager.check_constraints.insert(name.to_string(), checks);
+            }
+        }
+        for name in &referencing {
+            manager.rebuild_reverse_foreign_key_index_for(name);
+        }
+        manager
     }
 }
 

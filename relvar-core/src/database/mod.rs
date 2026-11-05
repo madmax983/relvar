@@ -183,10 +183,29 @@ pub struct Database<E: StorageEngine> {
 impl<E: StorageEngine> Database<E> {
     /// Creates a new `Database` instance with the specified storage engine.
     ///
-    /// The database initializes with an empty catalog (no relations, no constraints).
     /// By abstracting over the `StorageEngine`, this constructor allows users to create
     /// either purely in-memory databases (for fast testing or temporary data) or
     /// persistent databases (using the `relvar-storage` crate).
+    ///
+    /// The database's relvars are whatever the engine holds. Its
+    /// declarative constraints — keys, foreign keys, CHECK and type
+    /// constraints — are restored from the engine's stored constraint
+    /// catalog ([`StorageEngine::load_constraints`]), so a reopened
+    /// persistent database enforces the constraints it was closed with
+    /// (TTM RM Prescription 16). A fresh engine, or one that does not
+    /// persist constraints, starts with none. Restored constraints are not
+    /// re-validated against the stored data; call
+    /// [`verify_integrity`](Self::verify_integrity) to re-check a database
+    /// that other tools may have written to.
+    ///
+    /// # Not restored
+    ///
+    /// Only declarative constraints are persisted. Database assertions
+    /// ([`add_assertion`](Self::add_assertion)), virtual relvars
+    /// ([`define_virtual_relvar`](Self::define_virtual_relvar)) and
+    /// user-defined operators ([`register_operator`](Self::register_operator))
+    /// are Rust closures or function pointers, which cannot be serialized:
+    /// they must be registered again every time the database is opened.
     ///
     /// # Examples
     ///
@@ -197,18 +216,13 @@ impl<E: StorageEngine> Database<E> {
     /// // Create a temporary, in-memory database
     /// let db = Database::new(InMemoryEngine::new());
     /// ```
-    /// # Examples
-    ///
-    /// ```
-    /// use relvar_core::database::Database;
-    /// use relvar_core::storage_engine::InMemoryEngine;
-    ///
-    /// let db = Database::new(InMemoryEngine::new());
-    /// ```
     pub fn new(engine: E) -> Self {
+        let constraints = engine
+            .load_constraints()
+            .map_or_else(ConstraintManager::new, ConstraintManager::from_catalog);
         Self {
             engine,
-            constraints: ConstraintManager::new(),
+            constraints,
             in_transaction: false,
             transaction_snapshot: None,
             transaction_isolation: None,
@@ -305,6 +319,14 @@ impl<E: StorageEngine> Database<E> {
     /// assertion is rejected and the database is left unchanged.
     ///
     /// TTM: RM Prescription 9 - Database-level integrity constraints.
+    ///
+    /// # Persistence
+    ///
+    /// An assertion is a Rust closure and is **not persisted**, unlike the
+    /// declarative constraints (keys, foreign keys, CHECK and type
+    /// constraints). After reopening a persistent database, register every
+    /// assertion again before modifying the database; until then it is not
+    /// enforced.
     ///
     /// # Examples
     ///

@@ -7,6 +7,7 @@ use crate::mvcc::{
 use crate::storage::StorageManager;
 use crate::sync::RwLock;
 use crate::wal::{TransactionId, TransactionIdGenerator, WalManager, WalRecord, recover};
+use relvar_core::constraints::ConstraintCatalog;
 use relvar_core::storage_engine::{IsolationLevel, RelationMetadata, StorageEngine, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
@@ -485,6 +486,26 @@ impl StorageEngine for PersistentEngine {
             .write()
             .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
             .drop_relation(name)
+    }
+
+    /// Stores the constraint catalog in `catalog.json`, next to the relation
+    /// metadata, with the catalog's atomic write-rename-sync protocol.
+    fn store_constraints(&mut self, catalog: &ConstraintCatalog) -> Result<(), StorageError> {
+        self.storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .store_constraints(catalog.clone())
+    }
+
+    /// Returns the constraints read from `catalog.json` when the engine was
+    /// opened (or stored since); `None` if there are none.
+    fn load_constraints(&self) -> Option<ConstraintCatalog> {
+        let manager = self
+            .storage_manager
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let constraints = manager.constraints();
+        (!constraints.is_empty()).then(|| constraints.clone())
     }
 
     fn relation_exists(&self, name: &str) -> bool {

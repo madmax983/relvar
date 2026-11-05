@@ -1,13 +1,32 @@
 //! Database Integrity Constraint operations.
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraints, ForeignKeyConstraints, KeyConstraints,
+    AttributeConstraints, CheckConstraints, ConstraintManager, ConstraintManagerError,
+    ForeignKeyConstraints, KeyConstraints,
 };
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 
 impl<E: StorageEngine> Database<E> {
+    /// Applies a constraint definition change and persists the resulting
+    /// constraint catalog (TTM RM Prescription 16).
+    ///
+    /// `change` runs against a copy of the constraint manager; the copy
+    /// replaces the live one only once the engine has stored its catalog,
+    /// so a failed validation *or* a failed write leaves both the in-memory
+    /// and the stored constraints as they were.
+    pub(crate) fn change_constraints(
+        &mut self,
+        change: impl FnOnce(&mut ConstraintManager, &mut E) -> Result<(), ConstraintManagerError>,
+    ) -> Result<(), DatabaseError> {
+        let mut updated = self.constraints.clone();
+        change(&mut updated, &mut self.engine)?;
+        self.engine.store_constraints(&updated.to_catalog())?;
+        self.constraints = updated;
+        Ok(())
+    }
+
     /// Get the key constraints for a relation.
     ///
     /// # Examples
@@ -119,8 +138,9 @@ impl<E: StorageEngine> Database<E> {
         constraints: KeyConstraints,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("set_key_constraints")?;
-        self.constraints
-            .set_key_constraints(&mut self.engine, relation_name, constraints)?;
+        self.change_constraints(|manager, engine| {
+            manager.set_key_constraints(engine, relation_name, constraints)
+        })?;
         // (Re)build the key index from current data so subsequent inserts
         // validate against O(1) lookups (#23).
         self.rebuild_key_index(relation_name)?;
@@ -188,11 +208,9 @@ impl<E: StorageEngine> Database<E> {
         constraints: ForeignKeyConstraints,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("set_foreign_key_constraints")?;
-        Ok(self.constraints.set_foreign_key_constraints(
-            &mut self.engine,
-            relation_name,
-            constraints,
-        )?)
+        self.change_constraints(|manager, engine| {
+            manager.set_foreign_key_constraints(engine, relation_name, constraints)
+        })
     }
 
     /// Set type constraints for an attribute.
@@ -225,12 +243,9 @@ impl<E: StorageEngine> Database<E> {
         constraints: AttributeConstraints,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("set_type_constraints")?;
-        Ok(self.constraints.set_type_constraints(
-            &mut self.engine,
-            relation_name,
-            attribute_name,
-            constraints,
-        )?)
+        self.change_constraints(|manager, engine| {
+            manager.set_type_constraints(engine, relation_name, attribute_name, constraints)
+        })
     }
 
     /// Set CHECK constraints for a relation.
@@ -271,8 +286,8 @@ impl<E: StorageEngine> Database<E> {
         constraints: CheckConstraints,
     ) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("set_check_constraints")?;
-        Ok(self
-            .constraints
-            .set_check_constraints(&mut self.engine, relation_name, constraints)?)
+        self.change_constraints(|manager, engine| {
+            manager.set_check_constraints(engine, relation_name, constraints)
+        })
     }
 }

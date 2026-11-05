@@ -105,12 +105,17 @@ impl<E: StorageEngine> Database<E> {
         }
 
         // Drop from the engine first, so a failure leaves the constraints
-        // in force.
+        // in force. (A constraint-persisting engine forgets the relvar's
+        // stored constraints as part of the drop.)
         self.engine.drop_relation(name)?;
 
-        // Remove associated constraints and key index entries (#23).
+        // Remove associated constraints and key index entries (#23), then
+        // persist the reduced constraint catalog. The relvar is gone either
+        // way, so its constraints go too even if that write fails.
         self.constraints.remove_constraints_for_relation(name);
         self.remove_key_index(name);
+        self.engine
+            .store_constraints(&self.constraints.to_catalog())?;
         Ok(())
     }
 
