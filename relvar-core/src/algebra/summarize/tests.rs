@@ -236,9 +236,11 @@ fn test_summarize_empty_relation() {
         .summarize(&[], &[Aggregation::count("total_count")])
         .unwrap();
 
-    assert_eq!(result.cardinality(), 1);
-    let tuple = result.tuples().next().unwrap();
-    assert_eq!(tuple.get_typed::<i64>("total_count").unwrap(), 0);
+    // TTM: SUMMARIZE r PER (r{}) has one tuple per tuple of r{}; r{} is
+    // TABLE_DUM when r is empty, so the result is empty.
+    assert_eq!(result.cardinality(), 0);
+    assert_eq!(result.degree(), 1);
+    assert!(result.relation_type().has_attribute("total_count"));
 }
 
 #[test]
@@ -334,15 +336,19 @@ fn test_avg_empty_tuples() {
     let rel_type = RelationType::new(heading);
     let relation = Relation::new(rel_type);
 
-    // Average on empty relation (with grouping)
-    let result = relation.summarize(&[], &[Aggregation::avg("avg_salary", "salary")]);
-
-    // This should succeed with 0.0
-    assert!(result.is_ok());
-    let result = result.unwrap();
-    assert_eq!(result.cardinality(), 1);
-    let tuple = result.tuples().next().unwrap();
-    assert_eq!(tuple.get_typed::<f64>("avg_salary").unwrap(), 0.0);
+    // Average on empty relation (no grouping): no groups, so no tuples
+    // (and no fabricated 0.0 average).
+    let result = relation
+        .summarize(&[], &[Aggregation::avg("avg_salary", "salary")])
+        .unwrap();
+    assert_eq!(result.cardinality(), 0);
+    assert_eq!(
+        result
+            .relation_type()
+            .heading()
+            .get_attribute_type("avg_salary"),
+        Some(&ScalarType::Float)
+    );
 }
 
 #[test]
@@ -352,17 +358,15 @@ fn test_min_on_empty_set() {
     let rel_type = RelationType::new(heading);
     let empty_rel = Relation::new(rel_type);
 
-    // MIN on empty set should error
-    let result = empty_rel.summarize(
-        &[],
-        &[Aggregation::min("min_salary", "salary", ScalarType::Int)],
-    );
-
-    assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        SummarizeError::AggregationError(_)
-    ));
+    // MIN over an empty relation: there are no groups, so MIN is never
+    // applied to an empty set and the result is empty.
+    let result = empty_rel
+        .summarize(
+            &[],
+            &[Aggregation::min("min_salary", "salary", ScalarType::Int)],
+        )
+        .unwrap();
+    assert!(result.is_empty());
 }
 
 #[test]
@@ -372,17 +376,14 @@ fn test_max_on_empty_set() {
     let rel_type = RelationType::new(heading);
     let empty_rel = Relation::new(rel_type);
 
-    // MAX on empty set should error
-    let result = empty_rel.summarize(
-        &[],
-        &[Aggregation::max("max_salary", "salary", ScalarType::Int)],
-    );
-
-    assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        SummarizeError::AggregationError(_)
-    ));
+    // MAX over an empty relation: no groups, empty result.
+    let result = empty_rel
+        .summarize(
+            &[],
+            &[Aggregation::max("max_salary", "salary", ScalarType::Int)],
+        )
+        .unwrap();
+    assert!(result.is_empty());
 }
 
 #[test]
@@ -522,4 +523,144 @@ fn test_min_max_with_strings() {
     let tuple = result.tuples().next().unwrap();
     assert_eq!(tuple.get_typed::<String>("min_name").unwrap(), "Alice");
     assert_eq!(tuple.get_typed::<String>("max_name").unwrap(), "Charlie");
+}
+
+fn salaries() -> Relation {
+    let heading = TupleType::new()
+        .with_attribute("dept", ScalarType::String)
+        .with_attribute("salary", ScalarType::Int)
+        .with_attribute("bonus", ScalarType::Float);
+    let mut relation = Relation::new(RelationType::new(heading));
+    relation
+        .insert(tuple! { dept: "IT", salary: 10i64, bonus: 1.5 })
+        .unwrap();
+    relation
+        .insert(tuple! { dept: "IT", salary: 20i64, bonus: 2.5 })
+        .unwrap();
+    relation
+        .insert(tuple! { dept: "HR", salary: 30i64, bonus: 0.5 })
+        .unwrap();
+    relation
+}
+
+/// A caller-declared MIN result type that differs from the attribute type
+/// used to produce tuples that violate their own heading.
+#[test]
+fn test_summarize_rejects_min_result_type_mismatch() {
+    let result = salaries().summarize(
+        &["dept"],
+        &[Aggregation::min("m", "salary", ScalarType::String)],
+    );
+    assert!(
+        matches!(
+            result,
+            Err(SummarizeError::ResultTypeMismatch { ref result_name, ref declared, ref expected })
+                if result_name == "m"
+                    && *declared == ScalarType::String
+                    && *expected == ScalarType::Int
+        ),
+        "expected ResultTypeMismatch, got {result:?}"
+    );
+}
+
+#[test]
+fn test_summarize_rejects_max_result_type_mismatch() {
+    let result = salaries().summarize(&[], &[Aggregation::max("m", "bonus", ScalarType::Int)]);
+    assert!(matches!(
+        result,
+        Err(SummarizeError::ResultTypeMismatch { .. })
+    ));
+}
+
+/// Public fields let callers build an aggregation with any result type;
+/// summarize must still check it against what the function produces.
+#[test]
+fn test_summarize_rejects_count_declared_with_wrong_type() {
+    let agg = Aggregation {
+        result_name: "n".to_string(),
+        result_type: ScalarType::String,
+        function: AggregationFn::Count,
+    };
+    let result = salaries().summarize(&["dept"], &[agg]);
+    assert!(matches!(
+        result,
+        Err(SummarizeError::ResultTypeMismatch { .. })
+    ));
+}
+
+/// SUM over a Float attribute produces a Float, so the Int constructor is
+/// ill-typed for it (use `sum_float`).
+#[test]
+fn test_summarize_rejects_int_sum_over_float_attribute() {
+    let result = salaries().summarize(&["dept"], &[Aggregation::sum("s", "bonus")]);
+    assert!(matches!(
+        result,
+        Err(SummarizeError::ResultTypeMismatch { .. })
+    ));
+    let ok = salaries()
+        .summarize(&["dept"], &[Aggregation::sum_float("s", "bonus")])
+        .unwrap();
+    assert_eq!(ok.cardinality(), 2);
+}
+
+/// Type errors are static: they are reported even when there is no tuple
+/// to aggregate.
+#[test]
+fn test_summarize_rejects_sum_over_string_even_when_empty() {
+    let empty = Relation::new(salaries().relation_type().clone());
+    let result = empty.summarize(&["dept"], &[Aggregation::sum("s", "dept")]);
+    assert!(matches!(result, Err(SummarizeError::AggregationError(_))));
+}
+
+#[test]
+fn test_summarize_rejects_unknown_aggregated_attribute_even_when_empty() {
+    let empty = Relation::new(salaries().relation_type().clone());
+    let result = empty.summarize(&["dept"], &[Aggregation::max("m", "nope", ScalarType::Int)]);
+    assert!(matches!(result, Err(SummarizeError::AggregationError(_))));
+}
+
+/// Every result tuple conforms to the result heading (closure).
+#[test]
+fn test_summarize_result_tuples_conform_to_heading() {
+    let result = salaries()
+        .summarize(
+            &["dept"],
+            &[
+                Aggregation::count("n"),
+                Aggregation::sum("s", "salary"),
+                Aggregation::avg("a", "salary"),
+                Aggregation::min("lo", "bonus", ScalarType::Float),
+                Aggregation::max("hi", "salary", ScalarType::Int),
+            ],
+        )
+        .unwrap();
+    let heading = result.relation_type().heading();
+    assert_eq!(result.cardinality(), 2);
+    for t in result.tuples() {
+        assert!(t.conforms_to(heading));
+        assert_eq!(t.tuple_type(), heading);
+    }
+}
+
+/// `0.0` and `-0.0` are distinct values, and the sum of a group whose only
+/// value is `-0.0` is `-0.0` (the IEEE additive identity is `-0.0`), so SUM
+/// and AVG must not turn it into `0.0`. Found by `tests/ttm_refinement.rs`.
+#[test]
+fn test_sum_and_avg_of_negative_zero_are_negative_zero() {
+    let heading = TupleType::new()
+        .with_attribute("k", ScalarType::Int)
+        .with_attribute("v", ScalarType::Float);
+    let mut relation = Relation::new(RelationType::new(heading));
+    relation.insert(tuple! { k: 1i64, v: -0.0f64 }).unwrap();
+
+    let result = relation
+        .summarize(
+            &[],
+            &[Aggregation::sum_float("s", "v"), Aggregation::avg("m", "v")],
+        )
+        .unwrap();
+
+    let t = result.tuples().next().unwrap();
+    assert_eq!(t.get("s"), Some(&ScalarValue::Float(-0.0)));
+    assert_eq!(t.get("m"), Some(&ScalarValue::Float(-0.0)));
 }

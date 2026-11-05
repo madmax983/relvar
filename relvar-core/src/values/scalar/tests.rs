@@ -397,3 +397,36 @@ fn test_nested_relation_value() {
         _ => panic!("Expected relation value"),
     }
 }
+
+/// `Ord` must agree with `==`: relation values that compare `Equal` are the
+/// same relation, so an ordered set never merges two distinct relations.
+#[test]
+fn test_relation_value_ordering_is_consistent_with_equality() {
+    use crate::types::{RelationType, TupleType};
+    use crate::values::{Relation, Tuple};
+    use core::cmp::Ordering;
+
+    let rel = |name: &str, ty: ScalarType, v: Option<ScalarValue>| {
+        let heading = TupleType::new().with_attribute(name, ty);
+        let mut r = Relation::new(RelationType::new(heading.clone()));
+        if let Some(v) = v {
+            r.insert(Tuple::new(heading, [(name.to_string(), v)]).unwrap())
+                .unwrap();
+        }
+        ScalarValue::Relation(r)
+    };
+    let values = [
+        rel("a", ScalarType::Int, Some(ScalarValue::Int(1))),
+        rel("a", ScalarType::Int, Some(ScalarValue::Int(2))),
+        rel("b", ScalarType::Int, Some(ScalarValue::Int(1))),
+        rel("a", ScalarType::Bool, Some(ScalarValue::Bool(true))),
+        rel("a", ScalarType::Int, None),
+        rel("a", ScalarType::Bool, None),
+    ];
+    for x in &values {
+        for y in &values {
+            assert_eq!(x.cmp(y) == Ordering::Equal, x == y, "{x:?} vs {y:?}");
+            assert_eq!(x.cmp(y), y.cmp(x).reverse());
+        }
+    }
+}

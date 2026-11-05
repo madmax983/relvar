@@ -109,8 +109,8 @@ impl TuringMachine {
         // At this point, `current_symbol_rel` has heading (state, pos, symbol) with exactly 1 tuple.
         // Rename `state` -> `current_state` and `symbol` -> `read_symbol` to match `transitions`.
         Ok(current_symbol_rel
-            .rename(&[("state", "current_state")])
-            .rename(&[("symbol", "read_symbol")]))
+            .rename(&[("state", "current_state")])?
+            .rename(&[("symbol", "read_symbol")])?)
     }
 
     fn update_tape(&mut self, matched_transition: &Relation) -> Result<(), DatabaseError> {
@@ -118,14 +118,14 @@ impl TuringMachine {
         // We need to write `write_symbol` at `pos`.
         // First, extract the new symbol to write.
         let cell_to_write = matched_transition
-            .project(&["pos", "write_symbol"])
-            .rename(&[("write_symbol", "symbol")]);
+            .project(&["pos", "write_symbol"])?
+            .rename(&[("write_symbol", "symbol")])?;
 
         // Remove the old symbol at `pos` from the tape.
         // We can do this by restricting the tape to `pos` NOT equal to the current head `pos`.
         // Since we know the head `pos` from `matched_transition`, we can join and find the difference.
 
-        let old_tape_cell = matched_transition.project(&["pos"]).join(&self.tape)?;
+        let old_tape_cell = matched_transition.project(&["pos"])?.join(&self.tape)?;
         let tape_without_old_cell = self
             .tape
             .difference(&old_tape_cell)
@@ -150,9 +150,9 @@ impl TuringMachine {
                 ScalarValue::Int(pos + dir)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["next_state", "new_pos"])
-            .rename(&[("next_state", "state")])
-            .rename(&[("new_pos", "pos")]);
+            .project(&["next_state", "new_pos"])?
+            .rename(&[("next_state", "state")])?
+            .rename(&[("new_pos", "pos")])?;
 
         self.head = new_head;
         Ok(())

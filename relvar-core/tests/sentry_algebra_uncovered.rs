@@ -37,7 +37,7 @@ fn test_rename_into() {
     let tuple = Tuple::new(t_type, vec![("id".to_string(), ScalarValue::Int(1))]).unwrap();
     let rel = Relation::from_tuples(rel_type, vec![tuple]).unwrap();
 
-    let renamed = rel.rename_into(&[("id", "new_id")]);
+    let renamed = rel.rename_into(&[("id", "new_id")]).unwrap();
     assert!(renamed.relation_type().has_attribute("new_id"));
 }
 
@@ -59,7 +59,7 @@ fn test_project_ordering() {
     .unwrap();
     let rel = Relation::from_tuples(rel_type, vec![tuple]).unwrap();
 
-    let projected = rel.project(&["z", "a"]);
+    let projected = rel.project(&["z", "a"]).unwrap();
     assert_eq!(projected.relation_type().heading().degree(), 2);
 }
 
@@ -148,8 +148,13 @@ fn test_join_error_paths() {
     let tuple1 = Tuple::new(t_type1, vec![("id".to_string(), ScalarValue::Int(1))]).unwrap();
     let rel1 = Relation::from_tuples(rel_type1, vec![tuple1]).unwrap();
 
+    // A self theta join shares every attribute name: TIMES needs disjoint
+    // headings, so it is rejected.
+    assert!(rel1.theta_join(&rel1, |_, _| false).is_err());
+
     // Theta join empty result because of condition
-    let res = rel1.theta_join(&rel1, |_, _| false);
+    let rel2 = rel1.rename(&[("id", "id2")]).unwrap();
+    let res = rel1.theta_join(&rel2, |_, _| false).unwrap();
     assert_eq!(res.cardinality(), 0);
 }
 

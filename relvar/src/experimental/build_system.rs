@@ -118,8 +118,8 @@ impl BuildSystem {
         // Rename 'files' schema from (file, modified_at) to (target, target_modified_at)
         let target_files = self
             .files
-            .rename(&[("file", "target")])
-            .rename(&[("modified_at", "target_modified_at")]);
+            .rename(&[("file", "target")])?
+            .rename(&[("modified_at", "target_modified_at")])?;
 
         let with_target_time = closure.join(&target_files)?;
 
@@ -127,8 +127,8 @@ impl BuildSystem {
         // Rename 'files' schema from (file, modified_at) to (source, source_modified_at)
         let source_files = self
             .files
-            .rename(&[("file", "source")])
-            .rename(&[("modified_at", "source_modified_at")]);
+            .rename(&[("file", "source")])?
+            .rename(&[("modified_at", "source_modified_at")])?;
 
         let with_both_times = with_target_time.join(&source_files)?;
 
@@ -140,7 +140,7 @@ impl BuildSystem {
         });
 
         // 5. Project just the target
-        let stale_targets = stale_edges.project(&["target"]);
+        let stale_targets = stale_edges.project(&["target"])?;
 
         Ok(stale_targets)
     }

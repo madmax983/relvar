@@ -93,7 +93,7 @@ impl KMeans {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 4. Join back to find candidate clusters
-        let min_dists_joinable = min_dists.rename(&[("min_sq_dist", "sq_dist")]);
+        let min_dists_joinable = min_dists.rename(&[("min_sq_dist", "sq_dist")])?;
         let candidates = distances.join(&min_dists_joinable)?;
 
         // 5. Handle ties by picking the minimum cluster_id
@@ -109,7 +109,7 @@ impl KMeans {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 6. Join back with points to include x and y
-        points.join(&exact_assignments)
+        Ok(points.join(&exact_assignments)?)
     }
 
     /// Computes the next iteration of centroids.
@@ -152,7 +152,7 @@ impl KMeans {
                 ScalarValue::Float(sum_y / count)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["cluster_id", "c_x", "c_y"]);
+            .project(&["cluster_id", "c_x", "c_y"])?;
 
         // Check for convergence (if difference is empty, they are the same)
         let diff1 = new_centroids

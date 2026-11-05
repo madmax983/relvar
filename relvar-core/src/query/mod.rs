@@ -40,6 +40,7 @@
 //! ```
 
 use crate::algebra::Aggregation;
+use crate::algebra::{JoinError, ProjectError, RenameError};
 use crate::constraints::{ConstraintExpression, ExpressionError};
 use crate::database::Database;
 use crate::error::DatabaseError;
@@ -154,6 +155,19 @@ pub enum QueryError {
     /// Error in relational algebra operation.
     #[error("Algebra error: {0}")]
     Algebra(String),
+
+    /// A natural join was ill-typed (a common attribute has a different type
+    /// on each side).
+    #[error("Join error: {0}")]
+    Join(#[from] JoinError),
+
+    /// A projection named an attribute that is not in its input's heading.
+    #[error("Project error: {0}")]
+    Project(#[from] ProjectError),
+
+    /// A rename named an unknown attribute or produced duplicate names.
+    #[error("Rename error: {0}")]
+    Rename(#[from] RenameError),
 }
 
 impl Query {
@@ -240,7 +254,7 @@ impl Query {
             Query::Project { input, attributes } => {
                 let relation = input.execute(db)?;
                 let attrs_ref: Vec<&str> = attributes.iter().map(|s| s.as_str()).collect();
-                Ok(relation.project_into(&attrs_ref))
+                Ok(relation.project_into(&attrs_ref)?)
             }
             Query::Rename { input, mappings } => {
                 let relation = input.execute(db)?;
@@ -248,7 +262,7 @@ impl Query {
                     .iter()
                     .map(|(a, b)| (a.as_str(), b.as_str()))
                     .collect();
-                Ok(relation.rename_into(&mappings_ref))
+                Ok(relation.rename_into(&mappings_ref)?)
             }
             Query::Join { left, right } => {
                 let left_rel = left.execute(db)?;

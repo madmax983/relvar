@@ -131,7 +131,7 @@ impl Matrix {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Rename sum_val back to val
-        let renamed = summed.rename(&[("sum_val", "val")]);
+        let renamed = summed.rename(&[("sum_val", "val")])?;
 
         Matrix::from_relation(renamed)
     }
@@ -154,10 +154,10 @@ impl Matrix {
     /// ```
     pub fn multiply(&self, other: &Matrix) -> Result<Matrix, DatabaseError> {
         // Prepare A: (row, k, val_a)
-        let a_renamed = self.relation.rename(&[("col", "k"), ("val", "val_a")]);
+        let a_renamed = self.relation.rename(&[("col", "k"), ("val", "val_a")])?;
 
         // Prepare B: (k, col, val_b)
-        let b_renamed = other.relation.rename(&[("row", "k"), ("val", "val_b")]);
+        let b_renamed = other.relation.rename(&[("row", "k"), ("val", "val_b")])?;
 
         // Join on k
         // Schema: (row, k, val_a, col, val_b)

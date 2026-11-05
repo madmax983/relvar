@@ -102,8 +102,8 @@ impl CollaborativeFilter {
 
         // Project out target user ratings: (item_id, target_score)
         let target_items = target_user_ratings
-            .project(&[self.item_id_attr.as_str(), self.score_attr.as_str()])
-            .rename(&[(self.score_attr.as_str(), "target_score")]);
+            .project(&[self.item_id_attr.as_str(), self.score_attr.as_str()])?
+            .rename(&[(self.score_attr.as_str(), "target_score")])?;
 
         // Step 2: Find all other users who rated those same items and compute similarity.
         let user_similarity = self.compute_user_similarities(&target_user_id, &target_items)?;
@@ -169,7 +169,7 @@ impl CollaborativeFilter {
                 ScalarValue::Float(sim)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
-            .map(|r| r.project(&[self.user_id_attr.as_str(), "similarity"]))
+            .and_then(|r| Ok(r.project(&[self.user_id_attr.as_str(), "similarity"])?))
     }
 
     fn compute_user_similarities(
@@ -187,7 +187,7 @@ impl CollaborativeFilter {
         target_items: &Relation,
     ) -> Result<Relation, DatabaseError> {
         // target_items_ids: (item_id)
-        let target_item_ids = target_items.project(&[self.item_id_attr.as_str()]);
+        let target_item_ids = target_items.project(&[self.item_id_attr.as_str()])?;
 
         // all_other_ratings: (user_id, item_id, score)
         // Restrict out target user's own ratings.
@@ -199,14 +199,14 @@ impl CollaborativeFilter {
         // To do this, we join with all items NOT in target_item_ids.
         // Relational algebra difference:
         // unseen_item_ids = all_item_ids MINUS target_item_ids
-        let all_item_ids = self.ratings.project(&[self.item_id_attr.as_str()]);
+        let all_item_ids = self.ratings.project(&[self.item_id_attr.as_str()])?;
         let unseen_item_ids = all_item_ids
             .difference(&target_item_ids)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Join to keep only ratings for unseen items
         // unseen_ratings: (user_id, item_id, score)
-        other_users_ratings.join(&unseen_item_ids)
+        Ok(other_users_ratings.join(&unseen_item_ids)?)
     }
 
     fn compute_prediction_components(
@@ -253,7 +253,7 @@ impl CollaborativeFilter {
                 ScalarValue::Float(pred)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
-            .map(|r| r.project(&[self.item_id_attr.as_str(), "predicted_score"]))
+            .and_then(|r| Ok(r.project(&[self.item_id_attr.as_str(), "predicted_score"])?))
     }
 
     fn predict_unseen_items(

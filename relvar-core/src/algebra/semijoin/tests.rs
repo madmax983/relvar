@@ -494,7 +494,8 @@ fn test_semijoin_equals_join_project() {
     let via_join = employees
         .join(&departments)
         .unwrap()
-        .project(&["emp_id", "name", "dept_id"]);
+        .project(&["emp_id", "name", "dept_id"])
+        .unwrap();
 
     assert_eq!(direct, via_join);
 }

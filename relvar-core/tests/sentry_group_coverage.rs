@@ -74,16 +74,11 @@ mod tests {
         let t = relvar_core::values::Tuple::new(std::sync::Arc::new(heading), t_values).unwrap();
         r.insert(t).unwrap();
 
+        // The RVA's "dept_id" collides with the outer "dept_id": rejected.
         let result = r.ungroup("my_rva");
-        if let Err(e) = result {
-            match e {
-                UngroupError::TupleCreation(msg) => assert!(
-                    msg.contains("dept_id")
-                        || msg.contains("conflict")
-                        || msg.contains("Duplicate")
-                ),
-                _ => panic!("Unexpected error: {:?}", e),
-            }
-        }
+        assert!(matches!(
+            result,
+            Err(UngroupError::AttributeCollision(ref a)) if a == "dept_id"
+        ));
     }
 }

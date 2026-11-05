@@ -76,8 +76,8 @@ impl RelationalRbac {
         let user_inherited_roles = self.user_roles.join(&inherited)?;
 
         let user_inherited_roles_proj = user_inherited_roles
-            .project(&["user_id", "inherits_from"])
-            .rename(&[("inherits_from", "role_id")]);
+            .project(&["user_id", "inherits_from"])?
+            .rename(&[("inherits_from", "role_id")])?;
 
         // 3. Combine direct roles with inherited roles
         let all_user_roles = self
@@ -89,7 +89,7 @@ impl RelationalRbac {
         let effective = all_user_roles.join(&self.permissions)?;
 
         // 5. Project out the role_id to deduplicate overlapping permissions from different roles
-        Ok(effective.project(&["user_id", "resource", "action"]))
+        Ok(effective.project(&["user_id", "resource", "action"])?)
     }
 
     /// Checks if a specific user has permission to perform an action on a resource.

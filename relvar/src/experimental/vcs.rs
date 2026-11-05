@@ -119,13 +119,13 @@ impl RelVcs {
         // 4. Join Tree ⨝ Blobs to get the file contents
         // Blob: (hash, content)
         // Wait, Trees has 'blob_hash' and Blobs has 'hash'. We need to rename.
-        let blobs_renamed = self.blobs.rename(&[("hash", "blob_hash")]);
+        let blobs_renamed = self.blobs.rename(&[("hash", "blob_hash")])?;
         let working_dir_full = tree
             .join(&blobs_renamed)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 5. Project to just (path, content)
-        let working_dir = working_dir_full.project(&["path", "content"]);
+        let working_dir = working_dir_full.project(&["path", "content"])?;
 
         Ok(working_dir)
     }
@@ -147,8 +147,8 @@ impl RelVcs {
         let tree_a = self.get_tree_for_commit(commit_a_hash)?;
         let tree_b = self.get_tree_for_commit(commit_b_hash)?;
 
-        let paths_a = tree_a.project(&["path"]);
-        let paths_b = tree_b.project(&["path"]);
+        let paths_a = tree_a.project(&["path"])?;
+        let paths_b = tree_b.project(&["path"])?;
 
         let added = self.compute_added_files(&paths_a, &paths_b)?;
         let removed = self.compute_removed_files(&paths_a, &paths_b)?;
@@ -178,7 +178,7 @@ impl RelVcs {
         Ok(commit
             .join(&self.trees)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["path", "blob_hash"]))
+            .project(&["path", "blob_hash"])?)
     }
 
     fn compute_added_files(
@@ -219,8 +219,8 @@ impl RelVcs {
         tree_b: &Relation,
     ) -> Result<Relation, DatabaseError> {
         // 5. Find Modified Files (In both, but blob_hash differs)
-        let tree_a_renamed = tree_a.rename(&[("blob_hash", "blob_hash_a")]);
-        let tree_b_renamed = tree_b.rename(&[("blob_hash", "blob_hash_b")]);
+        let tree_a_renamed = tree_a.rename(&[("blob_hash", "blob_hash_a")])?;
+        let tree_b_renamed = tree_b.rename(&[("blob_hash", "blob_hash_b")])?;
 
         let both_trees = tree_a_renamed
             .join(&tree_b_renamed)
@@ -231,7 +231,7 @@ impl RelVcs {
                 != t.get_typed::<String>("blob_hash_b").unwrap()
         });
 
-        let modified_paths = modified_files.project(&["path"]);
+        let modified_paths = modified_files.project(&["path"])?;
         modified_paths
             .extend("status", ScalarType::String, |_| {
                 ScalarValue::String("modified".to_string())

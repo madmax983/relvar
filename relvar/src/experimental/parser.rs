@@ -129,11 +129,11 @@ impl CykParser {
     fn initialize_parse_table(&self, input: &Relation) -> Result<Relation, DatabaseError> {
         let init = input
             .clone()
-            .rename(&[("char", "rhs")])
+            .rename(&[("char", "rhs")])?
             .join(&self.terminals)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["pos", "lhs"])
-            .rename(&[("pos", "start"), ("lhs", "non_terminal")]);
+            .project(&["pos", "lhs"])?
+            .rename(&[("pos", "start"), ("lhs", "non_terminal")])?;
 
         init.extend("length", ScalarType::Int, |_: &Tuple| ScalarValue::Int(1))
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))
@@ -142,7 +142,7 @@ impl CykParser {
     fn compute_new_entries(&self, parse_table: &Relation) -> Result<Relation, DatabaseError> {
         let left = parse_table
             .clone()
-            .rename(&[("non_terminal", "rhs1"), ("length", "len1")]);
+            .rename(&[("non_terminal", "rhs1"), ("length", "len1")])?;
 
         let left_with_end = left
             .extend("start2", ScalarType::Int, |t: &Tuple| {
@@ -156,7 +156,7 @@ impl CykParser {
             ("start", "start2"),
             ("non_terminal", "rhs2"),
             ("length", "len2"),
-        ]);
+        ])?;
 
         let pairs = left_with_end
             .join(&right)
@@ -173,8 +173,8 @@ impl CykParser {
                 ScalarValue::Int(len1 + len2)
             })
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?
-            .project(&["start", "length", "lhs"])
-            .rename(&[("lhs", "non_terminal")]);
+            .project(&["start", "length", "lhs"])?
+            .rename(&[("lhs", "non_terminal")])?;
 
         Ok(new_entries)
     }

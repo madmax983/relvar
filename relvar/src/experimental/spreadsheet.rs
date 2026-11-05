@@ -140,14 +140,14 @@ impl Spreadsheet {
     ) -> Result<Relation, DatabaseError> {
         // Find unresolved formulas by antijoining/difference with resolved values
         // We only want formulas whose 'id' is NOT yet in current_values
-        let resolved_ids = current_values.project(&["id"]);
-        let formula_ids = self.formulas.project(&["id"]);
+        let resolved_ids = current_values.project(&["id"])?;
+        let formula_ids = self.formulas.project(&["id"])?;
 
         let unresolved_ids = formula_ids
             .difference(&resolved_ids)
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
-        self.formulas.join(&unresolved_ids)
+        Ok(self.formulas.join(&unresolved_ids)?)
     }
 
     fn join_resolved_arguments(
@@ -156,14 +156,14 @@ impl Spreadsheet {
         current_values: &Relation,
     ) -> Result<Relation, DatabaseError> {
         // Rename current_values for arg1
-        let values_arg1 = current_values.rename(&[("id", "arg1"), ("val", "val1")]);
+        let values_arg1 = current_values.rename(&[("id", "arg1"), ("val", "val1")])?;
         // Rename current_values for arg2
-        let values_arg2 = current_values.rename(&[("id", "arg2"), ("val", "val2")]);
+        let values_arg2 = current_values.rename(&[("id", "arg2"), ("val", "val2")])?;
 
         // Join unresolved formulas with arg1 values
         let with_arg1 = unresolved_formulas.join(&values_arg1)?;
         // Join with arg2 values
-        with_arg1.join(&values_arg2)
+        Ok(with_arg1.join(&values_arg2)?)
     }
 
     fn compute_formula_evaluations(
@@ -195,7 +195,7 @@ impl Spreadsheet {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // Project back to (id, val)
-        Ok(evaluated.project(&["id", "val"]))
+        Ok(evaluated.project(&["id", "val"])?)
     }
 }
 

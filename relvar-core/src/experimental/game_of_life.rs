@@ -89,7 +89,7 @@ fn calculate_neighbor_counts(
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     // 4. Project to (nx, ny) to count properly
-    let connections = ext2.project(&["x", "y", "nx", "ny"]);
+    let connections = ext2.project(&["x", "y", "nx", "ny"])?;
 
     // 5. Summarize to count neighbors per cell
     let counts = connections
@@ -104,7 +104,7 @@ fn calculate_neighbor_counts(
         .map_err(|e| crate::error::DatabaseError::AlgebraError(e.to_string()))?;
 
     // 6. Rename back to (x, y)
-    Ok(counts.rename(&[("nx", "x"), ("ny", "y")]))
+    Ok(counts.rename(&[("nx", "x"), ("ny", "y")])?)
 }
 
 fn apply_rules(
@@ -118,12 +118,12 @@ fn apply_rules(
             let count = t.get_typed::<i64>("n_count").unwrap();
             count == 2 || count == 3
         })
-        .project(&["x", "y"]);
+        .project(&["x", "y"])?;
 
     // 8. Rule 2: Born (dead cells with exactly 3 neighbors)
     let all_with_3_neighbors = counts_renamed
         .restrict(|t: &Tuple| t.get_typed::<i64>("n_count").unwrap() == 3)
-        .project(&["x", "y"]);
+        .project(&["x", "y"])?;
 
     let born = all_with_3_neighbors
         .difference(alive_cells)

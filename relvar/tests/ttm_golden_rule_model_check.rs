@@ -23,6 +23,7 @@
 //! on the persistent engine).
 
 use std::collections::BTreeSet;
+#[cfg(feature = "storage")]
 use std::path::Path;
 
 use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
@@ -262,19 +263,20 @@ impl Harness for InMemory {
     }
 }
 
+#[cfg(feature = "storage")]
 struct Persistent;
 
+#[cfg(feature = "storage")]
 fn scratch_dir() -> tempfile::TempDir {
     // tmpfs keeps fsync cheap, so the exhaustive search stays fast.
     let shm = Path::new("/dev/shm");
-    if shm.is_dir() {
-        if let Ok(dir) = tempfile::tempdir_in(shm) {
-            return dir;
-        }
-    }
-    tempfile::tempdir().expect("temp dir")
+    shm.is_dir()
+        .then(|| tempfile::tempdir_in(shm).ok())
+        .flatten()
+        .unwrap_or_else(|| tempfile::tempdir().expect("temp dir"))
 }
 
+#[cfg(feature = "storage")]
 impl Harness for Persistent {
     type Engine = relvar::PersistentEngine;
     type Scratch = tempfile::TempDir;
@@ -429,6 +431,7 @@ fn golden_rule_in_memory() {
     check::<InMemory>(depth(4), false);
 }
 
+#[cfg(feature = "storage")]
 #[test]
 fn golden_rule_persistent_with_crashes() {
     check::<Persistent>(depth(3), true);

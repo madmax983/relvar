@@ -163,10 +163,14 @@ pub enum ArenaOpError {
         found: usize,
     },
 
-    /// A computed value's type did not match the new attribute's inferred
-    /// type (extend's per-tuple check, mirroring the owned
+    /// A type check failed: either a computed value's type did not match
+    /// the new attribute's inferred type (extend's per-tuple check, mirroring
+    /// the owned
     /// [`ExtendError::TupleCreation`](crate::algebra::ExtendError::TupleCreation)
-    /// type check against the declared attribute type).
+    /// type check against the declared attribute type), or a common
+    /// attribute of a natural join ([`join_in`]) has a different type in each
+    /// input (mirroring
+    /// [`JoinError::AttributeTypeMismatch`](crate::algebra::JoinError::AttributeTypeMismatch)).
     #[error("type mismatch for attribute '{attribute}': expected {expected}, found {found}")]
     TypeMismatch {
         /// The new attribute's name.
@@ -460,11 +464,36 @@ fn same_scalar_kind(a: ScalarRef<'_>, b: ScalarRef<'_>) -> bool {
     }
 }
 
+/// Checks that every common attribute of `a` and `b` has the same type on
+/// both sides.
+///
+/// TTM: the common attributes of a natural join must have the same type;
+/// a name-only match with differing types is a type error (the same rule
+/// [`Relation::join`](crate::values::Relation::join) enforces).
+///
+/// # Errors
+///
+/// Returns [`ArenaOpError::TypeMismatch`] naming the first common attribute
+/// whose types differ (`expected` is the left type, `found` the right).
+pub(crate) fn check_join_common_types(a: &TupleType, b: &TupleType) -> Result<(), ArenaOpError> {
+    for (name, a_type) in a.attributes() {
+        if let Some(b_type) = b.get_attribute_type(name)
+            && a_type != b_type
+        {
+            return Err(ArenaOpError::TypeMismatch {
+                attribute: name.clone(),
+                expected: a_type.name().to_string(),
+                found: b_type.name().to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Builds the natural-join heading of `a` and `b`: `a`'s attributes plus
 /// `b`'s non-common attributes, in [`TupleType`]'s canonical (name-sorted)
-/// order. On a name collision the left relation's attribute (and its type)
-/// wins — the same rule [`Relation::join`](crate::values::Relation::join)
-/// applies.
+/// order. Common attributes have the same type on both sides (checked by
+/// [`check_join_common_types`]), so taking them from `a` is exact.
 pub(crate) fn natural_join_heading(a: &SlotRelation<'_>, b: &SlotRelation<'_>) -> TupleType {
     let mut heading = a.heading().clone();
     for (name, scalar_type) in b.heading().attributes() {
@@ -659,9 +688,9 @@ pub(crate) fn intersect_into<'a>(
 /// attributes every probe matches every build tuple (Cartesian product).
 /// Tuple assembly is name-based — each attribute resolves from whichever
 /// side carries it — so left/right placement is correct regardless of which
-/// input was the hash build side. The combined heading keeps the left
-/// relation's attribute (and its type) on a name collision, matching the
-/// owned [`Relation::join`](crate::values::Relation::join).
+/// input was the hash build side. Common attributes must have the same type
+/// on both sides, matching the owned
+/// [`Relation::join`](crate::values::Relation::join).
 ///
 /// Upper bound for `out`'s capacity: `a.len() * b.len()` (the Cartesian
 /// bound). A caller that knows a tighter bound may size `out` smaller and
@@ -674,6 +703,7 @@ pub(crate) fn join_into<'a>(
 ) -> Result<(), ArenaOpError> {
     let a_heading = a.heading();
     let b_heading = b.heading();
+    check_join_common_types(a_heading, b_heading)?;
     let out_heading = out.heading();
     let out_degree = out_heading.degree();
 
@@ -929,9 +959,9 @@ pub fn intersect_in<'a>(
 ///
 /// TTM: the natural join. The join key is **all** commonly-named attributes —
 /// the same key semantics as the owned
-/// [`Relation::join`](crate::values::Relation::join). The combined heading is
-/// `a`'s attributes plus `b`'s non-common attributes; on a name collision the
-/// left relation's attribute (and its type) wins. With no common attributes
+/// [`Relation::join`](crate::values::Relation::join). Common attributes must
+/// have the same type on both sides. The combined heading is `a`'s
+/// attributes plus `b`'s non-common attributes. With no common attributes
 /// this is the Cartesian product.
 ///
 /// Set semantics: duplicate output tuples are eliminated, matching the owned
@@ -944,6 +974,8 @@ pub fn intersect_in<'a>(
 ///
 /// # Errors
 ///
+/// - [`ArenaOpError::TypeMismatch`] if a common attribute has a different
+///   type in each input.
 /// - [`ArenaOpError::AllocError`] if the arena cannot back the output, or if
 ///   the capacity bound overflows `usize`.
 /// - [`ArenaOpError::CapacityError`] if the output overflows (cannot happen
@@ -953,6 +985,7 @@ pub fn join_in<'a>(
     b: &SlotRelation<'a>,
     arena: &'a Arena,
 ) -> Result<SlotRelation<'a>, ArenaOpError> {
+    check_join_common_types(a.heading(), b.heading())?;
     let capacity = a
         .len()
         .checked_mul(b.len())
@@ -1394,6 +1427,31 @@ mod tests {
     // join_in
     // ------------------------------------------------------------------
 
+    /// TTM: common attributes must have the same type on both sides; the
+    /// arena join must reject a name-only match like the owned join does.
+    #[test]
+    fn join_in_rejects_common_attribute_type_mismatch() {
+        let arena = Arena::new();
+        let left_heading = TupleType::new().with_attribute("id", ScalarType::Int);
+        let mut left = Relation::new(RelationType::new(left_heading));
+        left.insert(tuple! { id: 1i64 }).unwrap();
+        let right_heading = TupleType::new().with_attribute("id", ScalarType::String);
+        let mut right = Relation::new(RelationType::new(right_heading));
+        right.insert(tuple! { id: "1" }).unwrap();
+        let a = slots_of(&left, &arena, 4);
+        let b = slots_of(&right, &arena, 4);
+
+        let result = join_in(&a, &b, &arena);
+        assert!(
+            matches!(
+                result,
+                Err(ArenaOpError::TypeMismatch { ref attribute, .. }) if attribute == "id"
+            ),
+            "expected TypeMismatch, got {:?}",
+            result.map(|r| r.len())
+        );
+    }
+
     #[test]
     fn join_matches_on_all_common_attributes() {
         let arena = Arena::new();
@@ -1461,33 +1519,6 @@ mod tests {
         assert_eq!(int_column(&result, "n"), [2, 4]);
         assert_eq!(int_column(&result, "m"), [20, 40]);
         assert_eq!(result.heading().degree(), 2);
-    }
-
-    #[test]
-    fn join_left_wins_name_collisions() {
-        let arena = Arena::new();
-        // Same attribute name, different types: the key can never match
-        // (Int != String), but the combined heading must keep the LEFT type.
-        let a_heading = TupleType::new()
-            .with_attribute("id", ScalarType::Int)
-            .with_attribute("x", ScalarType::Int);
-        let mut a = Relation::new(RelationType::new(a_heading));
-        a.insert(tuple! { id: 1i64, x: 1i64 }).unwrap();
-        let b_heading = TupleType::new()
-            .with_attribute("id", ScalarType::Int)
-            .with_attribute("x", ScalarType::String);
-        let mut b = Relation::new(RelationType::new(b_heading));
-        b.insert(tuple! { id: 1i64, x: "one" }).unwrap();
-        let a_slots = slots_of(&a, &arena, 8);
-        let b_slots = slots_of(&b, &arena, 8);
-
-        let result = join_in(&a_slots, &b_slots, &arena).unwrap();
-
-        assert_eq!(result.len(), 0);
-        assert_eq!(
-            result.heading().get_attribute_type("x"),
-            Some(&ScalarType::Int)
-        );
     }
 
     #[test]
@@ -1644,7 +1675,8 @@ mod tests {
             .join(&departments)
             .unwrap()
             .restrict(|tuple| tuple.get_typed::<i64>("dept_id").unwrap() == 10)
-            .project(&["dept_name", "name"]);
+            .project(&["dept_name", "name"])
+            .unwrap();
 
         // Arena pipeline.
         let arena = Arena::new();

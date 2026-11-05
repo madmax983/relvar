@@ -129,7 +129,7 @@ impl RelationalGNN {
     /// ```
     pub fn aggregate_messages(&self) -> Result<Relation, DatabaseError> {
         // 1. Rename node_features to match edges source_id
-        let features_renamed = self.node_features.rename(&[("node_id", "source_id")]);
+        let features_renamed = self.node_features.rename(&[("node_id", "source_id")])?;
 
         // 2. Join to propagate features along edges
         // Result schema: (source_id, target_id, feature_idx, value)
@@ -137,8 +137,8 @@ impl RelationalGNN {
 
         // 3. Rename target_id back to node_id, and drop source_id
         let messages_at_target = messages
-            .project(&["target_id", "feature_idx", "value"])
-            .rename(&[("target_id", "node_id")]);
+            .project(&["target_id", "feature_idx", "value"])?
+            .rename(&[("target_id", "node_id")])?;
 
         // 4. Aggregate messages for each node and feature_idx using SUM
         let aggregated_features = messages_at_target
@@ -149,7 +149,7 @@ impl RelationalGNN {
             .map_err(|e| DatabaseError::AlgebraError(e.to_string()))?;
 
         // 5. Rename agg_value back to value to match the original feature schema
-        let updated_features = aggregated_features.rename(&[("agg_value", "value")]);
+        let updated_features = aggregated_features.rename(&[("agg_value", "value")])?;
 
         Ok(updated_features)
     }
