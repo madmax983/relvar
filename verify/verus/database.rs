@@ -141,6 +141,149 @@ pub proof fn theorem_multiple_assignment_is_one_statement(
 }
 
 // ---------------------------------------------------------------------------
+// Combining assignments to the same target (RM Prescription 21)
+// ---------------------------------------------------------------------------
+
+/// One assignment in a multiple assignment: `R := v`, or the shorthands
+/// `INSERT R x` (`R := R UNION x`) and `DELETE R x` (`R := R MINUS x`).
+/// Sources are values computed before the statement, as in
+/// `Database::multiple_assign`.
+pub enum AssignOp {
+    Replace(Relation),
+    Insert(Relation),
+    Delete(Relation),
+}
+
+/// The relation an operation carries.
+pub open spec fn op_relation(op: AssignOp) -> Relation {
+    match op {
+        AssignOp::Replace(v) => v,
+        AssignOp::Insert(x) => x,
+        AssignOp::Delete(x) => x,
+    }
+}
+
+pub open spec fn apply_op(r: Relation, op: AssignOp) -> Relation {
+    match op {
+        AssignOp::Replace(v) => v,
+        AssignOp::Insert(x) => Relation { heading: r.heading, body: r.body.union(x.body) },
+        AssignOp::Delete(x) => Relation { heading: r.heading, body: r.body.difference(x.body) },
+    }
+}
+
+/// The new value of every target after the statement's operations, applied
+/// in order, each to the result of the previous operations on the same
+/// target (or to the pre-statement value). This is TTM's rule that
+/// assignments to the same target are combined.
+pub open spec fn combine(db: Db, ops: Seq<(RelvarName, AssignOp)>) -> Map<RelvarName, Relation>
+    decreases ops.len(),
+{
+    if ops.len() == 0 {
+        Map::empty()
+    } else {
+        let prefix = combine(db, ops.drop_last());
+        let n = ops.last().0;
+        let current = if prefix.dom().contains(n) { prefix[n] } else { db.relvars[n] };
+        prefix.insert(n, apply_op(current, ops.last().1))
+    }
+}
+
+/// Every operation targets an existing relvar with a well-formed relation
+/// of that relvar's heading.
+pub open spec fn ops_well_typed(db: Db, s: Schema, ops: Seq<(RelvarName, AssignOp)>) -> bool {
+    forall|i: int|
+        0 <= i < ops.len() ==> db.relvars.dom().contains(#[trigger] ops[i].0) && wf(op_relation(ops[i].1))
+            && op_relation(ops[i].1).heading == s.headings[ops[i].0]
+}
+
+/// Combining well-typed operations yields a well-typed assignment: the
+/// targets are existing relvars, and every combined value is a well-formed
+/// relation of the target's heading.
+pub proof fn lemma_combine_well_typed(db: Db, s: Schema, ops: Seq<(RelvarName, AssignOp)>)
+    requires
+        consistent(db, s),
+        ops_well_typed(db, s, ops),
+    ensures
+        assignment_well_typed(db, s, combine(db, ops)),
+    decreases ops.len(),
+{
+    if ops.len() > 0 {
+        let rest = ops.drop_last();
+        assert forall|i: int| 0 <= i < rest.len() implies db.relvars.dom().contains(#[trigger] rest[i].0)
+            && wf(op_relation(rest[i].1)) && op_relation(rest[i].1).heading == s.headings[rest[i].0] by {
+            assert(rest[i] == ops[i]);
+        }
+        lemma_combine_well_typed(db, s, rest);
+        let prefix = combine(db, rest);
+        let n = ops.last().0;
+        let last = ops[ops.len() - 1];
+        assert(ops.last() == last);
+        assert(db.relvars.dom().contains(last.0));
+        let current = if prefix.dom().contains(n) { prefix[n] } else { db.relvars[n] };
+        assert(wf(current) && current.heading == s.headings[n]);
+        let next = apply_op(current, ops.last().1);
+        assert(wf(next) && next.heading == s.headings[n]) by {
+            assert(wf(op_relation(last.1)));
+        }
+        assert(combine(db, ops) == prefix.insert(n, next));
+    }
+}
+
+/// The combined statement obeys the Golden Rule like any other: it is
+/// installed whole if the combined state satisfies every constraint, and
+/// otherwise changes nothing. A well-typed combined statement is rejected
+/// only for violating a constraint.
+pub proof fn theorem_combined_assignment(db: Db, s: Schema, ops: Seq<(RelvarName, AssignOp)>)
+    requires
+        consistent(db, s),
+        ops_well_typed(db, s, ops),
+    ensures
+        consistent(execute(db, s, combine(db, ops)).0, s),
+        execute(db, s, combine(db, ops)).1 <==> consistent(assign(db, combine(db, ops)), s),
+{
+    lemma_combine_well_typed(db, s, ops);
+    theorem_golden_rule(db, s, combine(db, ops));
+}
+
+/// TTM's example: `INSERT R r1, INSERT R r2` is `R := (R UNION r1) UNION r2`.
+pub proof fn lemma_combine_two_inserts(db: Db, n: RelvarName, r1: Relation, r2: Relation)
+    ensures
+        combine(db, seq![(n, AssignOp::Insert(r1)), (n, AssignOp::Insert(r2))])[n].body
+            == db.relvars[n].body.union(r1.body).union(r2.body),
+{
+    reveal_with_fuel(combine, 3);
+    let ops = seq![(n, AssignOp::Insert(r1)), (n, AssignOp::Insert(r2))];
+    assert(ops.drop_last() =~= seq![(n, AssignOp::Insert(r1))]);
+    assert(seq![(n, AssignOp::Insert(r1))].drop_last() =~= Seq::<(RelvarName, AssignOp)>::empty());
+}
+
+/// An insert followed by a delete of the same tuples on one target removes
+/// them, whatever was there before: order matters, as in TTM.
+pub proof fn lemma_combine_insert_then_delete(db: Db, n: RelvarName, x: Relation)
+    ensures
+        combine(db, seq![(n, AssignOp::Insert(x)), (n, AssignOp::Delete(x))])[n].body
+            == db.relvars[n].body.union(x.body).difference(x.body),
+        forall|t: Tuple| #[trigger] x.body.contains(t) ==> !combine(
+            db,
+            seq![(n, AssignOp::Insert(x)), (n, AssignOp::Delete(x))],
+        )[n].body.contains(t),
+{
+    reveal_with_fuel(combine, 3);
+    let ops = seq![(n, AssignOp::Insert(x)), (n, AssignOp::Delete(x))];
+    assert(ops.drop_last() =~= seq![(n, AssignOp::Insert(x))]);
+    assert(seq![(n, AssignOp::Insert(x))].drop_last() =~= Seq::<(RelvarName, AssignOp)>::empty());
+}
+
+/// The last `Replace` of a target wins (its source is a value, so it does
+/// not depend on earlier assignments to the target).
+pub proof fn lemma_combine_last_replace_wins(db: Db, ops: Seq<(RelvarName, AssignOp)>, n: RelvarName, v: Relation)
+    ensures
+        combine(db, ops.push((n, AssignOp::Replace(v))))[n] == v,
+{
+    assert(ops.push((n, AssignOp::Replace(v))).drop_last() =~= ops);
+}
+
+// ---------------------------------------------------------------------------
 // Transactions (RM Prescription 17)
 // ---------------------------------------------------------------------------
 
