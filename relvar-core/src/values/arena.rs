@@ -171,12 +171,63 @@ pub enum MaterializeError {
 
 /// One fixed-capacity bump chunk.
 ///
-/// The backing buffer never moves after creation (it is heap-allocated and
-/// only the `Vec` of chunks itself may reallocate, which moves the `Box`, not
-/// the bytes), so raw pointers into it stay valid for the arena's lifetime.
+/// The backing buffer is a `Vec<u8>` that is created at its final length and
+/// never resized, so its heap bytes never move: moving the `Vec` itself (when
+/// the chunk list reallocates) moves only its header.
+///
+/// Aliasing discipline: once a chunk exists, its bytes are only ever reached
+/// through the raw pointer [`Vec::as_mut_ptr`] returns, which is guaranteed
+/// not to materialize a reference to the buffer. No `&[u8]`/`&mut [u8]` over
+/// the whole buffer is ever created, so carving a new allocation can never
+/// invalidate (or alias) a `&mut` previously handed out from the same chunk.
 #[derive(Debug)]
 struct Chunk {
-    storage: Box<[u8]>,
+    storage: Vec<u8>,
+}
+
+impl Chunk {
+    /// A zero-filled chunk of exactly `len` bytes.
+    fn new(len: usize) -> Self {
+        Self {
+            storage: alloc::vec![0u8; len],
+        }
+    }
+
+    /// The chunk length in bytes (reads only the `Vec` header).
+    fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    /// Raw base pointer of the chunk, with provenance over the whole buffer.
+    ///
+    /// Takes `&mut self` because the pointer is used for writes;
+    /// [`Vec::as_mut_ptr`] creates no reference to the bytes, so pointers
+    /// obtained earlier (and borrows derived from them) stay valid.
+    fn base_ptr(&mut self) -> *mut u8 {
+        self.storage.as_mut_ptr()
+    }
+}
+
+/// Places `size` bytes aligned to `align` in a chunk of `len` bytes whose
+/// base address is `base_addr`, starting the search at `cursor`.
+///
+/// Returns `(offset, new_cursor)`: the allocation's offset from the chunk
+/// base and the cursor just past it, or `None` if it does not fit. Alignment
+/// is applied to the absolute address, so it holds regardless of the chunk's
+/// own alignment. `align` must be a non-zero power of two.
+fn place(
+    base_addr: usize,
+    cursor: usize,
+    len: usize,
+    size: usize,
+    align: usize,
+) -> Option<(usize, usize)> {
+    let addr = base_addr.checked_add(cursor)?;
+    // Bytes from `addr` up to the next multiple of `align`.
+    let padding = addr.wrapping_neg() & (align - 1);
+    let offset = cursor.checked_add(padding)?;
+    let end = offset.checked_add(size)?;
+    (end <= len).then_some((offset, end))
 }
 
 /// A bump (arena) allocator for zero-alloc values.
@@ -198,7 +249,11 @@ struct Chunk {
 /// - Allocations are carved from a monotonically increasing cursor, so no two
 ///   live allocations overlap.
 /// - Chunk byte buffers are heap-stable: pushing a new chunk may reallocate
-///   the chunk `Vec`, but that moves the `Box`es, never the bytes they own.
+///   the chunk list, but that moves the chunks' `Vec` headers, never the
+///   bytes they own (chunk buffers are never resized).
+/// - Chunk bytes are only reached through raw pointers ([`Vec::as_mut_ptr`]);
+///   no reference over a whole chunk is ever created, so handing out a new
+///   region never aliases or invalidates an earlier one.
 /// - `reset` and `drop` require `&mut self`; the returned references are tied
 ///   to the `&self` borrow in the method signatures, so the borrow checker
 ///   statically prevents invalidation while borrows are live.
@@ -225,9 +280,8 @@ impl Arena {
     /// chunk size are served from a dedicated oversized chunk.
     pub fn with_chunk_size(chunk_bytes: usize) -> Self {
         let chunk_size = chunk_bytes.max(1);
-        let storage: Box<[u8]> = alloc::vec![0u8; chunk_size].into_boxed_slice();
         Self {
-            chunks: RefCell::new(alloc::vec![Chunk { storage }]),
+            chunks: RefCell::new(alloc::vec![Chunk::new(chunk_size)]),
             cursor: Cell::new(0),
             chunk_size,
         }
@@ -249,7 +303,7 @@ impl Arena {
                 if i == last {
                     self.cursor.get()
                 } else {
-                    chunk.storage.len()
+                    chunk.len()
                 }
             })
             .sum()
@@ -257,11 +311,7 @@ impl Arena {
 
     /// Total bytes reserved across all chunks.
     pub fn capacity_bytes(&self) -> usize {
-        self.chunks
-            .borrow()
-            .iter()
-            .map(|chunk| chunk.storage.len())
-            .sum()
+        self.chunks.borrow().iter().map(Chunk::len).sum()
     }
 
     /// Rewinds the arena for reuse: frees all but the first chunk and resets
@@ -417,31 +467,19 @@ impl Arena {
             return Ok(core::ptr::without_provenance_mut(align));
         }
 
+        let mut chunks = self.chunks.borrow_mut();
+
         // Fast path: room in the current (last) chunk.
-        let reused = {
-            let chunks = self.chunks.borrow();
-            match chunks.last() {
-                Some(chunk) => {
-                    let base = chunk.storage.as_ptr() as usize;
-                    let cursor = self.cursor.get();
-                    // Align the absolute address, not just the cursor.
-                    let placed = base.checked_add(cursor).and_then(|addr| {
-                        let aligned = addr.checked_add(align - 1)? & !(align - 1);
-                        let end = aligned.checked_add(size)?;
-                        (end <= base + chunk.storage.len()).then_some((aligned, end - base))
-                    });
-                    if let Some((aligned, new_cursor)) = placed {
-                        self.cursor.set(new_cursor);
-                        Some(aligned as *mut u8)
-                    } else {
-                        None
-                    }
-                }
-                None => None,
+        if let Some(chunk) = chunks.last_mut() {
+            let base = chunk.base_ptr();
+            if let Some((offset, new_cursor)) =
+                place(base.addr(), self.cursor.get(), chunk.len(), size, align)
+            {
+                self.cursor.set(new_cursor);
+                // In bounds (`new_cursor <= len`); `wrapping_add` keeps the
+                // chunk's provenance without an `unsafe` offset.
+                return Ok(base.wrapping_add(offset));
             }
-        };
-        if let Some(ptr) = reused {
-            return Ok(ptr);
         }
 
         // Slow path: the current chunk is full (or missing); grow.
@@ -450,17 +488,15 @@ impl Arena {
             .checked_add(align)
             .ok_or(AllocError::SizeOverflow(size))?;
         let chunk_len = self.chunk_size.max(need);
-        let storage: Box<[u8]> = alloc::vec![0u8; chunk_len].into_boxed_slice();
-        let base = storage.as_ptr() as usize;
-        self.chunks.borrow_mut().push(Chunk { storage });
-        // The new chunk is empty: align its base address. `chunk_len >= size +
-        // align` guarantees the allocation fits.
-        let aligned = base
-            .checked_add(align - 1)
-            .ok_or(AllocError::SizeOverflow(size))?
-            & !(align - 1);
-        self.cursor.set(aligned - base + size);
-        Ok(aligned as *mut u8)
+        let mut chunk = Chunk::new(chunk_len);
+        // Taken before the chunk moves into the list: moving the `Vec`
+        // header does not move (or retag) its heap bytes.
+        let base = chunk.base_ptr();
+        let (offset, new_cursor) =
+            place(base.addr(), 0, chunk_len, size, align).ok_or(AllocError::SizeOverflow(size))?;
+        chunks.push(chunk);
+        self.cursor.set(new_cursor);
+        Ok(base.wrapping_add(offset))
     }
 }
 
@@ -1223,6 +1259,34 @@ mod tests {
         assert_eq!((value as *const Aligned64).addr() % 64, 0);
         assert_eq!(*value, Aligned64);
         assert_eq!(arena.used_bytes(), 0);
+    }
+
+    /// Regression for the aliasing model (run under Miri:
+    /// `cargo +nightly miri test -p relvar-core --lib values::arena`).
+    /// Earlier `&mut` allocations must stay usable while later allocations
+    /// carve from the same chunk, grow new chunks, and reallocate the chunk
+    /// list. Allocating must never create a reference over chunk memory that
+    /// was already handed out, nor write through a pointer derived from a
+    /// shared borrow.
+    #[test]
+    fn arena_earlier_mut_borrows_stay_valid_across_later_allocations() {
+        let arena = Arena::with_chunk_size(16);
+        let first = arena.alloc_bytes(4).unwrap();
+        let second = arena.alloc_slice_mut(2, 0u32).unwrap();
+        // Same chunk, then several new chunks (the chunk list reallocates).
+        let mut later = Vec::new();
+        for i in 0..8u8 {
+            let bytes = arena.alloc_bytes(12).unwrap();
+            bytes.fill(i);
+            later.push(bytes);
+        }
+        first.copy_from_slice(&[1, 2, 3, 4]);
+        second[1] = 7;
+        assert_eq!(first, &[1u8, 2, 3, 4]);
+        assert_eq!(second, &[0u32, 7]);
+        for (i, bytes) in later.iter().enumerate() {
+            assert!(bytes.iter().all(|&b| usize::from(b) == i));
+        }
     }
 
     #[test]
