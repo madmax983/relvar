@@ -52,10 +52,6 @@ pub enum DivideError {
     /// Type mismatch for a common attribute.
     #[error("Type mismatch for attribute '{0}'")]
     TypeMismatch(String),
-
-    /// The divisor heading equals the dividend heading (no remainder attributes).
-    #[error("Divisor heading cannot equal dividend heading (no remainder attributes)")]
-    EmptyRemainder,
 }
 
 impl Relation {
@@ -79,6 +75,15 @@ impl Relation {
     /// *Reasoning:* The condition "for all s in R2, (t ∪ s) ∈ R1" is trivially true because
     /// there are no `s` in R2. Thus, every candidate `t` (from the projection of R1 onto
     /// the remainder attributes) satisfies the condition.
+    ///
+    /// # Edge Case: Divisor Over the Whole Heading
+    ///
+    /// If the divisor's heading equals the dividend's, there are no remainder
+    /// attributes (A = {}) and the result is `TABLE_DEE` when every divisor
+    /// tuple is in the dividend, else `TABLE_DUM` (RM Proscription 5: the
+    /// degree-zero case is handled, not rejected).
+    ///
+    /// This is Date's Small Divide, `r1{A} MINUS ((r1{A} JOIN r2) MINUS r1){A}`.
     ///
     /// # Examples
     ///
@@ -124,7 +129,6 @@ impl Relation {
     /// Returns `Err` if:
     /// - Divisor has attributes not in dividend
     /// - Attribute types don't match
-    /// - Divisor heading equals dividend heading (no remainder)
     pub fn divide(&self, divisor: &Relation) -> Result<Relation, DivideError> {
         let dividend_heading = self.relation_type().heading();
         let divisor_heading = divisor.relation_type().heading();
@@ -133,7 +137,7 @@ impl Relation {
         validate_division_compatibility(dividend_heading, divisor_heading)?;
 
         // Compute remainder attributes (dividend - divisor)
-        let remainder_attrs = compute_remainder_attributes(dividend_heading, divisor_heading)?;
+        let remainder_attrs = compute_remainder_attributes(dividend_heading, divisor_heading);
 
         // If divisor is empty, return projection onto remainder
         if divisor.is_empty() {
@@ -159,42 +163,32 @@ fn validate_division_compatibility(
 ) -> Result<(), DivideError> {
     for attr_name in divisor_heading.attribute_names() {
         // Check if attribute exists in dividend
-        match dividend_heading.get_attribute_type(attr_name) {
-            None => {
-                return Err(DivideError::MissingAttribute(attr_name.clone()));
-            }
-            Some(dividend_type) => {
-                // Check if types match
-                let divisor_type = divisor_heading.get_attribute_type(attr_name).unwrap();
-                if dividend_type != divisor_type {
-                    return Err(DivideError::TypeMismatch(attr_name.clone()));
-                }
-            }
+        let dividend_type = dividend_heading
+            .get_attribute_type(attr_name)
+            .ok_or_else(|| DivideError::MissingAttribute(attr_name.clone()))?;
+        if Some(dividend_type) != divisor_heading.get_attribute_type(attr_name) {
+            return Err(DivideError::TypeMismatch(attr_name.clone()));
         }
     }
     Ok(())
 }
 
 /// Compute remainder attributes (dividend - divisor).
-/// Returns error if remainder is empty.
+///
+/// The remainder may be empty (divisor over the dividend's whole heading);
+/// the quotient is then `TABLE_DEE` or `TABLE_DUM`.
 fn compute_remainder_attributes<'a>(
     dividend_heading: &'a crate::types::TupleType,
     divisor_heading: &crate::types::TupleType,
-) -> Result<Vec<&'a str>, DivideError> {
+) -> Vec<&'a str> {
     // Optimization: Collect &str references directly from the dividend heading
     // instead of cloning Strings. This avoids an intermediate Vec<String>
     // allocation and cloning operation before projecting.
-    let remainder_attrs: Vec<&'a str> = dividend_heading
+    dividend_heading
         .attribute_names()
         .filter(|attr| !divisor_heading.has_attribute(attr))
         .map(|s| s.as_str())
-        .collect();
-
-    if remainder_attrs.is_empty() {
-        return Err(DivideError::EmptyRemainder);
-    }
-
-    Ok(remainder_attrs)
+        .collect()
 }
 
 /// Project relation onto specified attributes.
@@ -489,28 +483,42 @@ mod tests {
         }
     }
 
-    // Test 8: Error - divisor heading equals dividend heading (no remainder)
+    // Test 8: divisor heading equals dividend heading (no remainder
+    // attributes). TTM: A = {} so the result is r1{} restricted by the
+    // division condition: TABLE_DEE if every divisor tuple is in the
+    // dividend, else TABLE_DUM.
     #[test]
-    fn test_divide_error_empty_remainder() {
-        let supplies_heading = TupleType::new()
+    fn test_divide_divisor_with_full_heading_gives_dee_or_dum() {
+        let heading = TupleType::new()
             .with_attribute("supplier_id", ScalarType::String)
             .with_attribute("part_id", ScalarType::String);
-        let supplies_type = RelationType::new(supplies_heading.clone());
-        let supplies = Relation::new(supplies_type);
+        let mut supplies = Relation::new(RelationType::new(heading.clone()));
+        supplies
+            .insert(tuple! { supplier_id: "S1", part_id: "P1" })
+            .unwrap();
+        supplies
+            .insert(tuple! { supplier_id: "S2", part_id: "P2" })
+            .unwrap();
 
-        // Divisor has same heading as dividend
-        let divisor_type = RelationType::new(supplies_heading);
-        let divisor = Relation::new(divisor_type);
+        let mut contained = Relation::new(RelationType::new(heading.clone()));
+        contained
+            .insert(tuple! { supplier_id: "S1", part_id: "P1" })
+            .unwrap();
+        let dee = supplies.divide(&contained).unwrap();
+        assert_eq!(dee.degree(), 0);
+        assert_eq!(dee.cardinality(), 1);
 
-        let result = supplies.divide(&divisor);
+        let mut not_contained = Relation::new(RelationType::new(heading.clone()));
+        not_contained
+            .insert(tuple! { supplier_id: "S9", part_id: "P1" })
+            .unwrap();
+        let dum = supplies.divide(&not_contained).unwrap();
+        assert_eq!(dum.degree(), 0);
+        assert_eq!(dum.cardinality(), 0);
 
-        assert!(result.is_err());
-        match result {
-            Err(DivideError::EmptyRemainder) => {
-                // Expected
-            }
-            _ => panic!("Expected EmptyRemainder error"),
-        }
+        // Empty divisor: r1{} (TABLE_DEE, since the dividend is non-empty).
+        let empty = Relation::new(RelationType::new(heading));
+        assert_eq!(supplies.divide(&empty).unwrap().cardinality(), 1);
     }
 }
 
@@ -553,7 +561,7 @@ mod tests_additional {
     }
 
     #[test]
-    fn test_divide_error_empty_remainder_internal() {
+    fn test_divide_empty_remainder_of_empty_dividend_is_dum_internal() {
         let dividend_heading = TupleType::new()
             .with_attribute("a", ScalarType::Int)
             .with_attribute("b", ScalarType::Int);
@@ -564,10 +572,9 @@ mod tests_additional {
             .with_attribute("b", ScalarType::Int);
         let divisor = Relation::new(RelationType::new(divisor_heading));
 
-        assert!(matches!(
-            dividend.divide(&divisor),
-            Err(DivideError::EmptyRemainder)
-        ));
+        let result = dividend.divide(&divisor).unwrap();
+        assert_eq!(result.degree(), 0);
+        assert!(result.is_empty());
     }
 
     #[test]
@@ -599,5 +606,73 @@ mod tests_additional {
 
         let result = dividend.divide(&divisor).unwrap();
         assert_eq!(result.cardinality(), 2);
+    }
+}
+
+#[cfg(test)]
+mod small_divide_properties {
+    use crate::tuple;
+    use crate::types::{RelationType, ScalarType, TupleType};
+    use crate::values::Relation;
+    use alloc::collections::BTreeSet;
+    use alloc::vec::Vec;
+    use proptest::prelude::*;
+
+    fn dividend(pairs: &BTreeSet<(i64, i64)>) -> Relation {
+        let heading = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+        let mut r = Relation::new(RelationType::new(heading));
+        for (a, b) in pairs {
+            r.insert(tuple! { a: *a, b: *b }).unwrap();
+        }
+        r
+    }
+
+    fn divisor(bs: &BTreeSet<i64>) -> Relation {
+        let heading = TupleType::new().with_attribute("b", ScalarType::Int);
+        let mut r = Relation::new(RelationType::new(heading));
+        for b in bs {
+            r.insert(tuple! { b: *b }).unwrap();
+        }
+        r
+    }
+
+    /// Date's Small Divide: `r1{A} MINUS ((r1{A} JOIN r2) MINUS r1){A}`.
+    fn small_divide(r1: &Relation, r2: &Relation, a: &[&str]) -> Relation {
+        let r1_a = r1.project(a).unwrap();
+        let missing = r1_a
+            .join(r2)
+            .unwrap()
+            .difference(r1)
+            .unwrap()
+            .project(a)
+            .unwrap();
+        r1_a.difference(&missing).unwrap()
+    }
+
+    proptest! {
+        /// DIVIDEBY equals the Small Divide definition, including an empty
+        /// divisor (result r1{A}).
+        #[test]
+        fn divide_matches_small_divide(
+            pairs in prop::collection::btree_set((0i64..4, 0i64..4), 0..12),
+            bs in prop::collection::btree_set(0i64..4, 0..4),
+        ) {
+            let (r1, r2) = (dividend(&pairs), divisor(&bs));
+            prop_assert_eq!(r1.divide(&r2).unwrap(), small_divide(&r1, &r2, &["a"]));
+        }
+
+        /// The same with a divisor over the dividend's whole heading (A = {}).
+        #[test]
+        fn divide_by_full_heading_matches_small_divide(
+            pairs in prop::collection::btree_set((0i64..3, 0i64..3), 0..6),
+            picks in prop::collection::btree_set((0i64..3, 0i64..3), 0..3),
+        ) {
+            let r1 = dividend(&pairs);
+            let r2 = dividend(&picks);
+            let none: Vec<&str> = Vec::new();
+            prop_assert_eq!(r1.divide(&r2).unwrap(), small_divide(&r1, &r2, &none));
+        }
     }
 }
