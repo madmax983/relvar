@@ -32,6 +32,7 @@ serde.workspace = true
 proptest.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+stateright.workspace = true
 criterion.workspace = true
 
 [[example]]
