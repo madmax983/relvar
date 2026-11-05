@@ -88,6 +88,7 @@ mod insert_plan;
 mod integrity;
 mod key_index;
 mod schema;
+mod statement;
 mod transaction;
 
 use self::key_index::KeyIndex;
@@ -165,11 +166,11 @@ pub struct Database<E: StorageEngine> {
     pub(crate) virtual_relvars: HashMap<String, VirtualRelvarDefinition<E>>,
     /// Database assertions (cross-relvar predicates over the whole database state).
     pub(crate) assertions: Vec<DatabaseAssertion<E>>,
-    /// Pre-operation engine snapshot backing the assertion guard.
+    /// `true` while database assertion predicates are being evaluated.
     ///
-    /// `Some` only while an assertion-guarded DML operation is in flight;
-    /// always `None` when no assertions are registered.
-    pub(crate) assertion_snapshot: Option<E::Snapshot>,
+    /// Predicates must be read-only; DML issued from inside one is
+    /// rejected (see the `statement` module).
+    pub(crate) evaluating_assertions: bool,
     /// Registry of user-defined scalar operators (TTM RM Prescription 3).
     ///
     /// Operators are resolved by name when expressions containing
@@ -215,7 +216,7 @@ impl<E: StorageEngine> Database<E> {
             key_index_snapshot: None,
             virtual_relvars: HashMap::new(),
             assertions: Vec::new(),
-            assertion_snapshot: None,
+            evaluating_assertions: false,
             operators: OperatorRegistry::new(),
         }
     }
@@ -335,7 +336,10 @@ impl<E: StorageEngine> Database<E> {
     /// could restore a state the assertion was never checked against).
     pub fn add_assertion(&mut self, assertion: DatabaseAssertion<E>) -> Result<(), DatabaseError> {
         self.ensure_no_transaction("add_assertion")?;
-        if !assertion.is_satisfied_by(self) {
+        let was_evaluating = core::mem::replace(&mut self.evaluating_assertions, true);
+        let satisfied = assertion.is_satisfied_by(self);
+        self.evaluating_assertions = was_evaluating;
+        if !satisfied {
             return Err(AssertionError::Violation {
                 assertion_name: assertion.name().to_string(),
                 description: assertion.description().to_string(),

@@ -34,19 +34,19 @@ impl<E: StorageEngine> Database<E> {
         self.ensure_not_virtual(relation_name)?;
         let staged_keys = self.validate_insert(relation_name, &tuple)?;
 
-        // Snapshot the engine so the insert can be rolled back if a database
-        // assertion is violated (no-op when no assertions are registered).
-        self.begin_assertion_guard()?;
+        // Guard the insert so it can be undone if a database assertion is
+        // violated (no-op when no assertions are registered).
+        let guard = self.begin_statement_guard(&[relation_name], false)?;
 
         // Insert into engine, restoring the pre-insert state if it fails.
         if let Err(op_error) = self.engine.insert_tuple(relation_name, tuple) {
-            self.abort_assertion_guard()?;
+            self.abort_statement(guard)?;
             return Err(op_error.into());
         }
 
         // Enforce database assertions against the post-insert state,
-        // rolling back the insert on violation.
-        self.check_assertions()?;
+        // undoing the insert on violation.
+        self.finish_statement(guard)?;
 
         // The key index is updated only once the insert is fully committed:
         // a failed write or a rolled-back assertion must not leave phantom
@@ -152,23 +152,17 @@ impl<E: StorageEngine> Database<E> {
             )?);
         }
 
-        // Snapshot the engine so the batch can be rolled back if a database
-        // assertion is violated (no-op when no assertions are registered).
-        self.begin_assertion_guard()?;
-
-        // Run the whole batch inside a single engine transaction when no
-        // other transaction is active: the assertion-guard path already
-        // batches this way (each per-tuple insert joins the guard's ambient
-        // transaction via `ensure_transaction`), and a user transaction
-        // does the same — but the assertion-free autocommit path would
-        // otherwise pay a full durable begin/commit, two WAL flushes, per
-        // tuple. The batch stays atomic: any write failure rolls the
-        // transaction back before the error is returned.
-        let batch_snapshot = if !self.in_transaction && self.assertions.is_empty() {
-            Some(self.engine.begin_transaction()?)
-        } else {
-            None
-        };
+        // Guard the batch. Outside a user transaction the whole batch runs
+        // inside a single engine transaction (each per-tuple insert joins it
+        // as the ambient transaction via `ensure_transaction`): the
+        // autocommit path would otherwise pay a full durable begin/commit,
+        // two WAL flushes, per tuple, and the batch stays atomic — any write
+        // failure or assertion violation rolls it back. Inside a user
+        // transaction the writes join that transaction; with assertions
+        // registered the pre-batch value is kept so a violation undoes just
+        // this statement.
+        let atomic = !self.in_transaction;
+        let guard = self.begin_statement_guard(&[relation_name], atomic)?;
 
         // All validation passed: write the batch, restoring the pre-batch
         // state if any write fails.
@@ -180,21 +174,15 @@ impl<E: StorageEngine> Database<E> {
             }
         }
         if let Some(error) = write_error {
-            if let Some(snapshot) = batch_snapshot {
-                // Best-effort rollback; the original write error is what
-                // the caller sees.
-                let _ = self.engine.rollback_transaction(snapshot);
-            }
-            self.abort_assertion_guard()?;
+            // Best-effort undo; the original write error is what the caller
+            // sees.
+            let _ = self.abort_statement(guard);
             return Err(error);
         }
-        if let Some(snapshot) = batch_snapshot {
-            self.engine.commit_transaction(snapshot)?;
-        }
 
-        // Enforce database assertions against the post-batch state,
-        // rolling back the batch on violation.
-        self.check_assertions()?;
+        // Enforce database assertions against the post-batch state, undoing
+        // the batch on violation, then commit the batch's own transaction.
+        self.finish_statement(guard)?;
 
         // Publish the staged index entries only once the batch is fully
         // committed: a failed write or a rolled-back assertion must not
@@ -339,19 +327,19 @@ impl<E: StorageEngine> Database<E> {
             ForeignKeyScope::ReferencedOnly,
         )?;
 
-        // Snapshot the engine so the delete can be rolled back if a database
-        // assertion is violated (no-op when no assertions are registered).
-        self.begin_assertion_guard()?;
+        // Guard the delete so it can be undone if a database assertion is
+        // violated (no-op when no assertions are registered).
+        let guard = self.begin_statement_guard(&[relation_name], false)?;
 
         // Store the new relation, restoring the pre-delete state if it fails.
         if let Err(op_error) = self.engine.store_relation(relation_name, &new_relation) {
-            self.abort_assertion_guard()?;
+            self.abort_statement(guard)?;
             return Err(op_error.into());
         }
 
         // Enforce database assertions against the post-delete state,
-        // rolling back the delete on violation.
-        self.check_assertions()?;
+        // undoing the delete on violation.
+        self.finish_statement(guard)?;
 
         // Rebuild this relation's key index entries from the post-delete
         // state (#23). Deferred until the delete is committed so a rollback
@@ -469,19 +457,19 @@ impl<E: StorageEngine> Database<E> {
             ForeignKeyScope::All,
         )?;
 
-        // Snapshot the engine so the update can be rolled back if a database
-        // assertion is violated (no-op when no assertions are registered).
-        self.begin_assertion_guard()?;
+        // Guard the update so it can be undone if a database assertion is
+        // violated (no-op when no assertions are registered).
+        let guard = self.begin_statement_guard(&[relation_name], false)?;
 
         // Store the new relation, restoring the pre-update state if it fails.
         if let Err(op_error) = self.engine.store_relation(relation_name, &new_relation) {
-            self.abort_assertion_guard()?;
+            self.abort_statement(guard)?;
             return Err(op_error.into());
         }
 
         // Enforce database assertions against the post-update state,
-        // rolling back the update on violation.
-        self.check_assertions()?;
+        // undoing the update on violation.
+        self.finish_statement(guard)?;
 
         // Rebuild this relation's key index entries from the post-update
         // state (#23). Deferred until the update is committed so a rollback
@@ -492,82 +480,6 @@ impl<E: StorageEngine> Database<E> {
     }
 
     // --- Helper Methods ---
-
-    /// Begins an assertion guard: snapshots the engine before a DML mutation
-    /// so the mutation can be rolled back if a database assertion is violated.
-    ///
-    /// This is a no-op (no snapshot is taken) when no assertions are
-    /// registered, keeping assertion-free DML at zero overhead.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`DatabaseError::TransactionError`] if a guard is already
-    /// active (assertion predicates must not perform DML), or a
-    /// [`DatabaseError::Storage`] error if the engine cannot snapshot.
-    fn begin_assertion_guard(&mut self) -> Result<(), DatabaseError> {
-        if self.assertions.is_empty() {
-            return Ok(());
-        }
-        if self.assertion_snapshot.is_some() {
-            return Err(DatabaseError::TransactionError(
-                "assertion guard already active: assertion predicates must not perform DML"
-                    .to_string(),
-            ));
-        }
-        let snapshot = self.engine.begin_transaction()?;
-        self.assertion_snapshot = Some(snapshot);
-        Ok(())
-    }
-
-    /// Aborts an assertion guard after the guarded operation itself failed:
-    /// restores the pre-operation engine state and discards the snapshot.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`DatabaseError::Storage`] error if the engine cannot roll back.
-    fn abort_assertion_guard(&mut self) -> Result<(), DatabaseError> {
-        if let Some(snapshot) = self.assertion_snapshot.take() {
-            self.engine.rollback_transaction(snapshot)?;
-        }
-        Ok(())
-    }
-
-    /// Checks every registered database assertion against the current state.
-    ///
-    /// Called after each DML mutation. If any assertion is violated, the
-    /// guarded operation is rolled back and
-    /// [`DatabaseError::AssertionViolation`] is returned; otherwise the guard
-    /// snapshot is committed and `Ok(())` is returned.
-    ///
-    /// When no assertions are registered this is a no-op.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`DatabaseError::AssertionViolation`] naming the first violated
-    /// assertion, or a [`DatabaseError::Storage`] error if the engine cannot
-    /// roll back or commit the guard snapshot.
-    fn check_assertions(&mut self) -> Result<(), DatabaseError> {
-        if self.assertions.is_empty() {
-            return Ok(());
-        }
-
-        match self.evaluate_assertions() {
-            Err(assertion_error) => {
-                // Roll back the operation that triggered the violation.
-                if let Some(snapshot) = self.assertion_snapshot.take() {
-                    self.engine.rollback_transaction(snapshot)?;
-                }
-                Err(assertion_error.into())
-            }
-            Ok(()) => {
-                // All assertions hold: release the pre-operation snapshot.
-                if let Some(snapshot) = self.assertion_snapshot.take() {
-                    self.engine.commit_transaction(snapshot)?;
-                }
-                Ok(())
-            }
-        }
-    }
 
     pub(crate) fn ensure_not_virtual(&self, relation_name: &str) -> Result<(), DatabaseError> {
         if self.virtual_relvars.contains_key(relation_name) {

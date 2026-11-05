@@ -257,6 +257,7 @@ impl<E: StorageEngine> Database<E> {
         // `&mut Database<E>` (they query relvars), which cannot coexist with
         // an outstanding borrow of `self.assertions`.
         let assertions = core::mem::take(&mut self.assertions);
+        let was_evaluating = core::mem::replace(&mut self.evaluating_assertions, true);
         let violated = assertions
             .iter()
             .find(|assertion| !assertion.is_satisfied_by(self))
@@ -265,6 +266,7 @@ impl<E: StorageEngine> Database<E> {
                 description: assertion.description().to_string(),
             });
         // Always restore the assertion list, even on violation.
+        self.evaluating_assertions = was_evaluating;
         self.assertions = assertions;
         violated.map_or(Ok(()), Err)
     }
