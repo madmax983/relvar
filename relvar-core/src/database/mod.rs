@@ -82,6 +82,7 @@ use alloc::vec::Vec;
 mod dml;
 pub(crate) mod virtual_relvar;
 
+mod assignment;
 mod data;
 mod golden_rule;
 mod insert_plan;
@@ -105,7 +106,8 @@ use self::virtual_relvar::VirtualRelvarDefinition;
 /// # Responsibilities
 ///
 /// - **DDL Operations**: Create and drop relvars ([`create_relvar`](Database::create_relvar)).
-/// - **DML Operations**: Insert, update, and delete tuples ([`insert`](Database::insert)).
+/// - **DML Operations**: Insert, update, and delete tuples ([`insert`](Database::insert)),
+///   or assign several relvars at once ([`multiple_assign`](Database::multiple_assign)).
 /// - **Query Execution**: Run relational algebra queries ([`query`](Database::query)).
 /// - **Constraint Management**: Enforce keys, foreign keys, and type constraints.
 /// - **Transaction Control**: Manage ACID transactions.

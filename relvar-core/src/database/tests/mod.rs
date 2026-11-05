@@ -5,6 +5,7 @@ mod data;
 mod golden_rule;
 mod integrity;
 mod key_index;
+mod multiple_assignment;
 mod schema;
 mod transaction;
 mod ttm_assertions;
