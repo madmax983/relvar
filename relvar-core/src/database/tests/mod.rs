@@ -2,6 +2,7 @@ mod assertions;
 pub(crate) mod common;
 mod constraint_persistence;
 mod data;
+mod declarative_assertions;
 mod golden_rule;
 mod integrity;
 mod key_index;

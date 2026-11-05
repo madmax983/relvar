@@ -62,7 +62,7 @@ impl<E: StorageEngine> Database<E> {
                 "assertion predicates must not perform DML".to_string(),
             ));
         }
-        if self.assertions.is_empty() && !atomic {
+        if !self.has_assertions() && !atomic {
             return Ok(StatementGuard::Unguarded);
         }
         if self.in_transaction {

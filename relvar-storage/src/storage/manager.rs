@@ -113,7 +113,8 @@ impl StorageManager {
             CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
             CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
             e @ (CatalogError::ConstraintOnUnknownRelation(_)
-            | CatalogError::RelationReferenced { .. }) => {
+            | CatalogError::RelationReferenced { .. }
+            | CatalogError::RelationReferencedByAssertion { .. }) => {
                 StorageError::Other(format!("Catalog error: {}", e))
             }
         }

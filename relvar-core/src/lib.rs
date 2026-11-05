@@ -133,10 +133,11 @@ pub use values::{Relation, ScalarValue, Tuple};
 
 // Re-export constraint types
 pub use constraints::{
-    AssertionError, AttributeConstraints, CandidateKey, CheckConstraint, CheckConstraintError,
-    CheckConstraints, CmpOp, ConstraintExpression, ConstraintManagerError, DatabaseAssertion,
-    ExpressionError, ForeignKey, ForeignKeyConstraints, ForeignKeyError, KeyConstraintError,
-    KeyConstraints, PrimaryKey, ScalarExpression, TypeConstraint, TypeConstraintError, ValueOrRef,
+    AssertionCondition, AssertionError, AttributeConstraints, CandidateKey, CheckConstraint,
+    CheckConstraintError, CheckConstraints, CmpOp, ConstraintExpression, ConstraintManagerError,
+    DatabaseAssertion, DeclarativeAssertion, ExpressionError, ForeignKey, ForeignKeyConstraints,
+    ForeignKeyError, KeyConstraintError, KeyConstraints, PrimaryKey, ScalarExpression,
+    TypeConstraint, TypeConstraintError, ValueOrRef,
 };
 
 // Re-export storage engine types

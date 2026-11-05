@@ -84,6 +84,11 @@ impl<E: StorageEngine> Database<E> {
     /// tuples. Drop (or redefine) the referencing foreign keys first. A
     /// relvar referenced only by its own foreign keys can be dropped.
     ///
+    /// Returns [`DatabaseError::Assertion`] wrapping
+    /// [`AssertionError::RelvarReferenced`](crate::constraints::AssertionError::RelvarReferenced)
+    /// if a [declarative assertion](Self::add_declarative_assertion) refers
+    /// to the relvar; remove the assertion first.
+    ///
     /// Returns [`DatabaseError::TransactionError`] inside a transaction:
     /// schema changes are not transactional (see [`begin`](Self::begin)).
     pub fn drop_relvar(&mut self, name: &str) -> Result<(), DatabaseError> {
@@ -103,6 +108,8 @@ impl<E: StorageEngine> Database<E> {
             }
             .into());
         }
+        // Nor a declarative assertion that refers to it.
+        self.ensure_not_referenced_by_assertion(name)?;
 
         // Drop from the engine first, so a failure leaves the constraints
         // in force. (A constraint-persisting engine forgets the relvar's

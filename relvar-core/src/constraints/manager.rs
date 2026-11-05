@@ -5,8 +5,8 @@
 
 use crate::collections::HashMap;
 use crate::constraints::{
-    AttributeConstraints, CheckConstraintError, CheckConstraints, ConstraintCatalog, ForeignKey,
-    ForeignKeyConstraints, KeyConstraints,
+    AttributeConstraints, CheckConstraintError, CheckConstraints, ConstraintCatalog,
+    DatabaseConstraints, ForeignKey, ForeignKeyConstraints, KeyConstraints,
 };
 use crate::storage_engine::{StorageEngine, StorageError};
 use crate::types::RelationType;
@@ -175,6 +175,8 @@ pub struct ConstraintManager {
     type_constraints: HashMap<String, HashMap<String, AttributeConstraints>>,
     /// CHECK constraints (tuple-level predicates) per relation.
     check_constraints: HashMap<String, CheckConstraints>,
+    /// Database-wide constraints (declarative assertions).
+    database: DatabaseConstraints,
 }
 
 impl ConstraintManager {
@@ -879,6 +881,7 @@ impl ConstraintManager {
         for (name, checks) in &self.check_constraints {
             catalog.relvar_mut(name).checks = Some(checks.clone());
         }
+        *catalog.database_mut() = self.database.clone();
         catalog
     }
 
@@ -934,7 +937,28 @@ impl ConstraintManager {
         for name in &referencing {
             manager.rebuild_reverse_foreign_key_index_for(name);
         }
+        manager.database = catalog.database().clone();
         manager
+    }
+
+    /// The database-wide constraints: the registered declarative
+    /// assertions (TTM RM Prescriptions 16 and 23).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::constraints::ConstraintManager;
+    ///
+    /// assert!(ConstraintManager::new().database_constraints().is_empty());
+    /// ```
+    pub fn database_constraints(&self) -> &DatabaseConstraints {
+        &self.database
+    }
+
+    /// The database-wide constraints, mutably. Callers validate a change
+    /// before making it (see `Database::add_declarative_assertion`).
+    pub(crate) fn database_constraints_mut(&mut self) -> &mut DatabaseConstraints {
+        &mut self.database
     }
 }
 

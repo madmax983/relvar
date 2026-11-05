@@ -481,6 +481,47 @@ impl Query {
         }
     }
 
+    /// The relvar names the query scans, sorted and without repetitions.
+    ///
+    /// A stored constraint built from a query (a
+    /// [`DeclarativeAssertion`](crate::constraints::DeclarativeAssertion))
+    /// uses this to refuse dropping a relvar it depends on.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relvar_core::query::Query;
+    ///
+    /// let q = Query::scan("SP").not_matching(Query::scan("S")).union(Query::scan("SP"));
+    /// assert_eq!(q.referenced_relvars(), vec!["S", "SP"]);
+    /// ```
+    pub fn referenced_relvars(&self) -> Vec<&str> {
+        // An explicit stack: a query built in code is not depth-limited.
+        let mut names = Vec::new();
+        let mut pending = alloc::vec![self];
+        while let Some(node) = pending.pop() {
+            match node {
+                Query::Scan(name) => names.push(name.as_str()),
+                Query::Restrict { input, .. }
+                | Query::Project { input, .. }
+                | Query::Rename { input, .. }
+                | Query::Summarize { input, .. } => pending.push(input),
+                Query::Join { left, right }
+                | Query::Union { left, right }
+                | Query::Intersect { left, right }
+                | Query::Minus { left, right }
+                | Query::Matching { left, right }
+                | Query::NotMatching { left, right } => {
+                    pending.push(left);
+                    pending.push(right);
+                }
+            }
+        }
+        names.sort_unstable();
+        names.dedup();
+        names
+    }
+
     /// The name [`explain`](Self::explain) prints for a dyadic set
     /// operator or semijoin node (empty for every other node).
     fn binary_operator_name(&self) -> &'static str {

@@ -88,6 +88,14 @@ pub enum DatabaseError {
     #[error("{0}")]
     AssertionViolation(String),
 
+    /// A database assertion could not be registered, evaluated or honoured
+    /// for a reason other than a violation: a duplicate name, a reference
+    /// to something that is not a base relvar, an ill-typed condition, or a
+    /// drop of a relvar an assertion refers to. See
+    /// [`AssertionError`](crate::constraints::AssertionError).
+    #[error("{0}")]
+    Assertion(crate::constraints::AssertionError),
+
     /// Arena allocation failure in the zero-alloc value layer (v0.8).
     ///
     /// The arena APIs surface [`AllocError`](crate::values::arena::AllocError)
