@@ -1074,7 +1074,8 @@ impl PersistentEngine {
     ///   deleted (`xmax = txn_id`) — the version stays on disk, so
     ///   concurrent snapshots keep seeing it and abort/recovery undo it;
     /// - every tuple of `relation` not visible yet is inserted as a new
-    ///   version (`xmin = txn_id`);
+    ///   version (`xmin = txn_id`), subject to the implicit-key check of
+    ///   [`probe_implicit_key`](Self::probe_implicit_key);
     /// - versions this transaction cannot see (other transactions'
     ///   uncommitted inserts, commits after its snapshot) are untouched.
     ///
@@ -1085,8 +1086,9 @@ impl PersistentEngine {
     ///
     /// - [`StorageError::SerializationFailure`] when a version to delete
     ///   was already deleted by another live transaction, or by one that
-    ///   committed after this transaction's snapshot (first-updater-wins
-    ///   write conflict). Nothing is changed.
+    ///   committed after this transaction's snapshot, or when a tuple to
+    ///   insert was concurrently created by another transaction
+    ///   (first-updater-wins write conflict). Nothing is changed.
     /// - Pool exhaustion, WAL or device errors. The statement is atomic:
     ///   changes it already applied are compensated before returning. If
     ///   the compensation itself fails the transaction is aborted (it can
@@ -1114,7 +1116,7 @@ impl PersistentEngine {
                 to_delete.push(version);
             }
         }
-        let to_insert: Vec<&Tuple> = relation.tuples().filter(|t| !kept.contains(t)).collect();
+        let candidates: Vec<&Tuple> = relation.tuples().filter(|t| !kept.contains(t)).collect();
 
         // Write-conflict check before anything is mutated: one xmax slot
         // records one deleter, and a deleter that is live or committed
@@ -1131,6 +1133,19 @@ impl PersistentEngine {
                     "could not delete from relation {name}: a tuple was concurrently \
                      deleted or updated by another transaction"
                 )));
+            }
+        }
+
+        // Implicit-key check for every tuple to insert, also before
+        // anything is mutated. A candidate is never visible (visible
+        // tuples are `kept`), so the probe only tells a fresh tuple from a
+        // concurrently created one.
+        let mut to_insert = Vec::with_capacity(candidates.len());
+        for tuple in candidates {
+            match self.probe_implicit_key(name, tuple, &snapshot)? {
+                KeyProbe::Absent => to_insert.push(tuple),
+                KeyProbe::Visible => {}
+                KeyProbe::Conflict => return Err(Self::implicit_key_conflict(name)),
             }
         }
 
@@ -1248,13 +1263,33 @@ impl PersistentEngine {
             .scan_relation(name, &snapshot, &self.txn_pool, &self.committed_txns)
     }
 
-    #[allow(dead_code)]
+    /// Inserts `tuple` into relvar `name` as seen by `txn_id`.
+    ///
+    /// TTM: RM Proscription 3 — the whole heading is a key, so the insert
+    /// follows [`probe_implicit_key`](Self::probe_implicit_key): a tuple
+    /// the transaction already sees is a no-op (nothing written, nothing
+    /// WAL-logged), a tuple concurrently created by another transaction is
+    /// a write conflict, and only a fresh tuple gets a new version.
+    ///
+    /// # Errors
+    ///
+    /// - [`StorageError::SerializationFailure`] on a concurrent creation
+    ///   (first-updater-wins). Nothing is changed.
+    /// - [`StorageError::RelationNotFound`], pool exhaustion, WAL or
+    ///   device errors.
     pub(crate) fn insert_tuple_in_txn(
         &mut self,
         name: &str,
         tuple: Tuple,
         txn_id: TransactionId,
     ) -> Result<(), StorageError> {
+        let snapshot = self.snapshot_for_txn(txn_id)?;
+        match self.probe_implicit_key(name, &tuple, &snapshot)? {
+            KeyProbe::Visible => return Ok(()),
+            KeyProbe::Conflict => return Err(Self::implicit_key_conflict(name)),
+            KeyProbe::Absent => {}
+        }
+
         // Log WAL
         let tuple_data = postcard::to_allocvec(&tuple)
             .map_err(|e| StorageError::Other(format!("Tuple serialization error: {}", e)))?;
@@ -1276,6 +1311,104 @@ impl PersistentEngine {
 
         Ok(())
     }
+}
+
+/// Implicit-key enforcement (TTM RM Proscription 3).
+impl PersistentEngine {
+    /// Classifies an insert of `tuple` into relvar `name` by a transaction
+    /// with `snapshot`, from the versions of equal tuples on the heap.
+    ///
+    /// Every relation's whole heading is a candidate key, so each logical
+    /// tuple has a single version chain (the invariant
+    /// `theorem_at_most_one_visible_version` in `verify/verus/mvcc.rs`
+    /// assumes). For an equal tuple's version `v`:
+    ///
+    /// 1. `v` visible to the snapshot → [`KeyProbe::Visible`]: the tuple is
+    ///    already in the relation the transaction sees; inserting it is a
+    ///    no-op (set semantics). This wins over any conflict.
+    /// 2. `v` created by another transaction that is still live, or that
+    ///    committed after the snapshot was taken (its creation is not
+    ///    visible), and not deleted by its own creator → a concurrent
+    ///    creation of the same tuple: [`KeyProbe::Conflict`]
+    ///    (first-updater-wins, like two concurrent deletes in
+    ///    [`store_relation_in_txn`](Self::store_relation_in_txn)). This is
+    ///    conservative: such a version later deleted by a third
+    ///    transaction still conflicts.
+    /// 3. Otherwise (versions of aborted or crashed creators, of creators
+    ///    that deleted them again, or committed versions whose deletion the
+    ///    snapshot sees) → [`KeyProbe::Absent`]: a new version may be
+    ///    created.
+    ///
+    /// The versions come from the heap file's implicit-key index, so the
+    /// probe costs one hash lookup (plus a page read per equal version).
+    fn probe_implicit_key(
+        &self,
+        name: &str,
+        tuple: &Tuple,
+        snapshot: &crate::mvcc::TransactionSnapshot,
+    ) -> Result<KeyProbe, StorageError> {
+        let versions = self
+            .storage_manager
+            .write()
+            .map_err(|_| StorageError::Other("StorageManager lock poisoned".to_string()))?
+            .versions_of(name, tuple)?;
+        let mut probe = KeyProbe::Absent;
+        for version in &versions {
+            if crate::mvcc::visibility::is_visible(
+                version,
+                snapshot,
+                &self.txn_pool,
+                &self.committed_txns,
+            ) {
+                return Ok(KeyProbe::Visible);
+            }
+            if self.is_concurrent_creation(version, snapshot) {
+                probe = KeyProbe::Conflict;
+            }
+        }
+        Ok(probe)
+    }
+
+    /// Whether `version` (invisible to `snapshot`) was created by a
+    /// transaction concurrent with the snapshot's — live, or committed
+    /// after the snapshot — and not deleted again by that creator.
+    fn is_concurrent_creation(
+        &self,
+        version: &crate::mvcc::VersionMetadata,
+        snapshot: &crate::mvcc::TransactionSnapshot,
+    ) -> bool {
+        let creator = version.xmin;
+        if creator == snapshot.txn_id || version.xmax == Some(creator) {
+            return false;
+        }
+        self.txn_pool.is_live(creator)
+            || (self.committed_txns.contains(&creator)
+                && !crate::mvcc::visibility::is_created_visible(
+                    version,
+                    snapshot,
+                    &self.txn_pool,
+                    &self.committed_txns,
+                ))
+    }
+
+    /// The write-conflict error for a concurrently created tuple.
+    fn implicit_key_conflict(name: &str) -> StorageError {
+        StorageError::SerializationFailure(format!(
+            "could not insert into relation {name}: an equal tuple was concurrently \
+             inserted by another transaction"
+        ))
+    }
+}
+
+/// Outcome of [`PersistentEngine::probe_implicit_key`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyProbe {
+    /// A version of the tuple is visible: the insert is a no-op.
+    Visible,
+    /// A concurrent transaction created the tuple: write conflict.
+    Conflict,
+    /// No visible or concurrent version: create a new version.
+    Absent,
 }
 
 /// Heap changes a `store_relation` statement has applied so far, kept so

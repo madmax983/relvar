@@ -697,6 +697,7 @@ name = "relvar-storage"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "foldhash 0.2.0",
  "postcard",
  "proptest",
  "relvar-core",
@@ -704,6 +705,7 @@ dependencies = [
  "serde",
  "serde_json",
  "spin",
+ "stateright",
  "tempfile",
  "thiserror",
 ]

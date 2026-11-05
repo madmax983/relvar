@@ -9,6 +9,10 @@
 //! must equal the model: exactly the committed transactions' effects,
 //! nothing from uncommitted or aborted ones.
 //!
+//! Throughout, the in-memory implicit-key index (tuple digest → version
+//! slots) must agree exactly with a full scan of the heap: it is checked
+//! after every statement, transaction end, checkpoint and reopen.
+//!
 //! A commit whose commit-point flush fails is "outcome uncertain" by
 //! contract: the engine ends it as committed, and its Commit record
 //! becomes durable with the next successful WAL flush. Until then the
@@ -76,6 +80,14 @@ fn to_model(relation: &Relation) -> Model {
 fn committed_state(engine: &PersistentEngine) -> Model {
     assert!(engine.current_txn.is_none());
     to_model(&engine.load_relation("T").unwrap())
+}
+
+/// Asserts the implicit-key index of every open relation matches a full
+/// heap scan (TTM RM Proscription 3 enforcement must never go stale).
+fn assert_key_index(engine: &PersistentEngine, context: &str) {
+    if let Err(error) = engine.storage_manager.write().unwrap().check_key_indexes() {
+        panic!("{context}: {error}");
+    }
 }
 
 /// Arms one random WAL fault (or none). Returns how many WAL records
@@ -198,6 +210,7 @@ fn run_schedule(seed: u64, rounds: usize, dir: &Path, stats: &mut Stats) {
             committed = recovered.clone();
         }
         assert_eq!(recovered, committed, "seed {seed} round {round}: recovery");
+        assert_key_index(&engine, &format!("seed {seed} round {round}: recovery"));
 
         let txns = 1 + rng.below(6);
         for txn in 0..txns {
@@ -237,6 +250,10 @@ fn run_schedule(seed: u64, rounds: usize, dir: &Path, stats: &mut Stats) {
                     }
                 }
                 disarm(&mut engine);
+                assert_key_index(
+                    &engine,
+                    &format!("seed {seed} round {round} txn {txn}: statement"),
+                );
                 if !engine.txn_pool.is_live(txn_id) {
                     break; // a failed compensation ended the transaction
                 }
@@ -302,6 +319,10 @@ fn run_schedule(seed: u64, rounds: usize, dir: &Path, stats: &mut Stats) {
                 committed,
                 "seed {seed} round {round} txn {txn}: after end"
             );
+            assert_key_index(
+                &engine,
+                &format!("seed {seed} round {round} txn {txn}: after end"),
+            );
 
             if let Some((reader, seen)) = reader {
                 engine.resume_transaction(&reader).unwrap();
@@ -319,6 +340,10 @@ fn run_schedule(seed: u64, rounds: usize, dir: &Path, stats: &mut Stats) {
                 stats.checkpoints += 1;
                 uncertain = None;
                 assert_eq!(committed_state(&engine), committed);
+                assert_key_index(
+                    &engine,
+                    &format!("seed {seed} round {round} txn {txn}: checkpoint"),
+                );
             }
         }
         // Clean shutdown or crash: either way the engine is dropped

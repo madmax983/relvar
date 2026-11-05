@@ -276,6 +276,13 @@ impl StorageManager {
         name: &str,
     ) -> Result<&'a mut HeapFile<FileBlockDevice>, StorageError> {
         use std::collections::hash_map::Entry;
+        // Fast path without allocating the key: every insert probes the
+        // implicit key and then writes, so this runs twice per tuple.
+        if heap_files.contains_key(name) {
+            return heap_files.get_mut(name).ok_or_else(|| {
+                StorageError::Other(format!("heap file for relation {name} vanished"))
+            });
+        }
         match heap_files.entry(name.to_string()) {
             Entry::Occupied(entry) => Ok(entry.into_mut()),
             Entry::Vacant(entry) => {
@@ -354,6 +361,53 @@ impl StorageManager {
         heap_file
             .insert_tuple_versioned(tuple, txn_id, &mut self.version_pool)
             .map_err(Self::convert_heap_error)
+    }
+
+    /// Returns the version metadata (`xmin`, `xmax`) of every version of
+    /// relation `name` whose tuple equals `tuple`, whoever created or
+    /// deleted it.
+    ///
+    /// TTM: RM Proscription 3 — the engine enforces the implicit key (the
+    /// whole heading) across versions with this lookup. It is served by
+    /// the heap file's in-memory implicit-key index (built on first use
+    /// with one scan, then O(1) per lookup; see
+    /// [`key_index`](crate::storage::heap::key_index)).
+    ///
+    /// # Errors
+    ///
+    /// [`StorageError::RelationNotFound`] for an unknown relation, a typed
+    /// pool-exhaustion error, or a device/decode error.
+    pub(crate) fn versions_of(
+        &mut self,
+        name: &str,
+        tuple: &Tuple,
+    ) -> Result<Vec<crate::mvcc::VersionMetadata>, StorageError> {
+        let heap_file = Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)?;
+        heap_file
+            .versions_of(tuple, &mut self.version_pool)
+            .map_err(Self::convert_heap_error)
+    }
+
+    /// Test-only: checks every open heap file's implicit-key index against
+    /// a full scan of its heap.
+    #[cfg(test)]
+    pub(crate) fn check_key_indexes(&mut self) -> Result<(), String> {
+        for (name, heap_file) in &mut self.heap_files {
+            heap_file
+                .check_key_index(&mut self.version_pool)
+                .map_err(|e| format!("relation {name}: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Test-only: the open heap file of relation `name`, for inspecting or
+    /// tuning its implicit-key index.
+    #[cfg(test)]
+    pub(crate) fn heap_file_for_test(
+        &mut self,
+        name: &str,
+    ) -> Result<&mut HeapFile<FileBlockDevice>, StorageError> {
+        Self::get_or_open_heap_file(&self.catalog, &mut self.heap_files, name)
     }
 
     /// Lists the versions of `name` visible to `snapshot`, each with its
