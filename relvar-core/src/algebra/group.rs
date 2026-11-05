@@ -12,6 +12,8 @@
 //! - Grouping *every* attribute is legal: the result has only the RVA
 //!   attribute (one tuple holding `R` when `R` is non-empty, no tuples
 //!   otherwise)
+//! - Grouping *no* attributes is legal too: every tuple gains an RVA whose
+//!   value is `TABLE_DEE`
 //! - Ungrouping is rejected when an RVA attribute name collides with an
 //!   outer attribute name (the result heading would have a duplicate)
 //!
@@ -53,10 +55,6 @@ pub enum GroupError {
     /// An attribute specified for grouping does not exist in the relation.
     #[error("Grouping attribute '{0}' does not exist in relation")]
     AttributeNotFound(String),
-
-    /// No attributes were specified for grouping.
-    #[error("No attributes specified for grouping")]
-    NoAttributesSpecified,
 
     /// The name for the result RVA conflicts with an existing attribute.
     #[error("Result attribute '{0}' already exists")]
@@ -100,7 +98,8 @@ impl Relation {
     /// * `attrs_to_group` - The attribute names to collect into the RVA. The
     ///   list is a set: repeating a name is the same as naming it once. It may
     ///   name every attribute (TTM permits this; the result then has only the
-    ///   RVA attribute).
+    ///   RVA attribute) or none (every tuple then gains an RVA holding
+    ///   `TABLE_DEE`).
     /// * `rva_name` - The name for the new relation-valued attribute
     ///
     /// # Returns
@@ -111,7 +110,6 @@ impl Relation {
     /// # Errors
     ///
     /// - [`GroupError::AttributeNotFound`] - A specified attribute doesn't exist
-    /// - [`GroupError::NoAttributesSpecified`] - Empty attributes list
     /// - [`GroupError::ResultAttributeExists`] - RVA name conflicts with a
     ///   remaining (non-grouped) attribute
     /// # Examples
@@ -233,10 +231,6 @@ fn validate_group_request(
     attrs_to_group: &[&str],
     rva_name: &str,
 ) -> Result<Vec<String>, GroupError> {
-    if attrs_to_group.is_empty() {
-        return Err(GroupError::NoAttributesSpecified);
-    }
-
     // Validate all attributes exist
     for attr in attrs_to_group {
         if !relation.relation_type().has_attribute(attr) {
@@ -852,5 +846,32 @@ mod tests {
         // Should have 3 groups: (10, NYC), (10, LA), (20, NYC)
         assert_eq!(result.cardinality(), 3);
         assert_eq!(result.degree(), 3); // dept_id, location, employees
+    }
+
+    /// TTM: `r GROUP {} AS g` is legal; every tuple gets `g = TABLE_DEE`
+    /// (the projection of its one-tuple group onto no attributes), and
+    /// `UNGROUP g` restores `r`.
+    #[test]
+    fn test_group_on_no_attributes_attaches_table_dee() {
+        let heading = TupleType::new()
+            .with_attribute("a", ScalarType::Int)
+            .with_attribute("b", ScalarType::Int);
+        let mut relation = Relation::new(RelationType::new(heading));
+        relation.insert(tuple! { a: 1i64, b: 2i64 }).unwrap();
+        relation.insert(tuple! { a: 1i64, b: 3i64 }).unwrap();
+
+        let grouped = relation.group(&[], "g").unwrap();
+
+        assert_eq!(grouped.degree(), 3);
+        assert_eq!(grouped.cardinality(), 2);
+        for t in grouped.tuples() {
+            match t.get("g") {
+                Some(ScalarValue::Relation(g)) => {
+                    assert_eq!((g.degree(), g.cardinality()), (0, 1));
+                }
+                other => panic!("expected TABLE_DEE, got {other:?}"),
+            }
+        }
+        assert_eq!(grouped.ungroup("g").unwrap(), relation);
     }
 }
