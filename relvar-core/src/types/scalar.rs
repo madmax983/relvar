@@ -402,32 +402,9 @@ impl ScalarType {
         a: &crate::types::RelationType,
         b: &crate::types::RelationType,
     ) -> core::cmp::Ordering {
-        use core::cmp::Ordering;
-
-        let a_heading = a.heading();
-        let b_heading = b.heading();
-
-        match a_heading.degree().cmp(&b_heading.degree()) {
-            Ordering::Equal => {
-                // Since `TupleType::attributes()` returns a BTreeMap, we can iterate
-                // over attributes directly in sorted order without allocating a Vec or sorting.
-                for ((a_name, a_ty), (b_name, b_ty)) in a_heading
-                    .attributes()
-                    .iter()
-                    .zip(b_heading.attributes().iter())
-                {
-                    match a_name.cmp(b_name) {
-                        Ordering::Equal => match a_ty.cmp(b_ty) {
-                            Ordering::Equal => continue,
-                            other => return other,
-                        },
-                        other => return other,
-                    }
-                }
-                Ordering::Equal
-            }
-            other => other,
-        }
+        // Degree, then (name, type) pairs in name order: consistent with
+        // `RelationType`'s `Eq`.
+        a.cmp(b)
     }
 
     fn cmp_user_defined_types(

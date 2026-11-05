@@ -61,6 +61,7 @@ use serde::{Deserialize, Serialize};
 /// assert!(!employee_type.has_attribute("salary"));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RelationTypeUnchecked")]
 pub struct RelationType {
     /// The heading (tuple type) that defines this relation type.
     heading: TupleType,
@@ -248,6 +249,41 @@ impl RelationType {
     }
 }
 
+/// Wire shape of [`RelationType`], validated by `TryFrom` (same field name,
+/// so the serialized format is unchanged).
+#[derive(Deserialize)]
+struct RelationTypeUnchecked {
+    heading: TupleType,
+}
+
+impl TryFrom<RelationTypeUnchecked> for RelationType {
+    type Error = crate::types::TypeDepthError;
+
+    /// Enforces the same depth limit as [`RelationType::new`], returning an
+    /// error where the constructor would panic.
+    fn try_from(unchecked: RelationTypeUnchecked) -> Result<Self, Self::Error> {
+        let relation_type = Self {
+            heading: unchecked.heading,
+        };
+        crate::types::TypeDepthError::check(relation_type.depth())?;
+        Ok(relation_type)
+    }
+}
+
+impl PartialOrd for RelationType {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// A deterministic total order consistent with `Eq`: the order of the
+/// headings (see [`TupleType`]'s `Ord`).
+impl Ord for RelationType {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.heading.cmp(&other.heading)
+    }
+}
+
 impl core::hash::Hash for RelationType {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // Just hash the heading
@@ -294,5 +330,48 @@ mod tests {
         let rel_type = RelationType::new(empty_heading);
 
         assert_eq!(rel_type.degree(), 0);
+    }
+
+    /// `RelationType::new` panics on a heading whose relation type would be
+    /// deeper than `MAX_TYPE_DEPTH`; deserialization must reject it with an
+    /// error instead.
+    #[test]
+    fn deserialize_rejects_relation_type_deeper_than_max_depth() {
+        let max = crate::types::MAX_TYPE_DEPTH;
+        let mut ty = ScalarType::Int;
+        for _ in 2..max {
+            ty = ScalarType::user_defined("Nested", ty);
+        }
+        // Heading of depth `max` is constructible; wrapping it is not.
+        let heading = TupleType::new().with_attribute("a", ty);
+        assert_eq!(heading.depth(), max);
+        assert!(
+            RelationType::try_from(RelationTypeUnchecked {
+                heading: heading.clone()
+            })
+            .is_err()
+        );
+        let too_deep = RelationType { heading };
+
+        let json = serde_json::to_string(&too_deep).unwrap();
+        assert!(serde_json::from_str::<RelationType>(&json).is_err());
+        let bytes = postcard::to_allocvec(&too_deep).unwrap();
+        assert!(postcard::from_bytes::<RelationType>(&bytes).is_err());
+    }
+
+    #[test]
+    fn deserialize_accepts_relation_type_at_max_depth() {
+        let max = crate::types::MAX_TYPE_DEPTH;
+        let mut ty = ScalarType::Int;
+        for _ in 3..max {
+            ty = ScalarType::user_defined("Nested", ty);
+        }
+        let rel_type = RelationType::new(TupleType::new().with_attribute("a", ty));
+        assert_eq!(rel_type.depth(), max);
+        // Checked through `TryFrom` directly (see the tuple-type test).
+        let unchecked = RelationTypeUnchecked {
+            heading: rel_type.heading().clone(),
+        };
+        assert_eq!(RelationType::try_from(unchecked).unwrap(), rel_type);
     }
 }

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ad36db0a69f88e0db570a08dff977f5384e6ab9227d652d4deecd4eed3ad39a3 # shrinks to a = Relation(Relation { relation_type: RelationType { heading: TupleType { attributes: {"f": Float} } }, body: {Tuple { tuple_type: TupleType { attributes: {"f": Float} }, values: {"f": Float(NaN)} }, Tuple { tuple_type: TupleType { attributes: {"f": Float} }, values: {"f": Float(0.0)} }} }), b = Relation(Relation { relation_type: RelationType { heading: TupleType { attributes: {"y": Int} } }, body: {Tuple { tuple_type: TupleType { attributes: {"y": Int} }, values: {"y": Int(0)} }, Tuple { tuple_type: TupleType { attributes: {"y": Int} }, values: {"y": Int(-1)} }} })

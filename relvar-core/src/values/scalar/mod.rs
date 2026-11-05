@@ -371,6 +371,11 @@ impl PartialOrd for ScalarValue {
 // Custom Ord implementation for use in BTreeMap
 // We order by type first, then by value within type
 // TTM: User-defined values are ordered by type identity first, then by representation value
+//
+// Invariant: a total order consistent with `PartialEq` (`cmp == Equal`
+// exactly when `==`), and with `Hash` agreeing with `PartialEq`. Floats use
+// the same rule as equality (bit identity, all NaNs equal), and relation
+// values use `Relation`'s content order rather than just their sizes.
 impl Ord for ScalarValue {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         use core::cmp::Ordering;
@@ -458,12 +463,9 @@ impl ScalarValue {
         a: &crate::values::Relation,
         b: &crate::values::Relation,
     ) -> core::cmp::Ordering {
-        use core::cmp::Ordering;
-        // For relations, order by cardinality first, then degree
-        match a.cardinality().cmp(&b.cardinality()) {
-            Ordering::Equal => a.degree().cmp(&b.degree()),
-            other => other,
-        }
+        // Cardinality, then heading, then sorted bodies: a total order
+        // consistent with relation equality (see `Relation`'s `Ord`).
+        a.cmp(b)
     }
 
     fn eq_user_defined_values(
@@ -637,6 +639,9 @@ impl TryFrom<ScalarValueUnchecked> for ScalarValue {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod ord_tests;
 
 #[cfg(test)]
 mod nan_fix_tests {

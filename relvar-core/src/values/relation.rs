@@ -36,6 +36,8 @@
 use crate::collections::HashSet;
 use crate::types::{RelationType, TupleType};
 use crate::values::Tuple;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -124,11 +126,44 @@ pub struct RelationError;
 ///
 /// See the [`algebra`](crate::algebra) module for detailed documentation on each operator.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RelationUnchecked")]
 pub struct Relation {
     /// The relation type (heading) that defines the structure.
     relation_type: RelationType,
     /// The body: a set of tuples conforming to the heading.
     pub(crate) body: HashSet<Tuple>,
+}
+
+/// Wire shape of [`Relation`]: decoded first, then validated by `TryFrom` so
+/// a deserialized relation upholds the invariant [`Relation::insert`] does.
+/// Field names match [`Relation`]'s, so the serialized format is unchanged.
+/// (Each [`Tuple`] is itself validated against its own heading while
+/// decoding; duplicate tuples collapse into the set.)
+#[derive(Deserialize)]
+struct RelationUnchecked {
+    relation_type: RelationType,
+    body: HashSet<Tuple>,
+}
+
+impl TryFrom<RelationUnchecked> for Relation {
+    type Error = RelationError;
+
+    /// Accepts the decoded relation only if every tuple of the body has
+    /// exactly the relation's heading.
+    fn try_from(unchecked: RelationUnchecked) -> Result<Self, Self::Error> {
+        let heading = unchecked.relation_type.heading();
+        if unchecked
+            .body
+            .iter()
+            .any(|tuple| tuple.tuple_type() != heading)
+        {
+            return Err(RelationError);
+        }
+        Ok(Self {
+            relation_type: unchecked.relation_type,
+            body: unchecked.body,
+        })
+    }
 }
 
 // Custom Hash implementation for Relation
@@ -151,6 +186,46 @@ impl core::hash::Hash for Relation {
             combined_hash ^= core::hash::Hasher::finish(&hasher);
         }
         combined_hash.hash(state);
+    }
+}
+
+impl PartialOrd for Relation {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// A deterministic total order on relation values, consistent with `Eq`
+/// (`cmp` is `Equal` exactly when the relations are equal).
+///
+/// Relations are ordered by cardinality, then heading (see [`TupleType`]'s
+/// `Ord`), then by their bodies compared as sorted tuple sequences (see
+/// [`Tuple`]'s `Ord`). The order carries no relational meaning — bodies are
+/// unordered sets (Proscription 3) — it exists so relation values can be
+/// keys of sorted containers and sorted canonically.
+///
+/// # Performance
+///
+/// Equal relations are detected by set equality in `O(n)`; ordering two
+/// unequal relations of the same cardinality and heading sorts both bodies,
+/// `O(n log n)` with one temporary allocation per side.
+impl Ord for Relation {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
+
+        self.cardinality()
+            .cmp(&other.cardinality())
+            .then_with(|| self.relation_type.cmp(&other.relation_type))
+            .then_with(|| {
+                if self.body == other.body {
+                    return Ordering::Equal;
+                }
+                let mut ours: Vec<&Tuple> = self.body.iter().collect();
+                let mut theirs: Vec<&Tuple> = other.body.iter().collect();
+                ours.sort_unstable();
+                theirs.sort_unstable();
+                ours.cmp(&theirs)
+            })
     }
 }
 
@@ -285,22 +360,26 @@ impl Relation {
 
         let expected_heading = relation_type.heading();
 
-        // Optimization: Cache pointer to last checked TupleType to avoid repeated deep comparisons
-        // when inserting many tuples that share the same Arc<TupleType> (common case).
-        let mut last_checked_type_ptr: Option<*const TupleType> = None;
+        // Optimization: tuples built from one shared `Arc<TupleType>` (the
+        // common case) are checked by pointer identity instead of a deep
+        // heading comparison. The cache *holds* a clone of the last validated
+        // `Arc`, so that heading stays alive and its address can never be
+        // freed and reused by a different heading (e.g. after a duplicate
+        // tuple — and its sole `Arc` — is dropped by the set below).
+        let mut last_checked: Option<Arc<TupleType>> = None;
 
         for tuple in iter {
-            let current_type_ref = tuple.tuple_type();
-            let current_type_ptr = current_type_ref as *const TupleType;
+            let current = tuple.tuple_type_arc();
+            let cached = last_checked
+                .as_ref()
+                .is_some_and(|checked| Arc::ptr_eq(checked, current));
 
-            // Fast path: if pointer is same as last checked (which we know is valid), skip check
-            if Some(current_type_ptr) != last_checked_type_ptr {
-                // Slow path: full comparison
-                if current_type_ref != expected_heading {
+            if !cached {
+                // Slow path: full structural comparison.
+                if current.as_ref() != expected_heading {
                     return Err(RelationError);
                 }
-                // If match, update cache
-                last_checked_type_ptr = Some(current_type_ptr);
+                last_checked = Some(Arc::clone(current));
             }
 
             body.insert(tuple);
@@ -670,6 +749,9 @@ mod tests {
     use super::*;
     use crate::tuple;
     use crate::types::{ScalarType, TupleType};
+    use crate::values::ScalarValue;
+    use alloc::collections::BTreeMap;
+    use alloc::string::ToString;
 
     fn emp_type() -> TupleType {
         TupleType::new()
@@ -851,5 +933,116 @@ mod tests {
         let tuples = vec![invalid_tuple.clone(), valid_tuple.clone()];
         let rel = Relation::from_tuples(rel_type.clone(), tuples);
         assert!(rel.is_err());
+    }
+
+    /// Regression: the heading-check cache in `from_tuples` must not be keyed
+    /// on a raw address. When a duplicate tuple is dropped, its (sole)
+    /// `Arc<TupleType>` is freed and the allocator may hand the same address
+    /// to the *next* tuple's — different — heading. That tuple must still be
+    /// rejected.
+    #[test]
+    fn test_from_tuples_rejects_wrong_heading_after_freed_duplicate_heading() {
+        let heading = emp_type();
+        let wrong_heading = TupleType::new()
+            .with_attribute("emp_id", ScalarType::Int)
+            .with_attribute("name", ScalarType::Int);
+
+        let make = |heading: &TupleType, id: i64, name: ScalarValue| {
+            let mut values = BTreeMap::new();
+            values.insert("emp_id".to_string(), ScalarValue::Int(id));
+            values.insert("name".to_string(), name);
+            // A fresh, unshared Arc per tuple: dropping the tuple frees it.
+            Tuple::new(Arc::new(heading.clone()), values).unwrap()
+        };
+
+        // Repeat so an allocator that does not reuse the slot on the first
+        // try still gets plenty of chances; every attempt must be rejected.
+        for _ in 0..64 {
+            let mut step = 0;
+            let tuples = core::iter::from_fn(|| {
+                step += 1;
+                match step {
+                    1 => Some(make(&heading, 1, ScalarValue::String("Alice".into()))),
+                    // Duplicate of #1 with its own heading Arc: checked,
+                    // cached, then dropped by the set (freeing the Arc).
+                    2 => Some(make(&heading, 1, ScalarValue::String("Alice".into()))),
+                    // Different heading, built lazily after #2 was dropped.
+                    3 => Some(make(&wrong_heading, 2, ScalarValue::Int(7))),
+                    _ => None,
+                }
+            });
+            let result = Relation::from_tuples(RelationType::new(heading.clone()), tuples);
+            assert!(
+                result.is_err(),
+                "a tuple whose heading differs from the relation's was accepted"
+            );
+        }
+    }
+}
+
+/// Deserialization must uphold the same invariant as [`Relation::insert`]:
+/// every tuple of the body has exactly the relation's heading.
+#[cfg(test)]
+mod deserialize_validation_tests {
+    use super::*;
+    use crate::tuple;
+    use crate::types::ScalarType;
+    use crate::values::ScalarValue;
+
+    fn id_type() -> RelationType {
+        RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int))
+    }
+
+    /// A relation whose body bypassed the heading check, i.e. what a
+    /// corrupted or hostile serialized payload decodes to.
+    fn forged(tuples: impl IntoIterator<Item = Tuple>) -> Relation {
+        Relation::from_tuples_unchecked(id_type(), tuples)
+    }
+
+    fn assert_rejected(forged: &Relation) {
+        let json = serde_json::to_string(forged).unwrap();
+        assert!(
+            serde_json::from_str::<Relation>(&json).is_err(),
+            "JSON accepted a non-conforming relation: {json}"
+        );
+        let bytes = postcard::to_allocvec(forged).unwrap();
+        assert!(
+            postcard::from_bytes::<Relation>(&bytes).is_err(),
+            "postcard accepted a non-conforming relation"
+        );
+    }
+
+    #[test]
+    fn deserialize_round_trips_valid_relation() {
+        let rel =
+            Relation::from_tuples(id_type(), [tuple! { id: 1i64 }, tuple! { id: 2i64 }]).unwrap();
+        let json = serde_json::to_string(&rel).unwrap();
+        assert_eq!(serde_json::from_str::<Relation>(&json).unwrap(), rel);
+        let bytes = postcard::to_allocvec(&rel).unwrap();
+        assert_eq!(postcard::from_bytes::<Relation>(&bytes).unwrap(), rel);
+    }
+
+    #[test]
+    fn deserialize_rejects_tuple_of_another_heading() {
+        assert_rejected(&forged([tuple! { id: 1i64 }, tuple! { name: "x" }]));
+    }
+
+    #[test]
+    fn deserialize_rejects_tuple_with_wider_heading() {
+        assert_rejected(&forged([tuple! { id: 1i64, x: 2i64 }]));
+    }
+
+    #[test]
+    fn deserialize_rejects_tuple_with_attribute_of_other_type() {
+        assert_rejected(&forged([tuple! { id: "one" }]));
+    }
+
+    #[test]
+    fn deserialize_rejects_nested_relation_value_with_foreign_tuple() {
+        // An RVA value smuggling a foreign tuple is rejected too: the nested
+        // relation goes through the same validation.
+        let value = ScalarValue::Relation(forged([tuple! { id: "one" }]));
+        let json = serde_json::to_string(&value).unwrap();
+        assert!(serde_json::from_str::<ScalarValue>(&json).is_err());
     }
 }
