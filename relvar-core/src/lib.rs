@@ -122,7 +122,7 @@ pub mod utils;
 pub mod experimental;
 pub mod values;
 
-pub use database::Database;
+pub use database::{Assignment, Database};
 pub use error::DatabaseError;
 pub use query::{Query, QueryError};
 pub use types::{

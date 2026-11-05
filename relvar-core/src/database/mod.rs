@@ -82,6 +82,7 @@ pub(crate) mod virtual_relvar;
 
 mod assertions;
 mod assignment;
+pub use assignment::Assignment;
 mod data;
 mod golden_rule;
 mod insert_plan;

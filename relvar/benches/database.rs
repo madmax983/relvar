@@ -682,6 +682,54 @@ fn bench_multiple_assign(c: &mut Criterion) {
             );
         });
     }
+
+    // The same final state, reached by naming EMP three times (RM
+    // Prescription 21 combines them): INSERT the first half, INSERT the
+    // second half plus one extra employee, DELETE the extra one.
+    for count in [100, 1000, 10000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(
+            BenchmarkId::new("repeated_target", count),
+            count,
+            |b, &count| {
+                b.iter_batched(
+                    || {
+                        // Setup (not measured): the database and every source value.
+                        let db = create_cyclic_memory_database();
+                        let emp_type = db.get_relvar_type("EMP").unwrap();
+                        let emps = |range: std::ops::Range<i64>| {
+                            relvar::Relation::from_tuples(
+                                emp_type.clone(),
+                                range.map(make_employee_tuple),
+                            )
+                            .unwrap()
+                        };
+                        let half = count as i64 / 2;
+                        let first = emps(0..half);
+                        let second = emps(half..count as i64 + 1);
+                        let extra = emps(count as i64..count as i64 + 1);
+                        let dept = relvar::Relation::from_tuples(
+                            db.get_relvar_type("DEPT").unwrap(),
+                            (0..10i64).map(|d| tuple! { dept_id: d, manager: d }),
+                        )
+                        .unwrap();
+                        (db, first, second, extra, dept)
+                    },
+                    |(mut db, first, second, extra, dept)| {
+                        db.multiple_assign(vec![
+                            ("EMP", relvar::Assignment::Insert(first)),
+                            ("DEPT", relvar::Assignment::Replace(dept)),
+                            ("EMP", relvar::Assignment::Insert(second)),
+                            ("EMP", relvar::Assignment::Delete(extra)),
+                        ])
+                        .unwrap();
+                        black_box(db)
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+        );
+    }
     group.finish();
 }
 

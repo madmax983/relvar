@@ -74,11 +74,6 @@ pub enum DatabaseError {
     #[error("Algebra error: {0}")]
     AlgebraError(String),
 
-    /// A [multiple assignment](crate::database::Database::multiple_assign)
-    /// names the same relvar more than once.
-    #[error("Relvar {0} is assigned more than once in one multiple assignment")]
-    DuplicateAssignmentTarget(String),
-
     /// A database assertion was violated.
     ///
     /// The payload is a human-readable message naming the violated assertion
