@@ -51,10 +51,34 @@ struct TxnTracker {
 /// Snapshot for persistent transactions.
 ///
 /// Represents the state of a transaction at a specific point in time.
-#[derive(Debug, Clone)]
+///
+/// An opaque handle: pass it back to
+/// [`commit_transaction`](StorageEngine::commit_transaction),
+/// [`rollback_transaction`](StorageEngine::rollback_transaction) or
+/// [`PersistentEngine::resume_transaction`]. Per TTM RM Proscription 6 the
+/// internal transaction id is not exposed (not even through `Debug`):
+///
+/// ```compile_fail,E0616
+/// use relvar_core::storage_engine::StorageEngine;
+/// use relvar_storage::PersistentEngine;
+///
+/// let dir = tempfile::tempdir().unwrap();
+/// let mut engine = PersistentEngine::open(dir.path()).unwrap();
+/// let snapshot = engine.begin_transaction().unwrap();
+/// let _internal_id = snapshot.txn_id; // private field
+/// ```
+#[derive(Clone)]
 pub struct PersistentSnapshot {
-    /// The transaction ID.
-    pub txn_id: TransactionId,
+    /// The transaction ID (storage-internal).
+    pub(crate) txn_id: TransactionId,
+}
+
+impl core::fmt::Debug for PersistentSnapshot {
+    /// Opaque rendering: the internal transaction id is not shown
+    /// (TTM RM Proscription 6).
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PersistentSnapshot").finish_non_exhaustive()
+    }
 }
 
 /// Persistent storage engine using heap files and JSON catalog.
