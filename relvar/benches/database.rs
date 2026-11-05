@@ -1,7 +1,7 @@
 use criterion::{
     BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
-use relvar::constraints::{KeyConstraints, PrimaryKey};
+use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
 use relvar::tuple;
 use relvar::{PersistentEngine, RelationType, ScalarType, TupleType};
 use tempfile::TempDir;
@@ -616,6 +616,74 @@ fn bench_virtual_relvar_query(c: &mut Criterion) {
     group.finish();
 }
 
+// Multiple assignment benchmark (TTM RM Prescription 21).
+//
+// Assigns EMP and a DEPT relvar referencing each other (EMP.dept_id ->
+// DEPT, DEPT.manager -> EMP) as one statement. Validation is O(total
+// cardinality): one key pass per relvar plus one hash pass per foreign key.
+fn create_cyclic_memory_database() -> relvar::Database<relvar::InMemoryEngine> {
+    let mut db = create_keyed_memory_database();
+    let dept_type = RelationType::new(
+        TupleType::new()
+            .with_attribute("dept_id", ScalarType::Int)
+            .with_attribute("manager", ScalarType::Int),
+    );
+    db.create_relvar("DEPT", dept_type).unwrap();
+    let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
+    db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(pk))
+        .unwrap();
+    let fk = |from: &str, to: &str, attr: &str| {
+        ForeignKeyConstraints::new().with_foreign_key(
+            ForeignKey::new(
+                vec![from.to_string()],
+                to.to_string(),
+                vec![attr.to_string()],
+            )
+            .unwrap(),
+        )
+    };
+    db.set_foreign_key_constraints("EMP", fk("dept_id", "DEPT", "dept_id"))
+        .unwrap();
+    db.set_foreign_key_constraints("DEPT", fk("manager", "EMP", "emp_id"))
+        .unwrap();
+    db
+}
+
+fn bench_multiple_assign(c: &mut Criterion) {
+    let mut group = c.benchmark_group("multiple_assign");
+
+    for count in [100, 1000, 10000].iter() {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
+            b.iter_batched(
+                || {
+                    // Setup (not measured): the database and both new values.
+                    let db = create_cyclic_memory_database();
+                    let emp = relvar::Relation::from_tuples(
+                        db.get_relvar_type("EMP").unwrap(),
+                        (0..count).map(|i| make_employee_tuple(i as i64)),
+                    )
+                    .unwrap();
+                    let dept = relvar::Relation::from_tuples(
+                        db.get_relvar_type("DEPT").unwrap(),
+                        (0..10i64).map(|d| tuple! { dept_id: d, manager: d }),
+                    )
+                    .unwrap();
+                    (db, emp, dept)
+                },
+                |(mut db, emp, dept)| {
+                    db.multiple_assign(vec![("EMP", emp), ("DEPT", dept)])
+                        .unwrap();
+                    // Returned, so criterion drops it outside the measurement.
+                    black_box(db)
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_database_open,
@@ -631,6 +699,7 @@ criterion_group!(
     bench_update,
     bench_transaction,
     bench_realistic_workload,
+    bench_multiple_assign,
     // Virtual relvar benchmarks (TTM RM Prescription 10)
     bench_virtual_relvar_creation,
     bench_virtual_relvar_query

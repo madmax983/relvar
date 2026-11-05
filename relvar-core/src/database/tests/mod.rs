@@ -1,9 +1,17 @@
 mod assertions;
 pub(crate) mod common;
+mod constraint_persistence;
 mod data;
+mod golden_rule;
 mod integrity;
 mod key_index;
+mod multiple_assignment;
 mod schema;
 mod transaction;
+mod ttm_assertions;
+mod ttm_ddl;
+mod ttm_foreign_keys;
+mod ttm_keys;
+mod ttm_self_reference;
 mod v11_constraints;
 mod virtual_relvar;

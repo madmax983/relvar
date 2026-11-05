@@ -70,6 +70,10 @@ fn with_fk(db: &mut Db) {
         .unwrap();
     let dept_tuples: Vec<Tuple> = (0..100).map(|i| tuple! { id: i as i64 }).collect();
     db.bulk_insert("DEPT", dept_tuples).unwrap();
+    // A foreign key references a declared key of DEPT.
+    let dept_pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(dept_pk))
+        .unwrap();
     let fk = ForeignKey::new(
         vec!["dept_id".to_string()],
         "DEPT".to_string(),
@@ -274,6 +278,10 @@ fn mem_db_with_fk() -> relvar::Database<relvar::InMemoryEngine> {
     .unwrap();
     let dept_tuples: Vec<Tuple> = (0..100).map(|i| tuple! { id: i as i64 }).collect();
     db.bulk_insert("DEPT", dept_tuples).unwrap();
+    // A foreign key references a declared key of DEPT.
+    let dept_pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(dept_pk))
+        .unwrap();
     db.create_relvar("EMP", employee_type()).unwrap();
     let fk = ForeignKey::new(
         vec!["dept_id".to_string()],

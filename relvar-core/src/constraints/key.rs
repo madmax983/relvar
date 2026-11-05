@@ -89,6 +89,10 @@ pub enum KeyConstraintError {
     TupleMissingAttribute(String),
 
     /// A key must have at least one attribute.
+    ///
+    /// No longer returned: TTM (RM Prescription 15) allows the empty key,
+    /// which limits a relvar to at most one tuple. Kept for API
+    /// compatibility.
     #[error("Key cannot be empty")]
     EmptyKey,
 }
@@ -120,18 +124,33 @@ pub struct CandidateKey {
 }
 
 impl CandidateKey {
-    /// Create a new candidate key
+    /// Create a new candidate key.
+    ///
+    /// TTM: RM Prescription 15. The empty key is legal: a relvar whose key
+    /// is `{}` can hold at most one tuple (every tuple has the same, empty,
+    /// key value).
+    ///
+    /// Whether the attributes exist in a relvar's heading, are distinct and
+    /// form an irreducible key is checked when the key is declared on a
+    /// relvar ([`Database::set_key_constraints`](crate::database::Database::set_key_constraints)).
+    ///
+    /// # Errors
+    ///
+    /// Currently infallible; the `Result` is kept for API stability.
     ///
     /// # Examples
     ///
-    /// ```text
-    /// // Example
+    /// ```
+    /// use relvar_core::constraints::CandidateKey;
+    ///
+    /// let key = CandidateKey::new(vec!["emp_id".to_string()]).unwrap();
+    /// assert_eq!(key.attributes(), &["emp_id"]);
+    ///
+    /// // The empty key: "at most one tuple".
+    /// let singleton = CandidateKey::new(vec![]).unwrap();
+    /// assert!(singleton.attributes().is_empty());
     /// ```
     pub fn new(attributes: Vec<String>) -> Result<Self, KeyConstraintError> {
-        if attributes.is_empty() {
-            return Err(KeyConstraintError::EmptyKey);
-        }
-
         Ok(Self { attributes })
     }
 
@@ -438,10 +457,25 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_key_rejected() {
-        let result = CandidateKey::new(vec![]);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), KeyConstraintError::EmptyKey));
+    fn test_empty_key_accepted() {
+        // TTM RM Prescription 15: the empty key is legal.
+        let key = CandidateKey::new(vec![]).unwrap();
+        assert!(key.attributes().is_empty());
+    }
+
+    #[test]
+    fn test_empty_key_satisfied_by_at_most_one_tuple() {
+        let key = CandidateKey::new(vec![]).unwrap();
+        let mut relation = create_employee_relation();
+        assert!(key.is_satisfied_by(&relation).unwrap());
+        relation
+            .insert(tuple! { emp_id: 1i64, name: "Alice", dept_id: 10i64 })
+            .unwrap();
+        assert!(key.is_satisfied_by(&relation).unwrap());
+        relation
+            .insert(tuple! { emp_id: 2i64, name: "Bob", dept_id: 20i64 })
+            .unwrap();
+        assert!(!key.is_satisfied_by(&relation).unwrap());
     }
 
     #[test]

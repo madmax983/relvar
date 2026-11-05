@@ -11,6 +11,7 @@ use crate::FileBlockDevice;
 use crate::mvcc::{DEFAULT_VERSION_POOL_CAPACITY, TransactionSnapshot, TxnPool, VersionPool};
 use crate::storage::{Catalog, CatalogError, HeapError, HeapFile};
 use crate::wal::TransactionId;
+use relvar_core::constraints::ConstraintCatalog;
 use relvar_core::storage_engine::{RelationMetadata, StorageError};
 use relvar_core::types::RelationType;
 use relvar_core::values::{Relation, Tuple};
@@ -111,6 +112,10 @@ impl StorageManager {
             }
             CatalogError::RelationNotFound(r) => StorageError::RelationNotFound(r),
             CatalogError::RelationExists(r) => StorageError::RelationAlreadyExists(r),
+            e @ (CatalogError::ConstraintOnUnknownRelation(_)
+            | CatalogError::RelationReferenced { .. }) => {
+                StorageError::Other(format!("Catalog error: {}", e))
+            }
         }
     }
 
@@ -183,16 +188,47 @@ impl StorageManager {
         Ok(())
     }
 
+    /// The database's stored declarative constraints.
+    pub fn constraints(&self) -> &ConstraintCatalog {
+        self.catalog.constraints()
+    }
+
+    /// Replaces the database's stored declarative constraints and saves the
+    /// catalog (atomically and durably; see [`Catalog::save`]).
+    ///
+    /// On failure the previously stored constraints remain in effect, both
+    /// in memory and on disk.
+    pub fn store_constraints(
+        &mut self,
+        constraints: ConstraintCatalog,
+    ) -> Result<(), StorageError> {
+        let previous = self.catalog.constraints().clone();
+        self.catalog
+            .set_constraints(constraints)
+            .map_err(Self::convert_catalog_error)?;
+        if let Err(save_error) = self.save_catalog() {
+            // Infallible: `previous` was valid against these relations.
+            let _ = self.catalog.set_constraints(previous);
+            return Err(save_error);
+        }
+        Ok(())
+    }
+
     /// Drop a relation.
     pub fn drop_relation(&mut self, name: &str) -> Result<(), StorageError> {
-        // Remove from catalog
+        // Remove from catalog (with the constraints declared on it)
+        let previous = self.catalog.clone();
         let metadata = self
             .catalog
             .drop_relation(name)
             .map_err(Self::convert_catalog_error)?;
 
-        // Save catalog
-        self.save_catalog()?;
+        // Save catalog; if that fails the relation is still on disk, so
+        // keep it in the in-memory catalog too.
+        if let Err(save_error) = self.save_catalog() {
+            self.catalog = previous;
+            return Err(save_error);
+        }
 
         // Remove heap file from cache
         self.heap_files.remove(name);

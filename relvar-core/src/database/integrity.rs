@@ -1,13 +1,32 @@
 //! Database Integrity Constraint operations.
 
 use crate::constraints::{
-    AttributeConstraints, CheckConstraints, ForeignKeyConstraints, KeyConstraints,
+    AttributeConstraints, CheckConstraints, ConstraintManager, ConstraintManagerError,
+    ForeignKeyConstraints, KeyConstraints,
 };
 use crate::database::Database;
 use crate::error::DatabaseError;
 use crate::storage_engine::StorageEngine;
 
 impl<E: StorageEngine> Database<E> {
+    /// Applies a constraint definition change and persists the resulting
+    /// constraint catalog (TTM RM Prescription 16).
+    ///
+    /// `change` runs against a copy of the constraint manager; the copy
+    /// replaces the live one only once the engine has stored its catalog,
+    /// so a failed validation *or* a failed write leaves both the in-memory
+    /// and the stored constraints as they were.
+    pub(crate) fn change_constraints(
+        &mut self,
+        change: impl FnOnce(&mut ConstraintManager, &mut E) -> Result<(), ConstraintManagerError>,
+    ) -> Result<(), DatabaseError> {
+        let mut updated = self.constraints.clone();
+        change(&mut updated, &mut self.engine)?;
+        self.engine.store_constraints(&updated.to_catalog())?;
+        self.constraints = updated;
+        Ok(())
+    }
+
     /// Get the key constraints for a relation.
     ///
     /// # Examples
@@ -43,13 +62,16 @@ impl<E: StorageEngine> Database<E> {
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::constraints::{ForeignKeyConstraints, ForeignKey};
+    /// use relvar_core::constraints::{ForeignKeyConstraints, ForeignKey, KeyConstraints, PrimaryKey};
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     /// let type1 = RelationType::new(TupleType::new().with_attribute("id", ScalarType::Int));
     /// let type2 = RelationType::new(TupleType::new().with_attribute("ref_id", ScalarType::Int));
     /// db.create_relvar("A", type1).unwrap();
     /// db.create_relvar("B", type2).unwrap();
+    /// // A foreign key references a declared key.
+    /// let pk = PrimaryKey::new(vec!["id".to_string()]).unwrap();
+    /// db.set_key_constraints("A", KeyConstraints::new().with_primary_key(pk)).unwrap();
     ///
     /// let fk = ForeignKey::new(
     ///     vec!["ref_id".to_string()],
@@ -70,6 +92,26 @@ impl<E: StorageEngine> Database<E> {
     }
 
     /// Set key constraints for a relation.
+    ///
+    /// Replaces any keys previously declared on `relation_name`.
+    ///
+    /// TTM: RM Prescription 15. Every key attribute must exist in the
+    /// heading and appear at most once; no declared key may be a proper
+    /// superset of another (candidate keys are irreducible). The empty key
+    /// is legal and limits the relvar to at most one tuple. A key that some
+    /// foreign key references cannot be dropped by the replacement, and the
+    /// existing data must satisfy every key.
+    ///
+    /// # Errors
+    ///
+    /// [`DatabaseError::Constraint`] wrapping
+    /// [`RelationNotFound`](crate::constraints::ConstraintManagerError::RelationNotFound),
+    /// [`AttributeNotFound`](crate::constraints::ConstraintManagerError::AttributeNotFound),
+    /// [`DuplicateKeyAttribute`](crate::constraints::ConstraintManagerError::DuplicateKeyAttribute),
+    /// [`ReducibleKey`](crate::constraints::ConstraintManagerError::ReducibleKey),
+    /// [`KeyReferencedByForeignKey`](crate::constraints::ConstraintManagerError::KeyReferencedByForeignKey),
+    /// [`PrimaryKeyViolation`](crate::constraints::ConstraintManagerError::PrimaryKeyViolation)
+    /// or [`CandidateKeyViolation`](crate::constraints::ConstraintManagerError::CandidateKeyViolation).
     ///
     /// # Examples
     ///
@@ -95,8 +137,10 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: KeyConstraints,
     ) -> Result<(), DatabaseError> {
-        self.constraints
-            .set_key_constraints(&mut self.engine, relation_name, constraints)?;
+        self.ensure_no_transaction("set_key_constraints")?;
+        self.change_constraints(|manager, engine| {
+            manager.set_key_constraints(engine, relation_name, constraints)
+        })?;
         // (Re)build the key index from current data so subsequent inserts
         // validate against O(1) lookups (#23).
         self.rebuild_key_index(relation_name)?;
@@ -105,21 +149,43 @@ impl<E: StorageEngine> Database<E> {
 
     /// Set foreign key constraints for a relation.
     ///
+    /// Replaces any foreign keys previously declared on `relation_name`.
+    ///
+    /// TTM: a foreign key references a candidate key. Each foreign key is
+    /// validated before it is accepted: its attributes must exist (and be
+    /// distinct) in `relation_name`, the referenced relvar must exist, the
+    /// referenced attributes must be exactly one of its declared keys
+    /// (primary or candidate, compared as sets), and each referencing
+    /// attribute must have the type of the attribute it references. The
+    /// existing data must satisfy every foreign key.
+    ///
+    /// # Errors
+    ///
+    /// [`DatabaseError::Constraint`] wrapping
+    /// [`ConstraintManagerError::RelationNotFound`],
+    /// [`AttributeNotFound`](crate::constraints::ConstraintManagerError::AttributeNotFound),
+    /// [`DuplicateKeyAttribute`](crate::constraints::ConstraintManagerError::DuplicateKeyAttribute),
+    /// [`ForeignKeyTargetNotKey`](crate::constraints::ConstraintManagerError::ForeignKeyTargetNotKey),
+    /// [`ForeignKeyTypeMismatch`](crate::constraints::ConstraintManagerError::ForeignKeyTypeMismatch)
+    /// or [`ForeignKeyViolation`](crate::constraints::ConstraintManagerError::ForeignKeyViolation).
+    ///
     /// # Examples
     ///
     /// ```
     /// use relvar_core::database::Database;
     /// use relvar_core::storage_engine::InMemoryEngine;
     /// use relvar_core::types::{TupleType, RelationType, ScalarType};
-    /// use relvar_core::constraints::{ForeignKeyConstraints, ForeignKey};
+    /// use relvar_core::constraints::{ForeignKeyConstraints, ForeignKey, KeyConstraints, PrimaryKey};
     ///
     /// let mut db = Database::new(InMemoryEngine::new());
     ///
-    /// // Create referenced relvar
+    /// // Create referenced relvar, keyed on dept_id
     /// let dept_type = RelationType::new(
     ///     TupleType::new().with_attribute("dept_id", ScalarType::Int)
     /// );
     /// db.create_relvar("DEPT", dept_type).unwrap();
+    /// let pk = PrimaryKey::new(vec!["dept_id".to_string()]).unwrap();
+    /// db.set_key_constraints("DEPT", KeyConstraints::new().with_primary_key(pk)).unwrap();
     ///
     /// // Create referencing relvar
     /// let emp_type = RelationType::new(
@@ -141,11 +207,10 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: ForeignKeyConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self.constraints.set_foreign_key_constraints(
-            &mut self.engine,
-            relation_name,
-            constraints,
-        )?)
+        self.ensure_no_transaction("set_foreign_key_constraints")?;
+        self.change_constraints(|manager, engine| {
+            manager.set_foreign_key_constraints(engine, relation_name, constraints)
+        })
     }
 
     /// Set type constraints for an attribute.
@@ -177,12 +242,10 @@ impl<E: StorageEngine> Database<E> {
         attribute_name: &str,
         constraints: AttributeConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self.constraints.set_type_constraints(
-            &mut self.engine,
-            relation_name,
-            attribute_name,
-            constraints,
-        )?)
+        self.ensure_no_transaction("set_type_constraints")?;
+        self.change_constraints(|manager, engine| {
+            manager.set_type_constraints(engine, relation_name, attribute_name, constraints)
+        })
     }
 
     /// Set CHECK constraints for a relation.
@@ -222,8 +285,9 @@ impl<E: StorageEngine> Database<E> {
         relation_name: &str,
         constraints: CheckConstraints,
     ) -> Result<(), DatabaseError> {
-        Ok(self
-            .constraints
-            .set_check_constraints(&mut self.engine, relation_name, constraints)?)
+        self.ensure_no_transaction("set_check_constraints")?;
+        self.change_constraints(|manager, engine| {
+            manager.set_check_constraints(engine, relation_name, constraints)
+        })
     }
 }

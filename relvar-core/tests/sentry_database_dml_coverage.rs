@@ -60,6 +60,14 @@ fn test_database_data_delete_validation_uncovered() {
         )
         .unwrap(),
     );
+    // A foreign key must reference a declared key of PARENT.
+    db.set_key_constraints(
+        "PARENT",
+        relvar_core::constraints::KeyConstraints::new().with_primary_key(
+            relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap(),
+        ),
+    )
+    .unwrap();
     db.set_foreign_key_constraints("CHILD", fk).unwrap();
 
     // Trying to delete parent should fail due to FK referencing constraint
@@ -105,6 +113,14 @@ fn test_database_data_update_validation_uncovered() {
         )
         .unwrap(),
     );
+    // A foreign key must reference a declared key of PARENT.
+    db.set_key_constraints(
+        "PARENT",
+        relvar_core::constraints::KeyConstraints::new().with_primary_key(
+            relvar_core::constraints::PrimaryKey::new(vec!["id".to_string()]).unwrap(),
+        ),
+    )
+    .unwrap();
     db.set_foreign_key_constraints("CHILD", fk).unwrap();
 
     // Try to update parent's id, which would break child's FK

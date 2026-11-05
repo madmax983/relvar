@@ -35,6 +35,7 @@
 //! ```
 
 pub(crate) mod assertion;
+pub(crate) mod catalog;
 pub(crate) mod check;
 pub(crate) mod expression;
 pub(crate) mod foreign_key;
@@ -45,6 +46,7 @@ pub(crate) mod prepared;
 pub(crate) mod type_constraint;
 
 pub use assertion::{AssertionError, DatabaseAssertion};
+pub use catalog::{ConstraintCatalog, RelvarConstraints};
 pub use check::{CheckConstraint, CheckConstraintError, CheckConstraints};
 pub use expression::{CmpOp, ConstraintExpression, ExpressionError, ScalarExpression, ValueOrRef};
 pub use foreign_key::{ForeignKey, ForeignKeyConstraints, ForeignKeyError};
