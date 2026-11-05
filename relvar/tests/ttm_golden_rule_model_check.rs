@@ -6,7 +6,12 @@
 //! constraints, across reopen too).
 //!
 //! The schema is a parent/child pair: `P {pid}` with key `{pid}` and
-//! `C {cid, pid}` with key `{cid}` and a foreign key `C.pid -> P.pid`.
+//! `C {cid, pid}` with key `{cid}` and a foreign key `C.pid -> P.pid`, plus a
+//! persisted declarative assertion `IS_EMPTY((P WHERE pid = 2) NOT MATCHING
+//! C{pid})` — parent 2 may exist only with a child, so only a multiple
+//! assignment can add it. The schema is defined once: after a crash the
+//! database is reopened WITHOUT redefining anything, so every check after a
+//! reopen also verifies that keys, foreign keys and the assertion persisted.
 //! Stateright explores every sequence (up to a depth bound) of inserts,
 //! deletes, updates, a multiple assignment, begin/commit/rollback and — on
 //! the persistent engine — crashes followed by reopening. Each history is
@@ -26,10 +31,13 @@ use std::collections::BTreeSet;
 #[cfg(feature = "storage")]
 use std::path::Path;
 
-use relvar::constraints::{ForeignKey, ForeignKeyConstraints, KeyConstraints, PrimaryKey};
+use relvar::constraints::{
+    AssertionCondition, CmpOp, ConstraintExpression, DeclarativeAssertion, ForeignKey,
+    ForeignKeyConstraints, KeyConstraints, PrimaryKey, ValueOrRef,
+};
 use relvar::{
-    Database, InMemoryEngine, Relation, RelationType, ScalarType, ScalarValue, StorageEngine,
-    Tuple, TupleType, tuple,
+    Assignment, Database, InMemoryEngine, Query, Relation, RelationType, ScalarType, ScalarValue,
+    StorageEngine, Tuple, TupleType, tuple,
 };
 use stateright::{Checker, Model, Property};
 
@@ -45,6 +53,13 @@ enum Action {
     UpdateC(i64),
     /// `P := P ∪ {p}, C := C ∪ {(CID, p)}` as one multiple assignment.
     AssignPair(i64),
+    /// `INSERT P {p}, DELETE P {p}` in one statement: assignments to the
+    /// same target combine in order, so this is `P := (P ∪ {p}) − {p}`.
+    InsertThenDeleteP(i64),
+    /// `C := {}, INSERT C {(CID, p)}`: replace, then insert into the result.
+    ReplaceThenInsertC(i64),
+    /// `INSERT P {1}, INSERT P {2}`: two inserts into the same target.
+    InsertBothP,
     Begin,
     Commit,
     Rollback,
@@ -59,11 +74,16 @@ struct DbValue {
 }
 
 impl DbValue {
-    /// Every declared constraint: key `{cid}` on C and the foreign key. (Key
-    /// `{pid}` on P holds by construction: P is a set of pids.)
+    /// Every declared constraint: key `{cid}` on C, the foreign key, and the
+    /// declarative assertion. (Key `{pid}` on P holds by construction: P is a
+    /// set of pids.)
     fn consistent(&self) -> bool {
         let cids: BTreeSet<i64> = self.c.iter().map(|(cid, _)| *cid).collect();
-        cids.len() == self.c.len() && self.c.iter().all(|(_, pid)| self.p.contains(pid))
+        let parent_two_has_a_child =
+            !self.p.contains(&2) || self.c.iter().any(|(_, pid)| *pid == 2);
+        cids.len() == self.c.len()
+            && self.c.iter().all(|(_, pid)| self.p.contains(pid))
+            && parent_two_has_a_child
     }
 }
 
@@ -111,6 +131,19 @@ impl Abstract {
             Action::AssignPair(p) => {
                 next.p.insert(p);
                 next.c.insert((CID, p));
+            }
+            // Combined per target, in statement order (verify/verus/database.rs
+            // `combine`).
+            Action::InsertThenDeleteP(p) => {
+                next.p.insert(p);
+                next.p.remove(&p);
+            }
+            Action::ReplaceThenInsertC(p) => {
+                next.c = BTreeSet::from([(CID, p)]);
+            }
+            Action::InsertBothP => {
+                next.p.insert(1);
+                next.p.insert(2);
             }
             Action::Begin | Action::Commit | Action::Rollback | Action::Crash => {}
         }
@@ -177,7 +210,41 @@ fn define_schema<E: StorageEngine>(db: &mut Database<E>) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     db.set_foreign_key_constraints("C", ForeignKeyConstraints::new().with_foreign_key(fk))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    db.add_declarative_assertion(DeclarativeAssertion::new(
+        "parent_two_has_a_child",
+        "Parent 2 exists only together with a child",
+        AssertionCondition::IsEmpty(
+            Query::scan("P")
+                .restrict(ConstraintExpression::Cmp {
+                    left: "pid".to_string(),
+                    op: CmpOp::Eq,
+                    right: ValueOrRef::Value(ScalarValue::Int(2)),
+                })
+                .not_matching(Query::scan("C").project(vec!["pid"])),
+        ),
+    ))
+    .map_err(|e| e.to_string())
+}
+
+fn p_relation(pids: &[i64]) -> Result<Relation, String> {
+    let mut relation = Relation::new(p_type());
+    for &pid in pids {
+        relation
+            .insert(tuple! { pid: pid })
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(relation)
+}
+
+fn c_relation(children: &[(i64, i64)]) -> Result<Relation, String> {
+    let mut relation = Relation::new(c_type());
+    for &(cid, pid) in children {
+        relation
+            .insert(tuple! { cid: cid, pid: pid })
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(relation)
 }
 
 fn int(tuple: &Tuple, name: &str) -> i64 {
@@ -224,6 +291,24 @@ fn run<E: StorageEngine>(db: &mut Database<E>, action: Action) -> Result<bool, S
             )?;
             db.multiple_assign([("P", new_p), ("C", new_c)]).is_ok()
         }
+        Action::InsertThenDeleteP(p) => db
+            .multiple_assign([
+                ("P", Assignment::Insert(p_relation(&[p])?)),
+                ("P", Assignment::Delete(p_relation(&[p])?)),
+            ])
+            .is_ok(),
+        Action::ReplaceThenInsertC(p) => db
+            .multiple_assign([
+                ("C", Assignment::Replace(c_relation(&[])?)),
+                ("C", Assignment::Insert(c_relation(&[(CID, p)])?)),
+            ])
+            .is_ok(),
+        Action::InsertBothP => db
+            .multiple_assign([
+                ("P", Assignment::Insert(p_relation(&[1])?)),
+                ("P", Assignment::Insert(p_relation(&[2])?)),
+            ])
+            .is_ok(),
         Action::Begin => db.begin().is_ok(),
         Action::Commit => db.commit().is_ok(),
         Action::Rollback => db.rollback().is_ok(),
@@ -363,7 +448,10 @@ impl<H: Harness + Send + Sync + 'static> Model for GoldenRule<H> {
             actions.push(Action::InsertC(p));
             actions.push(Action::UpdateC(p));
             actions.push(Action::AssignPair(p));
+            actions.push(Action::InsertThenDeleteP(p));
+            actions.push(Action::ReplaceThenInsertC(p));
         }
+        actions.push(Action::InsertBothP);
         actions.push(Action::DeleteC);
         if state.model.working.is_some() {
             actions.push(Action::Commit);
